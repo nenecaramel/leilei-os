@@ -67,12 +67,10 @@ struct MindManualEntrySheet: View {
                     .disabled(!canSave || saving)
                 }
             }
-            .alert(
-                "Failed",
+            .appFailureAlert(
+                message: "The memory could not be saved. Try again.",
                 isPresented: $failed
-            ) {
-                Button("OK", role: .cancel) {}
-            }
+            )
         }
         .background(Color.settingsBackground)
     }

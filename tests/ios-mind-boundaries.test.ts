@@ -45,7 +45,7 @@ test("Mind detail keeps refresh and delete coordination without redundant kind m
   assert.match(source, /mindItem\(\s*stateID: item\.id/);
   assert.match(source, /deleteMind\(\s*stateID: item\.id/);
   assert.match(source, /onDeleted\(\)\s*dismiss\(\)/);
-  assert.match(source, /"Couldn’t Delete Memory"/);
+  assert.match(source, /\.appFailureAlert\([\s\S]*message: "The memory could not be deleted\. Try again\."/);
   assert.match(source, /LabeledContent\(\s*"Types"/);
   assert.doesNotMatch(source, /LabeledContent\("Kind"/);
   assert.doesNotMatch(source, /private func dateText|createManualMind|mindPage/);

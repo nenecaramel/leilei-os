@@ -193,7 +193,7 @@ struct MindItemDetailView: View {
             await refreshDetail()
         }
         .appConfirmationAlert(
-            title: "Delete Memory?",
+            title: "Delete memory?",
             message: "This memory will be deleted.",
             actionTitle: "Delete",
             actionRole: .destructive,
@@ -203,12 +203,10 @@ struct MindItemDetailView: View {
                 await delete()
             }
         }
-        .alert(
-            "Couldn’t Delete Memory",
+        .appFailureAlert(
+            message: "The memory could not be deleted. Try again.",
             isPresented: $deleteFailed
-        ) {
-            Button("OK", role: .cancel) {}
-        }
+        )
     }
 
     private var hasLifecycle: Bool {

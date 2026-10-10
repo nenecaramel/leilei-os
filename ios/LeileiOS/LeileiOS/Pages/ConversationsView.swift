@@ -54,8 +54,11 @@ struct ConversationsView: View {
         .refreshable {
             await refreshCurrentScope()
         }
-        .alert(
-            "Delete conversation?",
+        .appConfirmationAlert(
+            title: "Delete conversation?",
+            message: "This conversation will be permanently deleted. This can’t be undone.",
+            actionTitle: "Delete",
+            actionRole: .destructive,
             isPresented: Binding(
                 get: { pendingDelete != nil },
                 set: { isPresented in
@@ -65,27 +68,12 @@ struct ConversationsView: View {
                 }
             )
         ) {
-            Button("Cancel", role: .cancel) {
-                pendingDelete = nil
-            }
-
-            Button("Delete", role: .destructive) {
-                guard let conversation = pendingDelete else {
-                    return
-                }
-                pendingDelete = nil
-                Task {
-                    await delete(conversation)
-                }
-            }
-        } message: {
-            Text(
-                "This conversation will be permanently deleted. "
-                + "This can’t be undone."
-            )
+            guard let conversation = pendingDelete else { return }
+            pendingDelete = nil
+            Task { await delete(conversation) }
         }
-        .alert(
-            "Failed",
+        .appFailureAlert(
+            message: lifecycleErrorMessage ?? "The conversation could not be updated.",
             isPresented: Binding(
                 get: { lifecycleErrorMessage != nil },
                 set: { isPresented in
@@ -94,13 +82,7 @@ struct ConversationsView: View {
                     }
                 }
             )
-        ) {
-            Button("OK", role: .cancel) {
-                lifecycleErrorMessage = nil
-            }
-        } message: {
-            Text(lifecycleErrorMessage ?? "")
-        }
+        )
     }
 
     @ViewBuilder

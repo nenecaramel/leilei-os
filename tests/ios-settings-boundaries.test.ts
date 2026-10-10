@@ -27,7 +27,7 @@ test("Settings home retains local appearance notification and auth coordination"
   assert.match(home, /guard newPhase == \.active/);
   assert.match(home, /requestAuthorization\([\s\S]*options: \[\.alert, \.sound, \.badge\]/);
   assert.match(home, /UIApplication.openNotificationSettingsURLString/);
-  assert.match(home, /\.confirmationDialog\([\s\S]*"Sign Out\?"/);
+  assert.match(home, /\.appConfirmationAlert\([\s\S]*title: "Sign out\?"/);
   assert.match(home, /try await appModel.signIn\(\)/);
   assert.match(home, /try await appModel.signOut\(\)/);
   assert.match(home, /authErrorMessage = error.localizedDescription/);

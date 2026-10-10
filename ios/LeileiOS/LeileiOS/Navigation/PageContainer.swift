@@ -103,8 +103,8 @@ struct PageContainer: View {
         } message: {
             Text("Enter a new name")
         }
-        .alert(
-            "Rename failed",
+        .appFailureAlert(
+            message: renameErrorMessage ?? "The conversation could not be renamed.",
             isPresented: Binding(
                 get: { renameErrorMessage != nil },
                 set: { isPresented in
@@ -113,13 +113,7 @@ struct PageContainer: View {
                     }
                 }
             )
-        ) {
-            Button("OK", role: .cancel) {
-                renameErrorMessage = nil
-            }
-        } message: {
-            Text(renameErrorMessage ?? "")
-        }
+        )
         .appConfirmationAlert(
             title: "Delete conversation?",
             message: "This conversation will be permanently deleted. This can’t be undone.",
@@ -135,8 +129,8 @@ struct PageContainer: View {
                 }
             }
         }
-        .alert(
-            "Delete failed",
+        .appFailureAlert(
+            message: deleteErrorMessage ?? "The conversation could not be deleted.",
             isPresented: Binding(
                 get: { deleteErrorMessage != nil },
                 set: { isPresented in
@@ -145,13 +139,7 @@ struct PageContainer: View {
                     }
                 }
             )
-        ) {
-            Button("OK", role: .cancel) {
-                deleteErrorMessage = nil
-            }
-        } message: {
-            Text(deleteErrorMessage ?? "")
-        }
+        )
     }
 
     private var conversationMenu: some View {

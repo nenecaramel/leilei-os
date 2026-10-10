@@ -63,9 +63,15 @@ struct DaySpaceMemoryDetail: View {
                 }
             }
         }
-        .confirmationDialog("放弃未保存的修改？", isPresented: $discardConfirmation, titleVisibility: .visible) {
-            Button("放弃", role: .destructive, action: onClosed)
-            Button("继续编辑", role: .cancel) {}
+        .appConfirmationAlert(
+            title: "Discard changes?",
+            message: "Your unsaved changes will be lost.",
+            actionTitle: "Discard",
+            actionRole: .destructive,
+            cancelTitle: "Keep Editing",
+            isPresented: $discardConfirmation
+        ) {
+            onClosed()
         }
     }
     private func requestClose() {
