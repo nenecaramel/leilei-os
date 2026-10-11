@@ -1,7 +1,8 @@
 import { restoreDesktopNativeSession, handoffNativeSessionToDesktop } from '../src/native-session-switch-restore.mjs';
 import path from 'node:path';
 import { homedir } from 'node:os';
-import { inspectDesktopNativeSession, listDesktopNativeSessions, resolveDesktopNativeSelection, nativeInspectionErrorCode } from '../src/native-session-inspection.mjs';
+import { inspectDesktopNativeSession, listDesktopNativeSessions, resolveDesktopNativeSelection } from '../src/native-session-inspection.mjs';
+import { nativeSwitchErrorCode } from '../src/native-session-switch-codes.mjs';
 import { preflightNativeSessionSwitch } from '../src/native-session-switch-preflight.mjs';
 
 // Restore is explicit/authenticated. Only --desktop invokes the official
@@ -26,7 +27,6 @@ if (!valid || (['--desktop', '--desktop-manual'].includes(args[0]) && !flags.has
   const configDirectory = path.resolve(flags.get('--config-dir') ?? process.env.CLAUDE_CONFIG_DIR ?? path.join(homedir(), '.claude'));
   const discovery = { desktopSessionsDirectory: path.resolve(flags.get('--desktop-dir') ?? path.join(homedir(), 'Library', 'Application Support', 'Claude', 'claude-code-sessions')),
     projectsDirectory: path.join(configDirectory, 'projects'), peerDirectory: path.join(configDirectory, 'sessions') };
-  const publicCodes = new Set(['CANONICAL_CHECKPOINT_CHANGED', 'CANONICAL_HEAD_CHANGED', 'CANONICAL_HISTORY_CHANGED', 'NATIVE_HISTORY_REWRITTEN', 'NATIVE_CONFIG_LOCATION_MISMATCH', 'NATIVE_SESSION_STILL_OPEN', 'NATIVE_RELEASE_UNCONFIRMED', 'INVALID_NATIVE_RESTORE_ENDPOINT', 'NATIVE_RESTORE_UNAVAILABLE', 'NATIVE_RESTORE_INVALID_RESPONSE', 'NATIVE_RESTORE_PAYLOAD_TOO_LARGE', 'NATIVE_CONVERSATION_BUSY', 'STALE_NATIVE_PROJECTION', 'NATIVE_TRANSCRIPT_DIVERGED', 'NATIVE_SESSION_RECOVERY_REQUIRED', 'NATIVE_SOURCE_BINDING_REQUIRED', 'EXPLICIT_BRANCH_SELECTION_REQUIRED', 'NATIVE_SESSION_ALREADY_ATTACHED', 'NATIVE_RECOVERY_UNCONFIRMED', 'NATIVE_DESKTOP_LAUNCH_FAILED', 'INVALID_NATIVE_ASSET', 'NATIVE_ASSET_UNAVAILABLE', 'NATIVE_ASSET_MISMATCH', 'NATIVE_ASSET_UPLOAD_FAILED']);
   try {
     if (args[0] === '--list') {
       console.log(JSON.stringify(await listDesktopNativeSessions(discovery), null, 2));
@@ -52,7 +52,7 @@ if (!valid || (['--desktop', '--desktop-manual'].includes(args[0]) && !flags.has
       console.log(JSON.stringify(args[0] === '--desktop-manual' ? { ...result, desktopLaunchRequested: false } : result, null, 2));
     }
   } catch (error) {
-    console.error(publicCodes.has(error?.code) ? error.code : nativeInspectionErrorCode(error));
+    console.error(nativeSwitchErrorCode(error));
     process.exitCode = 1;
   }
 }

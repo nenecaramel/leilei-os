@@ -4,6 +4,10 @@ import path from 'node:path';
 
 const script = fileURLToPath(new URL('../tools/claude-bridge/scripts/native-session-switch.mjs', import.meta.url));
 const modes = { list: '--list', desktop: '--desktop-manual', leileios: '--restore' };
+// Hang guard only: every relay request and attachment upload inside the child
+// has its own bound. A first import on a slow link spends minutes on the restore
+// upload plus attachments; restore is idempotent and attachments resume on rerun.
+export const NATIVE_SWITCH_CHILD_TIMEOUT_MS = 15 * 60_000;
 
 // Only the existing authenticated switch performs writes. This local wrapper
 // obtains credentials in memory; it does not start a daemon or model query.
@@ -27,10 +31,11 @@ export function runLocalSwitch(args, { execute = execFileSync, environment = pro
   const flags = mode === 'list' ? [] : ['--session-id', id];
   if (mode !== 'list' && conversationId) flags.push('--conversation-id', conversationId);
   try {
-    print(execute(process.execPath, [script, modes[mode], ...flags], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 240_000, maxBuffer: 128 * 1024 }));
+    print(execute(process.execPath, [script, modes[mode], ...flags], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: NATIVE_SWITCH_CHILD_TIMEOUT_MS, maxBuffer: 128 * 1024 }));
   } catch (error) {
     // The child CLI emits only public reason codes. Do not print command/env
     // objects or raw Railway errors that may include secret values.
+    if (error.code === 'ETIMEDOUT') throw new Error('NATIVE_SWITCH_TIMEOUT');
     const reason = String(error.stderr ?? '').trim();
     throw new Error(/^[A-Z][A-Z_]+$/.test(reason) ? reason : 'NATIVE_SWITCH_FAILED');
   }

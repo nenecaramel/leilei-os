@@ -46,3 +46,23 @@ test('selected conversation is forwarded explicitly and invalid identity is reje
   assert.deepEqual(childArgs.slice(-2), ['--conversation-id', conversationId]);
   assert.throws(() => runLocalSwitch(['desktop', conversationId], { conversationId: '../bad', execute() { assert.fail('must not execute'); } }), /INVALID_CONVERSATION_ID/);
 });
+
+test('local switch child budget covers the largest bounded request and reports its own timeout by code', async () => {
+  const { runLocalSwitch, NATIVE_SWITCH_CHILD_TIMEOUT_MS } = await import('../../../scripts/native-session-local.mjs');
+  const { NATIVE_HISTORY_REQUEST_TIMEOUT_MS, NATIVE_RESTORE_UPLOAD_TIMEOUT_MS, NATIVE_SERVER_REQUEST_TIMEOUT_MS } =
+    await import('../src/native-session-switch-restore.mjs');
+  // Client gives up on a large upload before the server's own request bound.
+  assert.ok(NATIVE_RESTORE_UPLOAD_TIMEOUT_MS < NATIVE_SERVER_REQUEST_TIMEOUT_MS);
+  // The outer guard must never cut a legitimate state + restore + release sequence,
+  // leaving room for resumable attachment uploads after the restore commits.
+  assert.ok(NATIVE_SWITCH_CHILD_TIMEOUT_MS >= 2 * (NATIVE_RESTORE_UPLOAD_TIMEOUT_MS + 2 * NATIVE_HISTORY_REQUEST_TIMEOUT_MS));
+  let childTimeout;
+  assert.throws(() => runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], {
+    execute(command, _args, options) {
+      if (command === 'railway') return JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 'PRIVATE', MCP_SERVER_URL: 'https://fixture.example' });
+      childTimeout = options.timeout;
+      throw Object.assign(new Error('spawnSync node ETIMEDOUT PRIVATE'), { code: 'ETIMEDOUT', signal: 'SIGTERM', stderr: '' });
+    }, print() {},
+  }), error => error.message === 'NATIVE_SWITCH_TIMEOUT');
+  assert.equal(childTimeout, NATIVE_SWITCH_CHILD_TIMEOUT_MS);
+});

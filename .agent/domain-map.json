@@ -370,6 +370,8 @@
       "name": "Claude bridge",
       "paths": [
         "tools/claude-bridge/**",
+        "scripts/native-session-*.mjs",
+        "scripts/leileios-switch.command",
         "src/domains/bridge/claude-*",
         "tests/claude-*.test.ts"
       ],

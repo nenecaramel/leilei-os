@@ -8,6 +8,13 @@ import { promisify } from 'node:util';
 import { materializeNativeSessionHistoryAssets } from './native-session-assets.mjs';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = code => Object.assign(new Error(code), { code });
+// Time bounds, inner to outer. A large restore upload must give up before the
+// server's own bound (Node's default 300-second requestTimeout; the server does
+// not override it), and the local command's guard must exceed the whole
+// bounded sequence. Full re-uploads are a first-import cost, not the steady state.
+export const NATIVE_HISTORY_REQUEST_TIMEOUT_MS = 30_000;
+export const NATIVE_RESTORE_UPLOAD_TIMEOUT_MS = 180_000;
+export const NATIVE_SERVER_REQUEST_TIMEOUT_MS = 300_000;
 const publicCodes = new Set(['NATIVE_CONVERSATION_BUSY', 'STALE_NATIVE_PROJECTION', 'CANONICAL_HEAD_CHANGED', 'CANONICAL_HISTORY_CHANGED', 'CANONICAL_CHECKPOINT_CHANGED', 'NATIVE_SOURCE_BINDING_REQUIRED', 'EXPLICIT_BRANCH_SELECTION_REQUIRED', 'NATIVE_HISTORY_REWRITTEN', 'NATIVE_TRANSCRIPT_DIVERGED', 'NATIVE_SESSION_RECOVERY_REQUIRED', 'CLEANUP_IN_PROGRESS', 'NATIVE_CONVERSATION_NOT_FOUND', 'INVALID_NATIVE_PROJECTION', 'INVALID_NATIVE_SNAPSHOT', 'BATCH_TOO_LARGE', 'NATIVE_SESSION_ALREADY_ATTACHED', 'INVALID_NATIVE_ASSET', 'NATIVE_ASSET_UNAVAILABLE', 'NATIVE_ASSET_MISMATCH']);
 
 // Explicit history restore only: no SDK query, native file writes, Desktop
@@ -27,8 +34,7 @@ export function nativeHistoryRequest({ relayUrl, relayToken, fetchImpl = fetch }
     const bytes = Buffer.byteLength(body, 'utf8');
     if (bytes > 30 * 1024 * 1024) throw fail('NATIVE_RESTORE_PAYLOAD_TOO_LARGE');
     // A large, single-transaction restore needs upload time on slow links.
-    // The outer local CLI still has a separate 240-second hard limit.
-    const timeoutMs = route === 'restore' && bytes >= 4 * 1024 * 1024 ? 180_000 : 30_000;
+    const timeoutMs = route === 'restore' && bytes >= 4 * 1024 * 1024 ? NATIVE_RESTORE_UPLOAD_TIMEOUT_MS : NATIVE_HISTORY_REQUEST_TIMEOUT_MS;
     let signal;
     try {
       signal = AbortSignal.timeout(timeoutMs);
