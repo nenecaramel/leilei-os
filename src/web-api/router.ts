@@ -83,6 +83,11 @@ export function createWebApiRouter(
     });
   });
 
+  router.use("/voice", createNativeLiveSpeechRouter({
+    apiKey: env.ELEVENLABS_API_KEY,
+    voiceId: env.ELEVENLABS_VOICE_ID,
+  }));
+
   router.use(
     "/diary",
     createDiaryApiRouter(dependencies.diary),
