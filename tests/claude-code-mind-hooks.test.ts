@@ -208,7 +208,7 @@ test("fresh installer produces a working standalone hook without transcript pars
   await assert.rejects(readFile(join(installed,"transcript.mjs")),{code:"ENOENT"});
 });
 
-test("Native Live managed SDK hooks skip recall and state access", async t => {
+test("explicit emergency disable skips recall and state access", async t => {
   const f = await fixture(t);
   process.env.LEILEI_MIND_HOOK_DISABLED = "1";
   try {
@@ -216,6 +216,25 @@ test("Native Live managed SDK hooks skip recall and state access", async t => {
     assert.equal(f.calls.length, 0);
     await assert.rejects(readdir(join(f.home, "state")));
   } finally { delete process.env.LEILEI_MIND_HOOK_DISABLED; }
+});
+
+test("Native Live transport environment runs the same real Mind Hook as Desktop", async t => {
+  const f = await fixture(t);
+  const { AgentSdkClaudeTransport } = await import("../tools/claude-bridge/src/agent-sdk-claude-transport.mjs");
+  const transport = new AgentSdkClaudeTransport({environment: {}});
+  const old = process.env.LEILEI_MIND_HOOK_DISABLED;
+  process.env.LEILEI_MIND_HOOK_DISABLED = transport.environment.LEILEI_MIND_HOOK_DISABLED;
+  try {
+    const result = await childHook(f.home, prompt());
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, `${CONTEXT}\n`);
+    assert.equal(result.stderr, "");
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.calls[0].query, "tea");
+  } finally {
+    if (old === undefined) delete process.env.LEILEI_MIND_HOOK_DISABLED;
+    else process.env.LEILEI_MIND_HOOK_DISABLED = old;
+  }
 });
 
 test("large bounded CJK semantic plans preserve keyword fallback instead of dropping the whole recall", async t => {
