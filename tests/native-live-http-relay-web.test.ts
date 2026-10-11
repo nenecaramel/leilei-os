@@ -278,7 +278,7 @@ test("web current-path endpoint is authenticated, bounded, and supports head ETa
       assert.equal(response.status, 200);
       assert.equal(
         response.headers.get("etag"),
-        '"head:77777777-7777-4777-8777-777777777777:limit:2:before:-:after:-"',
+        '"head:77777777-7777-4777-8777-777777777777:limit:2:before:-:after:-:native-thinking-v1"',
       );
       const payload = await response.json() as {
         data: {
@@ -317,7 +317,7 @@ test("web current-path endpoint is authenticated, bounded, and supports head ETa
           headers: {
             "x-test-user": "owner",
             "if-none-match":
-              '"head:77777777-7777-4777-8777-777777777777:limit:2:before:-:after:-"',
+              '"head:77777777-7777-4777-8777-777777777777:limit:2:before:-:after:-:native-thinking-v1"',
           },
         },
       );
@@ -333,14 +333,14 @@ test("web current-path endpoint is authenticated, bounded, and supports head ETa
           headers: {
             "x-test-user": "owner",
             "if-none-match":
-              '"head:77777777-7777-4777-8777-777777777777:limit:2:before:-:after:-"',
+              '"head:77777777-7777-4777-8777-777777777777:limit:2:before:-:after:-:native-thinking-v1"',
           },
         },
       );
       assert.equal(widerWindow.status, 200);
       assert.equal(
         widerWindow.headers.get("etag"),
-        '"head:77777777-7777-4777-8777-777777777777:limit:3:before:-:after:-"',
+        '"head:77777777-7777-4777-8777-777777777777:limit:3:before:-:after:-:native-thinking-v1"',
       );
       assert.deepEqual(
         currentPathReader.calls[2],
