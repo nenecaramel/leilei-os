@@ -67,12 +67,13 @@ test("voice route stays disabled until an ElevenLabs key and voice are configure
   });
 });
 
-test("voice route returns audio, never the secret, and limits input", async () => {
+test("voice route sends the owner-selected ElevenLabs voice, never the secret, and limits input", async () => {
   let requests = 0;
   await withServer({
     apiKey: "server-secret",
-    voiceId: "abcdefghijklmno1",
+    voiceId: "BtWabtumIemAotTjP5sk",
     fetcher: (async (_url: URL | RequestInfo, init?: RequestInit) => {
+      assert.equal(String(_url), "https://api.elevenlabs.io/v1/text-to-speech/BtWabtumIemAotTjP5sk?output_format=mp3_44100_128");
       requests += 1;
       assert.equal((init?.headers as Record<string, string>)["xi-api-key"], "server-secret");
       assert.match(String(init?.body), /eleven_multilingual_v2/u);
