@@ -16,7 +16,7 @@ test('Swift process sections follow actual content throughout a turn', () => {
     assert.match(run.stdout, /Process sections PASS/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
-test('thinking disclosure is independent and timestamp belongs only to the footer', () => {
+test('thinking sheet is independent and timestamp belongs only to the footer', () => {
   const row = readFileSync(root + 'NativeLiveAssistantTurnRow.swift', 'utf8');
   const thinking = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
   const actions = readFileSync(root + 'NativeLiveAssistantActions.swift', 'utf8');
@@ -24,7 +24,7 @@ test('thinking disclosure is independent and timestamp belongs only to the foote
   assert.match(row, /processSections\.showsActivity/);
   assert.doesNotMatch(row, /timestampText:turn\.timestamp|else if let timestamp/);
   assert.match(thinking, /Text\("Thought process"\)/);
-  assert.match(thinking, /@State private var isExpanded/);
+  assert.match(thinking, /@State private var isShowingThoughtProcess/);
   assert.doesNotMatch(thinking, /toggleActivity|nativeLiveMessageUIState/);
   assert.match(actions, /if let timestamp = turn\.timestamp/);
   assert.ok(actions.indexOf('if let timestamp') > actions.indexOf('if turn.canRetry'));
@@ -63,4 +63,31 @@ test('message timestamps are 12pt and user-to-assistant row spacing is 25pt', ()
   const list = readFileSync(root + 'NativeLiveMessageList.swift', 'utf8');
   assert.match(layout, /turnSpacing: CGFloat = 25/);
   assert.match(list, /LazyVStack\(spacing: ChatPresentationLayout\.turnSpacing\)/);
+});
+
+test('thought process opens a native sheet with a leading icon and no toolbar buttons', () => {
+  const surface = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
+  assert.match(surface, /Button \{ isShowingThoughtProcess = true \}/);
+  assert.match(surface, /\.sheet\(isPresented: \$isShowingThoughtProcess\)/);
+  assert.match(surface, /NativeLiveThoughtProcessSheet\(items: items\)/);
+  assert.ok(surface.indexOf('Image(systemName: "clock.arrow.circlepath")') < surface.indexOf('Text("Thought process")'));
+  assert.match(surface, /Image\(systemName: "chevron.right"\)/);
+  assert.doesNotMatch(surface, /isExpanded|Collapse thought process/);
+  const sheet = surface.slice(surface.indexOf('private struct NativeLiveThoughtProcessSheet'));
+  assert.match(sheet, /NavigationStack/);
+  assert.match(sheet, /ScrollView/);
+  assert.match(sheet, /ForEach\(items\)/);
+  assert.match(sheet, /Text\(item.text\)/);
+  assert.match(sheet, /\.textSelection\(\.enabled\)/);
+  assert.match(sheet, /\.navigationTitle\("Thought process"\)/);
+  assert.match(sheet, /\.presentationDetents\(\[\.medium\]\)/);
+  assert.match(sheet, /\.presentationDragIndicator\(\.visible\)/);
+  assert.doesNotMatch(sheet, /toolbar|Button|dismiss|raw_metadata/);
+});
+test('only the assistant copy glyph rotates about its center', () => {
+  const actions = readFileSync(root + 'NativeLiveAssistantActions.swift', 'utf8');
+  assert.match(actions, /Image\(systemName:isCopied \? "checkmark" : "square.on.square"\)\.rotationEffect\(\.degrees\(isCopied \? 0 : 180\)\)/);
+  assert.equal((actions.match(/rotationEffect/g) ?? []).length, 1);
+  assert.match(actions, /onCopyMessage\(text\)/);
+  assert.match(actions, /onRetryMessage\(user\)/);
 });
