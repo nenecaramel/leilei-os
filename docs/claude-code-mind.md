@@ -237,7 +237,36 @@ node tools/claude-code-mind/install.mjs leileios
 claude
 ```
 
-Keep the existing private mind.env and OAuth registration; no new credential or MCP registration is needed. Installer copies only hook.mjs and preserves unrelated hooks. Start a fresh Claude process to reload hook settings; existing V1/V2 state remains readable and obsolete injected history no longer excludes memories. No scorer/daemon code changed in V2, so restarting the warm scorer is unnecessary for this upgrade. Native Live retains its existing `LEILEI_MIND_HOOK_DISABLED=1` bypass for all hooks, including Stop acknowledgements. Perform real recall→normal Stop readback only after this activation; a manual abort without Stop loses accounting, while a Stop during an interrupted response may count; StopFailure clears pending receipts. This task does not merge, deploy, install into the owner's Claude home or confirm production receipts.
+Keep the existing private mind.env and OAuth registration; no new credential or MCP registration is needed. Installer copies only hook.mjs and preserves unrelated hooks. Start a fresh Claude process to reload hook settings; existing V1/V2 state remains readable and obsolete injected history no longer excludes memories. No scorer/daemon code changed in V2, so restarting the warm scorer is unnecessary for that Hook upgrade. Native Live now enables the same installed Hook by default; an explicit `LEILEI_MIND_HOOK_DISABLED=1` remains an emergency disable. Perform real recall→normal Stop readback only after activation; a manual abort without Stop loses accounting, while a Stop during an interrupted response may count; StopFailure clears pending receipts.
+
+## Unified Native Live rollout and confirmation checks
+
+The backend and Mac transport changes must move together at a quiet boundary with no
+active turn. An old backend plus new Mac can inject context twice; a new backend plus
+old Mac can leave automatic recall disabled. Existing already-prepared prompts are not
+rewritten. Drain in-flight work before changing versions, and roll back both sides
+together. Installed Mind/timestamp Hooks and private credentials must be present;
+this change does not install them or invent a new timestamp source.
+
+Run the daemon under Node 22 from a maintained, clean working copy using its supported
+fresh entry point and existing process manager. Dependency symlinks and uncommitted
+temporary worktrees are not a permanent runtime or release artifact. Do not remove a
+worktree while a running daemon uses it. Desktop/LeileiOS switching and the Voice input
+annotation remain unchanged; real-device regression is a separate acceptance step.
+
+An HTTP `499` means the client disconnected, not that the confirmation transaction
+failed. Check the matching signed receipt's `confirmed_at` before deciding to retry or
+change timeouts. Signed confirmation is transactionally idempotent; a lost response
+can follow a successful accounting commit. Local active-chain deduplication uses the
+delivery ledger plus transcript proof independently of this acknowledgement. If no
+confirmation committed, recall lifecycle accounting may be missing; the next prompt
+retires pending receipts, so acknowledgement is best effort, not a durable retry queue.
+
+On 2026-10-11, the two observed `499` requests at 11:57:19 and 12:03:51 Asia/Shanghai
+had corresponding receipt confirmations committed at 11:57:19.515 and 12:03:51.351.
+This readback justified leaving the existing bounded confirmation mechanism unchanged;
+it does not prove all future cancelled requests will commit. No additional model call
+was used for this investigation.
 
 ## Verification map
 
