@@ -1394,7 +1394,7 @@ test("native resume cannot return a successful handle result after EOF without i
 const original = '00000000-0000-4000-8000-000000000001';
 const copied = '00000000-0000-4000-8000-000000000002';
 
-async function fixture(t, { startIdentity = original, initIdentity = original, additionalHooks = [], startupBeforeInitialize = false, receiptChanges = {} } = {}) {
+async function fixture(t, { startIdentity = original, initIdentity = original, additionalHooks = [], startupBeforeInitialize = false, receiptChanges = {}, queuedReceipts = false, lifecycleChanges = {} } = {}) {
   let query;
   try { ({ query } = await import('@anthropic-ai/claude-agent-sdk')); }
   catch (e) { if (e.code === 'ERR_MODULE_NOT_FOUND') { t.skip('Mac SDK dependency is not installed.'); return; } throw e; }
@@ -1426,6 +1426,9 @@ async function fixture(t, { startIdentity = original, initIdentity = original, a
         hookReplies.push(message.response);
       } else if (message.type === 'user') {
         sent.push(message); assert.equal(ready, true, 'MCP must be ready before prompt delivery');
+        if (queuedReceipts) for (const state of ['queued', 'started']) {
+          emit({ type: 'command_lifecycle', session_id: initIdentity, command_uuid: message.uuid, state, ...lifecycleChanges });
+        }
         // Native CLI emits its per-turn init only once a user command is delivered.
         emit({ type: 'system', subtype: 'init', session_id: initIdentity });
         emit({ type: 'result', subtype: 'success', session_id: initIdentity, result: 'OK' });
@@ -1546,4 +1549,21 @@ test('launch identity receipt preserves existing inline settings and hooks witho
   assert.equal(output.continue, true);
   assert.equal(output.suppressOutput, true);
   assert.match(output.stopReason, /^native-resume-/);
+});
+
+// Recorded offline CLI order: startup receipt -> queued -> started -> system/init.
+test('native queued and started acknowledgements precede init without losing exact identity', async t => {
+  const f = await fixture(t, { startupBeforeInitialize: true, queuedReceipts: true }); if (!f) return;
+  assert.equal((await f.handle.start()).providerSessionId, original);
+  assert.equal(f.sent.length, 1);
+});
+test('queue acknowledgement cannot approve a different canonical user UUID', async t => {
+  const f = await fixture(t, { startupBeforeInitialize: true, queuedReceipts: true, lifecycleChanges: { command_uuid: copied } }); if (!f) return;
+  await assert.rejects(f.handle.start(), e => e.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+});
+test('pre-init execution cannot be disguised as a queue acknowledgement', async t => {
+  for (const lifecycleChanges of [{ state: 'completed' }, { type: 'assistant' }, { session_id: copied }]) {
+    const f = await fixture(t, { startupBeforeInitialize: true, queuedReceipts: true, lifecycleChanges }); if (!f) return;
+    await assert.rejects(f.handle.start(), e => e.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+  }
 });
