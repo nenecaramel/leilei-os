@@ -33,10 +33,11 @@ if (!valid || (['--desktop', '--desktop-manual'].includes(args[0]) && !flags.has
     } else {
       const resolved = flags.has('--session-id')
         ? await resolveDesktopNativeSelection({ ...discovery, sessionId: flags.get('--session-id') }) : null;
-      const input = { indexFile: resolved?.indexFile ?? path.resolve(flags.get('--desktop-index')),
+      const input = { indexFile: resolved ? resolved.indexFile : path.resolve(flags.get('--desktop-index')),
         projectDirectory: resolved?.projectDirectory ?? path.resolve(flags.get('--project-dir')),
         configDirectory, peerDirectory: discovery.peerDirectory, followNativeContinuation: resolved !== null };
       const selection = resolved?.inspection ?? await inspectDesktopNativeSession(input);
+      const manual = args[0] === '--desktop-manual' && input.indexFile !== null;
       const pinned = { ...input,
         expectedSessionId: selection.providerSessionId,
         expectedCheckpointId: selection.providerCheckpointId,
@@ -47,9 +48,10 @@ if (!valid || (['--desktop', '--desktop-manual'].includes(args[0]) && !flags.has
         input: pinned, conversationId: flags.get('--conversation-id') ?? selection.providerSessionId,
         relayUrl: process.env.LEILEI_NATIVE_LIVE_RELAY_URL,
         relayToken: process.env.LEILEI_NATIVE_LIVE_RELAY_TOKEN,
-        ...(args[0] === '--desktop-manual' ? { launchImpl: async () => {} } : {}),
+        // A local-only session has no window to open by hand: Desktop must create one.
+        ...(manual ? { launchImpl: async () => {} } : {}),
       });
-      console.log(JSON.stringify(args[0] === '--desktop-manual' ? { ...result, desktopLaunchRequested: false } : result, null, 2));
+      console.log(JSON.stringify(manual ? { ...result, desktopLaunchRequested: false } : result, null, 2));
     }
   } catch (error) {
     console.error(nativeSwitchErrorCode(error));

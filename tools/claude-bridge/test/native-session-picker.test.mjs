@@ -16,14 +16,15 @@ test('picker does not default to first or newest conversation and rejects invali
   assert.equal(module.pickSwitchChoice(choices, '2'), choices[1]);
 });
 
-test('Desktop-bound choices preserve conversation identity, not title, and block unindexed new sessions', () => {
+test('Desktop-bound choices preserve conversation identity, not title, and block unbound or file-less sessions', () => {
   assert.equal(typeof module.buildSwitchChoices, 'function');
-  const choices = module.buildSwitchChoices('desktop', [row(C), { ...row(B), providerSessionId: B, sourceSessionId: null }], [desktop()]);
+  const choices = module.buildSwitchChoices('desktop', [row(C), { ...row(B), providerSessionId: B, sourceSessionId: null }, { ...row(D), providerSessionId: B }], [desktop()]);
   assert.equal(choices[0].conversationId, C);
   assert.equal(choices[0].sessionId, A);
   assert.equal(choices[0].reason, null);
-  assert.equal(choices[1].reason, 'DESKTOP_INDEX_REQUIRED');
-  assert.throws(() => module.pickSwitchChoice(choices, '2'), /DESKTOP_INDEX_REQUIRED/);
+  assert.equal(choices[1].reason, 'NATIVE_SOURCE_BINDING_REQUIRED');
+  assert.equal(choices[2].reason, 'NATIVE_SESSION_FILE_REQUIRED', 'no Desktop window and no local transcript');
+  assert.throws(() => module.pickSwitchChoice(choices, '2'), /NATIVE_SOURCE_BINDING_REQUIRED/);
 });
 
 test('reverse switch reuses exact restored conversation; first restore alone uses native identity', () => {
@@ -81,4 +82,38 @@ test('source history changing during selection blocks dispatch even when current
     ask:async()=>'1',display(){},run(){writes++;},
   }),/STALE_NATIVE_SELECTION/);
   assert.equal(writes,0);
+});
+
+test('a Desktop window whose session rotated after Rewind or compaction is offered as the same conversation', () => {
+  const E = '00000000-0000-4000-8000-000000000005', F = '00000000-0000-4000-8000-000000000006';
+  // Window rotated A -> E (Rewind): its index records A as a prior session.
+  const rotated = { ...desktop(), providerSessionId: E, priorProviderSessionIds: [A] };
+  const [choice] = module.buildSwitchChoices('leileios', [row(C)], [rotated]);
+  assert.deepEqual([choice.conversationId, choice.sessionId, choice.branch, choice.reason], [C, E, 'current', null]);
+  // Fork-then-compact: a new window forked from the original window continues it too.
+  const original = { ...desktop(), desktopSessionId: `local_${D}` };
+  const forked = { ...desktop(), desktopSessionId: `local_${F}`, providerSessionId: F, forkedFromDesktopSessionId: `local_${D}` };
+  const choices = module.buildSwitchChoices('leileios', [row(C)], [original, forked]);
+  assert.equal(choices[1].conversationId, C);
+  assert.equal(choices[1].reason, null);
+});
+
+test('a session the conversation already moved past is labelled as an archive and cannot be switched into', () => {
+  const E = '00000000-0000-4000-8000-000000000005';
+  const conversation = { ...row(C), providerSessionId: E, sourceSessionId: E, sourceLineage: [A] };
+  const [archive] = module.buildSwitchChoices('leileios', [conversation], [desktop()]);
+  assert.equal(archive.branch, 'archive');
+  assert.equal(archive.reason, 'ARCHIVED_NATIVE_SESSION');
+  assert.match(module.formatSwitchMenu([archive]), /\[存档\]/);
+  assert.throws(() => module.pickSwitchChoice([archive], '1'), /ARCHIVED_NATIVE_SESSION/);
+  const unrelated = module.buildSwitchChoices('leileios', [conversation], [{ ...desktop(), providerSessionId: B }]);
+  assert.deepEqual([unrelated[0].branch, unrelated[0].conversationId], ['new', B]);
+});
+
+test('LeileiOS branch without a Desktop window is handed back through its local transcript and a new window', () => {
+  const E = '00000000-0000-4000-8000-000000000005';
+  const forkedHere = { ...row(C), providerSessionId: E, sourceSessionId: A };
+  const [choice] = module.buildSwitchChoices('desktop', [forkedHere], [desktop()], { localSessionIds: new Set([A, E]) });
+  assert.deepEqual([choice.sessionId, choice.desktopSessionId, choice.opensNewWindow, choice.reason], [E, null, true, null]);
+  assert.match(module.formatSwitchMenu([choice]), /将在官端新开窗口/);
 });

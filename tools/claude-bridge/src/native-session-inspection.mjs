@@ -5,7 +5,7 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { readOnlyFileSnapshot } from "./read-only-file-snapshot.mjs";
 import { readNativeSession } from "./native-session-catalog.mjs";
-import { resolveDesktopSession } from "./desktop-session-index.mjs";
+import { resolveDesktopSession, resolveLocalNativeSession } from "./desktop-session-index.mjs";
 import { projectNativeHistory, nativeContinuationCheckpoint, nativeDisplayChain, nativeDisplayAssetRevision } from "./native-session-history.mjs";
 import { readNativeSessionActivity } from "./native-session-activity.mjs";
 
@@ -25,11 +25,13 @@ async function readIndex(indexFile) {
 }
 
 // Read-only preparation evidence. This deliberately has no resume/fork/write API.
-async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirectory, probeProcessStart, followNativeContinuation = false }) {
-  const index = await readIndex(indexFile);
-  const { metadata } = index;
-  const snapshot = await readNativeSession(projectDirectory, metadata.cliSessionId);
-  const identity = resolveDesktopSession(metadata, new Map([[snapshot.sessionId, snapshot]]));
+async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirectory, probeProcessStart, followNativeContinuation = false, expectedSessionId }) {
+  // indexFile === null selects a local-only session (no Desktop window yet) by its pinned id.
+  if (indexFile === null && !sessionPattern.test(expectedSessionId ?? "")) throw fail("INVALID_SESSION_ID");
+  const index = indexFile === null ? null : await readIndex(indexFile);
+  const metadata = index?.metadata ?? {};
+  const snapshot = await readNativeSession(projectDirectory, index ? metadata.cliSessionId : expectedSessionId);
+  const identity = index ? resolveDesktopSession(metadata, new Map([[snapshot.sessionId, snapshot]])) : resolveLocalNativeSession(snapshot);
   let sourceSnapshots = [];
   try { nativeDisplayChain(snapshot, identity.providerCheckpointId); }
   catch (error) {
@@ -61,12 +63,12 @@ async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirec
   }
   const activity = await readNativeSessionActivity(peerDirectory, snapshot.sessionId, { probeProcessStart });
   const [currentIndex, currentSource] = await Promise.all([
-    readOnlyFileSnapshot(indexFile, 4 * 1024 * 1024),
+    index ? readOnlyFileSnapshot(indexFile, 4 * 1024 * 1024) : null,
     readNativeSession(projectDirectory, snapshot.sessionId),
   ]);
-  if (currentIndex.revision !== index.revision || currentSource.revision !== snapshot.revision) throw fail("NATIVE_INSPECTION_CHANGED");
+  if ((index && currentIndex.revision !== index.revision) || currentSource.revision !== snapshot.revision) throw fail("NATIVE_INSPECTION_CHANGED");
   await verifyNativeHistorySources(projectDirectory, sourceSnapshots);
-  const activityTime = new Date(metadata.lastActivityAt ?? NaN);
+  const activityTime = new Date(metadata.lastActivityAt ?? snapshot.entries.findLast(entry => typeof entry.timestamp === "string")?.timestamp ?? NaN);
   return { inspection: { readOnly: true, ...identity, title: typeof metadata.title === 'string' ? metadata.title.slice(0, 160) : null,
     updatedAt: Number.isFinite(activityTime.getTime()) ? activityTime.toISOString() : null,
     activity, history, historyRevision, handoffAllowed: false }, projection,
@@ -91,9 +93,11 @@ export async function readDesktopNativeHistory(input) {
   return result;
 }
 
-async function discoverDesktopNativeSessions({ desktopSessionsDirectory, projectsDirectory, peerDirectory, probeProcessStart }) {
+const sortedEntries = async directory => (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name));
+
+/** Native session id -> project directories holding `<id>.jsonl`. */
+export async function nativeSessionLocations(projectsDirectory) {
   const locations = new Map();
-  const sortedEntries = async directory => (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name));
   for (const project of await sortedEntries(projectsDirectory)) {
     if (!project.isDirectory()) continue;
     const directory = path.join(projectsDirectory, project.name);
@@ -105,6 +109,11 @@ async function discoverDesktopNativeSessions({ desktopSessionsDirectory, project
       locations.set(id, found);
     }
   }
+  return locations;
+}
+
+async function discoverDesktopNativeSessions({ desktopSessionsDirectory, projectsDirectory, peerDirectory, probeProcessStart }) {
+  const locations = await nativeSessionLocations(projectsDirectory);
   const sessions = [];
   for (const account of await sortedEntries(desktopSessionsDirectory)) {
     if (!account.isDirectory()) continue;
@@ -149,7 +158,18 @@ export async function resolveDesktopNativeSelection({ sessionId, ...input }) {
   }
   const matches = (await discoverDesktopNativeSessions(input)).filter(value =>
     value.providerSessionId === sessionId || value.inspection.desktopSessionId === sessionId);
-  if (matches.length === 0) throw fail('NATIVE_SELECTION_NOT_FOUND');
+  if (matches.length === 0) {
+    // No Desktop window (e.g. a LeileiOS Edit/Retry fork): select the local
+    // transcript by exact id; Desktop opens a window for it after handoff.
+    if (!sessionPattern.test(sessionId)) throw fail('NATIVE_SELECTION_NOT_FOUND');
+    const candidates = (await nativeSessionLocations(input.projectsDirectory)).get(sessionId) ?? [];
+    if (candidates.length === 0) throw fail('NATIVE_SELECTION_NOT_FOUND');
+    if (candidates.length !== 1) throw fail('AMBIGUOUS_NATIVE_SESSION_LOCATION');
+    const local = { indexFile: null, projectDirectory: candidates[0] };
+    const inspection = await inspectDesktopNativeSession({ ...input, ...local, expectedSessionId: sessionId, followNativeContinuation: true });
+    if (inspection.history.state !== 'complete') throw fail(inspection.history.reason);
+    return { ...local, inspection };
+  }
   if (matches.length !== 1) throw fail('AMBIGUOUS_NATIVE_SELECTION');
   const selected = matches[0];
   if (selected.inspection.error) throw fail(selected.inspection.error);

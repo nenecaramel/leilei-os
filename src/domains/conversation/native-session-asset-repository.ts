@@ -1,4 +1,4 @@
-import { nativeDisplayAssetRevision } from "./native-session-history-repository.js";
+import { nativeDisplayAssetRevision, nativeSourceSessions } from "./native-session-history-repository.js";
 import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
@@ -30,7 +30,9 @@ export async function nativeSessionAsset(db: Database, input: NativeSessionAsset
     const compacts = await tx.select({ id: nativeLiveManualCompactions.id }).from(nativeLiveManualCompactions).where(and(eq(nativeLiveManualCompactions.userId, input.userId), eq(nativeLiveManualCompactions.conversationId, input.conversationId), inArray(nativeLiveManualCompactions.status, ["pending", "reserved"]))).limit(1);
     if (turns.length || compacts.length) throw fail("NATIVE_CONVERSATION_BUSY");
     const blocks = await tx.select({ block: conversationContentBlocks, sourceMessageId: conversationMessages.sourceMessageId, role: conversationMessages.role }).from(conversationContentBlocks).innerJoin(conversationMessages, eq(conversationContentBlocks.messageId, conversationMessages.id)).where(and(eq(conversationMessages.conversationId, input.conversationId), eq(conversationMessages.userId, input.userId)));
-    const matches = blocks.filter(({ block }) => block.payload?.source_session_id === input.sessionId && block.payload.source_entry_uuid === input.sourceEntryUuid && block.payload.source_block_ordinal === input.sourceBlockOrdinal);
+    // Blocks keep the session that first projected them; a continued session reuses them.
+    const sessions = nativeSourceSessions(source as { sessionId: string; lineage?: string[] });
+    const matches = blocks.filter(({ block }) => sessions.has(String(block.payload?.source_session_id)) && block.payload?.source_entry_uuid === input.sourceEntryUuid && block.payload.source_block_ordinal === input.sourceBlockOrdinal);
     if (matches.length > 1) throw fail("NATIVE_ASSET_UNAVAILABLE");
     let block = matches[0]?.block;
     const store = new DrizzleNativeLiveProviderSessionStoreRepository(tx);
