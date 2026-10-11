@@ -344,7 +344,25 @@ export class ClaudeEventNormalizer {
         });
       }
 
-      for (const block of raw.message?.content ?? []) {
+      for (const [blockIndex, block] of (raw.message?.content ?? []).entries()) {
+        // The user-visible Claude Code thinking text is an explicit assistant
+        // content block. Do not forward streamed reasoning deltas, signatures,
+        // redacted thinking, nested agents, or generic provider debug payloads.
+        if (block?.type === "thinking"
+            && !raw.parent_tool_use_id && !raw.parent_agent_id
+            && !messageProvenance?.parent_tool_use_id
+            && !messageProvenance?.parent_agent_id
+            && typeof block.thinking === "string") {
+          const content = clippedString(block.thinking, 8_000);
+          if (content?.trim()) {
+            emit("runtime", this.sessionId, {
+              kind: "user_visible_thinking",
+              text: content,
+              source_uuid: clippedString(raw.uuid, 128),
+              content_index: blockIndex,
+            });
+          }
+        }
         if (block.type === "text") {
           if (raw.context_usage || raw.usage_report) {
             emit("runtime", this.sessionId, {kind:"provider_observability", provenance:provenance(raw, "text"), compatibility:boundedOutput({context_usage:raw.context_usage, usage_report:raw.usage_report})});
