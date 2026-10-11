@@ -8,6 +8,7 @@ const moved=['NativeLiveUserMessageRow.swift','NativeLiveHistoryMessageRow.swift
 // process/timestamp geometry; user bubbles, renderers and callbacks stay pinned.
 function approvedProcessChrome(s:string, file:string) {
  if(file==='NativeLiveAssistantTurnRow.swift') {
+  s=s.replaceAll('height:ChatPresentationLayout.actionDiameter)', 'height:ChatPresentationLayout.actionDiameter,alignment:.leading)');
   s=s.replace('Image(systemName:"arrow.clockwise").frame', 'Image(systemName:"arrow.clockwise").font(.system(size:14,weight:.light)).rotationEffect(.degrees(20)).frame');
   s=s.replace('Image(systemName:isCopied ? "checkmark" : "square.on.square").frame', 'Image(systemName:isCopied ? "checkmark" : "square.on.square").font(.system(size:14,weight:.light)).rotationEffect(.degrees(isCopied ? 0 : 180)).frame');
   s=s.replace('timestampText:turn.timestamp.map { MessageTimestampFormatter.string(from:$0) },header:turn.header,','header:turn.header,');

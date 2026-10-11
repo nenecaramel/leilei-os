@@ -23,7 +23,6 @@ struct NativeLiveVisibleThinkingSurface: View {
                 .foregroundStyle(.secondary)
                 .contentShape(Rectangle())
             }
-            .padding(.leading, ChatPresentationLayout.processLeadingInset)
             .buttonStyle(.plain)
             .accessibilityLabel("Thought process")
             .sheet(isPresented: $isShowingThoughtProcess) {
