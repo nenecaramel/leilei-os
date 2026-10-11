@@ -9,8 +9,8 @@ const moved=['NativeLiveUserMessageRow.swift','NativeLiveHistoryMessageRow.swift
 function approvedProcessChrome(s:string, file:string) {
  if(file==='NativeLiveAssistantTurnRow.swift') {
   s=s.replaceAll('height:ChatPresentationLayout.actionDiameter)', 'height:ChatPresentationLayout.actionDiameter,alignment:.leading)');
-  s=s.replace('Image(systemName:"arrow.clockwise").frame', 'Image(systemName:"arrow.clockwise").font(.system(size:14,weight:.light)).rotationEffect(.degrees(20)).frame');
-  s=s.replace('Image(systemName:isCopied ? "checkmark" : "square.on.square").frame', 'Image(systemName:isCopied ? "checkmark" : "square.on.square").font(.system(size:14,weight:.light)).rotationEffect(.degrees(isCopied ? 0 : 180)).frame');
+  s=s.replace('Image(systemName:"arrow.clockwise").frame', 'Image(systemName:"arrow.clockwise").rotationEffect(.degrees(20)).frame');
+  s=s.replace('Image(systemName:isCopied ? "checkmark" : "square.on.square").frame', 'Image(systemName:isCopied ? "checkmark" : "square.on.square").rotationEffect(.degrees(isCopied ? 0 : 180)).frame');
   s=s.replace('timestampText:turn.timestamp.map { MessageTimestampFormatter.string(from:$0) },header:turn.header,','header:turn.header,');
   s=s.replace(/\} else if let timestamp = turn\.timestamp \{\n                Text\(MessageTimestampFormatter\.string\(from:timestamp\)\)\.font\(\.system\(size:13\.5\)\)\.foregroundStyle\(\.secondary\)\n            \}/, '}');
   s=s.replace('            }\n            NativeLiveMessagePresentationView', '            }.padding(.bottom, turn.stepCount > 0 ? ChatPresentationLayout.processSectionSpacing - ChatPresentationLayout.assistantSpacing : 0)\n            NativeLiveMessagePresentationView');
