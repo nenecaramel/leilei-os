@@ -1394,7 +1394,7 @@ test("native resume cannot return a successful handle result after EOF without i
 const original = '00000000-0000-4000-8000-000000000001';
 const copied = '00000000-0000-4000-8000-000000000002';
 
-async function fixture(t, { startIdentity = original, initIdentity = original, additionalHooks = [] } = {}) {
+async function fixture(t, { startIdentity = original, initIdentity = original, additionalHooks = [], startupBeforeInitialize = false, receiptChanges = {} } = {}) {
   let query;
   try { ({ query } = await import('@anthropic-ai/claude-agent-sdk')); }
   catch (e) { if (e.code === 'ERR_MODULE_NOT_FOUND') { t.skip('Mac SDK dependency is not installed.'); return; } throw e; }
@@ -1416,7 +1416,7 @@ async function fixture(t, { startIdentity = original, initIdentity = original, a
         if (kind === 'mcp_status') ready = true;
         emit({ type: 'control_response', response: { subtype: 'success', request_id: message.request_id,
           response: kind === 'mcp_status' ? { mcpServers: [{ name: 'leileios', status: 'connected' }] } : {} } });
-        if (kind === 'initialize') {
+        if (kind === 'initialize' && !startupBeforeInitialize) {
           for (const [index, id] of (message.request.hooks?.SessionStart ?? []).flatMap(h => h.hookCallbackIds).entries()) {
             emit({ type: 'control_request', request_id: `session-start-${index}`, request: { subtype: 'hook_callback', callback_id: id,
               input: { hook_event_name: 'SessionStart', session_id: startIdentity, source: 'resume', cwd: '/synthetic', transcript_path: '/synthetic/session.jsonl' } } });
@@ -1440,7 +1440,20 @@ async function fixture(t, { startIdentity = original, initIdentity = original, a
     queryImpl: query, queryOptions: {
       mcpServers: { leileios: { type: 'http', url: 'https://example.invalid/mcp' } },
       hooks: { SessionStart: additionalHooks },
-      spawnClaudeCodeProcess: () => { spawns++; return child; },
+      spawnClaudeCodeProcess: ({ args }) => {
+        spawns++;
+        if (startupBeforeInitialize) {
+          const index = args.indexOf('--settings');
+          const settings = index >= 0 ? JSON.parse(args[index + 1]) : {};
+          const command = settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command;
+          if (command) {
+            const receipt = JSON.parse(command.slice(command.indexOf('{'), command.lastIndexOf('}') + 1));
+            queueMicrotask(() => emit({ type: 'system', subtype: 'hook_response', hook_event: 'SessionStart',
+              stdout: JSON.stringify(receipt), outcome: 'success', exit_code: 0, session_id: startIdentity, ...receiptChanges }));
+          }
+        }
+        return child;
+      },
     },
   });
   return { handle, sent, hookReplies, get spawns() { return spawns; } };
@@ -1476,4 +1489,61 @@ test('native startup guard preserves existing SessionStart callbacks', async t =
   const f = await fixture(t, { additionalHooks: [{ hooks: [async () => { calls++; return {}; }] }] }); if (!f) return;
   assert.equal((await f.handle.start()).providerSessionId, original);
   assert.equal(calls, 1); assert.equal(f.sent.length, 1);
+});
+
+// Real CLI runs resume SessionStart before it handles initialize/registers SDK callbacks.
+test('native startup cannot depend on a callback registered after resume hooks have run', async t => {
+  const f = await fixture(t, { startupBeforeInitialize: true }); if (!f) return;
+  assert.equal((await f.handle.start()).providerSessionId, original);
+  assert.equal(f.sent.length, 1);
+  assert.equal(f.spawns, 1);
+});
+test('pre-initialize copied receipt rejects without delivering a user prompt', async t => {
+  const f = await fixture(t, { startupBeforeInitialize: true, startIdentity: copied }); if (!f) return;
+  await assert.rejects(f.handle.start(), e => e.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+  assert.equal(f.sent.length, 0);
+});
+
+test('launch receipt still requires a session ID', async t => {
+  const f = await fixture(t, { startupBeforeInitialize: true, startIdentity: null }); if (!f) return;
+  await assert.rejects(f.handle.start(), e => e.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+  assert.equal(f.sent.length, 0);
+});
+test('unrelated or unsuccessful hooks cannot unlock native prompt delivery', async t => {
+  for (const receiptChanges of [{ stdout: '{}' }, { outcome: 'error', exit_code: 1 }]) {
+    const f = await fixture(t, { startupBeforeInitialize: true, receiptChanges }); if (!f) return;
+    await assert.rejects(f.handle.start(), e => e.runtimeCode === 'RUNTIME_UNAVAILABLE');
+    assert.equal(f.sent.length, 0);
+  }
+});
+test('valid launch receipt does not approve a later copied per-turn init', async t => {
+  const f = await fixture(t, { startupBeforeInitialize: true, initIdentity: copied }); if (!f) return;
+  await assert.rejects(f.handle.start(), e => e.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+});
+
+test('launch identity receipt preserves existing inline settings and hooks without mutation', async () => {
+  const settings = { permissions: { deny: ['Bash(*)'] }, hooks: {
+    SessionStart: [{ matcher: 'resume', hooks: [{ type: 'command', command: 'true' }] }],
+    Stop: [{ hooks: [{ type: 'command', command: 'true' }] }],
+  } };
+  const before = structuredClone(settings); let captured;
+  const handle = await createAgentSdkTurnHandle({
+    prompt: 'fixture', environment: {}, mode: 'resume', parentProviderSessionId: original,
+    resume: original, resumeSessionAt: 'checkpoint', requireSameSessionBeforePrompt: true,
+    queryOptions: { settings },
+    queryImpl: ({ options }) => {
+      captured = options;
+      return (async function* () { yield* successMessages(original); })();
+    },
+  });
+  assert.equal((await handle.start()).providerSessionId, original);
+  assert.deepEqual(settings, before);
+  assert.deepEqual(captured.settings.permissions, before.permissions);
+  assert.deepEqual(captured.settings.hooks.Stop, before.hooks.Stop);
+  assert.deepEqual(captured.settings.hooks.SessionStart.slice(1), before.hooks.SessionStart);
+  const command = captured.settings.hooks.SessionStart[0].hooks[0].command;
+  const output = JSON.parse(command.slice(command.indexOf('{'), command.lastIndexOf('}') + 1));
+  assert.equal(output.continue, true);
+  assert.equal(output.suppressOutput, true);
+  assert.match(output.stopReason, /^native-resume-/);
 });

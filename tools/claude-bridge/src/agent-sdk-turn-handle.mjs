@@ -270,6 +270,18 @@ export async function createAgentSdkTurnHandle({
       queryOptions.persistSession === false || queryOptions.verbatimPrompts === false)) {
     throw new Error("Native resume requires an exact same-session checkpoint without a materializing SessionStore.");
   }
+  // Resume SessionStart runs before the CLI handles initialize and installs SDK
+  // callbacks. A launch-time command hook gives us a pre-input receipt instead.
+  const startupReceipt = requireSameSessionBeforePrompt
+    ? JSON.stringify({ continue: true, suppressOutput: true, stopReason: `native-resume-${randomUUID()}` })
+    : null;
+  if (requireSameSessionBeforePrompt && queryOptions.settings != null &&
+      (typeof queryOptions.settings !== "object" || Array.isArray(queryOptions.settings))) {
+    throw new Error("Native resume startup identity requires object-form launch settings.");
+  }
+  if (requireSameSessionBeforePrompt && queryOptions.settings?.disableAllHooks === true) {
+    throw new Error("Native resume startup identity requires enabled startup hooks.");
+  }
   let settleNativeIdentity;
   const nativeIdentity = requireSameSessionBeforePrompt
     ? new Promise(resolve => { settleNativeIdentity = resolve; }) : null;
@@ -288,8 +300,8 @@ export async function createAgentSdkTurnHandle({
       rejectNativeStartup(error);
       return { continue: false, stopReason: error.message };
     }
-    // SessionStart runs during resume initialization. The stream's system/init
-    // is emitted per turn, after input; waiting for it here deadlocks the SDK.
+    // Preserve callbacks for SDKs that register them before resume. The launch
+    // receipt below is required for CLIs whose initialization happens later.
     settleNativeIdentity(true);
     return {};
   };
@@ -412,6 +424,16 @@ export async function createAgentSdkTurnHandle({
       preset: "claude_code",
     },
     ...queryOptions,
+    ...(startupReceipt ? { settings: {
+      ...queryOptions.settings,
+      hooks: {
+        ...queryOptions.settings?.hooks,
+        SessionStart: [
+          { hooks: [{ type: "command", command: `printf '%s' '${startupReceipt}'` }] },
+          ...(queryOptions.settings?.hooks?.SessionStart ?? []),
+        ],
+      },
+    } } : {}),
     ...(streaming
       ? { includePartialMessages: true }
       : {}),
@@ -508,6 +530,7 @@ export async function createAgentSdkTurnHandle({
     settleNativeIdentity,
     nativeStartupTimeoutMs: mcpStartupTimeoutMs,
     nativeStartupFailure,
+    startupReceipt,
   });
 }
 
@@ -523,11 +546,13 @@ export class AgentSdkTurnHandle {
     settleNativeIdentity = null,
     nativeStartupTimeoutMs = 120_000,
     nativeStartupFailure = new Promise(() => {}),
+    startupReceipt = null,
   }) {
     this.settleNativeIdentity = settleNativeIdentity;
     this.nativeIdentityConfirmed = false;
     this.nativeStartupTimeoutMs = nativeStartupTimeoutMs;
     this.nativeStartupFailure = nativeStartupFailure;
+    this.startupReceipt = startupReceipt;
     this.query = query;
     this.mode = mode;
     this.parentProviderSessionId = parentProviderSessionId;
@@ -721,6 +746,13 @@ export class AgentSdkTurnHandle {
             throw runtimeError("Native resume started a different provider session before prompt delivery.", {
               runtimeCode: "PROVIDER_SESSION_CONFLICT",
             });
+          }
+          if (this.startupReceipt && message?.type === "system" &&
+              message?.subtype === "hook_response" && message?.hook_event === "SessionStart" &&
+              message?.stdout?.trim() === this.startupReceipt && message?.outcome === "success" &&
+              message?.exit_code === 0) {
+            if (!sessionId) throw runtimeError("Native resume startup receipt has no session identity.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
+            this.settleNativeIdentity(true);
           }
           if (message?.type === "system" && message?.subtype === "init") {
             if (!sessionId) throw runtimeError("Native resume init has no session identity.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
