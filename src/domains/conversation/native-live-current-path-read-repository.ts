@@ -485,6 +485,8 @@ export function nativeLiveCurrentPathEtag(
   const after = cursor.afterMessageId ?? "-";
   const activity =
     activityRevision ? `:activity:${activityRevision}` : "";
+  // Version the read-time native Thinking overlay, including older synced turns,
+  // so client caches are refreshed without altering canonical message identity.
   return `"${syncToken}:limit:${normalizeCurrentPathLimit(limit)}:before:${before}:after:${after}${activity}:native-thinking-v1"`;
 }
 
