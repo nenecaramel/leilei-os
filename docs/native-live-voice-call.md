@@ -20,13 +20,12 @@ session or memory store and does not require a database migration.
 
 ## Configuration (not automatically provided by an ElevenLabs connector)
 
-Set the following on the API server *after reviewing the chosen voice ID*:
+Selected voice: **Robert - Business Book Narrator**, verified in the owner\'s ElevenLabs voice library.
+The public voice ID is `BtWabtumIemAotTjP5sk`. The Web API uses this by default;
+`ELEVENLABS_VOICE_ID` is an optional server-side override.
 
-- `ELEVENLABS_API_KEY`: server-only ElevenLabs API credential; do not commit.
-- `ELEVENLABS_VOICE_ID`: the exact voice ID already selected by the owner.
-
-These are optional; without them the voice endpoint reports unconfigured and
-returns HTTP 503. The separate Claude.ai / ChatGPT ElevenLabs connector does not
+Set `ELEVENLABS_API_KEY` **only in the server secret store** (never GitHub or iOS).
+Without an API key, the voice endpoint reports unconfigured and returns HTTP 503. The separate Claude.ai / ChatGPT ElevenLabs connector does not
 grant this independently deployed Railway service API credentials. Confirm that
 the chosen ElevenLabs voice is available to the API key's workspace.
 
@@ -57,8 +56,7 @@ incoming call. Silence detection uses Speech recognition partial text, not
 real-time VAD; simultaneous speaking/listening is not implemented. Incoming
 PushKit/CallKit calls and body-sound recognition remain separate future work.
 Long assistant messages are read only through their first 1,100 characters,
-while the canonical written response remains complete. The selected voice is
-not hardcoded because the connector exposes multiple voices without indicating
-which one the owner and Claude previously chose. Do not guess or switch voices.
+while the canonical written response remains complete. The selected voice ID is an explicit owner-provided default, not a guessed choice;
+keep API credentials separate and allow override via Railway environment.
 No production deployment, schema mutation, or main merge is authorized by this
 branch alone.
