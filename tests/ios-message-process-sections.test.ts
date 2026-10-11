@@ -49,7 +49,7 @@ test('process labels stay 14 regular with light arrows and an 8pt gap', () => {
   assert.ok(thinking.indexOf('Image(systemName:') < thinking.indexOf('Spacer(minLength:'));
   const header = activity.slice(activity.indexOf('var body:'), activity.indexOf('if effectiveExpanded {'));
   assert.match(header, /Text\(header\)\s*\.font\(\.system\(size: 14\)\)/);
-  assert.match(header, /\.font\(\.system\(size: 14, weight: \.light\)\)\s*\.foregroundStyle\(\.tertiary\)/);
+  assert.match(header, /\.font\(\.system\(size: 14, weight: \.light\)\)\s*\.foregroundStyle\(\.secondary\)/);
   assert.doesNotMatch(header, /maxWidth: \.infinity/);
   assert.ok(header.indexOf('? "chevron.down"') < header.indexOf('Spacer(minLength:'));
 });

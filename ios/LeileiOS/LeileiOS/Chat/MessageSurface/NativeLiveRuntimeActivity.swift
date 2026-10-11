@@ -87,7 +87,7 @@ struct NativeLiveTurnActivityView: View {
                                     : "chevron.right"
                         )
                         .font(.system(size: 14, weight: .light))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .frame(height: 22)
                         .contentShape(Rectangle())
                     }
