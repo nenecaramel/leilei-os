@@ -19,6 +19,7 @@ import type {
 import {
   readNativeLiveMessageActivityByAssistantMessage,
 } from "./native-live-message-activity-read-repository.js";
+import { readNativeSessionVisibleThinkingByAssistant } from "./native-live-native-history-thinking.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -296,6 +297,7 @@ implements NativeLiveCurrentPathReader {
         parentMessageId:
           conversationMessages.parentMessageId,
         role: conversationMessages.role,
+        sourceMessageId: conversationMessages.sourceMessageId,
         status: conversationMessages.status,
         createdAt: conversationMessages.createdAt,
         completedAt: conversationMessages.completedAt,
@@ -330,6 +332,23 @@ implements NativeLiveCurrentPathReader {
           messageRows,
         },
       );
+
+    // Presentation-only native Thinking summaries: use exact checkpoint/source
+    // UUID evidence without editing completed canonical blocks or sync digests.
+    let historicalThinking = new Map<string, NonNullable<NativeLiveMessage["activity"]>["events"]>();
+    try {
+      historicalThinking = await readNativeSessionVisibleThinkingByAssistant(this.db, {
+        userId: input.userId,
+        conversationId: input.conversationId,
+        messageRows: messageRows.map(row => ({
+          id: row.id, role: row.role,
+          sourceMessageId: row.sourceMessageId,
+          createdAt: row.createdAt.toISOString(),
+        })),
+      });
+    } catch {
+      // Optional presentation enrichment must never break canonical Chat reads.
+    }
 
     const blockRows = await this.db
       .select({
@@ -372,10 +391,17 @@ implements NativeLiveCurrentPathReader {
     for (const row of blockRows) {
       const blocks =
         blocksByMessage.get(row.messageId) ?? [];
+      const readable = readableContentData(row.kind, row.rawType, row.text, row.payload);
+      // Once a verified visible summary is present, the old diagnostic tile
+      // is redundant. Keep diagnostics when no displayable summary exists.
+      if (row.rawType === "thinking"
+        && readable.kind === "unknown"
+        && readable.payload?.diagnostic_code === "HIDDEN_REASONING_EXCLUDED"
+        && historicalThinking.has(row.messageId)) continue;
       blocks.push({
         id: row.id,
         ordinal: row.ordinal,
-        ...readableContentData(row.kind, row.rawType, row.text, row.payload),
+        ...readable,
         rawType: row.rawType,
         createdAt: row.createdAt.toISOString(),
       });
@@ -394,6 +420,12 @@ implements NativeLiveCurrentPathReader {
           "Native live current path contains an unsupported role.",
         );
       }
+      const baseActivity = activityByMessage.get(row.id) ?? null;
+      const supplemental = historicalThinking.get(row.id) ?? [];
+      const activity = supplemental.length === 0 ? baseActivity
+        : baseActivity
+          ? { ...baseActivity, events: [...baseActivity.events, ...supplemental] }
+          : { prepareId: null, events: supplemental, interactions: [] };
       return {
         id: row.id,
         conversationId: row.conversationId,
@@ -404,10 +436,7 @@ implements NativeLiveCurrentPathReader {
         completedAt:
           row.completedAt?.toISOString() ?? null,
         blocks: blocksByMessage.get(row.id) ?? [],
-        activity:
-          row.role === "assistant"
-            ? activityByMessage.get(row.id) ?? null
-            : null,
+        activity: row.role === "assistant" ? activity : null,
       };
     });
 
@@ -456,7 +485,7 @@ export function nativeLiveCurrentPathEtag(
   const after = cursor.afterMessageId ?? "-";
   const activity =
     activityRevision ? `:activity:${activityRevision}` : "";
-  return `"${syncToken}:limit:${normalizeCurrentPathLimit(limit)}:before:${before}:after:${after}${activity}"`;
+  return `"${syncToken}:limit:${normalizeCurrentPathLimit(limit)}:before:${before}:after:${after}${activity}:native-thinking-v1"`;
 }
 
 function headSyncToken(headMessageId: string): string {
