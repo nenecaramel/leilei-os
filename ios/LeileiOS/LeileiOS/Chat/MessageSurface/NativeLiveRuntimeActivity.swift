@@ -40,7 +40,7 @@ struct NativeLiveTurnActivityView: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(
                 alignment: .firstTextBaseline,
-                spacing: 8
+                spacing: 12
             ) {
                 Button {
                     expansion.toggleActivity()
@@ -62,18 +62,13 @@ struct NativeLiveTurnActivityView: View {
 
                         if !header.isEmpty {
                             Text(header)
-                                .font(.system(
-                                    size: 13.5,
-                                    weight: .medium
-                                ))
+                                .font(.system(size: 14))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
 
-                        Spacer(minLength: 8)
                     }
                     .frame(
-                        maxWidth: .infinity,
                         alignment: .leading
                     )
                     .contentShape(Rectangle())
@@ -81,6 +76,28 @@ struct NativeLiveTurnActivityView: View {
                 .buttonStyle(.plain)
                 .disabled(header.isEmpty)
 
+                if !header.isEmpty {
+                    Button {
+                        expansion.toggleActivity()
+                    } label: {
+                        Image(
+                            systemName:
+                                effectiveExpanded
+                                    ? "chevron.down"
+                                    : "chevron.right"
+                        )
+                        .font(.system(size: 14))
+                        .foregroundStyle(.tertiary)
+                        .frame(height: 22)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        effectiveExpanded
+                            ? "Collapse activity"
+                            : "Expand activity"
+                    )
+                }
                 if normalizedMurmurText != nil {
                     Button {
                         isShowingMurmur = true
@@ -98,31 +115,7 @@ struct NativeLiveTurnActivityView: View {
                     .accessibilityLabel("Murmur")
                 }
 
-                if !header.isEmpty {
-                    Button {
-                        expansion.toggleActivity()
-                    } label: {
-                        Image(
-                            systemName:
-                                effectiveExpanded
-                                    ? "chevron.down"
-                                    : "chevron.right"
-                        )
-                        .font(.system(
-                            size: 10,
-                            weight: .semibold
-                        ))
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 22, height: 22)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(
-                        effectiveExpanded
-                            ? "Collapse activity"
-                            : "Expand activity"
-                    )
-                }
+                Spacer(minLength: 8)
             }
 
             if effectiveExpanded {

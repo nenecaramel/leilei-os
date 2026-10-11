@@ -39,6 +39,19 @@ function conserve(file: string, source: string) {
     baseline = baseline.split('\n').filter(line => !line.includes('"mcp__leileios_album__')).join('\n');
     assert.doesNotMatch(source, /mcp__leileios_album__/);
   }
+  if (file === 'NativeLiveRuntimeActivity.swift') {
+    // Header typography/arrow placement intentionally changed. Keep its init,
+    // every expanded subtree, lifecycle, interaction dispatch and sheet exact.
+    const body='    var body: some View {';
+    const content='            if effectiveExpanded {';
+    assert.equal(source.slice(0,source.indexOf(body)), baseline.slice(0,baseline.indexOf(body)), 'activity inputs/init');
+    assert.equal(normalize(source.slice(source.indexOf(content))), normalize(baseline.slice(baseline.indexOf(content))), 'expanded activity and sheets');
+    const header=source.slice(source.indexOf(body),source.indexOf(content));
+    assert.equal((header.match(/expansion\.toggleActivity\(\)/g)??[]).length,2);
+    assert.match(header,/\.disabled\(header\.isEmpty\)/);
+    assert.match(header,/isShowingMurmur = true/);
+    return;
+  }
   assert.equal(normalize(source), normalize(baseline), file);
 }
 test('Runtime Activity baseline fixtures are exact 8efd5977 Git blobs', () => {

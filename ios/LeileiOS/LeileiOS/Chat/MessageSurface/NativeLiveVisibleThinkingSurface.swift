@@ -11,11 +11,11 @@ struct NativeLiveVisibleThinkingSurface: View {
                 Button { isExpanded.toggle() } label: {
                     HStack(spacing: 12) {
                         Text("Thought process")
-                            .font(.system(size: 13.5, weight: .medium))
-                        Spacer(minLength: 8)
+                            .font(.system(size: 14))
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
-                            .frame(width: 22, height: 22)
+                            .font(.system(size: 14))
+                            .frame(height: 22)
+                        Spacer(minLength: 8)
                     }
                     .foregroundStyle(.secondary)
                     .contentShape(Rectangle())
@@ -26,7 +26,7 @@ struct NativeLiveVisibleThinkingSurface: View {
                 if isExpanded {
                     ForEach(items) { item in
                         Text(item.text)
-                            .font(.system(size: 13.5))
+                            .font(.system(size: 14))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)

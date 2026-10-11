@@ -13,7 +13,7 @@ struct NativeLiveAssistantTurnRow: View {
     var body: some View {
         VStack(alignment:.leading,spacing:ChatPresentationLayout.assistantSpacing) {
             if processSections.showsLoading {
-                Text("Thinking...").font(.system(size: 13.5)).foregroundStyle(.secondary)
+                Text("Thinking...").font(.system(size: 14)).foregroundStyle(.secondary)
             }
             NativeLiveVisibleThinkingSurface(items: turn.visibleThinking)
                 .padding(.bottom, processSections.showsThinking && (processSections.showsActivity || !turn.bodyPresentation.nodes.isEmpty) ? processSectionExtraSpacing : 0)
