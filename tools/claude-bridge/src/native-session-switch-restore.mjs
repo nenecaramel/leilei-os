@@ -18,12 +18,19 @@ export const NATIVE_SERVER_REQUEST_TIMEOUT_MS = 300_000;
 // Image/document bytes travel in small idempotent batches ahead of the restore,
 // so one dropped connection costs one batch instead of the whole history.
 export const NATIVE_DISPLAY_ASSET_BATCH_BYTES = 2 * 1024 * 1024;
-const NATIVE_DISPLAY_ASSET_BATCH_ATTEMPTS = 3;
+// The free-plan database restarts about every 10 minutes and the app follows it
+// for ~40 s. Requests whose replay is idempotent wait that out; the rest fail.
+export const NATIVE_RELAY_RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
+const retryOnUnavailable = new Set(['state', 'asset-stage', 'restore', 'release', 'asset', 'choices']);
+// A restore that timed out may still be committing; replaying it only queues
+// behind the same lock, so only short read/bind calls retry after a timeout.
+const retryOnTimeout = new Set(['state', 'asset-stage', 'release', 'asset', 'choices']);
 const publicCodes = new Set(['NATIVE_CONVERSATION_BUSY', 'STALE_NATIVE_PROJECTION', 'CANONICAL_HEAD_CHANGED', 'CANONICAL_HISTORY_CHANGED', 'CANONICAL_CHECKPOINT_CHANGED', 'NATIVE_SOURCE_BINDING_REQUIRED', 'EXPLICIT_BRANCH_SELECTION_REQUIRED', 'NATIVE_HISTORY_REWRITTEN', 'NATIVE_TRANSCRIPT_DIVERGED', 'NATIVE_SESSION_RECOVERY_REQUIRED', 'CLEANUP_IN_PROGRESS', 'NATIVE_CONVERSATION_NOT_FOUND', 'INVALID_NATIVE_PROJECTION', 'INVALID_NATIVE_SNAPSHOT', 'BATCH_TOO_LARGE', 'NATIVE_SESSION_ALREADY_ATTACHED', 'INVALID_NATIVE_ASSET', 'NATIVE_ASSET_UNAVAILABLE', 'NATIVE_ASSET_MISMATCH']);
 
 // Explicit history restore only: no SDK query, native file writes, Desktop
 // launching or execution lease. The server binds ownership to internal auth.
-export function nativeHistoryRequest({ relayUrl, relayToken, fetchImpl = fetch }) {
+export function nativeHistoryRequest({ relayUrl, relayToken, fetchImpl = fetch,
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), retryDelaysMs = NATIVE_RELAY_RETRY_DELAYS_MS }) {
   let endpoint;
   try { endpoint = new URL(relayUrl); } catch { throw fail('INVALID_NATIVE_RESTORE_ENDPOINT'); }
   if (!relayToken || typeof relayToken !== 'string' ||
@@ -31,14 +38,15 @@ export function nativeHistoryRequest({ relayUrl, relayToken, fetchImpl = fetch }
     !(endpoint.protocol === 'https:' || (endpoint.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname)))) {
     throw fail('INVALID_NATIVE_RESTORE_ENDPOINT');
   }
-  const request = async (route, payload) => {
+  const attempt = async (route, payload) => {
     const body = JSON.stringify(payload);
     // Existing authenticated session-store parser is 32 MB; fail before a
     // request rather than truncate records or silently split a restore txn.
     const bytes = Buffer.byteLength(body, 'utf8');
     if (bytes > 30 * 1024 * 1024) throw fail('NATIVE_RESTORE_PAYLOAD_TOO_LARGE');
-    // A large, single-transaction restore needs upload time on slow links.
-    const upload = (route === 'restore' && bytes >= 4 * 1024 * 1024) || (route === 'asset-stage' && bytes >= 1024 * 1024);
+    // A restore spends its time uploading and in one server transaction; large
+    // staging batches need upload time on slow links.
+    const upload = route === 'restore' || (route === 'asset-stage' && bytes >= 1024 * 1024);
     const timeoutMs = upload ? NATIVE_RESTORE_UPLOAD_TIMEOUT_MS : NATIVE_HISTORY_REQUEST_TIMEOUT_MS;
     let signal;
     try {
@@ -63,13 +71,23 @@ export function nativeHistoryRequest({ relayUrl, relayToken, fetchImpl = fetch }
       return value.data;
     } catch (error) {
       // Timeout means the request did not finish; a server-side rejection
-      // has a distinct sanitized code. Neither case is retried automatically.
+      // has a distinct sanitized code and is never retried.
       if (signal?.aborted && signal.reason?.name === 'TimeoutError') throw fail('NATIVE_RESTORE_TIMEOUT');
       throw fail(publicCodes.has(error?.code) || ['NATIVE_RESTORE_INVALID_RESPONSE', 'NATIVE_RESTORE_UNAVAILABLE',
         'NATIVE_RESTORE_SERVER_REJECTED'].includes(error?.code) ? error.code : 'NATIVE_RESTORE_UNAVAILABLE');
     }
   };
-  return request;
+  return async (route, payload) => {
+    for (let index = 0; ; index++) {
+      try { return await attempt(route, payload); }
+      catch (error) {
+        const retryable = (error.code === 'NATIVE_RESTORE_UNAVAILABLE' && retryOnUnavailable.has(route))
+          || (error.code === 'NATIVE_RESTORE_TIMEOUT' && retryOnTimeout.has(route));
+        if (!retryable || index >= retryDelaysMs.length) throw error;
+        await sleep(retryDelaysMs[index]);
+      }
+    }
+  };
 }
 
 export async function restoreDesktopNativeSession({ input, conversationId, relayUrl, relayToken, fetchImpl = fetch,
@@ -108,18 +126,12 @@ export async function restoreDesktopNativeSession({ input, conversationId, relay
 // names their revision and the server verifies the complete set.
 export async function stageNativeDisplayAssets({ request, sessionId, assets, batchBytes = NATIVE_DISPLAY_ASSET_BATCH_BYTES }) {
   const { revision, entries } = assets;
+  // Positional and idempotent; the relay request retries transport failures.
   const send = async (offset, batch) => {
-    for (let attempt = 1; ; attempt++) {
-      try {
-        const state = await request('asset-stage', { sessionId, revision, total: entries.length, offset, entries: batch });
-        if (!Number.isSafeInteger(state?.stored) || state.stored < 0 || state.stored > entries.length || typeof state.complete !== 'boolean'
-          || (state.complete && state.stored !== entries.length)) throw fail('NATIVE_RESTORE_INVALID_RESPONSE');
-        return state;
-      } catch (error) {
-        // Staging is positional and idempotent, so only transport failures retry.
-        if (attempt >= NATIVE_DISPLAY_ASSET_BATCH_ATTEMPTS || !['NATIVE_RESTORE_UNAVAILABLE', 'NATIVE_RESTORE_TIMEOUT'].includes(error?.code)) throw error;
-      }
-    }
+    const state = await request('asset-stage', { sessionId, revision, total: entries.length, offset, entries: batch });
+    if (!Number.isSafeInteger(state?.stored) || state.stored < 0 || state.stored > entries.length || typeof state.complete !== 'boolean'
+      || (state.complete && state.stored !== entries.length)) throw fail('NATIVE_RESTORE_INVALID_RESPONSE');
+    return state;
   };
   let state = await send(0, []), restarted = false, batches = 0;
   while (!state.complete) {
