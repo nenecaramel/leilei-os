@@ -46,6 +46,41 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const hash = /^[0-9a-f]{64}$/;
 const fail = (code: string) => Object.assign(new Error(code), { code });
 
+// Display ends at the assistant; execution may include its native Stop hook receipt.
+// Preserve the execution checkpoint. Only this explicitly proven trailing carrier
+// is equivalent: never accept a generic ancestor, compact, tool or another turn.
+function sameCompletedTurnCheckpoint(
+  executionId: string | null, displayId: string, sessionId: string,
+  entries?: Array<Record<string, unknown> & { type: string }>,
+): boolean {
+  if (executionId === displayId) return true;
+  if (!executionId || !entries) return false;
+  const byId = new Map<string, Record<string, unknown> & { type: string }>();
+  for (const entry of entries) {
+    if (typeof entry.uuid !== "string") continue;
+    if (byId.has(entry.uuid)) return false;
+    byId.set(entry.uuid, entry);
+  }
+  const assistant = byId.get(displayId);
+  const message = assistant?.message as Record<string, unknown> | undefined;
+  if (!assistant || assistant.type !== "assistant" || assistant.isSidechain === true
+    || assistant.isMeta === true || assistant.isCompactSummary === true
+    || (assistant.sessionId !== undefined && assistant.sessionId !== sessionId)
+    || message?.stop_reason !== "end_turn") return false;
+  const visited = new Set<string>();
+  let cursor = executionId;
+  while (cursor !== displayId) {
+    const entry = byId.get(cursor);
+    if (!entry || visited.has(cursor) || entry.type !== "system"
+      || entry.subtype !== "stop_hook_summary" || entry.isSidechain === true
+      || (entry.sessionId !== undefined && entry.sessionId !== sessionId)
+      || typeof entry.parentUuid !== "string") return false;
+    visited.add(cursor);
+    cursor = entry.parentUuid;
+  }
+  return true;
+}
+
 export function validateNativeHistoryRestoreInput(input: Parameters<typeof restoreNativeSessionHistory>[1]) {
   const p = input.projection;
   if (!uuid.test(input.userId) || !uuid.test(input.conversationId) ||
@@ -145,7 +180,8 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     if (assistants.some(({ row, message }) => {
       const cp = checkpointByMessage.get(row.id);
       return !cp || cp.provider !== "claude_code" || cp.providerSessionId !== p.sessionId ||
-        cp.providerCheckpointId !== message.providerCheckpointId || cp.effectiveWorkingDirectory !== input.effectiveWorkingDirectory;
+        !sameCompletedTurnCheckpoint(cp.providerCheckpointId, message.providerCheckpointId, p.sessionId, snapshot?.entries)
+        || cp.effectiveWorkingDirectory !== input.effectiveWorkingDirectory;
     })) throw fail("CANONICAL_CHECKPOINT_CHANGED");
     if (!unchanged && (input.expectedRevision !== (source?.revision ?? null) || input.expectedHeadMessageId !== (existing?.currentHeadMessageId ?? null))) throw fail("STALE_NATIVE_PROJECTION");
     if (snapshot) {
@@ -229,7 +265,12 @@ export async function releaseNativeSessionToDesktop(db: Database, input: {
       eq(conversationProviderSessionCheckpoints.userId, input.userId), eq(conversationProviderSessionCheckpoints.conversationId, input.conversationId),
       eq(conversationProviderSessionCheckpoints.canonicalMessageId, input.expectedHeadMessageId),
     ));
-    if (!checkpoint || checkpoint.providerSessionId !== input.sessionId || checkpoint.providerCheckpointId !== input.expectedCheckpointId
+    const store = new DrizzleNativeLiveProviderSessionStoreRepository(tx);
+    // The synchronized durable snapshot, not a caller-supplied alias, proves the receipt.
+    const entries = checkpoint?.providerCheckpointId === input.expectedCheckpointId ? undefined
+      : await store.load({ userId: input.userId, key: { sessionId: input.sessionId } });
+    if (!checkpoint || checkpoint.providerSessionId !== input.sessionId
+      || !sameCompletedTurnCheckpoint(checkpoint.providerCheckpointId, input.expectedCheckpointId, input.sessionId, entries ?? undefined)
       || checkpoint.effectiveWorkingDirectory !== source.effectiveWorkingDirectory) throw fail("CANONICAL_CHECKPOINT_CHANGED");
     if (await new DrizzleNativeLiveProviderSessionStoreRepository(tx).getStatus({ userId: input.userId, sessionId: input.sessionId }) !== "complete") {
       throw fail("NATIVE_SESSION_RECOVERY_REQUIRED");

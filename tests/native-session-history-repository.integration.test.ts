@@ -197,7 +197,7 @@ for (const operation of ["retry", "edit"] as const) test(`restored ${operation} 
   assert.notEqual(prepared.command.parent_provider_checkpoint_id, a);
 }));
 
-async function localContinuation(f: any) {
+async function localContinuation(f: any, stopHook = false) {
   const restored = await f.write();
   const coordinator = new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.database.db));
   const prepared = await coordinator.prepare(f.owner, { request_id: randomUUID(), conversation_id: f.input.conversationId, dispatch_target: "claude_code", operation: "send", expected_head_message_id: restored.headMessageId, text: "local synthetic user" });
@@ -219,7 +219,11 @@ async function localContinuation(f: any) {
   });
   assert.ok(finalized.ok && finalized.outcome === "completed", JSON.stringify(finalized));
   assert.equal(await relay.markCompleted(reservation), "applied");
-  const entries = [...f.entries, row(prepared.command.canonical_user_message_id, f.entries[1].uuid, "user", "local synthetic user"), row(cp, prepared.command.canonical_user_message_id, "assistant", "local synthetic reply")];
+  const assistant = stopHook ? randomUUID() : cp;
+  const entries = [...f.entries, row(prepared.command.canonical_user_message_id, f.entries[1].uuid, "user", "local synthetic user"),
+    { ...row(assistant, prepared.command.canonical_user_message_id, "assistant", "local synthetic reply"), sessionId: f.sessionId,
+      message: { content: [{ type: "text", text: "local synthetic reply" }], stop_reason: "end_turn" } },
+    ...(stopHook ? [{ uuid: cp, parentUuid: assistant, type: "system", subtype: "stop_hook_summary", sessionId: f.sessionId }] : [])];
   return { entries, finalized };
 }
 
@@ -602,4 +606,97 @@ test('native restore materializes original image and PDF through upload/HEAD/com
     assert.equal((await restore()).assets.materialized,2); assert.equal(puts,2);
     assert.equal(await readFile(transcriptFile,'utf8'),text);
   }); } finally { await rm(root,{recursive:true,force:true}); }
+}));
+
+
+test("handoff accepts a proven post-assistant stop hook and preserves the execution checkpoint through release and reacquire", { skip: !enabled }, async () => fixture(async f => {
+  const local = await localContinuation(f, true);
+  const before = await f.state();
+  const reader = new DrizzleNativeLiveCurrentPathReader(f.database.db);
+  const displayBefore = await reader.readCurrentPath({ userId: f.owner, conversationId: f.input.conversationId, limit: 100 });
+  const assistant = local.entries.at(-2)!.uuid, stop = local.entries.at(-1)!.uuid;
+  const next = { ...f.input, expectedHeadMessageId: local.finalized.assistantMessageId, expectedRevision: revision(1),
+    projection: projectNativeHistory({ sessionId: f.sessionId, revision: revision(2), entries: local.entries }, assistant),
+    nativeSnapshot: { sessionId: f.sessionId, revision: revision(2), entries: local.entries } };
+  const synced = await f.write(next);
+  assert.equal(synced.inserted, 0);
+  assert.deepEqual((await f.state()).checkpoints, before.checkpoints, "execution checkpoint must not be rewritten to the display leaf");
+  const displayAfter = await reader.readCurrentPath({ userId: f.owner, conversationId: f.input.conversationId, limit: 100 });
+  assert.deepEqual(displayAfter!.messages, displayBefore!.messages);
+  assert.equal(displayAfter!.currentHeadMessageId, displayBefore!.currentHeadMessageId);
+  const { releaseNativeSessionToDesktop } = await import(modulePath.href);
+  const released = await releaseNativeSessionToDesktop(f.database.db, { userId: f.owner, conversationId: f.input.conversationId, sessionId: f.sessionId,
+    expectedHeadMessageId: synced.headMessageId, expectedRevision: revision(2), expectedCheckpointId: assistant });
+  assert.equal(released.owner, "desktop");
+  assert.equal((await f.state()).conversation.providerMetadata.nativeSessionSource.owner, "desktop");
+  assert.equal((await f.write({ ...next, expectedRevision: revision(2) })).outcome, "already_current");
+  const coordinator = new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.database.db));
+  const send = await coordinator.prepare(f.owner, { request_id: randomUUID(), conversation_id: f.input.conversationId,
+    dispatch_target: "claude_code", operation: "send", expected_head_message_id: synced.headMessageId, text: "synthetic next input" });
+  assert.ok(send.ok);
+  assert.equal(send.command.parent_provider_checkpoint_id, stop, "normal resume retains the execution checkpoint");
+}));
+
+test("stop-hook equivalence refuses missing proof, other activity, other sessions and conflicting native UUIDs", { skip: !enabled }, async () => {
+  for (const mutation of ["missing", "compact", "assistant", "user", "attachment", "session", "sidechain", "parent", "duplicate", "unfinished"]) {
+    await fixture(async f => {
+      const local = await localContinuation(f, true), before = await f.state();
+      const entries = structuredClone(local.entries), tail: any = entries.at(-1), assistant: any = entries.at(-2);
+      if (mutation === "compact") tail.subtype = "compact_boundary";
+      if (["assistant", "user", "attachment"].includes(mutation)) tail.type = mutation;
+      if (mutation === "session") tail.sessionId = randomUUID();
+      if (mutation === "sidechain") tail.isSidechain = true;
+      if (mutation === "parent") tail.parentUuid = f.entries[1].uuid;
+      if (mutation === "duplicate") entries.push({ ...tail, parentUuid: randomUUID() });
+      if (mutation === "unfinished") assistant.message.stop_reason = "tool_use";
+      const next = { ...f.input, expectedHeadMessageId: local.finalized.assistantMessageId, expectedRevision: revision(1),
+        projection: projectNativeHistory({ sessionId: f.sessionId, revision: revision(2), entries: local.entries }, assistant.uuid),
+        ...(mutation === "missing" ? {} : { nativeSnapshot: { sessionId: f.sessionId, revision: revision(2), entries } }) };
+      await assert.rejects(f.write(next), { code: "CANONICAL_CHECKPOINT_CHANGED" }, mutation);
+      assert.deepEqual(await f.state(), before, mutation + " must preserve evidence");
+    });
+  }
+});
+
+
+test("Desktop release refuses absent or corrupted durable stop-hook proof after synchronization", { skip: !enabled }, async () => {
+  for (const corrupt of [false, true]) await fixture(async f => {
+    const local = await localContinuation(f, true), assistant = local.entries.at(-2)!.uuid, stop = local.entries.at(-1)!.uuid;
+    const next = { ...f.input, expectedHeadMessageId: local.finalized.assistantMessageId, expectedRevision: revision(1),
+      projection: projectNativeHistory({ sessionId: f.sessionId, revision: revision(2), entries: local.entries }, assistant),
+      nativeSnapshot: { sessionId: f.sessionId, revision: revision(2), entries: local.entries } };
+    const synced = await f.write(next);
+    if (corrupt) await f.database.db.execute(sql`update native_live_provider_session_entries set entry=jsonb_set(entry, '{subtype}', '"compact_boundary"'::jsonb) where user_id=${f.owner}::uuid and provider_session_id=${f.sessionId} and entry->>'uuid'=${stop}`);
+    else await f.database.db.execute(sql`delete from native_live_provider_session_entries where user_id=${f.owner}::uuid and provider_session_id=${f.sessionId} and entry->>'uuid'=${stop}`);
+    const before = await f.state();
+    const { releaseNativeSessionToDesktop } = await import(modulePath.href);
+    await assert.rejects(releaseNativeSessionToDesktop(f.database.db, { userId: f.owner, conversationId: f.input.conversationId,
+      sessionId: f.sessionId, expectedHeadMessageId: synced.headMessageId, expectedRevision: revision(2), expectedCheckpointId: assistant }),
+      { code: "CANONICAL_CHECKPOINT_CHANGED" });
+    assert.deepEqual(await f.state(), before);
+    assert.equal(before.conversation.providerMetadata.nativeSessionSource.owner, "leileios");
+  });
+});
+
+test("Desktop continuation after a stop-hook handoff syncs back once without rewriting the local reply or its execution checkpoint", { skip: !enabled }, async () => fixture(async f => {
+  const local = await localContinuation(f, true), assistant = local.entries.at(-2)!.uuid, stop = local.entries.at(-1)!.uuid;
+  const next = { ...f.input, expectedHeadMessageId: local.finalized.assistantMessageId, expectedRevision: revision(1),
+    projection: projectNativeHistory({ sessionId: f.sessionId, revision: revision(2), entries: local.entries }, assistant),
+    nativeSnapshot: { sessionId: f.sessionId, revision: revision(2), entries: local.entries } };
+  const synced = await f.write(next);
+  const { releaseNativeSessionToDesktop } = await import(modulePath.href);
+  await releaseNativeSessionToDesktop(f.database.db, { userId: f.owner, conversationId: f.input.conversationId, sessionId: f.sessionId,
+    expectedHeadMessageId: synced.headMessageId, expectedRevision: revision(2), expectedCheckpointId: assistant });
+  const before = await f.state(), u = randomUUID(), a = randomUUID();
+  const entries = [...local.entries, row(u, stop, "user", "synthetic Desktop input"), row(a, u, "assistant", "synthetic Desktop reply")];
+  const back = { ...next, expectedRevision: revision(2), projection: projectNativeHistory({ sessionId: f.sessionId, revision: revision(3), entries }, a),
+    nativeSnapshot: { sessionId: f.sessionId, revision: revision(3), entries } };
+  assert.equal((await f.write(back)).inserted, 2);
+  const after = await f.state();
+  assert.deepEqual(after.messages.slice(0, 4), before.messages);
+  assert.deepEqual(after.checkpoints.find((cp: any) => cp.canonicalMessageId === local.finalized.assistantMessageId),
+    before.checkpoints.find((cp: any) => cp.canonicalMessageId === local.finalized.assistantMessageId));
+  assert.equal(after.conversation.providerMetadata.nativeSessionSource.owner, "leileios");
+  assert.equal((await f.write({ ...back, expectedHeadMessageId: after.conversation.currentHeadMessageId, expectedRevision: revision(3) })).outcome, "already_current");
+  assert.deepEqual(await f.state(), after);
 }));

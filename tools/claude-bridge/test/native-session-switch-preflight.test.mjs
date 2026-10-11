@@ -342,3 +342,29 @@ test('fixed ID commands hand off to a fake Desktop then sync its new history und
     } finally { await new Promise(resolve => server.close(resolve)); }
   });
 });
+
+test('switch CLI reports canonical rejection reason without exposing server details or credentials', async () => {
+  const { createServer } = await import('node:http');
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  await fixture(async ({ input, transcriptFile }) => {
+    const before = await readFile(transcriptFile);
+    let code = 'CANONICAL_CHECKPOINT_CHANGED';
+    const server = createServer((request, response) => {
+      response.setHeader('content-type', 'application/json');
+      response.writeHead(409);
+      response.end(JSON.stringify({ success: false, error: { code, message: 'PRIVATE_SERVER_DETAIL' } }));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      for (code of ['CANONICAL_CHECKPOINT_CHANGED', 'CANONICAL_HEAD_CHANGED', 'CANONICAL_HISTORY_CHANGED', 'NATIVE_HISTORY_REWRITTEN']) {
+        await assert.rejects(promisify(execFile)(process.execPath,
+          [new URL('../scripts/native-session-switch.mjs', import.meta.url).pathname, '--restore', '--desktop-index', input.indexFile,
+            '--project-dir', input.projectDirectory, '--config-dir', input.configDirectory],
+          { env: { ...process.env, LEILEI_NATIVE_LIVE_RELAY_URL: `http://127.0.0.1:${server.address().port}`, LEILEI_NATIVE_LIVE_RELAY_TOKEN: 'PRIVATE_TOKEN' } }),
+          error => error.stderr.trim() === code && !/PRIVATE_TOKEN|PRIVATE_SERVER_DETAIL/.test(error.stderr));
+      }
+      assert.deepEqual(await readFile(transcriptFile), before);
+    } finally { await new Promise(resolve => server.close(resolve)); }
+  });
+});
