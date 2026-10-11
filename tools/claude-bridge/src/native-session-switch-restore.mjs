@@ -12,7 +12,7 @@ const publicCodes = new Set(['NATIVE_CONVERSATION_BUSY', 'STALE_NATIVE_PROJECTIO
 
 // Explicit history restore only: no SDK query, native file writes, Desktop
 // launching or execution lease. The server binds ownership to internal auth.
-function nativeHistoryRequest({ relayUrl, relayToken, fetchImpl = fetch }) {
+export function nativeHistoryRequest({ relayUrl, relayToken, fetchImpl = fetch }) {
   let endpoint;
   try { endpoint = new URL(relayUrl); } catch { throw fail('INVALID_NATIVE_RESTORE_ENDPOINT'); }
   if (!relayToken || typeof relayToken !== 'string' ||
@@ -24,23 +24,38 @@ function nativeHistoryRequest({ relayUrl, relayToken, fetchImpl = fetch }) {
     const body = JSON.stringify(payload);
     // Existing authenticated session-store parser is 32 MB; fail before a
     // request rather than truncate records or silently split a restore txn.
-    if (Buffer.byteLength(body, 'utf8') > 30 * 1024 * 1024) throw fail('NATIVE_RESTORE_PAYLOAD_TOO_LARGE');
+    const bytes = Buffer.byteLength(body, 'utf8');
+    if (bytes > 30 * 1024 * 1024) throw fail('NATIVE_RESTORE_PAYLOAD_TOO_LARGE');
+    // A large, single-transaction restore needs upload time on slow links.
+    // The outer local CLI still has a separate 240-second hard limit.
+    const timeoutMs = route === 'restore' && bytes >= 4 * 1024 * 1024 ? 180_000 : 30_000;
+    let signal;
     try {
+      signal = AbortSignal.timeout(timeoutMs);
       const routePath = route === 'attachment-upload-slot' ? 'internal/native-live-relay/attachments/upload-slots'
         : route.startsWith('attachment-complete/') && uuid.test(route.slice('attachment-complete/'.length))
           ? 'internal/native-live-relay/attachments/' + route.slice('attachment-complete/'.length) + '/complete'
           : 'internal/native-live-session-store/native-history/' + route;
       const response = await fetchImpl(new URL(routePath, endpoint).href, {
-        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30_000),
+        method: 'POST', redirect: 'error', signal,
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + relayToken }, body,
       });
       const text = await readBoundedResponse(response);
-      const value = JSON.parse(text);
-      if (!response.ok || value.success !== true) throw fail(publicCodes.has(value?.error?.code) ? value.error.code : 'NATIVE_RESTORE_UNAVAILABLE');
+      // Preserve canonical error codes; classify opaque HTTP 4xx refusals
+      // without exposing response bodies, URLs, credentials or transcript data.
+      const refused = response.status >= 400 && response.status < 500;
+      let value;
+      try { value = JSON.parse(text); }
+      catch { throw fail(refused ? 'NATIVE_RESTORE_SERVER_REJECTED' : 'NATIVE_RESTORE_UNAVAILABLE'); }
+      if (!response.ok || value.success !== true) throw fail(publicCodes.has(value?.error?.code) ? value.error.code
+        : refused ? 'NATIVE_RESTORE_SERVER_REJECTED' : 'NATIVE_RESTORE_UNAVAILABLE');
       return value.data;
     } catch (error) {
-      // Do not expose server errors, request bodies, URLs or credentials.
-      throw fail(publicCodes.has(error?.code) || ['NATIVE_RESTORE_INVALID_RESPONSE', 'NATIVE_RESTORE_UNAVAILABLE'].includes(error?.code) ? error.code : 'NATIVE_RESTORE_UNAVAILABLE');
+      // Timeout means the request did not finish; a server-side rejection
+      // has a distinct sanitized code. Neither case is retried automatically.
+      if (signal?.aborted && signal.reason?.name === 'TimeoutError') throw fail('NATIVE_RESTORE_TIMEOUT');
+      throw fail(publicCodes.has(error?.code) || ['NATIVE_RESTORE_INVALID_RESPONSE', 'NATIVE_RESTORE_UNAVAILABLE',
+        'NATIVE_RESTORE_SERVER_REJECTED'].includes(error?.code) ? error.code : 'NATIVE_RESTORE_UNAVAILABLE');
     }
   };
   return request;
