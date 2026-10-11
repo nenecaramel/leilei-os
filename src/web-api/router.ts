@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { env } from "../config/env.js";
+import { createNativeLiveSpeechRouter } from "./native-live-speech-router.js";
 import {
   createDiaryApiRouter,
   type DiaryApiDependencies,
@@ -85,7 +87,7 @@ export function createWebApiRouter(
 
   router.use("/voice", createNativeLiveSpeechRouter({
     apiKey: env.ELEVENLABS_API_KEY,
-    voiceId: env.ELEVENLABS_VOICE_ID,
+    voiceId: env.ELEVENLABS_VOICE_ID ?? "BtWabtumIemAotTjP5sk",
   }));
 
   router.use(
