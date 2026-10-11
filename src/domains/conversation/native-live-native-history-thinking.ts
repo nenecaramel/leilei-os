@@ -24,7 +24,8 @@ export function projectNativeSessionVisibleThinking(
   const seen = new Set<string>();
   for (const sourceUuid of input.sourceEntryUuids) {
     if (events.length >= 12) break;
-    if (!uuid.test(sourceUuid) || !seen.add(sourceUuid)) continue;
+    if (!uuid.test(sourceUuid) || seen.has(sourceUuid)) continue;
+    seen.add(sourceUuid);
     const entry = entries.get(sourceUuid);
     if (!entry || entry.uuid !== sourceUuid || entry.type !== "assistant"
       || entry.isSidechain === true || entry.isMeta === true || entry.isCompactSummary === true
