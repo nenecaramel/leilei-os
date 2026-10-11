@@ -51,3 +51,11 @@ test("Swift projector filters unrelated events, deduplicates and preserves prior
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("completed assistant messages read explicit thinking events without unrelated runtime telemetry", () => {
+  const read = readFileSync("src/domains/conversation/native-live-message-activity-read-repository.ts", "utf8");
+  assert.match(read, /eq\(nativeLiveRuntimeEvents\.eventType, "task"\)/);
+  assert.match(read, /eq\(nativeLiveRuntimeEvents\.eventType, "runtime"\)/);
+  assert.match(read, /->> 'kind' = 'user_visible_thinking'/);
+  assert.doesNotMatch(read, /inArray\(nativeLiveRuntimeEvents\.eventType, \["task", "runtime"\]\)/);
+});
