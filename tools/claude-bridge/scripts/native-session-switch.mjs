@@ -9,7 +9,7 @@ import { preflightNativeSessionSwitch } from '../src/native-session-switch-prefl
 const args = process.argv.slice(2);
 const flags = new Map();
 const allowed = new Set(['--desktop-index', '--project-dir', '--config-dir', '--conversation-id', '--session-id', '--desktop-dir']);
-let valid = ['--list', '--check', '--restore', '--desktop'].includes(args[0]) && args.length % 2 === 1;
+let valid = ['--list', '--check', '--restore', '--desktop', '--desktop-manual'].includes(args[0]) && args.length % 2 === 1;
 for (let i = 1; i < args.length; i += 2) {
   if (!allowed.has(args[i]) || flags.has(args[i]) || !args[i + 1] || args[i + 1].startsWith('--')) valid = false;
   flags.set(args[i], args[i + 1]);
@@ -19,8 +19,8 @@ if (args[0] === '--list') valid &&= [...flags.keys()].every(flag => ['--config-d
 else valid &&= flags.has('--session-id')
   ? !explicitPaths
   : flags.has('--desktop-index') && flags.has('--project-dir') && !flags.has('--desktop-dir');
-if (!valid || (args[0] === '--desktop' && !flags.has('--session-id'))) {
-  console.error('Usage: native-session-switch.mjs --list|--check|--restore|--desktop [--session-id UUID] [--config-dir DIRECTORY] [--desktop-dir DIRECTORY] [--conversation-id UUID]; explicit --desktop-index FILE --project-dir DIRECTORY remains supported for check/restore');
+if (!valid || (['--desktop', '--desktop-manual'].includes(args[0]) && !flags.has('--session-id'))) {
+  console.error('Usage: native-session-switch.mjs --list|--check|--restore|--desktop|--desktop-manual [--session-id UUID] [--config-dir DIRECTORY] [--desktop-dir DIRECTORY] [--conversation-id UUID]; explicit --desktop-index FILE --project-dir DIRECTORY remains supported for check/restore');
   process.exitCode = 1;
 } else {
   const configDirectory = path.resolve(flags.get('--config-dir') ?? process.env.CLAUDE_CONFIG_DIR ?? path.join(homedir(), '.claude'));
@@ -42,13 +42,14 @@ if (!valid || (args[0] === '--desktop' && !flags.has('--session-id'))) {
         expectedCheckpointId: selection.providerCheckpointId,
         expectedRevision: selection.nativeRevision,
       };
-      const write = args[0] === '--desktop' ? handoffNativeSessionToDesktop : restoreDesktopNativeSession;
+      const write = ['--desktop', '--desktop-manual'].includes(args[0]) ? handoffNativeSessionToDesktop : restoreDesktopNativeSession;
       const result = args[0] === '--check' ? await preflightNativeSessionSwitch(pinned) : await write({
         input: pinned, conversationId: flags.get('--conversation-id') ?? selection.providerSessionId,
         relayUrl: process.env.LEILEI_NATIVE_LIVE_RELAY_URL,
         relayToken: process.env.LEILEI_NATIVE_LIVE_RELAY_TOKEN,
+        ...(args[0] === '--desktop-manual' ? { launchImpl: async () => {} } : {}),
       });
-      console.log(JSON.stringify(result, null, 2));
+      console.log(JSON.stringify(args[0] === '--desktop-manual' ? { ...result, desktopLaunchRequested: false } : result, null, 2));
     }
   } catch (error) {
     console.error(publicCodes.has(error?.code) ? error.code : nativeInspectionErrorCode(error));

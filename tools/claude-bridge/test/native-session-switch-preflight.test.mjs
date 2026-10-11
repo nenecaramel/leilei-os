@@ -283,7 +283,7 @@ test('fixed restore command writes only to explicitly configured mock relay and 
   });
 });
 
-test('fixed ID commands hand off to a fake Desktop then sync its new history under the same stable conversation', async () => {
+for (const manual of [false, true]) test(`fixed ID ${manual ? 'manual' : 'automatic'} handoff then sync preserves the same conversation`, async () => {
   const { createServer } = await import('node:http');
   const { promisify } = await import('node:util');
   const execute = promisify((await import('node:child_process')).execFile);
@@ -324,10 +324,13 @@ test('fixed ID commands hand off to a fake Desktop then sync its new history und
       const env = { ...process.env, HOME: root, PATH: bin + path.delimiter + process.env.PATH,
         SYNTHETIC_LAUNCH_RESULT: marker, LEILEI_NATIVE_LIVE_RELAY_URL: `http://127.0.0.1:${server.address().port}`, LEILEI_NATIVE_LIVE_RELAY_TOKEN: 'PRIVATE_TOKEN' };
       const before = await readFile(transcriptFile);
-      const desktop = await execute(process.execPath, [script, '--desktop', ...flags], { env });
+      const desktop = await execute(process.execPath, [script, manual ? '--desktop-manual' : '--desktop', ...flags], { env });
       assert.equal(JSON.parse(desktop.stdout).owner, 'desktop');
       assert.equal(JSON.parse(desktop.stdout).desktopSessionVerified, false);
-      assert.deepEqual(JSON.parse(await readFile(marker, 'utf8')), { args: ['--desktop', '--resume', A], cwd: await realpath(root), relayTokenPresent: false });
+      if (manual) {
+        await assert.rejects(readFile(marker), error => error.code === 'ENOENT');
+        assert.equal(JSON.parse(desktop.stdout).desktopLaunchRequested, false);
+      } else assert.deepEqual(JSON.parse(await readFile(marker, 'utf8')), { args: ['--desktop', '--resume', A], cwd: await realpath(root), relayTokenPresent: false });
       assert.deepEqual(await readFile(transcriptFile), before);
       const entries = before.toString().split('\n').map(JSON.parse);
       entries.push({ type: 'user', uuid: nextUser, parentUuid: CP, message: { content: 'PRIVATE_DESKTOP_INPUT' } },

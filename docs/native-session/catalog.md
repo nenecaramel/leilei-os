@@ -600,3 +600,37 @@ review/merge/deploy/migration/runtime refresh need separate authorization; this
 work did none of them. Joint acceptance must verify original Desktop identity,
 continued same-session generation in each direction, repeated tail sync, official
 Rewind/Fork and iPhone image/file preview. No unattended live Claude query is used.
+
+## Accepted manual switching workflow (2026-10-11)
+
+The controlled round trip passed: Desktop history restored to LeileiOS, a
+LeileiOS send resumed the same native session, Desktop continued that session,
+and its new user/assistant pair was restored to LeileiOS followed by another
+successful LeileiOS send. This validates that one session's linear round trip;
+it is not a claim that every Desktop version or arbitrary branch is accepted.
+Old imported-message Edit/Retry/Fork acceptance is deferred. The automatic
+Desktop launcher reported failure and is not part of the accepted workflow.
+
+Use Node 22 and an authenticated Railway CLI on this Mac. From a checkout of
+this version:
+
+```sh
+/opt/homebrew/opt/node@22/bin/node scripts/native-session-local.mjs list
+/opt/homebrew/opt/node@22/bin/node scripts/native-session-local.mjs desktop SESSION_ID
+/opt/homebrew/opt/node@22/bin/node scripts/native-session-local.mjs leileios SESSION_ID
+```
+
+`desktop` uses the existing complete restore/release checks but deliberately
+never launches Claude. Wait for the LeileiOS turn to finish, run it, and only
+after success manually open the same conversation in Desktop. For the reverse
+direction, wait for Desktop generation to finish and exit that conversation,
+then run `leileios`; refresh/open the existing LeileiOS conversation. Do not
+send from both clients at once. Busy/recovery/stale/native-open errors stop the
+switch; never discard recovery evidence or edit JSONL to bypass them.
+
+The wrapper obtains only the required relay credentials from the fixed project,
+production environment and service into process memory. It does not save or
+print them, perform migration/deployment, restart the daemon or supply a model
+prompt. `list` does not fetch credentials. The native Session ID remains stable;
+execution checkpoints may include proven post-assistant Stop hook receipts and
+need not equal the display checkpoint UUID.
