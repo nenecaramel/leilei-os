@@ -648,6 +648,14 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           append: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT,
         },
         ...executionOptions,
+        // Newer Claude models default to omitted thinking (empty text + signature).
+        // Request the provider's displayable summary only for interactive turns;
+        // respect explicit disabled and between_tools modes.
+        ...(!nativeScheduleCommand
+          && (executionOptions.thinking === undefined
+            || executionOptions.thinking.type === "adaptive")
+          ? { thinking: { type: "adaptive", display: "summarized" } }
+          : {}),
         ...leileiosMcpQueryOptions(
           this.mcpServerConfig,
           localSendFileServer,
