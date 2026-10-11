@@ -875,9 +875,18 @@ test("handoff continues through sessions LeileiOS itself switched to, proven by 
   assert.equal(result.headMessageId, local.finalized.assistantMessageId, "adopts the local turn, inserts nothing");
   const source = (await f.state()).conversation.providerMetadata.nativeSessionSource;
   assert.deepEqual([source.sessionId, source.lineage], [Y, [f.sessionId]]);
+  // Desktop then rewinds: Z carries the same records under its own session id.
+  const Z = randomUUID();
+  const rewound = entries.map((entry: any) => ({ ...entry, sessionId: Z }));
+  const handedOff = await f.state();
+  const third = await f.write({ ...continued, expectedHeadMessageId: handedOff.conversation.currentHeadMessageId, expectedRevision: revision(5),
+    projection: projectNativeHistory({ sessionId: Z, revision: revision(7), entries: rewound }, rewound.at(-2).uuid),
+    nativeSnapshot: { sessionId: Z, revision: revision(7), entries: rewound } });
+  assert.equal(third.outcome, "restored", "fixed history keeps checkpoints of LeileiOS forks outside the lineage");
+  assert.deepEqual((await f.state()).conversation.providerMetadata.nativeSessionSource.lineage, [f.sessionId, Y]);
   // A session that does not carry the execution record cannot vouch for it.
   const stranger = randomUUID();
   const other = local.entries.slice(0, 2).map((entry: any) => ({ ...entry, sessionId: stranger }));
-  await assert.rejects(f.write({ ...continued, expectedRevision: revision(5), projection: projectNativeHistory({ sessionId: stranger, revision: revision(6), entries: other }, other[1].uuid),
+  await assert.rejects(f.write({ ...continued, expectedRevision: revision(7), projection: projectNativeHistory({ sessionId: stranger, revision: revision(6), entries: other }, other[1].uuid),
     nativeSnapshot: { sessionId: stranger, revision: revision(6), entries: other } }), (e: any) => e.code === "EXPLICIT_BRANCH_SELECTION_REQUIRED");
 }));

@@ -253,8 +253,12 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       const index = rows.indexOf(row);
       if (!cp && index < indexedCount && source?.messages[index]?.displayOnly === true && snapshot
         && !snapshot.entries.some(entry => entry.uuid === message.providerCheckpointId)) return false;
-      return !cp || cp.provider !== "claude_code" || !(cp.providerSessionId === p.sessionId || nativeSourceSessions(source).has(cp.providerSessionId)
-        || (index >= indexedCount && cp.providerCheckpointId !== null && carried.has(cp.providerCheckpointId))) ||
+      const isCarried = cp?.providerCheckpointId != null && carried.has(cp.providerCheckpointId);
+      // Synchronized history was proven when fixed and its content by fingerprint. A
+      // checkpoint of another session that this one does not carry (compaction,
+      // rewind past it) stays historical; the restored session must carry its own.
+      if (cp && index < indexedCount && !isCarried && cp.providerSessionId !== p.sessionId) return false;
+      return !cp || cp.provider !== "claude_code" || !(cp.providerSessionId === p.sessionId || nativeSourceSessions(source).has(cp.providerSessionId) || isCarried) ||
         !sameCompletedTurnCheckpoint(cp.providerCheckpointId, message.providerCheckpointId, p.sessionId, snapshot?.entries)
         || cp.effectiveWorkingDirectory !== input.effectiveWorkingDirectory;
     })) throw fail("CANONICAL_CHECKPOINT_CHANGED");
