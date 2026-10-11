@@ -3,8 +3,7 @@ import { readDesktopNativeHistory } from './native-session-inspection.mjs';
 import { lstat, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { homedir } from 'node:os';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn } from 'node:child_process';
 import { materializeNativeSessionHistoryAssets } from './native-session-assets.mjs';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = code => Object.assign(new Error(code), { code });
@@ -173,14 +172,26 @@ export async function assertNativeHandoffRecoveryClear(recoveryDirectory) {
   }
 }
 
-export async function launchDesktopNativeSession(selection, execute = promisify(execFile), environment = process.env) {
-  const env = { ...environment, CLAUDE_CONFIG_DIR: selection.configDirectory };
+// `claude --desktop` refuses redirected stdout/stdin, so it runs under a pseudo
+// terminal from `script`, whose own stdin must be /dev/null (a pipe breaks it).
+function runUnderTerminal(file, args, { cwd, env, timeout }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('script', ['-q', '/dev/null', file, ...args], { cwd, env, stdio: ['ignore', 'ignore', 'ignore'] });
+    const timer = setTimeout(() => child.kill('SIGKILL'), timeout);
+    child.on('error', error => { clearTimeout(timer); reject(error); });
+    child.on('close', code => { clearTimeout(timer); code === 0 ? resolve() : reject(fail('NATIVE_DESKTOP_LAUNCH_FAILED')); });
+  });
+}
+
+export async function launchDesktopNativeSession(selection, execute = runUnderTerminal, environment = process.env, home = homedir()) {
+  const env = { ...environment };
+  // The CLI keys its sign-in by config location: name only a non-default one.
+  if (selection.configDirectory && path.resolve(selection.configDirectory) !== path.join(home, '.claude')) env.CLAUDE_CONFIG_DIR = selection.configDirectory;
+  else delete env.CLAUDE_CONFIG_DIR;
   delete env.LEILEI_NATIVE_LIVE_RELAY_TOKEN;
   delete env.LEILEI_NATIVE_LIVE_RELAY_URL;
   try {
-    await execute('claude', ['--desktop', '--resume', selection.providerSessionId], {
-      cwd: selection.workingDirectory, env, timeout: 60_000, maxBuffer: 64 * 1024,
-    });
+    await execute('claude', ['--desktop', '--resume', selection.providerSessionId], { cwd: selection.workingDirectory, env, timeout: 60_000 });
   } catch { throw fail('NATIVE_DESKTOP_LAUNCH_FAILED'); }
 }
 
