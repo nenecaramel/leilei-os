@@ -270,6 +270,7 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
     `);
   }
 
+  // Display-only evidence is not a Claude subagent transcript.
   async listSubkeys(input: {
     userId: string;
     sessionId: string;
@@ -280,6 +281,7 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
       WHERE user_id = ${input.userId}::uuid
         AND provider_session_id = ${input.sessionId}
         AND subpath <> ''
+        AND subpath NOT LIKE 'native-history-assets/%'
       ORDER BY subpath ASC
     `);
     return rows.map((row) => row.subpath);

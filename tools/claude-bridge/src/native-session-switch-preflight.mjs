@@ -35,6 +35,7 @@ export async function preflightNativeSessionSwitch(input) {
     providerSessionId: result.inspection.providerSessionId,
     providerCheckpointId: result.inspection.providerCheckpointId,
     nativeRevision: result.inspection.nativeRevision,
+    historyRevision: result.inspection.historyRevision,
     workingDirectory: result.inspection.workingDirectory,
     messageCount: result.projection.messages.length,
     release,

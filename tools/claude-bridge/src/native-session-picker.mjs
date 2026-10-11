@@ -11,7 +11,7 @@ export function buildSwitchChoices(mode, conversations, sessions) {
       : matches.length > 1 ? 'AMBIGUOUS_NATIVE_SELECTION'
       : s.error ?? (s.history?.state !== 'complete' ? s.history?.reason ?? 'NATIVE_HISTORY_UNAVAILABLE'
         : !c.sourceSessionId || c.sourceSessionId !== c.providerSessionId ? 'NATIVE_SOURCE_BINDING_REQUIRED' : null);
-    return { ...c, sessionId: c.providerSessionId, desktopSessionId: s?.desktopSessionId, nativeRevision: s?.nativeRevision, reason };
+    return { ...c, sessionId: c.providerSessionId, desktopSessionId: s?.desktopSessionId, nativeRevision: s?.nativeRevision, historyRevision: s?.historyRevision, reason };
   });
   return sessions.map(s => {
     // Existing attachment wins over a newly generated conversation identity.
@@ -25,7 +25,7 @@ export function buildSwitchChoices(mode, conversations, sessions) {
       : c?.busy ? 'NATIVE_CONVERSATION_BUSY'
       : c && c.sourceSessionId !== s.providerSessionId ? 'NATIVE_SOURCE_BINDING_REQUIRED' : null);
     return { ...(c ?? {}), title: s.title, updatedAt: s.updatedAt, sessionId: s.providerSessionId,
-      desktopSessionId: s.desktopSessionId, nativeRevision: s.nativeRevision, conversationId: c?.conversationId ?? s.providerSessionId, reason };
+      desktopSessionId: s.desktopSessionId, nativeRevision: s.nativeRevision, historyRevision: s.historyRevision, conversationId: c?.conversationId ?? s.providerSessionId, reason };
   });
 }
 
@@ -50,7 +50,7 @@ export async function selectAndSwitch(mode, { isTTY, load, ask, display, run }) 
   const selected = pickSwitchChoice(choices, await ask('请选择编号（q 取消）：'));
   const refreshed = await load(mode);
   const matches = refreshed.filter(c => c.conversationId === selected.conversationId && c.desktopSessionId === selected.desktopSessionId);
-  if (matches.length !== 1 || ['sessionId', 'headMessageId', 'providerCheckpointId', 'sourceSessionId', 'nativeRevision'].some(key => matches[0][key] !== selected[key])) throw fail('STALE_NATIVE_SELECTION');
+  if (matches.length !== 1 || ['sessionId', 'headMessageId', 'providerCheckpointId', 'sourceSessionId', 'nativeRevision', 'historyRevision'].some(key => matches[0][key] !== selected[key])) throw fail('STALE_NATIVE_SELECTION');
   if (matches[0].reason) throw fail(matches[0].reason);
   return run(mode, matches[0]);
 }

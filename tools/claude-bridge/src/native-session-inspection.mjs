@@ -1,14 +1,16 @@
+import { createHash } from "node:crypto";
+import { readNativeHistorySources, verifyNativeHistorySources } from "./native-session-source-files.mjs";
 import { TextDecoder } from "node:util";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { readOnlyFileSnapshot } from "./read-only-file-snapshot.mjs";
 import { readNativeSession } from "./native-session-catalog.mjs";
 import { resolveDesktopSession } from "./desktop-session-index.mjs";
-import { projectNativeHistory, nativeContinuationCheckpoint } from "./native-session-history.mjs";
+import { projectNativeHistory, nativeContinuationCheckpoint, nativeDisplayChain, nativeDisplayAssetRevision } from "./native-session-history.mjs";
 import { readNativeSessionActivity } from "./native-session-activity.mjs";
 
 const fail = code => Object.assign(new Error(code), { code });
-const historyErrors = new Set(["COMPACT_SOURCE_HISTORY_REQUIRED", "NATIVE_HISTORY_GAP", "INVALID_NATIVE_PARENT", "CONFLICTING_NATIVE_UUID"]);
+const historyErrors = new Set(["COMPACT_SOURCE_HISTORY_REQUIRED", "NATIVE_HISTORY_GAP", "INVALID_NATIVE_PARENT", "CONFLICTING_NATIVE_UUID", "NATIVE_SOURCE_SCAN_LIMIT"]);
 const sessionPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const publicErrors = new Set(["INVALID_NATIVE_JSON", "NATIVE_FILE_TOO_LARGE", "NATIVE_FILE_CHANGED_DURING_READ", "INVALID_SESSION_ID", "UNSUPPORTED_DESKTOP_SESSION_INDEX", "DESKTOP_NATIVE_SESSION_UNAVAILABLE", "DESKTOP_CHECKPOINT_UNAVAILABLE", "NATIVE_INSPECTION_CHANGED", "AMBIGUOUS_NATIVE_SESSION_LOCATION", "DESKTOP_INDEX_IDENTITY_MISMATCH", "STALE_NATIVE_SELECTION", "NATIVE_SELECTION_NOT_FOUND", "AMBIGUOUS_NATIVE_SELECTION", "NATIVE_TURN_UNFINISHED", "EXPLICIT_BRANCH_SELECTION_REQUIRED"]);
 export const nativeInspectionErrorCode = error => publicErrors.has(error?.code) ? error.code : "NATIVE_INSPECTION_UNAVAILABLE";
@@ -28,15 +30,34 @@ async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirec
   const { metadata } = index;
   const snapshot = await readNativeSession(projectDirectory, metadata.cliSessionId);
   const identity = resolveDesktopSession(metadata, new Map([[snapshot.sessionId, snapshot]]));
-  if (followNativeContinuation) identity.providerCheckpointId = nativeContinuationCheckpoint(snapshot, identity.providerCheckpointId);
+  let sourceSnapshots = [];
+  try { nativeDisplayChain(snapshot, identity.providerCheckpointId); }
+  catch (error) {
+    if (!['COMPACT_SOURCE_HISTORY_REQUIRED', 'NATIVE_HISTORY_GAP'].includes(error.code)) throw error;
+    sourceSnapshots = await readNativeHistorySources(projectDirectory, snapshot.sessionId);
+  }
+  const options = { sourceSnapshots };
+  if (followNativeContinuation) identity.providerCheckpointId = nativeContinuationCheckpoint(snapshot, identity.providerCheckpointId, options);
   let history;
   let projection = null;
   try {
-    projection = projectNativeHistory(snapshot, identity.providerCheckpointId);
+    projection = projectNativeHistory(snapshot, identity.providerCheckpointId, options);
     history = { state: "complete", messageCount: projection.messages.length, blockCount: projection.messages.reduce((sum, message) => sum + message.blocks.length, 0) };
   } catch (error) {
     if (!historyErrors.has(error.code)) throw error;
     history = { state: "unavailable", reason: error.code, messageCount: null, blockCount: null };
+  }
+  // Source evidence participates in selection fencing separately from the
+  // execution revision. Never append reconstructed ancestry to the SDK root.
+  const historyRevision = sourceSnapshots.length ? createHash('sha256').update(JSON.stringify(
+    sourceSnapshots.map(s => [s.sessionId, s.revision]),
+  )).digest('hex') : null;
+  let displayAssets;
+  if (projection && sourceSnapshots.length) {
+    const chain = nativeDisplayChain(snapshot, identity.providerCheckpointId, options);
+    const entries = chain.filter(e => Array.isArray(e.message?.content) && e.message.content.some(b => ['image', 'document'].includes(b?.type)))
+      .map(e => ({ type: e.type, uuid: e.uuid, message: { content: e.message.content.map(b => ['image', 'document'].includes(b?.type) ? b : null) } }));
+    if (entries.length) displayAssets = { entries, revision: nativeDisplayAssetRevision(entries) };
   }
   const activity = await readNativeSessionActivity(peerDirectory, snapshot.sessionId, { probeProcessStart });
   const [currentIndex, currentSource] = await Promise.all([
@@ -44,11 +65,12 @@ async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirec
     readNativeSession(projectDirectory, snapshot.sessionId),
   ]);
   if (currentIndex.revision !== index.revision || currentSource.revision !== snapshot.revision) throw fail("NATIVE_INSPECTION_CHANGED");
+  await verifyNativeHistorySources(projectDirectory, sourceSnapshots);
   const activityTime = new Date(metadata.lastActivityAt ?? NaN);
   return { inspection: { readOnly: true, ...identity, title: typeof metadata.title === 'string' ? metadata.title.slice(0, 160) : null,
     updatedAt: Number.isFinite(activityTime.getTime()) ? activityTime.toISOString() : null,
-    activity, history, handoffAllowed: false }, projection,
-    nativeSnapshot: { sessionId: snapshot.sessionId, revision: snapshot.revision, entries: snapshot.entries } };
+    activity, history, historyRevision, handoffAllowed: false }, projection,
+    nativeSnapshot: { sessionId: snapshot.sessionId, revision: snapshot.revision, entries: snapshot.entries, ...(displayAssets ? { displayAssets } : {}) } };
 }
 
 export async function inspectDesktopNativeSession(input) {
@@ -63,7 +85,8 @@ export async function readDesktopNativeHistory(input) {
   const result = await loadDesktopNativeSession(input);
   if (result.inspection.providerSessionId !== input.expectedSessionId ||
       result.inspection.providerCheckpointId !== input.expectedCheckpointId ||
-      result.inspection.nativeRevision !== input.expectedRevision) throw fail("STALE_NATIVE_SELECTION");
+      result.inspection.nativeRevision !== input.expectedRevision ||
+      (input.expectedHistoryRevision !== undefined && result.inspection.historyRevision !== input.expectedHistoryRevision)) throw fail("STALE_NATIVE_SELECTION");
   if (!result.projection) throw fail(result.inspection.history.reason);
   return result;
 }

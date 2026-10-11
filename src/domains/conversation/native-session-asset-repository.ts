@@ -1,3 +1,4 @@
+import { nativeDisplayAssetRevision } from "./native-session-history-repository.js";
 import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
@@ -35,7 +36,11 @@ export async function nativeSessionAsset(db: Database, input: NativeSessionAsset
     const store = new DrizzleNativeLiveProviderSessionStoreRepository(tx);
     if (await store.getStatus({ userId: input.userId, sessionId: input.sessionId }) !== "complete") throw fail("NATIVE_SESSION_RECOVERY_REQUIRED");
     const entries = await store.load({ userId: input.userId, key: { sessionId: input.sessionId } });
-    const entry = entries?.find(e => e.uuid === input.sourceEntryUuid && !e.isSidechain);
+    const displayAssets = typeof source.displayAssetsRevision === "string" && /^[a-f0-9]{64}$/.test(source.displayAssetsRevision)
+      ? await store.load({ userId: input.userId, key: { sessionId: input.sessionId, subpath: `native-history-assets/${source.displayAssetsRevision}` } }) : null;
+    if (displayAssets && nativeDisplayAssetRevision(displayAssets) !== source.displayAssetsRevision) throw fail("NATIVE_ASSET_MISMATCH");
+    const entry = entries?.find(e => e.uuid === input.sourceEntryUuid && !e.isSidechain)
+      ?? displayAssets?.find(e => e.uuid === input.sourceEntryUuid && !e.isSidechain);
     const content = record(entry?.message)?.content;
     const raw = record(Array.isArray(content) ? content[input.sourceBlockOrdinal] : null);
     const asset = record(raw?.source);

@@ -302,3 +302,33 @@ test("internal selected history retains complete native records without leaking 
     assert.deepEqual(await readFile(transcriptFile), bytes);
   });
 });
+
+test('inspection resolves compact fork sources, pins their revisions, and ships only original asset bytes as display evidence', async () => {
+  const { inspectDesktopNativeSession, readDesktopNativeHistory } = await import(moduleUrl);
+  await fixture(async ({root,indexFile,transcriptFile}) => {
+    const B = '00000000-0000-4000-8000-000000000008';
+    const summary = '00000000-0000-4000-8000-000000000009';
+    const sourceFile = path.join(root,`${B}.jsonl`);
+    const image = {type:'image',source:{type:'base64',media_type:'image/png',data:'AA=='}};
+    const original = [{...entries[0],message:{content:[image]}},{...entries[1],uuid:C},
+      {type:'user',uuid:D,parentUuid:C,message:{content:'SOURCE LATER TAIL'}}];
+    const compact = [
+      {type:'system',uuid:B,parentUuid:null,subtype:'compact_boundary',logicalParentUuid:CP,compactMetadata:{preservedMessages:{allUuids:[CP]}}},
+      {type:'user',uuid:summary,parentUuid:B,isCompactSummary:true,message:{content:'SUMMARY'}},
+      {...entries[1],parentUuid:summary,forkedFrom:{sessionId:B,messageUuid:C}},
+    ];
+    await writeFile(sourceFile,original.map(JSON.stringify).join('\n'));
+    await writeFile(transcriptFile,compact.map(JSON.stringify).join('\n'));
+    const input = {indexFile,projectDirectory:root,peerDirectory:root};
+    const selection = await inspectDesktopNativeSession(input);
+    assert.equal(selection.history.state,'complete'); assert.equal(selection.history.messageCount,2);
+    const pinned = {...input,expectedSessionId:A,expectedCheckpointId:CP,expectedRevision:selection.nativeRevision,expectedHistoryRevision:selection.historyRevision};
+    const history = await readDesktopNativeHistory(pinned);
+    assert.deepEqual(history.nativeSnapshot.entries,compact);
+    assert.deepEqual(history.nativeSnapshot.displayAssets.entries,[{type:'user',uuid:U,message:{content:[image]}}]);
+    assert.doesNotMatch(JSON.stringify(history.projection),/SOURCE LATER TAIL|SUMMARY/);
+    assert.doesNotMatch(JSON.stringify(selection),/PRIVATE_|SOURCE LATER TAIL|AA==/);
+    await writeFile(sourceFile,[...original,{type:'progress',data:'changed source'}].map(JSON.stringify).join('\n'));
+    await assert.rejects(readDesktopNativeHistory(pinned), e=>e.code==='STALE_NATIVE_SELECTION');
+  });
+});

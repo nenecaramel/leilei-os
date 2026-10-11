@@ -6,6 +6,12 @@ const carrierTypes = new Set(["user", "assistant", "system", "attachment"]);
 const fail = code => Object.assign(new Error(code), { code });
 const fingerprint = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const assetFingerprint = source => fingerprint(Object.fromEntries(Object.entries(source).sort(([a], [b]) => a.localeCompare(b))));
+// PostgreSQL JSONB preserves values but not object key order.
+export function nativeDisplayAssetRevision(entries) {
+  const canonical = value => Array.isArray(value) ? value.map(canonical)
+    : value !== null && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+  return fingerprint(canonical(entries));
+}
 
 // Display ancestry may cross a compaction boundary. This is deliberately NOT
 // the provider resume/fork prefix: never substitute it for execution validation.
@@ -42,13 +48,103 @@ function displayChain(snapshot, checkpointId) {
   return chain;
 }
 
+// Recover display-only ancestry using exact native UUID evidence. Source files
+// may be renamed by Desktop, so file/session aliases are never the lookup key.
+// Matching text, titles, timestamps and latest source tails confer no authority.
+export function nativeDisplayChain(snapshot, checkpointId, { sourceSnapshots = [] } = {}) {
+  if (!sourceSnapshots.length) return displayChain(snapshot, checkpointId);
+  const sources = [snapshot, ...sourceSnapshots];
+  // Native compaction updates token usage on retained responses. It does not
+  // grant permission to change content, response ID, role or stop semantics.
+  const messageBody = message => message && Object.fromEntries(Object.entries(message).filter(([key]) => key !== 'usage'));
+  const sameBody = (a, b) => isDeepStrictEqual([a.type, messageBody(a.message), a.attachment], [b.type, messageBody(b.message), b.attachment]);
+  const signature = chain => fingerprint(chain.filter(e => !e.isCompactSummary && !(e.type === 'system' && e.subtype === 'compact_boundary')).map(e => [e.uuid, e.type, e.timestamp, messageBody(e.message), e.attachment]));
+  const completed = new Map();
+  let attempts = 0;
+  function walk(source, head, visiting = new Set()) {
+    const key = `${sources.indexOf(source)}:${head}`;
+    if (++attempts > 10000) throw fail('NATIVE_SOURCE_SCAN_LIMIT');
+    if (completed.has(key)) return completed.get(key);
+    try { const direct = displayChain(source, head); completed.set(key, direct); return direct; }
+    catch (error) { if (!['NATIVE_HISTORY_GAP', 'COMPACT_SOURCE_HISTORY_REQUIRED'].includes(error.code)) throw error; }
+    if (visiting.has(key) || visiting.size >= 64) throw fail("NATIVE_HISTORY_GAP");
+    const next = new Set(visiting).add(key);
+    const byId = new Map();
+    const positions = new Map();
+    for (const [i, e] of source.entries.entries()) {
+      if (!e || e.isSidechain || !carrierTypes.has(e.type) || typeof e.uuid !== 'string') continue;
+      const old = byId.get(e.uuid);
+      if (old && !isDeepStrictEqual([old.type, old.parentUuid, old.logicalParentUuid, old.message, old.attachment],
+        [e.type, e.parentUuid, e.logicalParentUuid, e.message, e.attachment])) throw fail('CONFLICTING_NATIVE_UUID');
+      if (!old) { byId.set(e.uuid, e); positions.set(e.uuid, i); }
+    }
+    const reversed = [], seen = new Set();
+    let id = head;
+    while (id !== null) {
+      const e = byId.get(id);
+      if (!e || seen.has(id)) throw fail('NATIVE_HISTORY_GAP');
+      if (e.parentUuid !== null && typeof e.parentUuid !== 'string') throw fail('INVALID_NATIVE_PARENT');
+      seen.add(id); reversed.push(e); id = e.parentUuid;
+      if (id === null && e.type === 'system' && e.subtype === 'compact_boundary') {
+        const logical = e.logicalParentUuid;
+        if (typeof logical !== 'string' || !logical) throw fail('NATIVE_HISTORY_GAP');
+        if (byId.has(logical) && positions.get(logical) < positions.get(e.uuid)) { id = logical; continue; }
+        const retained = byId.get(logical);
+        const originalId = retained?.forkedFrom?.messageUuid ?? logical;
+        const candidates = [];
+        const orderedSources = sources.toSorted((a, b) => a.entries.filter(e => e.subtype === 'compact_boundary').length - b.entries.filter(e => e.subtype === 'compact_boundary').length);
+        for (const other of orderedSources) {
+          if (other === source) continue;
+          const original = other.entries.find(v => v?.uuid === originalId && !v.isSidechain && carrierTypes.has(v.type));
+          if (!original || (retained && !sameBody(retained, original))) continue;
+          // Another compacted copy of this retained tail is not its source.
+          if (other.entries.some(v => v?.subtype === 'compact_boundary' && (v.logicalParentUuid === originalId || v.compactMetadata?.preservedMessages?.allUuids?.includes(originalId)))) continue;
+          try { candidates.push(walk(other, originalId, next)); }
+          catch (error) { if (!['NATIVE_HISTORY_GAP', 'COMPACT_SOURCE_HISTORY_REQUIRED'].includes(error.code)) throw error; }
+        }
+        if (!candidates.length) throw fail('COMPACT_SOURCE_HISTORY_REQUIRED');
+        if (new Set(candidates.map(signature)).size !== 1) throw fail('CONFLICTING_NATIVE_UUID');
+        const prefix = candidates[0];
+        const metadata = e.compactMetadata;
+        let preserved = metadata?.preservedMessages?.allUuids;
+        if (!Array.isArray(preserved)) {
+          const segment = metadata?.preservedSegment;
+          const tail = reversed.toReversed();
+          const start = tail.findIndex(v => v.uuid === segment?.headUuid);
+          const end = tail.findIndex(v => v.uuid === segment?.tailUuid);
+          preserved = start >= 0 && end >= start ? tail.slice(start, end + 1).map(v => v.uuid) : [logical];
+        }
+        if (!preserved.length || new Set(preserved).size !== preserved.length || preserved.some(uuid => !seen.has(uuid))) throw fail('NATIVE_HISTORY_GAP');
+        for (const uuid of preserved) {
+          const copy = byId.get(uuid);
+          const original = prefix.find(v => v.uuid === (copy?.forkedFrom?.messageUuid ?? uuid));
+          if (!original || !sameBody(copy, original) || copy.timestamp !== original.timestamp) throw fail('CONFLICTING_NATIVE_UUID');
+        }
+        const aliases = new Set(preserved.map(uuid => byId.get(uuid)?.forkedFrom?.messageUuid ?? uuid));
+        // Only replace the explicitly retained contiguous suffix. Never trim
+        // arbitrary earlier records or silently discard a source branch.
+        const suffixStart = prefix.findIndex(v => aliases.has(v.uuid));
+        if (suffixStart < 0 || prefix.slice(suffixStart).some(v => !aliases.has(v.uuid))) throw fail('NATIVE_HISTORY_GAP');
+        const result = [...prefix.slice(0, suffixStart), ...reversed.toReversed().filter(v => !(v.type === 'system' && v.subtype === 'compact_boundary'))];
+        if (result[0]?.isCompactSummary) throw fail('COMPACT_SOURCE_HISTORY_REQUIRED');
+        completed.set(key, result);
+        return result;
+      }
+    }
+    const result = reversed.toReversed();
+    if (result[0]?.isCompactSummary) throw fail('COMPACT_SOURCE_HISTORY_REQUIRED');
+    return result;
+  }
+  return walk(snapshot, checkpointId);
+}
+
 // Desktop does not update its index while another client appends to the native
 // session. Follow only a completed descendant, never infer a different branch.
-export function nativeContinuationCheckpoint(snapshot, desktopCheckpointId) {
+export function nativeContinuationCheckpoint(snapshot, desktopCheckpointId, options) {
   const tail = snapshot.entries.findLast(entry => entry && !entry.isSidechain
     && carrierTypes.has(entry.type) && typeof entry.uuid === 'string' && Object.hasOwn(entry, 'parentUuid'));
   if (!tail) throw fail('NATIVE_HISTORY_GAP');
-  const chain = displayChain(snapshot, tail.uuid);
+  const chain = nativeDisplayChain(snapshot, tail.uuid, options);
   if (!chain.some(entry => entry.uuid === desktopCheckpointId)) throw fail('EXPLICIT_BRANCH_SELECTION_REQUIRED');
   const last = chain.findLast(entry => !entry.isMeta && !entry.isCompactSummary
     && ['user', 'assistant'].includes(entry.type));
@@ -97,8 +193,8 @@ function projectBlock(raw, entry, ordinal, sessionId) {
   return { kind: "unknown", rawType, text: null, payload: bounded };
 }
 
-export function projectNativeHistory(snapshot, checkpointId) {
-  const chain = displayChain(snapshot, checkpointId);
+export function projectNativeHistory(snapshot, checkpointId, options) {
+  const chain = nativeDisplayChain(snapshot, checkpointId, options);
   const messages = [];
   let assistant = null;
   function createMessage(entry, role) {

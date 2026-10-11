@@ -73,3 +73,12 @@ test('native history advancing during selection cannot silently change the chose
   }), /STALE_NATIVE_SELECTION/);
   assert.equal(writes, 0);
 });
+
+test('source history changing during selection blocks dispatch even when current native bytes stay identical', async () => {
+  let reads = 0, writes = 0;
+  await assert.rejects(module.selectAndSwitch('leileios', {isTTY:true,
+    load:async()=>module.buildSwitchChoices('leileios',[],[{...desktop(),historyRevision:(reads++ ? 'b' : 'a').repeat(64)}]),
+    ask:async()=>'1',display(){},run(){writes++;},
+  }),/STALE_NATIVE_SELECTION/);
+  assert.equal(writes,0);
+});

@@ -15,7 +15,7 @@ export async function materializeNativeSessionHistoryAssets({ history, conversat
       sourceEntryUuid: reference.source_entry_uuid, sourceBlockOrdinal: reference.source_block_ordinal,
     };
     const metadata = await request('asset', input);
-    const asset = extractNativeHistoryAsset(history.nativeSnapshot, reference, {
+    const asset = extractNativeHistoryAsset({ ...history.nativeSnapshot, entries: history.nativeSnapshot.displayAssets?.entries ?? history.nativeSnapshot.entries }, reference, {
       expectedRevision: input.expectedRevision, maxBytes: 24 * 1024 * 1024,
     });
     if (!metadata || metadata.sha256 !== asset.sha256 || metadata.sizeBytes !== asset.sizeBytes || metadata.mimeType !== asset.mimeType

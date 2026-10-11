@@ -700,3 +700,47 @@ test("Desktop continuation after a stop-hook handoff syncs back once without rew
   assert.equal((await f.write({ ...back, expectedHeadMessageId: after.conversation.currentHeadMessageId, expectedRevision: revision(3) })).outcome, "already_current");
   assert.deepEqual(await f.state(), after);
 }));
+
+test('compact source display assets stay separate from execution root and cannot fabricate historical checkpoints', { skip: !enabled }, async () => fixture(async f => {
+  const { nativeDisplayAssetRevision } = await import('../tools/claude-bridge/src/native-session-history.mjs');
+  const { DrizzleNativeLiveProviderSessionStoreRepository } = await import('../src/domains/bridge/provider-session/native-live-provider-session-store.js');
+  const { nativeSessionAsset } = await import('../src/domains/conversation/native-session-asset-repository.js');
+  const ids = Array.from({length: 8}, () => randomUUID());
+  const [u, a, boundary, summary, copy, next, middleUser, originalTail] = ids;
+  const image = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: Buffer.from('synthetic original bytes').toString('base64') } };
+  const original = { sessionId: randomUUID(), revision: revision(8), entries: [
+    { ...row(u, null, 'user', 'old'), message: { content: [image] } }, row(a, u, 'assistant', 'first reply'), row(middleUser, a, 'user', 'second'), row(originalTail, middleUser, 'assistant', 'old reply'),
+  ] };
+  const entries = [
+    { ...row(boundary, null, 'system', ''), subtype: 'compact_boundary', logicalParentUuid: copy, compactMetadata: { preservedMessages: { allUuids: [copy] } } },
+    { ...row(summary, boundary, 'user', 'summary'), isCompactSummary: true },
+    { ...row(copy, summary, 'assistant', 'old reply'), forkedFrom: { sessionId: original.sessionId, messageUuid: originalTail } },
+    row(next, copy, 'user', 'current'), row(f.entries[1].uuid, next, 'assistant', 'current reply'),
+  ];
+  const assets = [{ type: 'user', uuid: u, message: { content: [image] } }];
+  const assetRevision = nativeDisplayAssetRevision(assets);
+  const input = { ...f.input, projection: projectNativeHistory({sessionId:f.sessionId, revision:revision(1), entries}, f.entries[1].uuid, {sourceSnapshots:[original]}),
+    nativeSnapshot: {sessionId:f.sessionId, revision:revision(1), entries, displayAssets:{entries:assets, revision:assetRevision}} };
+  const first = await f.write(input);
+  const state = await f.state();
+  assert.equal(state.messages.length, 6);
+  assert.equal(state.checkpoints.length, 2, 'no current-session checkpoint for old source-only assistant');
+  // The retained copy exists in the actual root; the original source user does not.
+  assert.equal(state.checkpoints.at(-1).providerCheckpointId, f.entries[1].uuid);
+  const store = new DrizzleNativeLiveProviderSessionStoreRepository(f.database.db);
+  assert.deepEqual(await store.load({userId:f.owner,key:{sessionId:f.sessionId}}), entries);
+  assert.deepEqual(await store.load({userId:f.owner,key:{sessionId:f.sessionId,subpath:`native-history-assets/${assetRevision}`}}), assets);
+  assert.deepEqual(await store.listSubkeys({userId:f.owner,sessionId:f.sessionId}),[], 'display bytes must not be exposed as SDK subagent transcripts');
+  const asset = await nativeSessionAsset(f.database.db,{userId:f.owner,conversationId:f.input.conversationId,sessionId:f.sessionId,expectedRevision:revision(1),sourceEntryUuid:u,sourceBlockOrdinal:0});
+  assert.equal(asset.sizeBytes, Buffer.byteLength('synthetic original bytes'));
+  assert.equal((await f.write({...input,expectedHeadMessageId:first.headMessageId,expectedRevision:revision(1)})).outcome,'already_current');
+  const bad = structuredClone(input);
+  bad.nativeSnapshot.displayAssets.revision = revision(9);
+  await assert.rejects(f.write(bad), e => e.code === 'INVALID_NATIVE_SNAPSHOT');
+  const tampered = structuredClone(assets[0]);
+  tampered.message.content[0].source.data = Buffer.from('tampered bytes').toString('base64');
+  await f.database.db.execute(sql`UPDATE native_live_provider_session_entries SET entry=${JSON.stringify(tampered)}::jsonb
+    WHERE user_id=${f.owner}::uuid AND provider_session_id=${f.sessionId} AND subpath=${`native-history-assets/${assetRevision}`}`);
+  await assert.rejects(nativeSessionAsset(f.database.db,{userId:f.owner,conversationId:f.input.conversationId,sessionId:f.sessionId,
+    expectedRevision:revision(1),sourceEntryUuid:u,sourceBlockOrdinal:0}), e=>e.code==='NATIVE_ASSET_MISMATCH');
+}));
