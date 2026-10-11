@@ -5,6 +5,7 @@ import path from 'node:path';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { materializeNativeSessionHistoryAssets } from './native-session-assets.mjs';
+import { nativeDisplayAssetRevision, nativeSyncDigest, neutralMessageFingerprint } from './native-session-history.mjs';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = code => Object.assign(new Error(code), { code });
 // Time bounds, inner to outer. A large restore upload must give up before the
@@ -24,7 +25,7 @@ const retryOnUnavailable = new Set(['state', 'asset-stage', 'restore', 'release'
 // A restore that timed out may still be committing; replaying it only queues
 // behind the same lock, so only short read/bind calls retry after a timeout.
 const retryOnTimeout = new Set(['state', 'asset-stage', 'release', 'asset', 'choices']);
-const publicCodes = new Set(['NATIVE_CONVERSATION_BUSY', 'STALE_NATIVE_PROJECTION', 'CANONICAL_HEAD_CHANGED', 'CANONICAL_HISTORY_CHANGED', 'CANONICAL_CHECKPOINT_CHANGED', 'NATIVE_SOURCE_BINDING_REQUIRED', 'EXPLICIT_BRANCH_SELECTION_REQUIRED', 'NATIVE_HISTORY_REWRITTEN', 'NATIVE_TRANSCRIPT_DIVERGED', 'NATIVE_SESSION_RECOVERY_REQUIRED', 'CLEANUP_IN_PROGRESS', 'NATIVE_CONVERSATION_NOT_FOUND', 'INVALID_NATIVE_PROJECTION', 'INVALID_NATIVE_SNAPSHOT', 'BATCH_TOO_LARGE', 'NATIVE_SESSION_ALREADY_ATTACHED', 'INVALID_NATIVE_ASSET', 'NATIVE_ASSET_UNAVAILABLE', 'NATIVE_ASSET_MISMATCH']);
+const publicCodes = new Set(['NATIVE_CONVERSATION_BUSY', 'STALE_NATIVE_PROJECTION', 'CANONICAL_HEAD_CHANGED', 'CANONICAL_HISTORY_CHANGED', 'CANONICAL_CHECKPOINT_CHANGED', 'NATIVE_SOURCE_BINDING_REQUIRED', 'EXPLICIT_BRANCH_SELECTION_REQUIRED', 'NATIVE_HISTORY_REWRITTEN', 'NATIVE_TRANSCRIPT_DIVERGED', 'NATIVE_SESSION_RECOVERY_REQUIRED', 'CLEANUP_IN_PROGRESS', 'NATIVE_CONVERSATION_NOT_FOUND', 'INVALID_NATIVE_PROJECTION', 'INVALID_NATIVE_SNAPSHOT', 'BATCH_TOO_LARGE', 'NATIVE_SESSION_ALREADY_ATTACHED', 'INVALID_NATIVE_ASSET', 'NATIVE_ASSET_UNAVAILABLE', 'NATIVE_ASSET_MISMATCH', 'NATIVE_SYNC_BASE_CHANGED']);
 
 // Explicit history restore only: no SDK query, native file writes, Desktop
 // launching or execution lease. The server binds ownership to internal auth.
@@ -89,6 +90,26 @@ export function nativeHistoryRequest({ relayUrl, relayToken, fetchImpl = fetch,
   };
 }
 
+// Send only what follows the server's synchronized base, when both sides agree
+// on it by digest. Anything else falls back to the full history.
+export function incrementalNativePayload(history, state) {
+  let projection = history.projection, nativeSnapshot = history.nativeSnapshot;
+  const messages = projection.messages, anchor = state?.messageAnchor, base = state?.entriesAnchor;
+  if (anchor && Number.isSafeInteger(anchor.count) && anchor.count >= 1 && anchor.count <= messages.length) {
+    const pairs = messages.slice(0, anchor.count).map(m => ({ sourceMessageId: m.sourceMessageId, fingerprint: neutralMessageFingerprint(m) }));
+    // Keep at least one message: the projection must end at its checkpoint.
+    const count = Math.min(anchor.count, messages.length - 1);
+    if (nativeSyncDigest(pairs) === anchor.digest && count >= 1) {
+      projection = { ...projection, messages: messages.slice(count), anchor: { count, digest: nativeSyncDigest(pairs.slice(0, count)) } };
+    }
+  }
+  if (base && Number.isSafeInteger(base.count) && base.count >= 1 && base.count <= nativeSnapshot.entries.length
+    && nativeDisplayAssetRevision(nativeSnapshot.entries.slice(0, base.count)) === base.digest) {
+    nativeSnapshot = { ...nativeSnapshot, entries: nativeSnapshot.entries.slice(base.count), entriesOffset: base.count };
+  }
+  return { projection, nativeSnapshot };
+}
+
 export async function restoreDesktopNativeSession({ input, conversationId, relayUrl, relayToken, fetchImpl = fetch,
   recoveryDirectory = input?.recoveryDirectory ?? path.join(homedir(), '.leileios'), uploadImpl = fetch, sleep, retryDelaysMs }) {
   if (!uuid.test(conversationId ?? '')) throw fail('INVALID_NATIVE_RESTORE_ENDPOINT');
@@ -102,20 +123,30 @@ export async function restoreDesktopNativeSession({ input, conversationId, relay
     !(state.expectedRevision === null || /^[0-9a-f]{64}$/.test(state.expectedRevision ?? ''))) throw fail('NATIVE_RESTORE_INVALID_RESPONSE');
   const displayAssets = history.nativeSnapshot.displayAssets;
   if (displayAssets) await stageNativeDisplayAssets({ request, sessionId: history.nativeSnapshot.sessionId, assets: displayAssets });
-  const nativeSnapshot = displayAssets
-    ? { ...history.nativeSnapshot, displayAssets: { revision: displayAssets.revision, stagedCount: displayAssets.entries.length } }
-    : history.nativeSnapshot;
+  const staged = displayAssets ? { displayAssets: { revision: displayAssets.revision, stagedCount: displayAssets.entries.length } } : {};
   // A remote round trip may take time. Pin source/index and release again
   // immediately before submitting; backend still checks canonical CAS/busy.
   await preflightNativeSessionSwitch(input);
   await assertNativeHandoffRecoveryClear(recoveryDirectory);
-  const result = await request('restore', { conversationId, expectedHeadMessageId: state.expectedHeadMessageId,
+  const submit = ({ projection, nativeSnapshot }) => request('restore', { conversationId, expectedHeadMessageId: state.expectedHeadMessageId,
     expectedRevision: state.expectedRevision, effectiveWorkingDirectory: selection.workingDirectory,
-    projection: history.projection, nativeSnapshot });
+    projection, nativeSnapshot: { ...nativeSnapshot, ...staged } });
+  const incremental = incrementalNativePayload(history, state);
+  let result;
+  try { result = await submit(incremental); }
+  catch (error) {
+    // The base moved between `state` and `restore`: resend the full history once.
+    if (error?.code !== 'NATIVE_SYNC_BASE_CHANGED' || incremental.projection === history.projection && incremental.nativeSnapshot === history.nativeSnapshot) throw error;
+    result = await submit({ projection: history.projection, nativeSnapshot: history.nativeSnapshot });
+  }
   if (!result || !['restored', 'already_current'].includes(result.outcome) || result.conversationId !== conversationId ||
-    !uuid.test(result.headMessageId ?? '') || !Number.isSafeInteger(result.inserted) || result.inserted < 0) throw fail('NATIVE_RESTORE_INVALID_RESPONSE');
+    !uuid.test(result.headMessageId ?? '') || !Number.isSafeInteger(result.inserted) || result.inserted < 0 ||
+    !(result.pendingAssets === undefined || (Array.isArray(result.pendingAssets) && result.pendingAssets.every(ref =>
+      uuid.test(ref?.sourceEntryUuid ?? '') && Number.isSafeInteger(ref.sourceBlockOrdinal))))) throw fail('NATIVE_RESTORE_INVALID_RESPONSE');
   await preflightNativeSessionSwitch(input);
-  const assets = await materializeNativeSessionHistoryAssets({ history, conversationId, request, uploadImpl });
+  // Only assets the server still lacks; older servers do not say, so check all.
+  const assets = await materializeNativeSessionHistoryAssets({ history, conversationId, request, uploadImpl,
+    only: result.pendingAssets && new Set(result.pendingAssets.map(ref => `${ref.sourceEntryUuid}:${ref.sourceBlockOrdinal}`)) });
   return { outcome: result.outcome, conversationId, headMessageId: result.headMessageId, inserted: result.inserted,
     providerSessionId: selection.providerSessionId, providerCheckpointId: selection.providerCheckpointId,
     nativeRevision: selection.nativeRevision, executionAuthorized: false, assets };
