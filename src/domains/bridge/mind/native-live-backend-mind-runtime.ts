@@ -11,9 +11,6 @@ import type {
 } from "../../runtime/mind/native-live-mind-runtime.js";
 import type { NativeLivePreparedTurn } from "../turn/native-live-backend-turn-coordinator.js";
 import { planReplacementMessagePurge } from "../turn/native-live-replacement-purge.js";
-import type {
-  NativeLiveContextLineageReader,
-} from "../turn/native-live-context-lineage-repository.js";
 
 export interface NativeLiveBackendMindConversationReader {
   getConversation(input: {
@@ -80,19 +77,15 @@ function requirePreparedUserMessage(
 }
 
 /**
- * Cross-device adapter between the persisted backend preparation and the
- * existing branch-safe Mind runtime.
- *
- * The backend remains canonical for conversation/Mind state. The prepared
- * runtime prompt is persisted before it is handed to the Mac executor so
- * idempotent prepare replays do not rebuild context from a later state.
+ * Native Live retains canonical branch/lifecycle validation here. Automatic
+ * recall and finalized receipts belong to the installed Claude Code Mind Hook
+ * on both clients; Memory creation belongs to the MCP tool.
  */
 export class DefaultNativeLiveBackendMindRuntime
 implements NativeLiveBackendMindRuntime {
   constructor(
     private readonly conversations: NativeLiveBackendMindConversationReader,
-    private readonly mind: NativeLiveMindRuntime,
-    private readonly contextLineage: NativeLiveContextLineageReader | null = null,
+    private readonly mind: Pick<NativeLiveMindRuntime, "reconcileSelectedPath">,
   ) {}
 
   async preparePrompt(input: {
@@ -122,82 +115,26 @@ implements NativeLiveBackendMindRuntime {
       return input.preparation.prompt;
     }
 
-    const excludedReferenceIds =
-      this.replacementExcludedReferenceIds(
-        conversation,
-        input.preparation,
-      );
+    this.validateReplacementTarget(conversation, input.preparation);
+    const isVoice = userMessage.blocks.some(
+      (block) => block.payload?.input_mode === "voice",
+    );
+    if (!isVoice) return input.preparation.prompt;
 
-    const contextLineage = await this.readContextLineage({
-      userId: input.userId,
-      conversationId: input.preparation.conversationId,
-      parentMessageId: userMessage.parentMessageId,
-      runtimeMode: input.preparation.runtimeMode,
-    });
-
-    return this.mind.prepareUserTurn({
-      userId: input.userId,
-      conversation,
-      userMessage,
-      userText: input.preparation.prompt,
-      surfaceHeadMessageId: userMessage.parentMessageId,
-      manifestId: input.preparation.prepareId,
-      excludedReferenceIds,
-      contextLineage,
-    });
+    // Preserve the established Voice annotation, leaving current-turn time
+    // and automatic Mind context to the same installed Hooks used by Desktop.
+    const text = input.preparation.prompt
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+    return `<user_message input_mode="voice">[voice] ${text}</user_message>`;
   }
 
-  async planSemanticPrompt(input: {
+  async planSemanticPrompt(_input: {
     userId: string;
     preparation: NativeLivePreparedTurn;
   }): Promise<NativeLiveMindSemanticPlan | null> {
-    if (isNativeClaudeScheduleCommand(input.preparation)) {
-      return null;
-    }
-    if (!this.mind.planSemanticUserTurn) return null;
-
-    const conversation = await this.requireConversation(
-      input.userId,
-      input.preparation.conversationId,
-    );
-    const userMessage = requirePreparedUserMessage(
-      conversation,
-      input.preparation.canonicalUserMessageId,
-    );
-
-    if (input.preparation.operation === "send") {
-      await this.mind.reconcileSelectedPath({
-        userId: input.userId,
-        conversation: {
-          ...conversation,
-          currentHeadMessageId: userMessage.id,
-        },
-      });
-    }
-
-    const excludedReferenceIds =
-      this.replacementExcludedReferenceIds(
-        conversation,
-        input.preparation,
-      );
-
-    const contextLineage = await this.readContextLineage({
-      userId: input.userId,
-      conversationId: input.preparation.conversationId,
-      parentMessageId: userMessage.parentMessageId,
-      runtimeMode: input.preparation.runtimeMode,
-    });
-
-    return this.mind.planSemanticUserTurn({
-      userId: input.userId,
-      conversation,
-      userMessage,
-      userText: input.preparation.prompt,
-      surfaceHeadMessageId: userMessage.parentMessageId,
-      manifestId: input.preparation.prepareId,
-      excludedReferenceIds,
-      contextLineage,
-    });
+    return null;
   }
 
   async completeSemanticPrompt(input: {
@@ -206,71 +143,19 @@ implements NativeLiveBackendMindRuntime {
     plan: NativeLiveMindSemanticPlan;
     scores: ReadonlyMap<string, number> | null;
   }): Promise<string> {
-    if (!this.mind.prepareUserTurnFromSemanticPlan) {
-      throw new Error("Backend Mind runtime does not support semantic completion.");
-    }
-
-    const conversation = await this.requireConversation(
-      input.userId,
-      input.preparation.conversationId,
-    );
-    const userMessage = requirePreparedUserMessage(
-      conversation,
-      input.preparation.canonicalUserMessageId,
-    );
-
-    const excludedReferenceIds =
-      this.replacementExcludedReferenceIds(
-        conversation,
-        input.preparation,
-      );
-
-    const contextLineage = await this.readContextLineage({
-      userId: input.userId,
-      conversationId: input.preparation.conversationId,
-      parentMessageId: userMessage.parentMessageId,
-      runtimeMode: input.preparation.runtimeMode,
-    });
-
-    return this.mind.prepareUserTurnFromSemanticPlan({
-      userId: input.userId,
-      conversation,
-      userMessage,
-      userText: input.preparation.prompt,
-      surfaceHeadMessageId: userMessage.parentMessageId,
-      excludedReferenceIds,
-      contextLineage,
-      plan: input.plan,
-      scores: input.scores,
-    });
+    // Drain pre-deployment staged work without injecting another Mind context.
+    return this.preparePrompt(input);
   }
 
-  private async readContextLineage(input: {
-    userId: string;
-    conversationId: string;
-    parentMessageId: string | null;
-    runtimeMode: NativeLivePreparedTurn["runtimeMode"];
-  }) {
-    const lineage = this.contextLineage
-      ? await this.contextLineage.readForMessage({
-          userId: input.userId,
-          conversationId: input.conversationId,
-          canonicalMessageId: input.parentMessageId,
-        })
-      : null;
-
-    return lineage;
-  }
-
-  private replacementExcludedReferenceIds(
+  private validateReplacementTarget(
     conversation: NativeLiveConversation,
     preparation: NativeLivePreparedTurn,
-  ): ReadonlySet<string> | undefined {
+  ): void {
     if (
       preparation.operation === "send"
       || preparation.operation === "wake"
     ) {
-      return undefined;
+      return;
     }
 
     const targetUserMessageId =
@@ -290,13 +175,14 @@ implements NativeLiveBackendMindRuntime {
         "Replacement branch is no longer a valid current-path target.",
       );
     }
-    return new Set(plan.messageIds);
   }
 
   parseAssistantBlocks(
     blocks: readonly NativeLiveContentBlockInput[],
   ): ParsedAssistantBlocks {
-    return this.mind.parseAssistantBlocks(blocks);
+    // Output tags are prose, never another persistence channel. Do not strip
+    // them and pretend a Memory was saved without a successful MCP receipt.
+    return { visibleBlocks: blocks.map((block) => ({ ...block })), intents: [] };
   }
 
   async afterFinalize(input: {
@@ -311,31 +197,15 @@ implements NativeLiveBackendMindRuntime {
       input.preparation.conversationId,
     );
 
-    await this.mind.recordFinalizedBreathRecall?.({
-      userId: input.userId,
-      manifestId: input.preparation.prepareId,
-    });
-
-    if (input.intents.length > 0) {
-      const assistantMessage = conversation.messages.find(
-        (candidate) =>
-          candidate.id === input.assistantMessageId
-          && candidate.role === "assistant",
-      );
-      if (!assistantMessage) {
-        throw new Error(
-          "Finalized canonical assistant message was not found.",
-        );
-      }
-      await this.mind.recordAssistantIntents({
-        userId: input.userId,
-        conversationId: input.preparation.conversationId,
-        assistantMessageId: input.assistantMessageId,
-        assistantMessageCreatedAt: assistantMessage.createdAt,
-        intents: input.intents,
-        stateIds: input.stateIds,
-      });
+    if (input.intents.length > 0 && !conversation.messages.some(
+      (message) => message.id === input.assistantMessageId
+        && message.role === "assistant",
+    )) {
+      throw new Error("Finalized canonical assistant message was not found.");
     }
+
+    // Ignore persisted legacy tag intents too. MCP alone creates Memory, and
+    // the Hook confirms recall. Retain reconciliation for replaced paths.
 
     if (
       input.preparation.operation === "send"

@@ -101,7 +101,7 @@ test("sendNew preserves Claude Code settings and normalized event parity", async
       cwd: "/workspace/leilei-os",
       env: {
         HOME: "/Users/leilei",
-        LEILEI_MIND_HOOK_DISABLED: "1",
+        LEILEI_MIND_HOOK_DISABLED: "0",
         DISABLE_AUTO_COMPACT: "1",
         CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
       },
@@ -2537,10 +2537,10 @@ test("retired meme options cannot register a server or inject a hint; send_file 
   assert.deepEqual(rows.map(row => [row.sessionId, row.cwd]), [["historical", "/historical"]]);
 });
 
-test("Native Live SDK explicitly bypasses the standalone Claude Code Mind hook", () => {
+test("Native Live SDK enables the same installed Mind Hook without mutating caller environment", () => {
   const environment = {LEILEI_MIND_HOOK_DISABLED: "0", HOME: "/tmp/leileios-test"};
   const transport = new AgentSdkClaudeTransport({environment});
-  assert.equal(transport.environment.LEILEI_MIND_HOOK_DISABLED, "1");
+  assert.equal(transport.environment.LEILEI_MIND_HOOK_DISABLED, "0");
   assert.equal(environment.LEILEI_MIND_HOOK_DISABLED, "0");
 });
 
@@ -2809,4 +2809,9 @@ test('local exact resume accepts only canonically failed input-only tails and ne
     if(allowed){const result=await run;assert.equal(result.providerSessionId,sessionId);assert.equal(result.providerCheckpointId,child);assert.equal(queries,1);}
     else {await assert.rejects(run,e=>e.runtimeCode==='PROVIDER_SESSION_CONFLICT');assert.equal(queries,0);}
   }
+});
+
+test("Native Live default enables Mind Hook while respecting an explicit emergency disable", () => {
+  assert.equal(new AgentSdkClaudeTransport({environment: {}}).environment.LEILEI_MIND_HOOK_DISABLED, "0");
+  assert.equal(new AgentSdkClaudeTransport({environment: {LEILEI_MIND_HOOK_DISABLED: "1"}}).environment.LEILEI_MIND_HOOK_DISABLED, "1");
 });

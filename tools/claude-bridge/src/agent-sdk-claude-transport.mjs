@@ -419,8 +419,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.localCheckpointAncestry = new Map();
     this.environment = {
       ...environment,
-      // Native Live already supplies canonical Mind context and owns its recall accounting.
-      LEILEI_MIND_HOOK_DISABLED: "1",
+      // Share installed Mind Hooks with Desktop; honor an explicit emergency disable.
+      LEILEI_MIND_HOOK_DISABLED: environment.LEILEI_MIND_HOOK_DISABLED ?? "0",
       DISABLE_AUTO_COMPACT: "1",
       CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
     };

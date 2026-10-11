@@ -66,13 +66,11 @@ test("persisted pre-deployment context renders former feelings once as memories 
 });
 
 
-test("actual bridge prompt guides emotional memories and the instructed tag writes only memory", async () => {
-  const {LEILEIOS_MIND_SYSTEM_PROMPT:prompt} = await import("../tools/claude-bridge/src/leileios-mind-system-prompt.mjs");
-  assert.doesNotMatch(prompt, /thought|<feel>|Relevant feelings/i);
+test("bridge directs optional emotional memories through MCP, never output tags", async () => {
+  const {LEILEIOS_MIND_SYSTEM_PROMPT: prompt} = await import("../tools/claude-bridge/src/leileios-mind-system-prompt.mjs");
+  assert.match(prompt, /write_memory/);
+  assert.match(prompt, /MCP/);
   assert.match(prompt, /how it felt at the time/);
   assert.match(prompt, /why it matters/);
-  const parsed = parseMindWriteIntents("<memory>Our reunion mattered; I felt reassured by her kindness.</memory>");
-  const state = createMindState({...input, kind:parsed.intents[0]!.kind, text:parsed.intents[0]!.text});
-  assert.equal(state.kind,"memory");
-  assert.equal(state.text,"Our reunion mattered; I felt reassured by her kindness.");
+  assert.doesNotMatch(prompt, /<memory>|<leileios_mind_write>/);
 });
