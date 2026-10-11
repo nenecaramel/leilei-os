@@ -52,6 +52,7 @@ export async function restoreDesktopNativeSession({ input, conversationId, relay
   const request = nativeHistoryRequest({ relayUrl, relayToken, fetchImpl });
   await assertNativeHandoffRecoveryClear(recoveryDirectory);
   const selection = await preflightNativeSessionSwitch(input);
+  input = { ...input, expectedHistoryRevision: selection.historyRevision };
   const history = await readDesktopNativeHistory(input);
   const state = await request('state', { conversationId, sessionId: selection.providerSessionId });
   if (!state || !(state.expectedHeadMessageId === null || uuid.test(state.expectedHeadMessageId ?? '')) ||
