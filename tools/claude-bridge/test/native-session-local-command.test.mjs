@@ -32,3 +32,17 @@ test('local switch lists without credentials and never prints credential acquisi
   assert.deepEqual(calls, [process.execPath]);
   assert.throws(() => runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { execute() { throw new Error('PRIVATE_TOKEN'); } }), error => error.message === 'RELAY_CREDENTIALS_UNAVAILABLE');
 });
+
+test('selected conversation is forwarded explicitly and invalid identity is rejected before any side effect', async () => {
+  const { runLocalSwitch } = await import('../../../scripts/native-session-local.mjs');
+  const conversationId = '00000000-0000-4000-8000-000000000099';
+  let childArgs;
+  runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], {
+    conversationId, execute(command, args) {
+      if (command === 'railway') return JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 'PRIVATE', MCP_SERVER_URL: 'https://fixture.example' });
+      childArgs = args; return '{}';
+    }, print() {},
+  });
+  assert.deepEqual(childArgs.slice(-2), ['--conversation-id', conversationId]);
+  assert.throws(() => runLocalSwitch(['desktop', conversationId], { conversationId: '../bad', execute() { assert.fail('must not execute'); } }), /INVALID_CONVERSATION_ID/);
+});
