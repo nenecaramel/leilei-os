@@ -86,7 +86,7 @@ test('thought process opens a native sheet with a leading icon and no toolbar bu
 });
 test('assistant action glyphs keep centered copy and clockwise retry rotations', () => {
   const actions = readFileSync(root + 'NativeLiveAssistantActions.swift', 'utf8');
-  assert.match(actions, /Image\(systemName:isCopied \? "checkmark" : "square.on.square"\)\.font\(\.system\(size:14,weight:\.light\)\)\.rotationEffect\(\.degrees\(isCopied \? 0 : 180\)\)/);
+  assert.match(actions, /Image\(systemName:isCopied \? "checkmark" : "square.on.square"\)\.rotationEffect\(\.degrees\(isCopied \? 0 : 180\)\)/);
   assert.equal((actions.match(/rotationEffect/g) ?? []).length, 2);
   assert.match(actions, /onCopyMessage\(text\)/);
   assert.match(actions, /onRetryMessage\(user\)/);
@@ -94,17 +94,17 @@ test('assistant action glyphs keep centered copy and clockwise retry rotations',
 
 test('thinking icon uses the reference dotted clock without changing the sheet or work row', () => {
   const surface = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
-  assert.match(surface, /NativeLiveThoughtProcessIcon\(\)\s*\.frame\(width: 14, height: 14\)\s*\.scaleEffect\(1\.2\)\s*\.accessibilityHidden\(true\)/);
+  assert.match(surface, /NativeLiveThoughtProcessIcon\(\)\s*\.frame\(width: 14, height: 14\)\s*\.scaleEffect\(1\.1\)\s*\.padding\(\.trailing, 1\)\s*\.accessibilityHidden\(true\)/);
   assert.doesNotMatch(surface, /clock\.arrow\.circlepath/);
   assert.match(surface, /private struct NativeLiveThoughtProcessIcon: View/);
   assert.match(surface, /for degrees in \[200\.0, 220, 240, 260\]/);
   assert.match(surface, /lineCap: \.round/);
 });
 
-test('process and footer glyphs align with body and action spacing is 8pt', () => {
+test('process and footer glyphs align with body and action spacing is 10pt', () => {
   const layout = readFileSync('ios/LeileiOS/LeileiOS/Chat/ChatPresentationLayout.swift', 'utf8');
   assert.doesNotMatch(layout, /processLeadingInset/);
-  assert.match(layout, /actionSpacing: CGFloat = 8/);
+  assert.match(layout, /actionSpacing: CGFloat = 10/);
   for (const name of ['NativeLiveVisibleThinkingSurface.swift', 'NativeLiveRuntimeActivity.swift']) {
     assert.doesNotMatch(readFileSync(root + name, 'utf8'), /ChatPresentationLayout\.processLeadingInset/);
   }
@@ -112,10 +112,13 @@ test('process and footer glyphs align with body and action spacing is 8pt', () =
   assert.equal((actions.match(/height:ChatPresentationLayout\.actionDiameter,alignment:\.leading/g) ?? []).length, 2);
 });
 
-test('clock paint grows without moving layout and both action icons use light weight', () => {
+test('clock paint and thought inset are refined while action icons return to regular', () => {
   const surface = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
-  assert.match(surface, /NativeLiveThoughtProcessIcon\(\)\s*\.frame\(width: 14, height: 14\)\s*\.scaleEffect\(1\.2\)/);
+  assert.match(surface, /NativeLiveThoughtProcessIcon\(\)\s*\.frame\(width: 14, height: 14\)\s*\.scaleEffect\(1\.1\)/);
   const actions = readFileSync(root + 'NativeLiveAssistantActions.swift', 'utf8');
-  assert.match(actions, /Image\(systemName:"arrow.clockwise"\)\.font\(\.system\(size:14,weight:\.light\)\)\.rotationEffect\(\.degrees\(20\)\)\.frame/);
-  assert.equal((actions.match(/size:14,weight:\.light/g) ?? []).length, 2);
+  assert.match(actions, /Image\(systemName:"arrow.clockwise"\)\.rotationEffect\(\.degrees\(20\)\)\.frame/);
+  assert.doesNotMatch(actions, /weight:\s*\.light/);
+  assert.match(actions, /\}\.font\(\.system\(size:14\)\)/);
+  assert.match(surface, /\.padding\(\.leading, 2\)/);
+  assert.match(surface, /\.padding\(\.trailing, 1\)/);
 });

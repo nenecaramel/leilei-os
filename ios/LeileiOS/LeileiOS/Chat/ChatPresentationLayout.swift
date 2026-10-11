@@ -13,7 +13,7 @@ enum ChatPresentationLayout {
     static let bubbleRadius: CGFloat = 18
     static let processSectionSpacing: CGFloat = 18
     static let assistantSpacing: CGFloat = 6
-    static let actionSpacing: CGFloat = 8
+    static let actionSpacing: CGFloat = 10
     static let actionDiameter: CGFloat = 22
     static let actionTopInset: CGFloat = 7
     static let scrollActionDiameter: CGFloat = 38
