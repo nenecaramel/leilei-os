@@ -242,8 +242,13 @@ test('Desktop launcher uses exact original identity/cwd and does not pass relay 
       assert.equal(options.env.LEILEI_NATIVE_LIVE_RELAY_URL, undefined);
       assert.equal(options.env.PATH, '/synthetic/bin');
       return { stdout: 'PRIVATE_CONTENT' };
-    }, { PATH: '/synthetic/bin', LEILEI_NATIVE_LIVE_RELAY_TOKEN: 'PRIVATE_TOKEN', LEILEI_NATIVE_LIVE_RELAY_URL: 'https://relay.invalid' });
+    }, { PATH: '/synthetic/bin', LEILEI_NATIVE_LIVE_RELAY_TOKEN: 'PRIVATE_TOKEN', LEILEI_NATIVE_LIVE_RELAY_URL: 'https://relay.invalid' }, '/fixture/home');
   assert.equal(calls, 1);
+  // The default config location is not named: the CLI would look up another sign-in.
+  await launchDesktopNativeSession({ providerSessionId: A, workingDirectory: '/fixture', configDirectory: '/fixture/home/.claude' },
+    async (_file, _args, options) => { calls++; assert.equal('CLAUDE_CONFIG_DIR' in options.env, false); },
+    { PATH: '/synthetic/bin', CLAUDE_CONFIG_DIR: '/fixture/home/.claude' }, '/fixture/home');
+  assert.equal(calls, 2);
   await assert.rejects(launchDesktopNativeSession({ providerSessionId: A, workingDirectory: '/fixture' },
     async () => { throw new Error('PRIVATE_CONTENT'); }), e => e.code === 'NATIVE_DESKTOP_LAUNCH_FAILED' && !e.message.includes('PRIVATE'));
 });
@@ -464,4 +469,17 @@ test('native restore separates timeout from opaque server rejection without leak
   await assert.rejects(refused('restore', { hello: 'world' }),
     error => error.code === 'NATIVE_RESTORE_SERVER_REJECTED' && error.message === 'NATIVE_RESTORE_SERVER_REJECTED');
   assert.equal(requests, 2, 'neither a timeout nor an HTTP refusal triggers an automatic retry');
+});
+
+test('default Desktop launcher runs under a pseudo terminal with stdin from /dev/null', { skip: process.platform !== 'darwin' }, async () => {
+  const { launchDesktopNativeSession } = await import('../src/native-session-switch-restore.mjs');
+  const { mkdtemp, writeFile, chmod, readFile, rm } = await import('node:fs/promises');
+  const dir = await mkdtemp(path.join(tmpdir(), 'desktop-launch-'));
+  try {
+    // A stand-in `claude` that records whether it saw terminals, like --desktop requires.
+    await writeFile(path.join(dir, 'claude'), `#!/bin/sh\ni=; o=; [ -t 0 ] && i=stdin-tty; [ -t 1 ] && o=stdout-tty\nprintf '%s\\n%s\\n%s\\n' "$i" "$o" "$*" > "${dir}/seen"\n`);
+    await chmod(path.join(dir, 'claude'), 0o755);
+    await launchDesktopNativeSession({ providerSessionId: A, workingDirectory: dir }, undefined, { PATH: `${dir}:/usr/bin:/bin` });
+    assert.equal(await readFile(path.join(dir, 'seen'), 'utf8'), `stdin-tty\nstdout-tty\n--desktop --resume ${A}\n`);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
