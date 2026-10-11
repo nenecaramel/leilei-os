@@ -2840,3 +2840,76 @@ test("interactive summarized thinking respects explicit disabled and between-too
     assert.deepEqual(call.options.thinking, { type: execution.thinking });
   }
 });
+
+
+for (const interactive of [false, true]) {
+  for (const setting of [undefined, "0", "1"]) {
+    test(`Artifact opt-in ${setting ?? "unset"} preserves ${interactive ? "interactive" : "ordinary"} query permissions`, async () => {
+      let call;
+      const environment = setting === undefined ? {} : { LEILEI_NATIVE_LIVE_CLAUDE_ARTIFACT: setting };
+      const transport = new AgentSdkClaudeTransport({ environment,
+        queryImpl: input => { call = input; return fakeQuery(successFixture()); },
+      });
+      if (interactive) await transport.executeTurn("synthetic", { mode: "new" });
+      else await transport.sendNew("synthetic");
+      assert.deepEqual(call.options.settings, setting === "1" ? { enableArtifact: true } : undefined);
+      assert.deepEqual(call.options.settingSources, ["user", "project", "local"]);
+      assert.equal(call.options.allowedTools, undefined);
+      assert.notEqual(call.options.permissionMode, "bypassPermissions");
+      assert.equal(call.options.env.CLAUDE_CODE_DISABLE_ARTIFACT, undefined);
+    });
+  }
+}
+
+test("invalid Artifact switch fails before creating an SDK query", () => {
+  assert.throws(() => new AgentSdkClaudeTransport({
+    environment: { LEILEI_NATIVE_LIVE_CLAUDE_ARTIFACT: "yes" },
+    queryImpl: () => assert.fail("must not start SDK"),
+  }), /LEILEI_NATIVE_LIVE_CLAUDE_ARTIFACT must be 0 or 1/);
+});
+
+test("Artifact opt-in preserves explicit SDK environment disable", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: { LEILEI_NATIVE_LIVE_CLAUDE_ARTIFACT: "1", CLAUDE_CODE_DISABLE_ARTIFACT: "1" },
+    queryImpl: input => { call = input; return fakeQuery(successFixture()); },
+  });
+  await transport.executeTurn("synthetic", { mode: "new" });
+  assert.equal(call.options.env.CLAUDE_CODE_DISABLE_ARTIFACT, "1");
+});
+
+for (const toolName of ["WebFetch", "Artifact", "RemoteTrigger", "Monitor", "PushNotification"]) {
+  test(`native ${toolName} callback preserves user denial without trusted auto-allow`, async () => {
+    const requests = [];
+    const transport = new AgentSdkClaudeTransport({ environment: {},
+      queryImpl: ({ options }) => ({ close() {}, async *[Symbol.asyncIterator]() {
+        const decision = await options.canUseTool(toolName, { synthetic: true }, { toolUseID: "native-test" });
+        assert.equal(decision.behavior, "deny");
+        assert.equal(decision.message, "user declined");
+        for (const event of successFixture()) yield event;
+      } }),
+    });
+    await transport.executeTurn("synthetic", { mode: "new", permissionHandler: async request => {
+      requests.push(request); return { decision: "deny", message: "user declined" };
+    } });
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].toolName, toolName);
+    assert.deepEqual(requests[0].input, { synthetic: true });
+  });
+}
+
+
+for (const prompt of ["/schedule list", "/routines list"]) {
+  test(`official cloud routine command ${prompt} retains command dispatch without a local scheduler`, async () => {
+    let call;
+    const transport = new AgentSdkClaudeTransport({ environment: {},
+      queryImpl: input => { call = input; return fakeQuery(successFixture()); },
+    });
+    await transport.executeTurn(prompt, { mode: "new", streaming: true });
+    assert.equal(call.options.verbatimPrompts, false);
+    assert.equal(call.options.thinking, undefined);
+    assert.equal(call.options.allowedTools, undefined);
+    assert.notEqual(call.options.permissionMode, "bypassPermissions");
+    assert.equal(call.options.sessionStore, undefined);
+  });
+}
