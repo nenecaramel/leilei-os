@@ -13,7 +13,9 @@ struct NativeLiveAssistantTurnRow: View {
     var body: some View {
         VStack(alignment:.leading,spacing:ChatPresentationLayout.assistantSpacing) {
             activityArea
+            NativeLiveVisibleThinkingSurface(items: turn.visibleThinking)
             spotifyResultArea
+            elevenLabsResultArea
             NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)
             MindWriteIndicator(items:mindWrites)
             nativeLiveAssistantActions(turn:turn,isTurnInFlight:isTurnInFlight,isCopied:isCopied,
@@ -40,6 +42,12 @@ struct NativeLiveAssistantTurnRow: View {
         let items = NativeLiveSpotifyResultSurfaceProjector.project(tools: turn.activityProjection.tools)
         if !items.isEmpty {
             NativeLiveSpotifyResultSurface(items: items)
+        }
+    }
+    @ViewBuilder private var elevenLabsResultArea: some View {
+        let items = NativeLiveElevenLabsResultProjector.project(tools: turn.activityProjection.tools)
+        if !items.isEmpty {
+            NativeLiveElevenLabsResultSurface(items: items)
         }
     }
     private var mindWrites: [MindWriteIndicatorItem] {

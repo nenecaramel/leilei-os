@@ -17,7 +17,7 @@ test('ToolActivity is provider-neutral and AssistantTurn owns results between Ac
   assert.match(tool, /NativeLiveToolCallCard\(/);
   assert.match(tool, /ForEach\(permissionInteractions\)/);
   const assistant = readFileSync(surface+'NativeLiveAssistantTurnRow.swift','utf8');
-  assert.match(assistant, /activityArea\s+spotifyResultArea\s+NativeLiveMessagePresentationView/);
+  assert.match(assistant, /activityArea\s+NativeLiveVisibleThinkingSurface\(items: turn\.visibleThinking\)\s+spotifyResultArea\s+elevenLabsResultArea\s+NativeLiveMessagePresentationView/);
   assert.match(assistant, /NativeLiveSpotifyResultSurface\(items: items\)/);
   const view = readFileSync(surface+'NativeLiveSpotifyResultSurface.swift','utf8');
   assert.doesNotMatch(view, /isActivityExpanded|Permission|Interaction|runtimeSurface|blocks/);
@@ -57,6 +57,10 @@ test('projection, reconciliation, Spotify schema/card and voice production stay 
   const manifest=JSON.parse(readFileSync('tests/fixtures/spotify-surface-main-41bf880f.json','utf8'));
   assert.equal(manifest.ref,'41bf880f24a5d42dd48fb39603c47080b3ec75bd');
   for (const [file,sha] of Object.entries(manifest.sha256)) {
-    assert.equal(createHash('sha256').update(readFileSync(file)).digest('hex'),sha,file);
+    const content=readFileSync(file,'utf8');
+    const equivalent=file.endsWith('/NativeLiveAssistantTurnPresentation.swift')
+      ? content.replace('    var visibleThinking: [NativeLiveVisibleThinkingItem] = []\n','')
+      : content;
+    assert.equal(createHash('sha256').update(equivalent).digest('hex'),sha,file);
   }
 });

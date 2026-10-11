@@ -16,6 +16,7 @@ struct NativeLiveAssistantTurnPresentation: Equatable, Identifiable {
     let header: String
     let failure: String?
     var murmurText: String? = nil
+    var visibleThinking: [NativeLiveVisibleThinkingItem] = []
     var providerMessageStartedAt: String? = nil
     var hasAuthoritativeDuration = false
     var hasCanonicalRetryTarget = true

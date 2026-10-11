@@ -4,6 +4,7 @@ import {
   asc,
   eq,
   inArray,
+  or,
   sql,
 } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
@@ -135,7 +136,15 @@ export async function readNativeLiveMessageActivityByAssistantMessage(
       and(
         eq(nativeLiveRuntimeEvents.userId, input.userId),
         inArray(nativeLiveRuntimeEvents.prepareId, prepareIds),
-        eq(nativeLiveRuntimeEvents.eventType, "task"),
+        or(
+          eq(nativeLiveRuntimeEvents.eventType, "task"),
+          // Completed turns still need the explicitly published thinking sections.
+          // Do not hydrate unrelated runtime telemetry, reasoning deltas, or tool payloads.
+          and(
+            eq(nativeLiveRuntimeEvents.eventType, "runtime"),
+            sql`${nativeLiveRuntimeEvents.payload} ->> 'kind' = 'user_visible_thinking'`,
+          ),
+        ),
       ),
     )
     .orderBy(

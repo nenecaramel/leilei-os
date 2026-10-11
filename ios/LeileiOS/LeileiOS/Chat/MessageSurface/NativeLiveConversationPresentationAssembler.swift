@@ -237,6 +237,8 @@ struct NativeLiveConversationPresentationAssembler {
         if turn.murmurText?.isEmpty == true {
             turn.murmurText = nil
         }
+        turn.visibleThinking = NativeLiveVisibleThinkingProjector.project(
+            eventSources: eventSources, previous: last?.visibleThinking ?? [])
         turn.providerMessageStartedAt = providerStart
         turn.hasAuthoritativeDuration = authoritativeDuration
         previous[id] = turn

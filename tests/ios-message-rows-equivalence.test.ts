@@ -67,7 +67,7 @@ test('Full router and assistant body recompose to the original ordered blocks',(
  equal(routed,block(baseline,'var body:'),'row routing, IDs and every forwarded input');
  const assistant=read('NativeLiveAssistantTurnRow.swift');
  // The new optional Spotify slot is verified separately; conserve all existing blocks.
- const composed=block(assistant,'var body:').replace('spotifyResultArea','').replace('activityArea',block(assistant,'private var activityArea:')).replace(/nativeLiveAssistantActions\([\s\S]*?onRetryMessage:onRetryMessage\)/,block(read('NativeLiveAssistantActions.swift'),'func nativeLiveAssistantActions('));
+ const composed=block(assistant,'var body:').replace('spotifyResultArea','').replace('elevenLabsResultArea','').replace('NativeLiveVisibleThinkingSurface(items: turn.visibleThinking)','').replace('activityArea',block(assistant,'private var activityArea:')).replace(/nativeLiveAssistantActions\([\s\S]*?onRetryMessage:onRetryMessage\)/,block(read('NativeLiveAssistantActions.swift'),'func nativeLiveAssistantActions('));
  equal(composed,withoutRetiredAlbum(block(old('NativeLiveAssistantTurnRow.swift'),'var body:')),'assistant entire ordered body and task except retired album');
 });
 test('UIKit context menu and tap coordinator implementation remains byte identical',()=>{
