@@ -15,5 +15,10 @@ import SwiftUI
         if turn.canRetry, let user = turn.parentUserMessageID {
             Button { onRetryMessage(user) } label: { Image(systemName:"arrow.clockwise").frame(width:ChatPresentationLayout.actionDiameter,height:ChatPresentationLayout.actionDiameter) }.disabled(isTurnInFlight)
         }
+        if let timestamp = turn.timestamp {
+            Text(MessageTimestampFormatter.string(from:timestamp))
+                .font(.system(size:13.5)).tracking(0.12)
+                .foregroundStyle(.secondary)
+        }
     }.font(.system(size:14)).foregroundStyle(.secondary).buttonStyle(.plain).padding(.top,ChatPresentationLayout.actionTopInset)
 }

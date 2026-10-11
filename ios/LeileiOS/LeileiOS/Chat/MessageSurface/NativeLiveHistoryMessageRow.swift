@@ -27,6 +27,9 @@ struct NativeLiveHistorySnapshotRow: View {
             }
         } else {
             VStack(alignment: .leading, spacing: ChatPresentationLayout.assistantSpacing) {
+                NativeLiveMessagePresentationView(presentation: presentation)
+                .textSelection(.enabled)
+
                 Text(
                     MessageTimestampFormatter.string(
                         from: message.time,
@@ -36,10 +39,7 @@ struct NativeLiveHistorySnapshotRow: View {
                 .font(.system(size: 13.5))
                 .tracking(0.12)
                 .foregroundStyle(.secondary)
-                .padding(.bottom, 4)
-
-                NativeLiveMessagePresentationView(presentation: presentation)
-                .textSelection(.enabled)
+                .padding(.top, 4)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

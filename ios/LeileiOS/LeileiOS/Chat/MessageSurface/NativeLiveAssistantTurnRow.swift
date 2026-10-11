@@ -12,8 +12,11 @@ struct NativeLiveAssistantTurnRow: View {
     let onResolveInteraction: (NativeLiveRuntimeInteractionSnapshot,[String:NativeLiveJSONValue]) async throws -> Void
     var body: some View {
         VStack(alignment:.leading,spacing:ChatPresentationLayout.assistantSpacing) {
-            activityArea
+            if processSections.showsLoading {
+                Text("Thinking...").font(.system(size: 13.5)).foregroundStyle(.secondary)
+            }
             NativeLiveVisibleThinkingSurface(items: turn.visibleThinking)
+            activityArea
             spotifyResultArea
             elevenLabsResultArea
             NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)
@@ -27,16 +30,26 @@ struct NativeLiveAssistantTurnRow: View {
             await appModel.refreshMindWrites(messageID:id)
         }
     }
+    private var processSections: NativeLiveProcessSections {
+        NativeLiveProcessSections(isActive: turn.activityProjection.turnIsActive,
+            hasBody: !turn.bodyPresentation.nodes.isEmpty,
+            hasThinking: !turn.visibleThinking.isEmpty, stepCount: turn.stepCount,
+            needsInput: turn.hasPendingInput, hasFailure: turn.activityProjection.hasFailure,
+            hasBackgroundTask: turn.activityProjection.hasActiveBackgroundTask)
+    }
     @ViewBuilder private var activityArea: some View {
-        if !turn.header.isEmpty || turn.murmurText != nil {
+        if processSections.showsActivity || turn.murmurText != nil {
             NativeLiveTurnActivityView(projection:turn.activityProjection,
-                timestampText:turn.timestamp.map { MessageTimestampFormatter.string(from:$0) },header:turn.header,
-                murmurText:turn.murmurText,
+                header:activityHeader, murmurText:turn.murmurText,
                 expansion:Binding(get:{ appModel.nativeLiveMessageUIState[turn.id] },set:{ appModel.nativeLiveMessageUIState[turn.id] = $0 }),
                 onResolveInteraction:onResolveInteraction)
-        } else if let timestamp = turn.timestamp {
-            Text(MessageTimestampFormatter.string(from:timestamp)).font(.system(size:13.5)).foregroundStyle(.secondary)
         }
+    }
+    private var activityHeader: String {
+        // Preserve existing timing/count and pending-input/background labels.
+        if turn.stepCount > 0 || turn.hasPendingInput || turn.backgroundState { return turn.header }
+        if turn.activityProjection.hasFailure { return "Failed" }
+        return ""
     }
     @ViewBuilder private var spotifyResultArea: some View {
         let items = NativeLiveSpotifyResultSurfaceProjector.project(tools: turn.activityProjection.tools)
