@@ -11,12 +11,12 @@ function approvedProcessChrome(s:string, file:string) {
   s=s.replace('timestampText:turn.timestamp.map { MessageTimestampFormatter.string(from:$0) },header:turn.header,','header:turn.header,');
   s=s.replace(/\} else if let timestamp = turn\.timestamp \{\n                Text\(MessageTimestampFormatter\.string\(from:timestamp\)\)\.font\(\.system\(size:13\.5\)\)\.foregroundStyle\(\.secondary\)\n            \}/, '}');
   s=s.replace('            }\n            NativeLiveMessagePresentationView', '            }.padding(.bottom, turn.stepCount > 0 ? ChatPresentationLayout.processSectionSpacing - ChatPresentationLayout.assistantSpacing : 0)\n            NativeLiveMessagePresentationView');
-  s=s.replace('            }.font(.system(size:14))', '                if let timestamp = turn.timestamp {\n                    Text(MessageTimestampFormatter.string(from:timestamp)).font(.system(size:13.5)).tracking(0.12).foregroundStyle(.secondary)\n                }\n            }.font(.system(size:14))');
+  s=s.replace('            }.font(.system(size:14))', '                if let timestamp = turn.timestamp {\n                    Text(MessageTimestampFormatter.string(from:timestamp)).font(.system(size:12)).tracking(0.12).foregroundStyle(.secondary)\n                }\n            }.font(.system(size:14))');
  }
  if(file==='NativeLiveMessageRows.swift') {
   const start=s.indexOf('                Text(',s.indexOf('struct NativeLiveHistorySnapshotRow:'));
   const end=s.indexOf('                NativeLiveMessagePresentationView',start);
-  const stamp=s.slice(start,end).replace('.padding(.bottom, 4)','.padding(.top, 4)').trimEnd();
+  const stamp=s.slice(start,end).replace('.padding(.bottom, 4)','.padding(.top, 4)').replace('size: 13.5', 'size: 12').trimEnd();
   s=s.slice(0,start)+s.slice(end);
   const position=s.indexOf('                .textSelection(.enabled)',start)+'                .textSelection(.enabled)'.length;
   s=s.slice(0,position)+'\n\n'+stamp+s.slice(position);

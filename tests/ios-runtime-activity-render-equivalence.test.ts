@@ -63,11 +63,11 @@ function approvedDisclosureHeader(source: string) {
   const start = source.indexOf('    var body: some View {');
   const end = source.indexOf('            if effectiveExpanded {', start);
   let header = source.slice(start, end)
-    .replace('spacing: 8', 'spacing: 12')
     .replace(/size: 13\.5,\s*weight: \.medium/, 'size: 14')
     .replace('                        Spacer(minLength: 8)\n', '')
     .replace('                        maxWidth: .infinity,\n', '')
-    .replace(/size: 10,\s*weight: \.semibold/, 'size: 14');
+    .replace(/size: 10,\s*weight: \.semibold/, 'size: 14, weight: .light')
+    .replace('size: 13.5', 'size: 12');
   const murmurStart = header.indexOf('                if normalizedMurmurText != nil {');
   const arrowStart = header.indexOf('                if !header.isEmpty {', murmurStart);
   const murmur = header.slice(murmurStart, arrowStart);

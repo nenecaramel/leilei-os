@@ -36,7 +36,7 @@ struct NativeLiveHistorySnapshotRow: View {
                         timeZoneIdentifier: timeZone
                     )
                 )
-                .font(.system(size: 13.5))
+                .font(.system(size: 12))
                 .tracking(0.12)
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)

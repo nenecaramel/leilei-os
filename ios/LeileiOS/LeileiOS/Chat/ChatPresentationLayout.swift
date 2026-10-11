@@ -5,7 +5,7 @@ import SwiftUI
 /// existing call sites. Keyboard and scroll ownership are intentionally unchanged.
 enum ChatPresentationLayout {
     static let messageGutter: CGFloat = 16
-    static let turnSpacing: CGFloat = 21
+    static let turnSpacing: CGFloat = 25
     static let messageVerticalInset: CGFloat = 8
     static let userLeadingClearance: CGFloat = 48
     static let bubbleHorizontalInset: CGFloat = 14

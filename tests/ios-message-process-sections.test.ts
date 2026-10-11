@@ -38,17 +38,29 @@ test('process section gaps are 18 while body/footer spacing stays 6', () => {
   assert.match(row, /processSections\.showsThinking && \(processSections\.showsActivity \|\| !turn\.bodyPresentation\.nodes\.isEmpty\)/);
   assert.match(row, /processSections\.showsActivity && !turn\.bodyPresentation\.nodes\.isEmpty/);
 });
-test('process labels and arrows use 14 regular with an adjacent fixed gap', () => {
+test('process labels stay 14 regular with light arrows and an 8pt gap', () => {
   const thinking = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
   const activity = readFileSync(root + 'NativeLiveRuntimeActivity.swift', 'utf8');
   const row = readFileSync(root + 'NativeLiveAssistantTurnRow.swift', 'utf8');
   assert.match(row, /Text\("Thinking\.\.\."\)\.font\(\.system\(size: 14\)\)/);
-  assert.match(thinking, /HStack\(spacing: 12\)/);
+  assert.match(thinking, /HStack\(spacing: 8\)/);
   assert.doesNotMatch(thinking, /size: 13\.5|size: 10|weight: \.medium|weight: \.semibold/);
+  assert.match(thinking, /Image\(systemName:[^\n]+\n\s*\.font\(\.system\(size: 14, weight: \.light\)\)/);
   assert.ok(thinking.indexOf('Image(systemName:') < thinking.indexOf('Spacer(minLength:'));
   const header = activity.slice(activity.indexOf('var body:'), activity.indexOf('if effectiveExpanded {'));
   assert.match(header, /Text\(header\)\s*\.font\(\.system\(size: 14\)\)/);
-  assert.match(header, /\.font\(\.system\(size: 14\)\)\s*\.foregroundStyle\(\.tertiary\)/);
+  assert.match(header, /\.font\(\.system\(size: 14, weight: \.light\)\)\s*\.foregroundStyle\(\.tertiary\)/);
   assert.doesNotMatch(header, /maxWidth: \.infinity/);
   assert.ok(header.indexOf('? "chevron.down"') < header.indexOf('Spacer(minLength:'));
+});
+
+test('message timestamps are 12pt and user-to-assistant row spacing is 25pt', () => {
+  for (const name of ['NativeLiveAssistantActions.swift', 'NativeLiveHistoryMessageRow.swift']) {
+    const source = readFileSync(root + name, 'utf8');
+    assert.match(source, /\.font\(\.system\(size:\s*12\)\)\s*\.tracking\(0\.12\)\s*\.foregroundStyle\(\.secondary\)/);
+  }
+  const layout = readFileSync('ios/LeileiOS/LeileiOS/Chat/ChatPresentationLayout.swift', 'utf8');
+  const list = readFileSync(root + 'NativeLiveMessageList.swift', 'utf8');
+  assert.match(layout, /turnSpacing: CGFloat = 25/);
+  assert.match(list, /LazyVStack\(spacing: ChatPresentationLayout\.turnSpacing\)/);
 });

@@ -17,7 +17,7 @@ import SwiftUI
         }
         if let timestamp = turn.timestamp {
             Text(MessageTimestampFormatter.string(from:timestamp))
-                .font(.system(size:13.5)).tracking(0.12)
+                .font(.system(size:12)).tracking(0.12)
                 .foregroundStyle(.secondary)
         }
     }.font(.system(size:14)).foregroundStyle(.secondary).buttonStyle(.plain).padding(.top,ChatPresentationLayout.actionTopInset)
