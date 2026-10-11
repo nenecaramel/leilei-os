@@ -67,7 +67,8 @@ function approvedDisclosureHeader(source: string) {
     .replace('                        Spacer(minLength: 8)\n', '')
     .replace('                        maxWidth: .infinity,\n', '')
     .replace(/size: 10,\s*weight: \.semibold/, 'size: 14, weight: .light')
-    .replace('size: 13.5', 'size: 12');
+    .replace('size: 13.5', 'size: 12')
+    .replace('.foregroundStyle(.tertiary)', '.foregroundStyle(.secondary)');
   const murmurStart = header.indexOf('                if normalizedMurmurText != nil {');
   const arrowStart = header.indexOf('                if !header.isEmpty {', murmurStart);
   const murmur = header.slice(murmurStart, arrowStart);
