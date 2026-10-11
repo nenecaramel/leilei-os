@@ -16,7 +16,9 @@ struct NativeLiveAssistantTurnRow: View {
                 Text("Thinking...").font(.system(size: 13.5)).foregroundStyle(.secondary)
             }
             NativeLiveVisibleThinkingSurface(items: turn.visibleThinking)
+                .padding(.bottom, processSections.showsThinking && (processSections.showsActivity || !turn.bodyPresentation.nodes.isEmpty) ? processSectionExtraSpacing : 0)
             activityArea
+                .padding(.bottom, processSections.showsActivity && !turn.bodyPresentation.nodes.isEmpty ? processSectionExtraSpacing : 0)
             spotifyResultArea
             elevenLabsResultArea
             NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)
@@ -29,6 +31,11 @@ struct NativeLiveAssistantTurnRow: View {
             guard let id = turn.canonicalMessageID else { return }
             await appModel.refreshMindWrites(messageID:id)
         }
+    }
+    // Add only the difference to the existing row spacing. Footer and body
+    // spacing stay unchanged; absent sections add no extra inset.
+    private var processSectionExtraSpacing: CGFloat {
+        ChatPresentationLayout.processSectionSpacing - ChatPresentationLayout.assistantSpacing
     }
     private var processSections: NativeLiveProcessSections {
         NativeLiveProcessSections(isActive: turn.activityProjection.turnIsActive,
