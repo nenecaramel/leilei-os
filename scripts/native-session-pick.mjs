@@ -3,7 +3,7 @@ import { createInterface } from 'node:readline/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { listDesktopNativeSessions } from '../tools/claude-bridge/src/native-session-inspection.mjs';
+import { listDesktopNativeSessions, nativeSessionLocations } from '../tools/claude-bridge/src/native-session-inspection.mjs';
 import { buildSwitchChoices, selectAndSwitch } from '../tools/claude-bridge/src/native-session-picker.mjs';
 import { runLocalSwitch } from './native-session-local.mjs';
 
@@ -28,7 +28,8 @@ export async function readSwitchCatalog({ relayUrl, relayToken, fetchImpl = fetc
     const ids = new Set();
     for (const c of result.data.conversations) {
       if (!uuid.test(c.conversationId) || ids.has(c.conversationId) || typeof c.busy !== 'boolean' ||
-        !['headMessageId', 'providerSessionId', 'providerCheckpointId', 'sourceSessionId'].every(k => c[k] === null || uuid.test(c[k]))) throw new Error();
+        !['headMessageId', 'providerSessionId', 'providerCheckpointId', 'sourceSessionId'].every(k => c[k] === null || uuid.test(c[k])) ||
+        !(c.sourceLineage === undefined || (Array.isArray(c.sourceLineage) && c.sourceLineage.length <= 1000 && c.sourceLineage.every(id => uuid.test(id))))) throw new Error();
       ids.add(c.conversationId);
     }
     return result.data.conversations;
@@ -47,11 +48,12 @@ async function main() {
   } catch { throw new Error('RELAY_CREDENTIALS_UNAVAILABLE'); }
   const config = path.resolve(process.env.CLAUDE_CONFIG_DIR ?? path.join(homedir(), '.claude'));
   const load = async direction => {
-    const [conversations, desktop] = await Promise.all([
+    const [conversations, desktop, locations] = await Promise.all([
       readSwitchCatalog({ relayUrl: variables.MCP_SERVER_URL, relayToken: variables.NATIVE_LIVE_RELAY_AUTH_TOKEN }),
       listDesktopNativeSessions({ desktopSessionsDirectory: path.join(homedir(), 'Library', 'Application Support', 'Claude', 'claude-code-sessions'), projectsDirectory: path.join(config, 'projects'), peerDirectory: path.join(config, 'sessions') }),
+      nativeSessionLocations(path.join(config, 'projects')),
     ]);
-    return buildSwitchChoices(direction, conversations, desktop.sessions);
+    return buildSwitchChoices(direction, conversations, desktop.sessions, { localSessionIds: new Set(locations.keys()) });
   };
   const terminal = createInterface({ input: process.stdin, output: process.stdout });
   try {

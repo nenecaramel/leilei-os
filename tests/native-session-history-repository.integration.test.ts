@@ -803,3 +803,56 @@ test('asset staging appends only by position and discards a complete set that do
   assert.equal(await rows(wrong), 0);
   assert.equal(await rows(), 3, 'other revisions are untouched');
 }));
+
+test('a rotated or forked native session continues the conversation only when it carries every synchronized message', { skip: !enabled }, async () => fixture(async f => {
+  const { readNativeSessionRestoreState, releaseNativeSessionToDesktop } = await import(modulePath.href);
+  const image = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: Buffer.from('synthetic continuation image').toString('base64') } };
+  const [u, a, u2, a2, alt] = Array.from({length: 5}, () => randomUUID());
+  const base = [{ ...row(u, null, 'user', 'with image'), message: { content: [image, { type: 'text', text: 'look' }] } }, row(a, u, 'assistant', 'seen')];
+  const X = f.sessionId, Y = randomUUID(), Z = randomUUID();
+  const restoreInput = (sessionId: string, rev: string, entries: any[], head: string, expected: { headMessageId: string | null; revision: string | null }) => ({
+    ...f.input, expectedHeadMessageId: expected.headMessageId, expectedRevision: expected.revision,
+    projection: projectNativeHistory({ sessionId, revision: rev, entries }, head), nativeSnapshot: { sessionId, revision: rev, entries } });
+  const first = await f.write(restoreInput(X, revision(1), base, a, { headMessageId: null, revision: null }));
+  assert.equal(first.outcome, 'restored');
+  // Desktop rewind or LeileiOS fork: same native UUIDs, new session id, then a new turn.
+  const continued = [...base, row(u2, a, 'user', 'next'), row(a2, u2, 'assistant', 'next reply')];
+  const state = await readNativeSessionRestoreState(f.database.db, { userId: f.owner, conversationId: f.input.conversationId, sessionId: Y });
+  assert.deepEqual(state, { expectedHeadMessageId: first.headMessageId, expectedRevision: revision(1), continuation: true });
+  const second = await f.write(restoreInput(Y, revision(2), continued, a2, { headMessageId: first.headMessageId, revision: revision(1) }));
+  assert.equal(second.outcome, 'restored');
+  assert.equal(second.inserted, 2);
+  const after = await f.state();
+  const source = after.conversation.providerMetadata.nativeSessionSource;
+  assert.equal(source.sessionId, Y);
+  assert.deepEqual(source.lineage, [X]);
+  assert.equal(after.messages.length, 4);
+  assert.deepEqual(after.checkpoints.map((cp: any) => [cp.providerCheckpointId, cp.providerSessionId]).sort(), [[a, X], [a2, Y]].sort(), 'historical checkpoints stay on their own session');
+  // The archived session can neither continue nor replace the conversation.
+  await assert.rejects(f.write(restoreInput(X, revision(1), base, a, { headMessageId: second.headMessageId, revision: revision(2) })), (e: any) => e.code === 'EXPLICIT_BRANCH_SELECTION_REQUIRED');
+  await assert.rejects(readNativeSessionRestoreState(f.database.db, { userId: f.owner, conversationId: f.input.conversationId, sessionId: X }), (e: any) => e.code === 'NATIVE_SOURCE_BINDING_REQUIRED');
+  // A fork from before the synchronized head is a different conversation, not a continuation.
+  const early = [base[0], row(alt, u, 'assistant', 'different reply')];
+  await assert.rejects(f.write(restoreInput(Z, revision(3), early, alt, { headMessageId: second.headMessageId, revision: revision(2) })), (e: any) => e.code === 'EXPLICIT_BRANCH_SELECTION_REQUIRED');
+  assert.deepEqual(await f.state(), after, 'refused continuation changes nothing');
+  const released = await releaseNativeSessionToDesktop(f.database.db, { userId: f.owner, conversationId: f.input.conversationId, sessionId: Y,
+    expectedHeadMessageId: second.headMessageId, expectedRevision: revision(2), expectedCheckpointId: a2 });
+  assert.equal(released.owner, 'desktop');
+  const preserved = await f.database.db.execute(sql`SELECT provider_session_id FROM native_live_provider_session_store_status
+    WHERE user_id=${f.owner}::uuid AND preserve_external_session ORDER BY provider_session_id`);
+  assert.deepEqual(preserved.map((r: any) => r.provider_session_id).sort(), [X, Y].sort(), 'every handed-off session is protected from branch cleanup');
+}));
+
+test('a continued session reuses the staged display assets of the same revision without another upload', { skip: !enabled }, async () => fixture(async f => {
+  const { nativeDisplayAssetRevision } = await import('../tools/claude-bridge/src/native-session-history.mjs');
+  const { stageNativeDisplayAssets } = await import('../src/domains/conversation/native-session-asset-staging.js');
+  const carriers = [1, 2].map(n => ({ type: 'user', uuid: randomUUID(), message: { content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: Buffer.from(`reuse ${n}`).toString('base64') } }] } }));
+  const rev = nativeDisplayAssetRevision(carriers);
+  const stage = (sessionId: string, offset: number, entries: unknown[]) => stageNativeDisplayAssets(f.database.db, { userId: f.owner, sessionId, revision: rev, total: 2, offset, entries } as any);
+  assert.deepEqual(await stage(f.sessionId, 0, carriers), { stored: 2, complete: true });
+  const next = randomUUID();
+  assert.deepEqual(await stage(next, 0, []), { stored: 2, complete: true }, 'probe alone completes from the earlier session');
+  const rows = await f.database.db.execute(sql`SELECT entry FROM native_live_provider_session_entries
+    WHERE user_id=${f.owner}::uuid AND provider_session_id=${next} AND subpath=${`native-history-assets/${rev}`} ORDER BY id`);
+  assert.deepEqual(rows.map((r: any) => r.entry), carriers);
+}));

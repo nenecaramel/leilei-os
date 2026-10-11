@@ -37,6 +37,23 @@ export async function stageNativeDisplayAssets(db: Database, input: NativeDispla
     const store = new DrizzleNativeLiveProviderSessionStoreRepository(tx);
     let stored = await count();
     if (stored > input.total) { await reset(); stored = 0; }
+    // A continued session usually carries the same asset set: copy a complete
+    // staged copy of this revision server-side instead of uploading it again.
+    if (stored === 0) {
+      const [donor] = await tx.execute<{ provider_session_id: string }>(sql`
+        SELECT provider_session_id FROM native_live_provider_session_entries
+        WHERE user_id = ${input.userId}::uuid AND subpath = ${key.subpath} AND provider_session_id <> ${input.sessionId}
+        GROUP BY provider_session_id HAVING count(*) = ${input.total} LIMIT 1`);
+      if (donor) {
+        await tx.execute(sql`INSERT INTO native_live_provider_session_entries
+          (user_id, provider_session_id, subpath, append_batch_id, append_ordinal, entry)
+          SELECT user_id, ${input.sessionId}, subpath, ${randomUUID()}::uuid, row_number() OVER (ORDER BY id) - 1, entry
+          FROM native_live_provider_session_entries
+          WHERE user_id = ${input.userId}::uuid AND provider_session_id = ${donor.provider_session_id} AND subpath = ${key.subpath}
+          ORDER BY id`);
+        stored = await count();
+      }
+    }
     // Append only the part that extends the stored prefix; never rewrite stored positions.
     if (input.offset <= stored && stored < input.offset + input.entries.length) {
       const entries = input.entries.slice(stored - input.offset);

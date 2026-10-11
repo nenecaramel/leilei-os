@@ -42,6 +42,8 @@ type SourceIndex = {
   messages: Array<{ sourceMessageId: string; fingerprint: string; displayOnly?: boolean }>;
   displayAssetsRevision?: string;
   owner?: "leileios" | "desktop";
+  /** Earlier native sessions this conversation continued from, oldest first. */
+  lineage?: string[];
 };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const hash = /^[0-9a-f]{64}$/;
@@ -55,6 +57,20 @@ export function nativeDisplayAssetRevision(entries: unknown): string {
 }
 
 export const nativeDisplayAssetSubpath = (revision: string) => `native-history-assets/${revision}`;
+
+/** Sessions whose records may back this conversation's canonical history. */
+export function nativeSourceSessions(source: { sessionId: string; lineage?: string[] } | undefined): Set<string> {
+  return new Set(source ? [...(source.lineage ?? []), source.sessionId] : []);
+}
+
+// Image/document blocks name the projecting session; the same native record in a
+// continued session must compare equal to the fingerprint stored for the old one.
+function fingerprintForSession(message: NativeHistoryProjection["messages"][number], sessionId: string): string {
+  const { fingerprint: _fingerprint, ...body } = message;
+  const blocks = body.blocks.map(block => block.payload && typeof block.payload === "object" && "source_session_id" in block.payload
+    ? { ...block, payload: { ...block.payload, source_session_id: sessionId } } : block);
+  return createHash("sha256").update(JSON.stringify({ ...body, blocks })).digest("hex");
+}
 
 /** One display-asset carrier: a user/assistant record holding image or document bytes. */
 export function validateNativeDisplayAssetEntry(entry: unknown, seen: Set<string>) {
@@ -170,7 +186,11 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     if (existing && (existing.userId !== input.userId || existing.origin !== "native_live" || existing.lifecycleStatus !== "active")) throw fail("NATIVE_CONVERSATION_NOT_FOUND");
     const source = existing?.providerMetadata.nativeSessionSource as SourceIndex | undefined;
     if (existing && !source) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
-    if (source && (source.schemaVersion !== 1 || source.sessionId !== p.sessionId || source.effectiveWorkingDirectory !== input.effectiveWorkingDirectory)) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
+    if (source && (source.schemaVersion !== 1 || source.effectiveWorkingDirectory !== input.effectiveWorkingDirectory)) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
+    // A different native session may continue this conversation only if it carries
+    // every synchronized message unchanged (checked below). Archived sessions never do.
+    const continuation = source !== undefined && source.sessionId !== p.sessionId;
+    if (continuation && source.lineage?.includes(p.sessionId)) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
     await tx.execute(sql`SELECT ${providerSessionOwnershipLock({ providerSessionId: p.sessionId, wait: true })}`);
     const otherOwners = await tx.execute(sql`SELECT id FROM conversations WHERE id <> ${input.conversationId}::uuid
       AND origin = 'native_live' AND lifecycle_status = 'active'
@@ -190,8 +210,8 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       validateNativeDisplayAssets(staged, snapshot.displayAssets.revision);
     }
     if (source && (source.messages.length > p.messages.length || source.messages.some((old, i) => old.sourceMessageId !== p.messages[i]?.sourceMessageId))) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
-    if (source?.messages.some((old, i) => old.fingerprint !== p.messages[i]?.fingerprint)) throw fail("NATIVE_HISTORY_REWRITTEN");
-    const unchanged = existing?.currentHeadMessageId === source?.headMessageId && source?.revision === p.revision && source.checkpointId === p.checkpointId && source.messages.length === p.messages.length
+    if (source?.messages.some((old, i) => old.fingerprint !== (continuation ? fingerprintForSession(p.messages[i]!, source.sessionId) : p.messages[i]?.fingerprint))) throw fail("NATIVE_HISTORY_REWRITTEN");
+    const unchanged = !continuation && existing?.currentHeadMessageId === source?.headMessageId && source?.revision === p.revision && source.checkpointId === p.checkpointId && source.messages.length === p.messages.length
       && source.displayAssetsRevision === snapshot?.displayAssets?.revision;
 
     const allRows = await tx.select().from(conversationMessages).where(and(eq(conversationMessages.userId, input.userId), eq(conversationMessages.conversationId, input.conversationId)));
@@ -230,7 +250,7 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       const index = rows.indexOf(row);
       if (!cp && index < indexedCount && source?.messages[index]?.displayOnly === true && snapshot
         && !snapshot.entries.some(entry => entry.uuid === message.providerCheckpointId)) return false;
-      return !cp || cp.provider !== "claude_code" || cp.providerSessionId !== p.sessionId ||
+      return !cp || cp.provider !== "claude_code" || !(cp.providerSessionId === p.sessionId || nativeSourceSessions(source).has(cp.providerSessionId)) ||
         !sameCompletedTurnCheckpoint(cp.providerCheckpointId, message.providerCheckpointId, p.sessionId, snapshot?.entries)
         || cp.effectiveWorkingDirectory !== input.effectiveWorkingDirectory;
     })) throw fail("CANONICAL_CHECKPOINT_CHANGED");
@@ -286,6 +306,7 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       owner: "leileios",
       effectiveWorkingDirectory: input.effectiveWorkingDirectory, headMessageId: parent,
       ...(snapshot?.displayAssets ? { displayAssetsRevision: snapshot.displayAssets.revision } : {}),
+      ...(continuation ? { lineage: [...(source.lineage ?? []), source.sessionId].slice(-1000) } : source?.lineage ? { lineage: source.lineage } : {}),
       messages: p.messages.map(m => ({ sourceMessageId: m.sourceMessageId, fingerprint: m.fingerprint,
         ...(snapshot && !snapshot.entries.some(entry => entry.uuid === m.providerCheckpointId) ? { displayOnly: true } : {}) })) };
     await tx.update(conversations).set({ currentHeadMessageId: parent, updatedAt: new Date(), providerMetadata: { ...existing?.providerMetadata, nativeSessionSource: nextSource } }).where(and(eq(conversations.id, input.conversationId), eq(conversations.userId, input.userId)));
@@ -343,8 +364,11 @@ export async function readNativeSessionRestoreState(db: Database, input: { userI
   const [conversation] = await db.select().from(conversations).where(and(eq(conversations.id, input.conversationId), eq(conversations.userId, input.userId)));
   if (!conversation) return { expectedHeadMessageId: null, expectedRevision: null };
   const source = conversation.providerMetadata.nativeSessionSource as SourceIndex | undefined;
-  if (conversation.origin !== "native_live" || conversation.lifecycleStatus !== "active" || !source || source.sessionId !== input.sessionId) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
-  return { expectedHeadMessageId: conversation.currentHeadMessageId, expectedRevision: source.revision };
+  if (conversation.origin !== "native_live" || conversation.lifecycleStatus !== "active" || !source
+    || source.lineage?.includes(input.sessionId)) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
+  // A different session is only a candidate continuation; restore verifies it.
+  return { expectedHeadMessageId: conversation.currentHeadMessageId, expectedRevision: source.revision,
+    continuation: source.sessionId !== input.sessionId };
 }
 
 /** Owner-scoped selector metadata only: no messages, prompt, assets or write lease. */
@@ -355,6 +379,7 @@ export async function listNativeSessionSwitchChoices(db: Database, input: { user
       c.current_head_message_id AS "headMessageId", cp.provider_session_id AS "providerSessionId",
       cp.provider_checkpoint_id AS "providerCheckpointId",
       c.provider_metadata->'nativeSessionSource'->>'sessionId' AS "sourceSessionId",
+      COALESCE(c.provider_metadata->'nativeSessionSource'->'lineage', '[]'::jsonb) AS "sourceLineage",
       EXISTS (SELECT 1 FROM native_live_turn_preparations t WHERE
         t.user_id = c.user_id AND t.conversation_id = c.id AND
         t.dispatch_status IN ('staged','pending','reserved','executing','delivery_unknown')) AS busy
