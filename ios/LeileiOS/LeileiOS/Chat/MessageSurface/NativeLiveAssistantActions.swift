@@ -10,10 +10,10 @@ import SwiftUI
 ) -> some View {
     HStack(spacing:ChatPresentationLayout.actionSpacing) {
         if let text = turn.copyText {
-            Button { onCopyMessage(text) } label: { Image(systemName:isCopied ? "checkmark" : "square.on.square").rotationEffect(.degrees(isCopied ? 0 : 180)).frame(width:ChatPresentationLayout.actionDiameter,height:ChatPresentationLayout.actionDiameter) }
+            Button { onCopyMessage(text) } label: { Image(systemName:isCopied ? "checkmark" : "square.on.square").font(.system(size:14,weight:.light)).rotationEffect(.degrees(isCopied ? 0 : 180)).frame(width:ChatPresentationLayout.actionDiameter,height:ChatPresentationLayout.actionDiameter) }
         }
         if turn.canRetry, let user = turn.parentUserMessageID {
-            Button { onRetryMessage(user) } label: { Image(systemName:"arrow.clockwise").frame(width:ChatPresentationLayout.actionDiameter,height:ChatPresentationLayout.actionDiameter) }.disabled(isTurnInFlight)
+            Button { onRetryMessage(user) } label: { Image(systemName:"arrow.clockwise").font(.system(size:14,weight:.light)).rotationEffect(.degrees(20)).frame(width:ChatPresentationLayout.actionDiameter,height:ChatPresentationLayout.actionDiameter) }.disabled(isTurnInFlight)
         }
         if let timestamp = turn.timestamp {
             Text(MessageTimestampFormatter.string(from:timestamp))

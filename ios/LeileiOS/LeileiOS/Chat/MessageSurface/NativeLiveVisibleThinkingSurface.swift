@@ -11,6 +11,7 @@ struct NativeLiveVisibleThinkingSurface: View {
                 HStack(spacing: 8) {
                     NativeLiveThoughtProcessIcon()
                         .frame(width: 14, height: 14)
+                        .scaleEffect(1.2)
                         .accessibilityHidden(true)
                     Text("Thought process")
                         .font(.system(size: 14))
