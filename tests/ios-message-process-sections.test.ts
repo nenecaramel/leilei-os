@@ -26,7 +26,7 @@ test('thinking sheet is independent and timestamp belongs only to the footer', (
   assert.match(thinking, /Text\("Thought process"\)/);
   assert.match(thinking, /@State private var isShowingThoughtProcess/);
   assert.doesNotMatch(thinking, /toggleActivity|nativeLiveMessageUIState/);
-  assert.match(actions, /if let timestamp = turn\.timestamp/);
+  assert.match(actions, /if let timestamp = turn\.visibleTimestamp/);
   assert.ok(actions.indexOf('if let timestamp') > actions.indexOf('if turn.canRetry'));
 });
 test('process section gaps are 18 while body/footer spacing stays 6', () => {

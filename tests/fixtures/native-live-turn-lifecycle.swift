@@ -218,6 +218,20 @@ let reloadedTurn = reload.project(snapshot:durationPath,pendingOperation:nil,run
 expect(reloadedTurn.duration == 18 && reloadedTurn.header == "Thought for 18s","reload pure thought fixed duration")
 let noActivity = rows(snapshot([message("noActivity","assistant",text:"Only body")])).last!.assistant!
 expect(noActivity.header.isEmpty,"no duration or activity shows timestamp only")
+// A stored timestamp must not appear while the foreground reply is generating.
+for phase in [NativeLiveAssistantTurnPresentation.Phase.starting, .thinking, .working, .needsInput, .background, .completed, .failed] {
+    let active = [.starting, .thinking, .working, .needsInput].contains(phase)
+    let value = NativeLiveAssistantTurnPresentation(
+        stableID: "timestamp-check", canonicalMessageID: nil, prepareID: nil,
+        requestID: nil, parentUserMessageID: nil, phase: phase, timestamp: start,
+        bodyPresentation: noActivity.bodyPresentation,
+        activityProjection: .init(durable: nil, overlay: nil, active: active, elapsed: nil),
+        duration: nil, header: "", failure: nil)
+    expect(value.timestamp == start, "timestamp remains stored during every phase")
+    expect(value.visibleTimestamp == (active ? nil : start), "timestamp visibility follows foreground completion")
+}
+expect(noActivity.visibleTimestamp == start, "completed history displays its original timestamp")
+
 // A replacement starts fresh despite using the same UI slot as a completed turn.
 assembler = .init(); identities = .init()
 _ = rows(old)

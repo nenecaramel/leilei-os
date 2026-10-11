@@ -22,6 +22,8 @@ struct NativeLiveAssistantTurnPresentation: Equatable, Identifiable {
     var hasCanonicalRetryTarget = true
     var stepCount: Int { activityProjection.activityCount }
     var hasPendingInput: Bool { activityProjection.hasPendingInteraction }
+    // Preserve the timestamp while the foreground reply is generating; only hide its display.
+    var visibleTimestamp: String? { activityProjection.turnIsActive ? nil : timestamp }
     var copyText: String? { bodyPresentation.copyText }
     var canCopy: Bool { copyText != nil }
     var canRetry: Bool { hasCanonicalRetryTarget && parentUserMessageID != nil && (phase == .completed || phase == .failed) }

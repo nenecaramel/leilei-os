@@ -15,7 +15,7 @@ import SwiftUI
         if turn.canRetry, let user = turn.parentUserMessageID {
             Button { onRetryMessage(user) } label: { Image(systemName:"arrow.clockwise").rotationEffect(.degrees(20)).frame(width:ChatPresentationLayout.actionDiameter,height:ChatPresentationLayout.actionDiameter,alignment:.leading) }.disabled(isTurnInFlight)
         }
-        if let timestamp = turn.timestamp {
+        if let timestamp = turn.visibleTimestamp {
             Text(MessageTimestampFormatter.string(from:timestamp))
                 .font(.system(size:12)).tracking(0.12)
                 .foregroundStyle(.secondary)
