@@ -101,13 +101,15 @@ test('thinking icon uses the reference dotted clock without changing the sheet o
   assert.match(surface, /lineCap: \.round/);
 });
 
-test('thought and work headers share the copy-glyph leading inset', () => {
+test('process and footer glyphs align with body and action spacing is 8pt', () => {
   const layout = readFileSync('ios/LeileiOS/LeileiOS/Chat/ChatPresentationLayout.swift', 'utf8');
-  assert.match(layout, /processLeadingInset: CGFloat = 4/);
-  assert.match(layout, /actionDiameter: CGFloat = 22/);
+  assert.doesNotMatch(layout, /processLeadingInset/);
+  assert.match(layout, /actionSpacing: CGFloat = 8/);
   for (const name of ['NativeLiveVisibleThinkingSurface.swift', 'NativeLiveRuntimeActivity.swift']) {
-    assert.match(readFileSync(root + name, 'utf8'), /\.padding\(\.leading, ChatPresentationLayout\.processLeadingInset\)/);
+    assert.doesNotMatch(readFileSync(root + name, 'utf8'), /ChatPresentationLayout\.processLeadingInset/);
   }
+  const actions = readFileSync(root + 'NativeLiveAssistantActions.swift', 'utf8');
+  assert.equal((actions.match(/height:ChatPresentationLayout\.actionDiameter,alignment:\.leading/g) ?? []).length, 2);
 });
 
 test('clock paint grows without moving layout and both action icons use light weight', () => {

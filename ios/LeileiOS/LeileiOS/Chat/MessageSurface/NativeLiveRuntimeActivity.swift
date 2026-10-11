@@ -117,7 +117,6 @@ struct NativeLiveTurnActivityView: View {
 
                 Spacer(minLength: 8)
             }
-            .padding(.leading, ChatPresentationLayout.processLeadingInset)
 
             if effectiveExpanded {
                 VStack(alignment: .leading, spacing: 9) {
