@@ -1,4 +1,4 @@
-import { validateNativeHistoryRestoreInput, type restoreNativeSessionHistory, type readNativeSessionRestoreState, type releaseNativeSessionToDesktop } from "../domains/conversation/native-session-history-repository.js";
+import { validateNativeHistoryRestoreInput, type restoreNativeSessionHistory, type readNativeSessionRestoreState, type releaseNativeSessionToDesktop, type listNativeSessionSwitchChoices } from "../domains/conversation/native-session-history-repository.js";
 import { Router, type RequestHandler, type Response } from "express";
 import type { nativeSessionAsset } from "../domains/conversation/native-session-asset-repository.js";
 import {
@@ -9,6 +9,7 @@ import {
 } from "../domains/bridge/provider-session/native-live-provider-session-store.js";
 
 export type NativeLiveProviderSessionStoreInternalDependencies = {
+  listNativeHistoryChoices?: (input: Parameters<typeof listNativeSessionSwitchChoices>[1]) => ReturnType<typeof listNativeSessionSwitchChoices>;
   nativeHistoryAsset?: (input: Parameters<typeof nativeSessionAsset>[1]) => ReturnType<typeof nativeSessionAsset>;
   restoreNativeHistory?: (input: Parameters<typeof restoreNativeSessionHistory>[1]) => ReturnType<typeof restoreNativeSessionHistory>;
   readNativeHistoryState?: (input: Parameters<typeof readNativeSessionRestoreState>[1]) => ReturnType<typeof readNativeSessionRestoreState>;
@@ -30,6 +31,7 @@ export function createNativeLiveProviderSessionStoreInternalRouter(
   });
   router.post("/native-history/restore", nativeHistoryRestoreHandler(dependencies));
   router.post("/native-history/state", nativeHistoryStateHandler(dependencies));
+  router.post("/native-history/choices", nativeHistoryChoicesHandler(dependencies));
   router.post("/native-history/release", nativeHistoryReleaseHandler(dependencies));
   router.post("/native-history/asset", nativeHistoryAssetHandler(dependencies));
   router.post("/append", appendHandler(dependencies));
@@ -331,6 +333,18 @@ function sendStoreError(response: Response, error: unknown): void {
       message: "Session store is temporarily unavailable.",
     },
   });
+}
+
+function nativeHistoryChoicesHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId) return;
+    const body = readRecord(request.body);
+    if (!body || Object.keys(body).length) { sendInvalid(response); return; }
+    if (!dependencies.listNativeHistoryChoices) { sendNativeHistoryError(response, null); return; }
+    try { response.json({ success: true, data: await dependencies.listNativeHistoryChoices({ userId }) }); }
+    catch (error) { sendNativeHistoryError(response, error); }
+  };
 }
 
 function nativeHistoryRestoreHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies): RequestHandler {

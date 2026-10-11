@@ -44,7 +44,10 @@ async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirec
     readNativeSession(projectDirectory, snapshot.sessionId),
   ]);
   if (currentIndex.revision !== index.revision || currentSource.revision !== snapshot.revision) throw fail("NATIVE_INSPECTION_CHANGED");
-  return { inspection: { readOnly: true, ...identity, activity, history, handoffAllowed: false }, projection,
+  const activityTime = new Date(metadata.lastActivityAt ?? NaN);
+  return { inspection: { readOnly: true, ...identity, title: typeof metadata.title === 'string' ? metadata.title.slice(0, 160) : null,
+    updatedAt: Number.isFinite(activityTime.getTime()) ? activityTime.toISOString() : null,
+    activity, history, handoffAllowed: false }, projection,
     nativeSnapshot: { sessionId: snapshot.sessionId, revision: snapshot.revision, entries: snapshot.entries } };
 }
 

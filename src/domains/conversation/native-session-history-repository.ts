@@ -291,3 +291,22 @@ export async function readNativeSessionRestoreState(db: Database, input: { userI
   if (conversation.origin !== "native_live" || conversation.lifecycleStatus !== "active" || !source || source.sessionId !== input.sessionId) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
   return { expectedHeadMessageId: conversation.currentHeadMessageId, expectedRevision: source.revision };
 }
+
+/** Owner-scoped selector metadata only: no messages, prompt, assets or write lease. */
+export async function listNativeSessionSwitchChoices(db: Database, input: { userId: string }) {
+  if (!uuid.test(input.userId)) throw fail("INVALID_NATIVE_PROJECTION");
+  const rows = await db.execute(sql`
+    SELECT c.id AS "conversationId", c.title, c.updated_at AS "updatedAt",
+      c.current_head_message_id AS "headMessageId", cp.provider_session_id AS "providerSessionId",
+      cp.provider_checkpoint_id AS "providerCheckpointId",
+      c.provider_metadata->'nativeSessionSource'->>'sessionId' AS "sourceSessionId",
+      EXISTS (SELECT 1 FROM native_live_turn_preparations t WHERE
+        t.user_id = c.user_id AND t.conversation_id = c.id AND
+        t.dispatch_status IN ('staged','pending','reserved','executing','delivery_unknown')) AS busy
+    FROM conversations c LEFT JOIN conversation_provider_session_checkpoints cp
+      ON cp.user_id = c.user_id AND cp.conversation_id = c.id
+      AND cp.canonical_message_id = c.current_head_message_id AND cp.provider = 'claude_code'
+    WHERE c.user_id = ${input.userId}::uuid AND c.origin = 'native_live' AND c.lifecycle_status = 'active'
+    ORDER BY c.updated_at DESC, c.id LIMIT 1001`);
+  return { conversations: rows.slice(0, 1000), truncated: rows.length > 1000 };
+}

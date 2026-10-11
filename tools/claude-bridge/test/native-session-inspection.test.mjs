@@ -18,6 +18,17 @@ const entries = [
   { type: "assistant", uuid: CP, parentUuid: U, message: { content: "PRIVATE_REPLY" } },
 ];
 
+test('selector receives Desktop title and real millisecond activity time without private settings', async () => {
+  const { inspectDesktopNativeSession } = await import(moduleUrl);
+  await fixture(async ({ root, indexFile }) => {
+    await writeFile(indexFile, JSON.stringify({ ...metadata, title: 'Select this conversation', lastActivityAt: 1791676800000 }));
+    const result = await inspectDesktopNativeSession({ indexFile, projectDirectory: root, peerDirectory: root, probeProcessStart: async () => started });
+    assert.equal(result.title, 'Select this conversation');
+    assert.equal(result.updatedAt, '2026-10-11T00:00:00.000Z');
+    assert.equal(result.secret, undefined);
+  });
+});
+
 test("switch selection resolves a unique native or Desktop ID without exposing private index fields", async () => {
   const { resolveDesktopNativeSelection } = await import(moduleUrl);
   assert.equal(typeof resolveDesktopNativeSelection, 'function');
