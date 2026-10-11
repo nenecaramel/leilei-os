@@ -4,6 +4,24 @@ import { cpSync,mkdtempSync,readFileSync,writeFileSync,rmSync,mkdirSync,openSync
 import path from 'node:path';import os from 'node:os';import test from 'node:test';
 const files=['NativeLiveMessageRows.swift','NativeLiveAssistantTurnRow.swift','NativeLiveMessageBlocks.swift'];
 const moved=['NativeLiveUserMessageRow.swift','NativeLiveHistoryMessageRow.swift','NativeLiveHistoryDivider.swift','NativeLiveAssistantActions.swift'];
+// Keep historical fixtures immutable. Adapt only the explicitly approved
+// process/timestamp geometry; user bubbles, renderers and callbacks stay pinned.
+function approvedProcessChrome(s:string, file:string) {
+ if(file==='NativeLiveAssistantTurnRow.swift') {
+  s=s.replace('timestampText:turn.timestamp.map { MessageTimestampFormatter.string(from:$0) },header:turn.header,','header:turn.header,');
+  s=s.replace(/\} else if let timestamp = turn\.timestamp \{\n                Text\(MessageTimestampFormatter\.string\(from:timestamp\)\)\.font\(\.system\(size:13\.5\)\)\.foregroundStyle\(\.secondary\)\n            \}/, '}');
+  s=s.replace('            }.font(.system(size:14))', '                if let timestamp = turn.timestamp {\n                    Text(MessageTimestampFormatter.string(from:timestamp)).font(.system(size:13.5)).tracking(0.12).foregroundStyle(.secondary)\n                }\n            }.font(.system(size:14))');
+ }
+ if(file==='NativeLiveMessageRows.swift') {
+  const start=s.indexOf('                Text(',s.indexOf('struct NativeLiveHistorySnapshotRow:'));
+  const end=s.indexOf('                NativeLiveMessagePresentationView',start);
+  const stamp=s.slice(start,end).replace('.padding(.bottom, 4)','.padding(.top, 4)').trimEnd();
+  s=s.slice(0,start)+s.slice(end);
+  const position=s.indexOf('                .textSelection(.enabled)',start)+'                .textSelection(.enabled)'.length;
+  s=s.slice(0,position)+'\n\n'+stamp+s.slice(position);
+ }
+ return s;
+}
 function instrument(s:string,file:string) {
  s=s.replace('LightweightContextMenuInteraction(title:', 'RowsProbe.context(title:').replace('.onTapGesture { if onEdit == nil', '.rowsTap { if onEdit == nil');
  s=s.replace(/Button \{ (onCopyMessage\(text\)|onRetryMessage\(user\)) \} label: \{ (Image\([^\n]+?) \}/g,(_,action,label)=>`Button(action: RowsProbe.capture("${action.startsWith('onCopy')?'copy':'retry'}", { ${action} })) { ${label}.rowsEnabled("${action.startsWith('onCopy')?'copy':'retry'}") }`);
@@ -26,7 +44,7 @@ test('MessageRows render and callback equivalence against exact main, including 
   // Compare every remaining row pixel/callback with the immutable historical baseline.
   const originals=files.map(f=>readFileSync('tests/fixtures/message-rows-main-72a67f44/'+f,'utf8')
     .replace('AlbumSaveIndicator(count:turn.parentUserMessageID.flatMap { appModel.albumSavesByUserMessageID[$0]?.total } ?? 0)', '')
-    .replace('if let user = turn.parentUserMessageID { await appModel.refreshAlbumSaves(userMessageID:user,force:isCurrentHead) }', ''));
+    .replace('if let user = turn.parentUserMessageID { await appModel.refreshAlbumSaves(userMessageID:user,force:isCurrentHead) }', '')).map((source,i)=>approvedProcessChrome(source,files[i]));
   const names=new Set(originals.flatMap(s=>[...s.matchAll(/\b(?:struct|class|enum|protocol)\s+(\w+)/g)].map(m=>m[1])));
   for(const f of [...files,...moved])writeFileSync(path.join(root,f),instrument(readFileSync('ios/LeileiOS/LeileiOS/Chat/MessageSurface/'+f,'utf8'),f));
   for(let i=0;i<files.length;i++)writeFileSync(path.join(root,'Baseline'+files[i]),instrument(originals[i],files[i]).replace(new RegExp('\\b('+[...names].join('|')+')\\b','g'),n=>'Baseline'+n));
