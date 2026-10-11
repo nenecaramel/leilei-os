@@ -171,7 +171,7 @@ test("explicit model/thinking/effort selection reaches query options and returns
   });
 
   assert.equal(call.options.model, "claude-opus-5-5");
-  assert.deepEqual(call.options.thinking, { type: "adaptive" });
+  assert.deepEqual(call.options.thinking, { type: "adaptive", display: "summarized" });
   assert.equal(call.options.effort, "medium");
   assert.equal(result.executionReadbackError, null);
   assert.deepEqual(result.executionReadback.applied, {
@@ -1611,6 +1611,7 @@ test("ordinary interactive turns keep verbatim streaming input", async () => {
     "function",
   );
   assert.equal(call.options.verbatimPrompts, true);
+  assert.deepEqual(call.options.thinking, { type: "adaptive", display: "summarized" });
   assert.deepEqual(call.options.systemPrompt, {
     type: "preset",
     preset: "claude_code",
@@ -1987,7 +1988,7 @@ test("interactive foreground execution applies model thinking and effort selecti
 
   assert.equal(result.providerSessionId, "provider-selected-interactive");
   assert.equal(call.options.model, "claude-sonnet-5");
-  assert.deepEqual(call.options.thinking, { type: "adaptive" });
+  assert.deepEqual(call.options.thinking, { type: "adaptive", display: "summarized" });
   assert.equal(call.options.effort, "xhigh");
   assert.equal(call.options.verbatimPrompts, true);
 });
@@ -2814,4 +2815,28 @@ test('local exact resume accepts only canonically failed input-only tails and ne
 test("Native Live default enables Mind Hook while respecting an explicit emergency disable", () => {
   assert.equal(new AgentSdkClaudeTransport({environment: {}}).environment.LEILEI_MIND_HOOK_DISABLED, "0");
   assert.equal(new AgentSdkClaudeTransport({environment: {LEILEI_MIND_HOOK_DISABLED: "1"}}).environment.LEILEI_MIND_HOOK_DISABLED, "1");
+});
+
+test("interactive summarized thinking respects explicit disabled and between-tools selections", async () => {
+  for (const execution of [
+    { model: "claude-opus-5", thinking: "disabled", effort: "high" },
+    { model: "claude-sonnet-5-5", thinking: "between_tools", effort: "high" },
+  ]) {
+    let call;
+    const transport = new AgentSdkClaudeTransport({
+      environment: {},
+      queryImpl: (input) => {
+        call = input;
+        return fakeQuery(successFixture("provider-thinking-" + execution.thinking));
+      },
+    });
+    const result = await transport.executeTurn("hello", {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      execution,
+    });
+    assert.ok(result.providerSessionId);
+    assert.deepEqual(call.options.thinking, { type: execution.thinking });
+  }
 });
