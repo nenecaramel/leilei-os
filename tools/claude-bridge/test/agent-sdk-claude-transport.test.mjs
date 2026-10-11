@@ -171,7 +171,7 @@ test("explicit model/thinking/effort selection reaches query options and returns
   });
 
   assert.equal(call.options.model, "claude-opus-5-5");
-  assert.deepEqual(call.options.thinking, { type: "adaptive", display: "summarized" });
+  assert.deepEqual(call.options.thinking, { type: "adaptive" });
   assert.equal(call.options.effort, "medium");
   assert.equal(result.executionReadbackError, null);
   assert.deepEqual(result.executionReadback.applied, {
