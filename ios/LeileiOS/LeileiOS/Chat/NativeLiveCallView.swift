@@ -248,19 +248,21 @@ final class NativeLiveCallAudioController: NSObject, ObservableObject, AVAudioPl
             request = newRequest
             transcript = ""
             recognition = recognizer.recognitionTask(with: newRequest) { [weak self] result, error in
+                let words = result?.bestTranscription.formattedString
+                let isFinal = result?.isFinal == true
+                let failed = error != nil
                 Task { @MainActor [weak self] in
                     guard let self, self.token == currentToken,
                           self.phase == .listening else { return }
-                    if error != nil {
+                    if failed {
                         self.fail("Speech recognition stopped. Tap to retry.")
                         return
                     }
-                    if let words = result?.bestTranscription.formattedString,
-                       !words.isEmpty {
+                    if let words, !words.isEmpty {
                         self.transcript = words
                         self.scheduleSilenceEnd(for: currentToken)
                     }
-                    if result?.isFinal == true, !self.transcript.isEmpty {
+                    if isFinal, !self.transcript.isEmpty {
                         self.finishUtterance()
                     }
                 }
@@ -271,13 +273,17 @@ final class NativeLiveCallAudioController: NSObject, ObservableObject, AVAudioPl
                 fail("Microphone is unavailable.")
                 return
             }
-            try input.installTap(
+            let frameCount = AVAudioFrameCount(max(1, Int((format.sampleRate * 0.1).rounded(.up))))
+            try input.installAudioTap(
                 onBus: 0,
-                bufferSize: 1024,
+                bufferSize: frameCount,
                 format: format
-            ) { buffer, _ in
-                // Audio remains on the device for on-device speech recognition.
-                newRequest.append(buffer)
+            ) { [weak self] buffer, _ in
+                Task { @MainActor [weak self] in
+                    guard let self, self.token == currentToken,
+                          let request = self.request else { return }
+                    request.append(AVAudioPCMBuffer(copying: buffer))
+                }
             }
             tapInstalled = true
             engine.prepare()
