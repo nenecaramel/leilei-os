@@ -688,6 +688,99 @@ test("foreground runtime event buffering flushes in bounded batches", async () =
   );
 });
 
+test("slow event upload does not block incoming deltas and drains backlog in ordered protocol-sized batches before finalize", async () => {
+  const relay = new FakeRuntimeEventRelay();
+  let release!: () => void;
+  let started!: () => void;
+  const firstUpload = new Promise<void>((resolve) => { started = resolve; });
+  const network = new Promise<void>((resolve) => { release = resolve; });
+  let inFlight = 0;
+  let maxInFlight = 0;
+  relay.appendRuntimeEvents = async (input: unknown) => {
+    relay.calls.push({ name: "appendRuntimeEvents", input });
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    if (relay.calls.filter((entry) => entry.name === "appendRuntimeEvents").length === 1) {
+      started();
+      await network;
+    }
+    inFlight -= 1;
+  };
+  let allDeltasAccepted = false;
+  const executor: NativeLivePreparedCommandExecutor = {
+    async execute(_input, options) {
+      for (let index = 1; index <= 280; index += 1) {
+        await options?.onNormalizedEvent?.({
+          type: "partial_text",
+          payload: { delta: String(index), accumulated_length: index },
+        });
+      }
+      allDeltasAccepted = true;
+      return success();
+    },
+  };
+  const running = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor).runOnce();
+  await firstUpload;
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const acceptedWhileUploadPending = allDeltasAccepted;
+  const finalizedEarly = relay.calls.some((entry) => entry.name === "submitResult");
+  release();
+  assert.equal((await running).outcome, "completed");
+  assert.equal(acceptedWhileUploadPending, true, "HTTP must not hold up the delta callback queue");
+  assert.equal(finalizedEarly, false, "terminal submission must wait for ordered event delivery");
+  assert.equal(maxInFlight, 1, "do not race sequence batches");
+  const batches = relay.calls.filter((entry) => entry.name === "appendRuntimeEvents")
+    .map((entry) => (entry.input as { events: Array<{ sequence: number; event: NativeLiveNormalizedEvent }> }).events);
+  assert.ok(batches.length <= 10, "280 queued deltas must not require 35 HTTP round trips");
+  assert.ok(batches.every((batch) => batch.length <= 32), "retain server protocol batch limit");
+  assert.deepEqual(batches.flat().map((entry) => entry.sequence), Array.from({ length: 280 }, (_, index) => index + 1));
+  assert.deepEqual(batches.flat().map((entry) => entry.event.payload?.delta), Array.from({ length: 280 }, (_, index) => String(index + 1)));
+  assert.equal(relay.calls.at(-1)?.name, "submitResult");
+});
+
+test("terminal clock waits for an in-flight upload and failed backlog batch remains fail-soft", async () => {
+  const relay = new FakeRuntimeEventRelay();
+  let started!: () => void;
+  let release!: () => void;
+  const uploading = new Promise<void>((resolve) => { started = resolve; });
+  const network = new Promise<void>((resolve) => { release = resolve; });
+  let batches = 0;
+  relay.appendRuntimeEvents = async (input: unknown) => {
+    relay.calls.push({ name: "appendRuntimeEvents", input });
+    if (++batches === 1) {
+      started();
+      await network;
+      throw new Error("retry budget exhausted");
+    }
+  };
+  let terminalDelivered = false;
+  const executor: NativeLivePreparedCommandExecutor = {
+    async execute(_input, options) {
+      for (let index = 1; index <= 20; index += 1) {
+        await options?.onNormalizedEvent?.({ type: "partial_text", payload: { delta: String(index) } });
+      }
+      await options?.onNormalizedEvent?.({ type: "result", payload: { status: "success" } });
+      terminalDelivered = true;
+      return success();
+    },
+  };
+  const running = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor).runOnce();
+  await uploading;
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const terminalDeliveredEarly = terminalDelivered;
+  release();
+  const outcome = await running;
+  assert.equal(terminalDeliveredEarly, false);
+  assert.equal(terminalDelivered, true);
+  assert.equal(outcome.outcome, "completed");
+  if (outcome.outcome !== "completed") throw new Error("expected completed");
+  assert.equal(outcome.eventDeliveryFailures, 8);
+  const events = relay.calls.filter((entry) => entry.name === "appendRuntimeEvents")
+    .flatMap((entry) => (entry.input as { events: Array<{ sequence: number }> }).events);
+  assert.deepEqual(events.map((entry) => entry.sequence), Array.from({ length: 21 }, (_, index) => index + 1));
+  assert.equal(relay.calls.filter((entry) => entry.name === "submitResult").length, 1);
+});
+
 test("runtime event delivery is fail-soft and does not invalidate canonical terminal result", async () => {
   const relay = new FakeRuntimeEventRelay();
   relay.eventSubmitError = new Error("event store unavailable");

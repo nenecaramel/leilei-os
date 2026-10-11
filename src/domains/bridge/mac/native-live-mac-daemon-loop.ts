@@ -764,30 +764,48 @@ export class NativeLiveMacDaemonLoop {
         sequence: number;
         event: NativeLiveNormalizedEvent;
       }> = [];
+      let runtimeEventFlush: Promise<void> | null = null;
       const flushRuntimeEvents = async (): Promise<void> => {
+        if (runtimeEventFlush) {
+          await runtimeEventFlush;
+          if (pendingRuntimeEvents.length > 0) {
+            await flushRuntimeEvents();
+          }
+          return;
+        }
         if (
           !this.relay.appendRuntimeEvents
           || pendingRuntimeEvents.length === 0
         ) {
           return;
         }
-        const batch = pendingRuntimeEvents;
-        pendingRuntimeEvents = [];
+        // Keep one ordered upload in flight. Deltas arriving during network
+        // latency join the next batch instead of blocking the SDK callback queue.
+        // 32 is the existing server protocol limit; sparse turns still flush at 8.
+        const drain = (async () => {
+          while (pendingRuntimeEvents.length > 0) {
+            const batch = pendingRuntimeEvents.splice(0, 32);
+            try {
+              await this.relay.appendRuntimeEvents!({
+                listenerInstanceId: this.listenerInstanceId,
+                reservationId: reservation.reservationId,
+                events: batch,
+              });
+            } catch {
+              // The HTTP relay client already bounded-retries this exact,
+              // idempotent sequence batch on transient transport / 5xx failures.
+              // Once that budget is exhausted, stay fail-soft: the terminal
+              // result still carries the canonical fallback event set. Runtime-only
+              // observability is intentionally not duplicated into the result body.
+              eventDeliveryFailures += batch.length;
+            }
+          }
+        })();
+        runtimeEventFlush = drain;
         try {
-          await this.relay.appendRuntimeEvents({
-            listenerInstanceId:
-              this.listenerInstanceId,
-            reservationId:
-              reservation.reservationId,
-            events: batch,
-          });
-        } catch {
-          // The HTTP relay client already bounded-retries this exact,
-          // idempotent sequence batch on transient transport / 5xx failures.
-          // Once that budget is exhausted, stay fail-soft: the terminal
-          // result still carries the canonical fallback event set. Runtime-only
-          // observability is intentionally not duplicated into the result body.
-          eventDeliveryFailures += batch.length;
+          await drain;
+        } finally {
+          runtimeEventFlush = null;
         }
       };
       try {
@@ -803,10 +821,11 @@ export class NativeLiveMacDaemonLoop {
                       event,
                     });
                     // Clock boundaries must reach the repository independently even on sparse turns.
-                    if (pendingRuntimeEvents.length >= 8
-                        || (event.type === "runtime" && event.payload?.kind === "provider_message_start")
+                    if ((event.type === "runtime" && event.payload?.kind === "provider_message_start")
                         || event.type === "result" || event.type === "error") {
                       await flushRuntimeEvents();
+                    } else if (pendingRuntimeEvents.length >= 8 && !runtimeEventFlush) {
+                      void flushRuntimeEvents();
                     }
                   },
                 }
