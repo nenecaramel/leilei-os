@@ -70,7 +70,7 @@ test('thought process opens a native sheet with a leading icon and no toolbar bu
   assert.match(surface, /Button \{ isShowingThoughtProcess = true \}/);
   assert.match(surface, /\.sheet\(isPresented: \$isShowingThoughtProcess\)/);
   assert.match(surface, /NativeLiveThoughtProcessSheet\(items: items\)/);
-  assert.ok(surface.indexOf('Image(systemName: "clock.arrow.circlepath")') < surface.indexOf('Text("Thought process")'));
+  assert.ok(surface.indexOf('NativeLiveThoughtProcessIcon()') < surface.indexOf('Text("Thought process")'));
   assert.match(surface, /Image\(systemName: "chevron.right"\)/);
   assert.doesNotMatch(surface, /isExpanded|Collapse thought process/);
   const sheet = surface.slice(surface.indexOf('private struct NativeLiveThoughtProcessSheet'));
@@ -90,4 +90,22 @@ test('only the assistant copy glyph rotates about its center', () => {
   assert.equal((actions.match(/rotationEffect/g) ?? []).length, 1);
   assert.match(actions, /onCopyMessage\(text\)/);
   assert.match(actions, /onRetryMessage\(user\)/);
+});
+
+test('thinking icon uses the reference dotted clock without changing the sheet or work row', () => {
+  const surface = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
+  assert.match(surface, /NativeLiveThoughtProcessIcon\(\)\s*\.frame\(width: 14, height: 14\)\s*\.accessibilityHidden\(true\)/);
+  assert.doesNotMatch(surface, /clock\.arrow\.circlepath/);
+  assert.match(surface, /private struct NativeLiveThoughtProcessIcon: View/);
+  assert.match(surface, /for degrees in \[200\.0, 220, 240, 260\]/);
+  assert.match(surface, /lineCap: \.round/);
+});
+
+test('thought and work headers share the copy-glyph leading inset', () => {
+  const layout = readFileSync('ios/LeileiOS/LeileiOS/Chat/ChatPresentationLayout.swift', 'utf8');
+  assert.match(layout, /processLeadingInset: CGFloat = 4/);
+  assert.match(layout, /actionDiameter: CGFloat = 22/);
+  for (const name of ['NativeLiveVisibleThinkingSurface.swift', 'NativeLiveRuntimeActivity.swift']) {
+    assert.match(readFileSync(root + name, 'utf8'), /\.padding\(\.leading, ChatPresentationLayout\.processLeadingInset\)/);
+  }
 });

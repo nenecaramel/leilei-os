@@ -75,6 +75,7 @@ function approvedDisclosureHeader(source: string) {
   header = header.replace('.frame(width: 22, height: 22)', '.frame(height: 22)');
   const close = header.lastIndexOf('            }');
   header = header.slice(0, close) + murmur + '                Spacer(minLength: 8)\n' + header.slice(close);
+  header = header.replace(/            }\n\n$/, '            }\n            .padding(.leading, ChatPresentationLayout.processLeadingInset)\n\n');
   return source.slice(0, start) + header + source.slice(end);
 }
 

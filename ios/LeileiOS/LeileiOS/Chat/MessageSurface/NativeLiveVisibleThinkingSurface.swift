@@ -9,8 +9,9 @@ struct NativeLiveVisibleThinkingSurface: View {
         if !items.isEmpty {
             Button { isShowingThoughtProcess = true } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 14, weight: .light))
+                    NativeLiveThoughtProcessIcon()
+                        .frame(width: 14, height: 14)
+                        .accessibilityHidden(true)
                     Text("Thought process")
                         .font(.system(size: 14))
                     Image(systemName: "chevron.right")
@@ -21,11 +22,39 @@ struct NativeLiveVisibleThinkingSurface: View {
                 .foregroundStyle(.secondary)
                 .contentShape(Rectangle())
             }
+            .padding(.leading, ChatPresentationLayout.processLeadingInset)
             .buttonStyle(.plain)
             .accessibilityLabel("Thought process")
             .sheet(isPresented: $isShowingThoughtProcess) {
                 NativeLiveThoughtProcessSheet(items: items)
             }
+        }
+    }
+}
+
+// A small dotted clock, matching the Thought process reference glyph.
+private struct NativeLiveThoughtProcessIcon: View {
+    var body: some View {
+        Canvas { context, size in
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            let radius = min(size.width, size.height) * 0.41
+            let stroke = StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round)
+            var outline = Path()
+            outline.addArc(center: center, radius: radius,
+                           startAngle: .degrees(-90), endAngle: .degrees(180), clockwise: false)
+            context.stroke(outline, with: .foreground, style: stroke)
+            for degrees in [200.0, 220, 240, 260] {
+                let angle = degrees * .pi / 180
+                let point = CGPoint(x: center.x + radius * cos(angle),
+                                    y: center.y + radius * sin(angle))
+                context.fill(Path(ellipseIn: CGRect(x: point.x - 0.6, y: point.y - 0.6,
+                                                    width: 1.2, height: 1.2)), with: .foreground)
+            }
+            var hands = Path()
+            hands.move(to: CGPoint(x: center.x, y: center.y - radius * 0.6))
+            hands.addLine(to: center)
+            hands.addLine(to: CGPoint(x: center.x + radius * 0.48, y: center.y + radius * 0.28))
+            context.stroke(hands, with: .foreground, style: stroke)
         }
     }
 }
