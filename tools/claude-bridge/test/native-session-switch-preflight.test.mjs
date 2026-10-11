@@ -371,3 +371,97 @@ test('switch CLI reports canonical rejection reason without exposing server deta
     } finally { await new Promise(resolve => server.close(resolve)); }
   });
 });
+
+test('native history requests extend only large restore timeout, retaining normal 30-second requests and the 30-MiB budget', async () => {
+  const { nativeHistoryRequest } = await import('../src/native-session-switch-restore.mjs');
+  const original = AbortSignal.timeout;
+  const durations = [];
+  let calls = 0;
+  AbortSignal.timeout = milliseconds => {
+    durations.push(milliseconds);
+    return new AbortController().signal;
+  };
+  try {
+    const request = nativeHistoryRequest({
+      relayUrl: 'https://relay.invalid', relayToken: 'PRIVATE_TOKEN',
+      fetchImpl: async (_url, options) => {
+        calls++;
+        assert.equal(options.headers.Authorization, 'Bearer PRIVATE_TOKEN');
+        assert.equal(options.redirect, 'error');
+        return Response.json({ success: true, data: { accepted: true } });
+      },
+    });
+    await request('state', { small: true });
+    await request('restore', { small: true });
+    await request('restore', { snapshot: 'x'.repeat(4 * 1024 * 1024) });
+    await request('release', { snapshot: 'x'.repeat(4 * 1024 * 1024) });
+    assert.deepEqual(durations, [30_000, 30_000, 180_000, 30_000]);
+    assert.equal(calls, 4);
+    await assert.rejects(request('restore', { snapshot: 'x'.repeat(30 * 1024 * 1024) }),
+      error => error.code === 'NATIVE_RESTORE_PAYLOAD_TOO_LARGE');
+    assert.equal(calls, 4, 'oversized restore must fail before sending');
+  } finally {
+    AbortSignal.timeout = original;
+  }
+});
+
+test('simulated slow upload past the old 30-second bound succeeds with the bounded large-restore budget', async () => {
+  const { nativeHistoryRequest } = await import('../src/native-session-switch-restore.mjs');
+  const original = AbortSignal.timeout;
+  const virtualDelay = 35_000;
+  let requests = 0;
+  AbortSignal.timeout = milliseconds => {
+    const controller = new AbortController();
+    if (milliseconds <= virtualDelay) queueMicrotask(() => controller.abort(new DOMException('PRIVATE_TIMEOUT', 'TimeoutError')));
+    return controller.signal;
+  };
+  try {
+    const request = nativeHistoryRequest({
+      relayUrl: 'https://relay.invalid', relayToken: 'PRIVATE_TOKEN',
+      fetchImpl: (_url, { signal }) => new Promise((resolve, reject) => {
+        requests++;
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        queueMicrotask(() => {
+          if (!signal.aborted) resolve(Response.json({ success: true, data: { accepted: true } }));
+        });
+      }),
+    });
+    assert.deepEqual(await request('restore', { snapshot: 'x'.repeat(4 * 1024 * 1024) }), { accepted: true });
+    assert.equal(requests, 1, 'restore must never retry automatically');
+  } finally {
+    AbortSignal.timeout = original;
+  }
+});
+
+test('native restore separates timeout from opaque server rejection without leaking details or retrying', async () => {
+  const { nativeHistoryRequest } = await import('../src/native-session-switch-restore.mjs');
+  const original = AbortSignal.timeout;
+  let requests = 0;
+  const controller = new AbortController();
+  AbortSignal.timeout = () => controller.signal;
+  try {
+    const timedOut = nativeHistoryRequest({
+      relayUrl: 'https://relay.invalid', relayToken: 'PRIVATE_TOKEN',
+      fetchImpl: (_url, { signal }) => new Promise((_resolve, reject) => {
+        requests++;
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        queueMicrotask(() => controller.abort(new DOMException('PRIVATE_BODY_AND_TOKEN', 'TimeoutError')));
+      }),
+    });
+    await assert.rejects(timedOut('restore', { snapshot: 'x'.repeat(4 * 1024 * 1024) }),
+      error => error.code === 'NATIVE_RESTORE_TIMEOUT' && error.message === 'NATIVE_RESTORE_TIMEOUT');
+    assert.equal(requests, 1);
+  } finally {
+    AbortSignal.timeout = original;
+  }
+  const refused = nativeHistoryRequest({
+    relayUrl: 'https://relay.invalid', relayToken: 'PRIVATE_TOKEN',
+    fetchImpl: async () => {
+      requests++;
+      return new Response('PRIVATE_SERVER_DETAIL', { status: 413 });
+    },
+  });
+  await assert.rejects(refused('restore', { hello: 'world' }),
+    error => error.code === 'NATIVE_RESTORE_SERVER_REJECTED' && error.message === 'NATIVE_RESTORE_SERVER_REJECTED');
+  assert.equal(requests, 2, 'neither a timeout nor an HTTP refusal triggers an automatic retry');
+});
