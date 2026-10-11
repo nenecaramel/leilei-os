@@ -820,7 +820,7 @@ test('a rotated or forked native session continues the conversation only when it
   // Desktop rewind or LeileiOS fork: same native UUIDs, new session id, then a new turn.
   const continued = [...base, row(u2, a, 'user', 'next'), row(a2, u2, 'assistant', 'next reply')];
   const state = await readNativeSessionRestoreState(f.database.db, { userId: f.owner, conversationId: f.input.conversationId, sessionId: Y });
-  assert.deepEqual(state, { expectedHeadMessageId: first.headMessageId, expectedRevision: revision(1), continuation: true });
+  assert.deepEqual([state.expectedHeadMessageId, state.expectedRevision, state.continuation, state.messageAnchor.count], [first.headMessageId, revision(1), true, 2]);
   const second = await f.write(restoreInput(Y, revision(2), continued, a2, { headMessageId: first.headMessageId, revision: revision(1) }));
   assert.equal(second.outcome, 'restored');
   assert.equal(second.inserted, 2);
@@ -889,4 +889,64 @@ test("handoff continues through sessions LeileiOS itself switched to, proven by 
   const other = local.entries.slice(0, 2).map((entry: any) => ({ ...entry, sessionId: stranger }));
   await assert.rejects(f.write({ ...continued, expectedRevision: revision(7), projection: projectNativeHistory({ sessionId: stranger, revision: revision(6), entries: other }, other[1].uuid),
     nativeSnapshot: { sessionId: stranger, revision: revision(6), entries: other } }), (e: any) => e.code === "EXPLICIT_BRANCH_SELECTION_REQUIRED");
+}));
+
+test("incremental sync sends only what follows the synchronized base, across a session change, and refuses a changed base", { skip: !enabled }, async () => fixture(async f => {
+  const { readNativeSessionRestoreState, neutralFingerprint, nativeSyncDigest } = await import(modulePath.href);
+  const { DrizzleNativeLiveProviderSessionStoreRepository } = await import("../src/domains/bridge/provider-session/native-live-provider-session-store.js");
+  const image = { type: "image", source: { type: "base64", media_type: "image/png", data: Buffer.from("incremental image").toString("base64") } };
+  const [u, a, u2, a2, u3, a3] = Array.from({ length: 6 }, () => randomUUID());
+  const base = [{ ...row(u, null, "user", "x"), message: { content: [image] } }, row(a, u, "assistant", "seen")];
+  const X = f.sessionId, Y = randomUUID();
+  const full = (sessionId: string, rev: string, entries: any[], head: string) => projectNativeHistory({ sessionId, revision: rev, entries }, head);
+  const anchored = (projection: any, count: number) => ({ ...projection, messages: projection.messages.slice(count),
+    anchor: { count, digest: nativeSyncDigest(projection.messages.slice(0, count).map((m: any) => ({ sourceMessageId: m.sourceMessageId, fingerprint: neutralFingerprint(m) }))) } });
+  const first = await f.write({ ...f.input, projection: full(X, revision(1), base, a), nativeSnapshot: { sessionId: X, revision: revision(1), entries: base } });
+  const state = (sessionId: string) => readNativeSessionRestoreState(f.database.db, { userId: f.owner, conversationId: f.input.conversationId, sessionId });
+  const s1 = await state(X);
+  assert.equal(s1.messageAnchor.count, 2);
+  assert.equal(s1.entriesAnchor.count, 2);
+  // Same session: only the new turn and the new native records travel.
+  const grown = [...base, row(u2, a, "user", "next"), row(a2, u2, "assistant", "next reply")];
+  const p2 = full(X, revision(2), grown, a2);
+  const input2 = { ...f.input, expectedHeadMessageId: first.headMessageId, expectedRevision: revision(1), projection: anchored(p2, 2),
+    nativeSnapshot: { sessionId: X, revision: revision(2), entries: grown.slice(2), entriesOffset: 2 } };
+  await assert.rejects(f.write({ ...input2, projection: { ...input2.projection, anchor: { count: 2, digest: revision(9) } } }), (e: any) => e.code === "NATIVE_SYNC_BASE_CHANGED");
+  await assert.rejects(f.write({ ...input2, nativeSnapshot: { ...input2.nativeSnapshot, entriesOffset: 1 } }), (e: any) => e.code === "NATIVE_SYNC_BASE_CHANGED");
+  const second = await f.write(input2);
+  assert.deepEqual([second.outcome, second.inserted], ["restored", 2]);
+  assert.deepEqual(second.pendingAssets, [{ sourceEntryUuid: u, sourceBlockOrdinal: 0 }], "the unmaterialized image is reported, nothing else");
+  const store = new DrizzleNativeLiveProviderSessionStoreRepository(f.database.db);
+  assert.deepEqual(await store.load({ userId: f.owner, key: { sessionId: X } }), grown);
+  const after2 = (await f.state()).conversation.providerMetadata.nativeSessionSource;
+  assert.equal(after2.messages.length, 4);
+  assert.deepEqual(after2.messages.map((m: any) => m.fingerprint), p2.messages.map((m: any) => neutralFingerprint(m)));
+  // Session change (Desktop rewind): the anchor still matches, because fingerprints are session-neutral.
+  const rewound = [...grown, row(u3, a2, "user", "after rewind"), row(a3, u3, "assistant", "rewound reply")];
+  const p3 = full(Y, revision(3), rewound, a3);
+  const third = await f.write({ ...f.input, expectedHeadMessageId: second.headMessageId, expectedRevision: revision(2), projection: anchored(p3, 3),
+    nativeSnapshot: { sessionId: Y, revision: revision(3), entries: rewound } });
+  assert.deepEqual([third.outcome, third.inserted], ["restored", 2]);
+  const after3 = (await f.state()).conversation.providerMetadata.nativeSessionSource;
+  assert.deepEqual([after3.sessionId, after3.lineage, after3.messages.length], [Y, [X], 6]);
+  assert.equal((await f.messages()).length, 6);
+}));
+
+test("a version-1 source is upgraded once to session-neutral fingerprints", { skip: !enabled }, async () => fixture(async f => {
+  const { readNativeSessionRestoreState, neutralFingerprint } = await import(modulePath.href);
+  const first = await f.write();
+  // Simulate data written before fingerprint version 2.
+  const [conversation] = await f.database.db.select().from(conversations).where(eq(conversations.id, f.input.conversationId));
+  const { fingerprintVersion: _v, ...legacy } = conversation!.providerMetadata.nativeSessionSource as any;
+  legacy.messages = f.input.projection.messages.map((m: any) => ({ sourceMessageId: m.sourceMessageId, fingerprint: m.fingerprint }));
+  await f.database.db.update(conversations).set({ providerMetadata: { ...conversation!.providerMetadata, nativeSessionSource: legacy } }).where(eq(conversations.id, f.input.conversationId));
+  const state = () => readNativeSessionRestoreState(f.database.db, { userId: f.owner, conversationId: f.input.conversationId, sessionId: f.sessionId });
+  assert.equal((await state()).messageAnchor, undefined, "no anchor until upgraded");
+  const replay = await f.write({ ...f.input, expectedHeadMessageId: first.headMessageId, expectedRevision: f.input.projection.revision });
+  assert.deepEqual([replay.outcome, replay.inserted], ["restored", 0]);
+  const upgraded = (await f.state()).conversation.providerMetadata.nativeSessionSource;
+  assert.equal(upgraded.fingerprintVersion, 2);
+  assert.deepEqual(upgraded.messages.map((m: any) => m.fingerprint), f.input.projection.messages.map((m: any) => neutralFingerprint(m)));
+  assert.equal((await state()).messageAnchor.count, 2);
+  assert.equal((await f.write({ ...f.input, expectedHeadMessageId: first.headMessageId, expectedRevision: f.input.projection.revision })).outcome, "already_current");
 }));

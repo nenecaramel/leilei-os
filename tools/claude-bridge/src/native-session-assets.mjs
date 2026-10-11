@@ -4,10 +4,12 @@ const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 // Only bytes embedded in the pinned native snapshot. Never read source paths,
 // fetch historical URLs, alter native records or forward relay auth to storage.
-export async function materializeNativeSessionHistoryAssets({ history, conversationId, request, uploadImpl = fetch }) {
+export async function materializeNativeSessionHistoryAssets({ history, conversationId, request, uploadImpl = fetch, only }) {
   let materialized = 0, unavailable = 0;
   for (const message of history.projection.messages) for (const block of message.blocks) {
     if (!['image', 'file'].includes(block.kind) || !block.payload?.source_entry_uuid) continue;
+    // Not pending on the server: already bound to an owned attachment.
+    if (only && !only.has(`${block.payload.source_entry_uuid}:${block.payload.source_block_ordinal}`)) { materialized++; continue; }
     const reference = block.payload;
     if (reference.source_type !== 'base64') { unavailable++; continue; }
     const input = {

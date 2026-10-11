@@ -31,6 +31,8 @@ export type NativeHistoryProjection = {
   revision: string;
   checkpointId: string;
   messages: NativeHistoryMessage[];
+  /** Incremental sync: the first `count` messages equal the server's synchronized prefix. */
+  anchor?: { count: number; digest: string };
 };
 type SourceIndex = {
   schemaVersion: 1;
@@ -40,6 +42,8 @@ type SourceIndex = {
   effectiveWorkingDirectory: string;
   headMessageId: string;
   messages: Array<{ sourceMessageId: string; fingerprint: string; displayOnly?: boolean }>;
+  /** 2: fingerprints are session-neutral (image/document blocks' session id blanked). */
+  fingerprintVersion?: 2;
   displayAssetsRevision?: string;
   owner?: "leileios" | "desktop";
   /** Earlier native sessions this conversation continued from, oldest first. */
@@ -58,6 +62,14 @@ export function nativeDisplayAssetRevision(entries: unknown): string {
 
 export const nativeDisplayAssetSubpath = (revision: string) => `native-history-assets/${revision}`;
 
+/** Session-independent message fingerprint; stored from fingerprint version 2 on. */
+export const neutralFingerprint = (message: NativeHistoryProjection["messages"][number]) => fingerprintForSession(message, "");
+
+/** Digest of a synchronized prefix, as `[sourceMessageId, neutral fingerprint]` pairs. */
+export function nativeSyncDigest(messages: Array<{ sourceMessageId: string; fingerprint: string }>): string {
+  return createHash("sha256").update(JSON.stringify(messages.map(m => [m.sourceMessageId, m.fingerprint]))).digest("hex");
+}
+
 /** Sessions whose records may back this conversation's canonical history. */
 export function nativeSourceSessions(source: { sessionId: string; lineage?: string[] } | undefined): Set<string> {
   return new Set(source ? [...(source.lineage ?? []), source.sessionId] : []);
@@ -65,7 +77,7 @@ export function nativeSourceSessions(source: { sessionId: string; lineage?: stri
 
 // Image/document blocks name the projecting session; the same native record in a
 // continued session must compare equal to the fingerprint stored for the old one.
-function fingerprintForSession(message: NativeHistoryProjection["messages"][number], sessionId: string): string {
+export function fingerprintForSession(message: NativeHistoryProjection["messages"][number], sessionId: string): string {
   const { fingerprint: _fingerprint, ...body } = message;
   const blocks = body.blocks.map(block => block.payload && typeof block.payload === "object" && "source_session_id" in block.payload
     ? { ...block, payload: { ...block.payload, source_session_id: sessionId } } : block);
@@ -134,10 +146,13 @@ export function validateNativeHistoryRestoreInput(input: Parameters<typeof resto
     !isAbsolute(input.effectiveWorkingDirectory) || p.schemaVersion !== 1 ||
     !uuid.test(p.sessionId) || !uuid.test(p.checkpointId) || !hash.test(p.revision) ||
     !p.messages.length || p.messages.length > 10_000 || p.messages.at(-1)?.role !== "assistant" ||
-    p.messages.at(-1)?.providerCheckpointId !== p.checkpointId) throw fail("INVALID_NATIVE_PROJECTION");
+    p.messages.at(-1)?.providerCheckpointId !== p.checkpointId ||
+    (p.anchor !== undefined && (!Number.isSafeInteger(p.anchor.count) || p.anchor.count < 1 || !hash.test(p.anchor.digest)))) throw fail("INVALID_NATIVE_PROJECTION");
   const snapshot = input.nativeSnapshot;
-  if (snapshot && (snapshot.sessionId !== p.sessionId || snapshot.revision !== p.revision ||
-    !Array.isArray(snapshot.entries) || !snapshot.entries.some(entry => entry?.uuid === p.checkpointId))) throw fail("INVALID_NATIVE_SNAPSHOT");
+  // With entriesOffset, `entries` is only the tail after the server's stored records.
+  if (snapshot && (snapshot.sessionId !== p.sessionId || snapshot.revision !== p.revision || !Array.isArray(snapshot.entries) ||
+    (snapshot.entriesOffset !== undefined && (!Number.isSafeInteger(snapshot.entriesOffset) || snapshot.entriesOffset < 1)) ||
+    (snapshot.entriesOffset === undefined && !snapshot.entries.some(entry => entry?.uuid === p.checkpointId)))) throw fail("INVALID_NATIVE_SNAPSHOT");
 
   const assets = snapshot?.displayAssets;
   if (assets) {
@@ -153,7 +168,8 @@ export function validateNativeHistoryRestoreInput(input: Parameters<typeof resto
     const { fingerprint, ...body } = message;
     if (!uuid.test(message.sourceMessageId) || seen.has(message.sourceMessageId) ||
       !["user", "assistant"].includes(message.role) ||
-      message.parentSourceMessageId !== (p.messages[index - 1]?.sourceMessageId ?? null) ||
+      (index === 0 && p.anchor ? typeof message.parentSourceMessageId !== "string"
+        : message.parentSourceMessageId !== (p.messages[index - 1]?.sourceMessageId ?? null)) ||
       !uuid.test(message.providerCheckpointId) ||
       (message.parentProviderCheckpointId !== null && !uuid.test(message.parentProviderCheckpointId)) ||
       !message.sourceEntryUuids.length || message.sourceEntryUuids.some(id => !uuid.test(id)) ||
@@ -161,6 +177,18 @@ export function validateNativeHistoryRestoreInput(input: Parameters<typeof resto
       createHash("sha256").update(JSON.stringify(body)).digest("hex") !== fingerprint) throw fail("INVALID_NATIVE_PROJECTION");
     seen.add(message.sourceMessageId);
   }
+}
+
+// Historical image/document blocks not yet bound to an owned attachment, so a
+// switch materializes only those instead of re-checking every asset.
+async function pendingNativeAssets(tx: Parameters<Parameters<Database["transaction"]>[0]>[0], input: { userId: string; conversationId: string }) {
+  const rows = await tx.execute<{ source_entry_uuid: string; source_block_ordinal: number }>(sql`
+    SELECT b.payload->>'source_entry_uuid' AS source_entry_uuid, (b.payload->>'source_block_ordinal')::int AS source_block_ordinal
+    FROM conversation_content_blocks b JOIN conversation_messages m ON m.id = b.message_id
+    WHERE m.user_id = ${input.userId}::uuid AND m.conversation_id = ${input.conversationId}::uuid
+      AND b.kind IN ('image', 'file') AND b.payload ? 'source_entry_uuid'
+    ORDER BY m.current_path_index NULLS LAST, b.ordinal LIMIT 5000`);
+  return rows.map(row => ({ sourceEntryUuid: row.source_entry_uuid, sourceBlockOrdinal: row.source_block_ordinal }));
 }
 
 /** Internal only: caller must supply a verified, complete native selected-head snapshot.
@@ -174,8 +202,9 @@ export async function restoreNativeSessionHistory(db: Database, input: {
   expectedRevision: string | null;
   effectiveWorkingDirectory: string;
   projection: NativeHistoryProjection;
-  nativeSnapshot?: { sessionId: string; revision: string; entries: Array<Record<string, unknown> & { type: string }>; displayAssets?: { revision: string; entries?: Array<Record<string, unknown> & { type: string }>; stagedCount?: number } };
-}): Promise<{ outcome: "restored" | "already_current"; conversationId: string; headMessageId: string; inserted: number }> {
+  nativeSnapshot?: { sessionId: string; revision: string; entries: Array<Record<string, unknown> & { type: string }>; entriesOffset?: number; displayAssets?: { revision: string; entries?: Array<Record<string, unknown> & { type: string }>; stagedCount?: number } };
+}): Promise<{ outcome: "restored" | "already_current"; conversationId: string; headMessageId: string; inserted: number;
+  pendingAssets: Array<{ sourceEntryUuid: string; sourceBlockOrdinal: number }> }> {
   validateNativeHistoryRestoreInput(input);
   const p = input.projection;
   const snapshot = input.nativeSnapshot;
@@ -209,10 +238,29 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       if (staged?.length !== snapshot.displayAssets.stagedCount) throw fail("INVALID_NATIVE_SNAPSHOT");
       validateNativeDisplayAssets(staged, snapshot.displayAssets.revision);
     }
-    if (source && (source.messages.length > p.messages.length || source.messages.some((old, i) => old.sourceMessageId !== p.messages[i]?.sourceMessageId))) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
-    if (source?.messages.some((old, i) => old.fingerprint !== (continuation ? fingerprintForSession(p.messages[i]!, source.sessionId) : p.messages[i]?.fingerprint))) throw fail("NATIVE_HISTORY_REWRITTEN");
-    const unchanged = !continuation && existing?.currentHeadMessageId === source?.headMessageId && source?.revision === p.revision && source.checkpointId === p.checkpointId && source.messages.length === p.messages.length
-      && source.displayAssetsRevision === snapshot?.displayAssets?.revision;
+    // Incremental sync: rebuild the full native snapshot and message list from the
+    // server's synchronized base. A changed base makes the client resend everything.
+    let entries = snapshot?.entries;
+    if (snapshot?.entriesOffset !== undefined) {
+      const stored = await new DrizzleNativeLiveProviderSessionStoreRepository(tx).load({ userId: input.userId, key: { sessionId: p.sessionId } }) ?? [];
+      if (stored.length !== snapshot.entriesOffset) throw fail("NATIVE_SYNC_BASE_CHANGED");
+      entries = [...stored, ...snapshot.entries];
+      if (!entries.some(entry => entry.uuid === p.checkpointId)) throw fail("INVALID_NATIVE_SNAPSHOT");
+    }
+    const offset = p.anchor?.count ?? 0;
+    if (p.anchor && (!source || source.fingerprintVersion !== 2 || offset > source.messages.length
+      || nativeSyncDigest(source.messages.slice(0, offset)) !== p.anchor.digest
+      || p.messages[0]!.parentSourceMessageId !== source.messages[offset - 1]!.sourceMessageId)) throw fail("NATIVE_SYNC_BASE_CHANGED");
+    // Messages before `offset` are the anchored, already-verified synchronized prefix.
+    const total = offset + p.messages.length;
+    const at = (i: number) => i < offset ? undefined : p.messages[i - offset];
+    if (source && (source.messages.length > total || source.messages.some((old, i) => i >= offset && old.sourceMessageId !== at(i)?.sourceMessageId))) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
+    if (source?.messages.some((old, i) => i >= offset && old.fingerprint !== (source.fingerprintVersion === 2 ? neutralFingerprint(at(i)!)
+      : continuation ? fingerprintForSession(at(i)!, source.sessionId) : at(i)!.fingerprint))) throw fail("NATIVE_HISTORY_REWRITTEN");
+    const unchanged = !continuation && existing?.currentHeadMessageId === source?.headMessageId && source?.revision === p.revision && source.checkpointId === p.checkpointId && source.messages.length === total
+      && source.displayAssetsRevision === snapshot?.displayAssets?.revision
+      // A version-1 source is rewritten once with session-neutral fingerprints.
+      && source.fingerprintVersion === 2;
 
     const allRows = await tx.select().from(conversationMessages).where(and(eq(conversationMessages.userId, input.userId), eq(conversationMessages.conversationId, input.conversationId)));
     const byId = new Map(allRows.map(row => [row.id, row]));
@@ -226,14 +274,14 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     }
     rows.reverse();
     const indexedCount = source?.messages.length ?? 0;
-    if (rows.length > p.messages.length || rows.length < indexedCount ||
+    if (rows.length > total || rows.length < indexedCount ||
       (source && rows[indexedCount - 1]?.id !== source.headMessageId)) throw fail("CANONICAL_HEAD_CHANGED");
     for (const [i, row] of rows.entries()) {
-      const message = p.messages[i]!;
-      if (row.role !== message.role) throw fail("CANONICAL_HEAD_CHANGED");
+      const message = at(i);
+      if (message && row.role !== message.role) throw fail("CANONICAL_HEAD_CHANGED");
       if (i < indexedCount) {
         if (row.sourceMessageId !== source!.messages[i]!.sourceMessageId) throw fail("CANONICAL_HISTORY_CHANGED");
-      } else if (row.role === "user" && row.id !== message.sourceMessageId) {
+      } else if (row.role === "user" && row.id !== message!.sourceMessageId) {
         // SDK sends canonical user UUIDs. Never adopt by matching text.
         throw fail("CANONICAL_HEAD_CHANGED");
       }
@@ -242,31 +290,32 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       eq(conversationProviderSessionCheckpoints.userId, input.userId), eq(conversationProviderSessionCheckpoints.conversationId, input.conversationId),
     ));
     const checkpointByMessage = new Map(checkpoints.map(cp => [cp.canonicalMessageId, cp]));
-    const assistants = rows.flatMap((row, i) => row.role === "assistant" ? [{ row, message: p.messages[i]! }] : []);
+    // The anchored prefix was verified when it was synchronized; check the rest.
+    const assistants = rows.flatMap((row, i) => row.role === "assistant" && i >= offset ? [{ row, message: at(i)! }] : []);
     // LeileiOS may run unsynchronized turns in its own forks. Their checkpoint
     // session is acceptable when the restored session carries that exact record.
-    const carried = new Set(snapshot?.entries.flatMap(entry => typeof entry.uuid === "string" ? [entry.uuid] : []) ?? []);
+    const carried = new Set(entries?.flatMap(entry => typeof entry.uuid === "string" ? [entry.uuid] : []) ?? []);
     if (assistants.some(({ row, message }) => {
       const cp = checkpointByMessage.get(row.id);
       // Display-only historical records have no valid checkpoint in the
       // current SDK root. Do not invent one or silently enable exact rewind.
       const index = rows.indexOf(row);
-      if (!cp && index < indexedCount && source?.messages[index]?.displayOnly === true && snapshot
-        && !snapshot.entries.some(entry => entry.uuid === message.providerCheckpointId)) return false;
+      if (!cp && index < indexedCount && source?.messages[index]?.displayOnly === true && entries
+        && !entries.some(entry => entry.uuid === message.providerCheckpointId)) return false;
       const isCarried = cp?.providerCheckpointId != null && carried.has(cp.providerCheckpointId);
       // Synchronized history was proven when fixed and its content by fingerprint. A
       // checkpoint of another session that this one does not carry (compaction,
       // rewind past it) stays historical; the restored session must carry its own.
       if (cp && index < indexedCount && !isCarried && cp.providerSessionId !== p.sessionId) return false;
       return !cp || cp.provider !== "claude_code" || !(cp.providerSessionId === p.sessionId || nativeSourceSessions(source).has(cp.providerSessionId) || isCarried) ||
-        !sameCompletedTurnCheckpoint(cp.providerCheckpointId, message.providerCheckpointId, p.sessionId, snapshot?.entries)
+        !sameCompletedTurnCheckpoint(cp.providerCheckpointId, message.providerCheckpointId, p.sessionId, entries)
         || cp.effectiveWorkingDirectory !== input.effectiveWorkingDirectory;
     })) throw fail("CANONICAL_CHECKPOINT_CHANGED");
     if (!unchanged && (input.expectedRevision !== (source?.revision ?? null) || input.expectedHeadMessageId !== (existing?.currentHeadMessageId ?? null))) throw fail("STALE_NATIVE_PROJECTION");
     if (snapshot) {
       const store = new DrizzleNativeLiveProviderSessionStoreRepository(tx);
       await store.preserveExternalSession({ userId: input.userId, sessionId: p.sessionId });
-      await store.synchronizeNativeSnapshot({ userId: input.userId, key: { sessionId: p.sessionId }, entries: snapshot.entries });
+      await store.synchronizeNativeSnapshot({ userId: input.userId, key: { sessionId: p.sessionId }, entries: entries! });
       if (snapshot.displayAssets?.entries) await store.synchronizeNativeSnapshot({ userId: input.userId,
         key: { sessionId: p.sessionId, subpath: nativeDisplayAssetSubpath(snapshot.displayAssets.revision) }, entries: snapshot.displayAssets.entries });
     }
@@ -274,7 +323,8 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       if (source!.owner === "desktop") await tx.update(conversations).set({ providerMetadata: {
         ...existing!.providerMetadata, nativeSessionSource: { ...source, owner: "leileios" },
       }, updatedAt: new Date() }).where(eq(conversations.id, input.conversationId));
-      return { outcome: "already_current" as const, conversationId: input.conversationId, headMessageId: source!.headMessageId, inserted: 0 };
+      return { outcome: "already_current" as const, conversationId: input.conversationId, headMessageId: source!.headMessageId, inserted: 0,
+        pendingAssets: await pendingNativeAssets(tx, input) };
     }
 
     // Nested transaction is a savepoint: source protection and projection roll back together.
@@ -282,12 +332,12 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     if (!existing) await tx.insert(conversations).values({ id: input.conversationId, userId: input.userId, origin: "native_live", lifecycleStatus: "active" });
     // Adopt only identity-proven completed local rows; preserve bodies, dates and parents.
     for (let index = indexedCount; index < rows.length; index++) {
-      await tx.update(conversationMessages).set({ sourceMessageId: p.messages[index]!.sourceMessageId,
+      await tx.update(conversationMessages).set({ sourceMessageId: at(index)!.sourceMessageId,
         isCurrentPath: true, currentPathIndex: index }).where(eq(conversationMessages.id, rows[index]!.id));
     }
     let parent = rows.at(-1)?.id ?? null;
-    for (let index = rows.length; index < p.messages.length; index++) {
-      const message = p.messages[index]!;
+    for (let index = rows.length; index < total; index++) {
+      const message = at(index)!;
       const id = randomUUID();
       const sourceDate = message.createdAt === null ? null : new Date(message.createdAt);
       await tx.insert(conversationMessages).values({
@@ -301,7 +351,7 @@ export async function restoreNativeSessionHistory(db: Database, input: {
         kind: storedContentKind(block.kind), rawType: block.rawType ?? block.kind,
         text: block.text ?? null, payload: storedContentPayload(block.kind, block.payload ?? null),
       })));
-      if (message.role === "assistant" && (!snapshot || snapshot.entries.some(entry => entry.uuid === message.providerCheckpointId))) await tx.insert(conversationProviderSessionCheckpoints).values({
+      if (message.role === "assistant" && (!entries || entries.some(entry => entry.uuid === message.providerCheckpointId))) await tx.insert(conversationProviderSessionCheckpoints).values({
         userId: input.userId, conversationId: input.conversationId, canonicalMessageId: id, provider: "claude_code",
         providerSessionId: p.sessionId, providerCheckpointId: message.providerCheckpointId,
         effectiveWorkingDirectory: input.effectiveWorkingDirectory,
@@ -315,10 +365,15 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       effectiveWorkingDirectory: input.effectiveWorkingDirectory, headMessageId: parent,
       ...(snapshot?.displayAssets ? { displayAssetsRevision: snapshot.displayAssets.revision } : {}),
       ...(continuation ? { lineage: [...(source.lineage ?? []), source.sessionId].slice(-1000) } : source?.lineage ? { lineage: source.lineage } : {}),
-      messages: p.messages.map(m => ({ sourceMessageId: m.sourceMessageId, fingerprint: m.fingerprint,
-        ...(snapshot && !snapshot.entries.some(entry => entry.uuid === m.providerCheckpointId) ? { displayOnly: true } : {}) })) };
+      fingerprintVersion: 2,
+      messages: Array.from({ length: total }, (_, i) => {
+        if (i < offset) return source!.messages[i]!;
+        const m = at(i)!;
+        return { sourceMessageId: m.sourceMessageId, fingerprint: neutralFingerprint(m),
+          ...(entries && !entries.some(entry => entry.uuid === m.providerCheckpointId) ? { displayOnly: true } : {}) };
+      }) };
     await tx.update(conversations).set({ currentHeadMessageId: parent, updatedAt: new Date(), providerMetadata: { ...existing?.providerMetadata, nativeSessionSource: nextSource } }).where(and(eq(conversations.id, input.conversationId), eq(conversations.userId, input.userId)));
-    return { outcome: "restored" as const, conversationId: input.conversationId, headMessageId: parent, inserted: p.messages.length - rows.length };
+    return { outcome: "restored" as const, conversationId: input.conversationId, headMessageId: parent, inserted: total - rows.length, pendingAssets: await pendingNativeAssets(tx, input) };
   });
 }
 
@@ -375,8 +430,12 @@ export async function readNativeSessionRestoreState(db: Database, input: { userI
   if (conversation.origin !== "native_live" || conversation.lifecycleStatus !== "active" || !source
     || source.lineage?.includes(input.sessionId)) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
   // A different session is only a candidate continuation; restore verifies it.
+  // Anchors let the client send only what follows the synchronized base.
+  const stored = await new DrizzleNativeLiveProviderSessionStoreRepository(db).load({ userId: input.userId, key: { sessionId: input.sessionId } });
   return { expectedHeadMessageId: conversation.currentHeadMessageId, expectedRevision: source.revision,
-    continuation: source.sessionId !== input.sessionId };
+    continuation: source.sessionId !== input.sessionId,
+    ...(source.fingerprintVersion === 2 ? { messageAnchor: { count: source.messages.length, digest: nativeSyncDigest(source.messages) } } : {}),
+    ...(stored?.length ? { entriesAnchor: { count: stored.length, digest: nativeDisplayAssetRevision(stored) } } : {}) };
 }
 
 /** Owner-scoped selector metadata only: no messages, prompt, assets or write lease. */
