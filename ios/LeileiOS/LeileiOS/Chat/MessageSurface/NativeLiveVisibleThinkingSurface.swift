@@ -9,11 +9,11 @@ struct NativeLiveVisibleThinkingSurface: View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Button { isExpanded.toggle() } label: {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 8) {
                         Text("Thought process")
                             .font(.system(size: 14))
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 14))
+                            .font(.system(size: 14, weight: .light))
                             .frame(height: 22)
                         Spacer(minLength: 8)
                     }

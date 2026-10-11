@@ -40,7 +40,7 @@ struct NativeLiveTurnActivityView: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(
                 alignment: .firstTextBaseline,
-                spacing: 12
+                spacing: 8
             ) {
                 Button {
                     expansion.toggleActivity()
@@ -51,7 +51,7 @@ struct NativeLiveTurnActivityView: View {
                     ) {
                         if let timestampText {
                             Text(timestampText)
-                                .font(.system(size: 13.5))
+                                .font(.system(size: 12))
                                 .tracking(0.12)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(
@@ -86,7 +86,7 @@ struct NativeLiveTurnActivityView: View {
                                     ? "chevron.down"
                                     : "chevron.right"
                         )
-                        .font(.system(size: 14))
+                        .font(.system(size: 14, weight: .light))
                         .foregroundStyle(.tertiary)
                         .frame(height: 22)
                         .contentShape(Rectangle())

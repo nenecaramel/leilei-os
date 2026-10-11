@@ -34,7 +34,7 @@ test('User row and history/divider moves retain complete presentation and intera
   let expected=block(baseline,'struct '+name+':');
   if(name==='NativeLiveHistorySnapshotRow') {
    const start=expected.indexOf('                Text('), end=expected.indexOf('                NativeLiveMessagePresentationView',start);
-   const stamp=expected.slice(start,end).replace('.padding(.bottom, 4)','.padding(.top, 4)').trimEnd();
+   const stamp=expected.slice(start,end).replace('.padding(.bottom, 4)','.padding(.top, 4)').replace('size: 13.5', 'size: 12').trimEnd();
    expected=expected.slice(0,start)+expected.slice(end);
    const position=expected.indexOf('                .textSelection(.enabled)',start)+'                .textSelection(.enabled)'.length;
    expected=expected.slice(0,position)+'\n\n'+stamp+expected.slice(position);
