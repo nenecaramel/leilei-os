@@ -744,3 +744,62 @@ test('compact source display assets stay separate from execution root and cannot
   await assert.rejects(nativeSessionAsset(f.database.db,{userId:f.owner,conversationId:f.input.conversationId,sessionId:f.sessionId,
     expectedRevision:revision(1),sourceEntryUuid:u,sourceBlockOrdinal:0}), e=>e.code==='NATIVE_ASSET_MISMATCH');
 }));
+
+test('staged display assets restore without bytes in the restore body and still resolve verified original bytes', { skip: !enabled }, async () => fixture(async f => {
+  const { nativeDisplayAssetRevision } = await import('../tools/claude-bridge/src/native-session-history.mjs');
+  const { DrizzleNativeLiveProviderSessionStoreRepository } = await import('../src/domains/bridge/provider-session/native-live-provider-session-store.js');
+  const { nativeSessionAsset } = await import('../src/domains/conversation/native-session-asset-repository.js');
+  const { stageNativeDisplayAssets } = await import('../src/domains/conversation/native-session-asset-staging.js');
+  const [u, a, boundary, summary, copy, next, middleUser, originalTail] = Array.from({length: 8}, () => randomUUID());
+  const image = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: Buffer.from('synthetic staged bytes').toString('base64') } };
+  const original = { sessionId: randomUUID(), revision: revision(8), entries: [
+    { ...row(u, null, 'user', 'old'), message: { content: [image] } }, row(a, u, 'assistant', 'first reply'), row(middleUser, a, 'user', 'second'), row(originalTail, middleUser, 'assistant', 'old reply'),
+  ] };
+  const entries = [
+    { ...row(boundary, null, 'system', ''), subtype: 'compact_boundary', logicalParentUuid: copy, compactMetadata: { preservedMessages: { allUuids: [copy] } } },
+    { ...row(summary, boundary, 'user', 'summary'), isCompactSummary: true },
+    { ...row(copy, summary, 'assistant', 'old reply'), forkedFrom: { sessionId: original.sessionId, messageUuid: originalTail } },
+    row(next, copy, 'user', 'current'), row(f.entries[1].uuid, next, 'assistant', 'current reply'),
+  ];
+  const assets = [{ type: 'user', uuid: u, message: { content: [image] } }];
+  const assetRevision = nativeDisplayAssetRevision(assets);
+  const stage = (input: Record<string, unknown>) => stageNativeDisplayAssets(f.database.db, { userId: f.owner, sessionId: f.sessionId, revision: assetRevision, total: 1, offset: 0, entries: [], ...input } as any);
+  const input = { ...f.input, projection: projectNativeHistory({sessionId:f.sessionId, revision:revision(1), entries}, f.entries[1].uuid, {sourceSnapshots:[original]}),
+    nativeSnapshot: {sessionId:f.sessionId, revision:revision(1), entries, displayAssets:{revision:assetRevision, stagedCount:1}} };
+  // Nothing staged yet: the restore refuses before creating any conversation.
+  await assert.rejects(f.write(input), (e: any) => e.code === 'INVALID_NATIVE_SNAPSHOT');
+  assert.equal((await f.state()).conversation, undefined);
+  assert.deepEqual(await stage({}), { stored: 0, complete: false });
+  assert.deepEqual(await stage({ entries: assets }), { stored: 1, complete: true });
+  assert.deepEqual(await stage({ entries: assets }), { stored: 1, complete: true }, 'lost-response replay does not duplicate');
+  await assert.rejects(f.write({ ...input, nativeSnapshot: { ...input.nativeSnapshot, displayAssets: { revision: assetRevision, stagedCount: 2 } } }),
+    (e: any) => e.code === 'INVALID_NATIVE_SNAPSHOT');
+  const first = await f.write(input);
+  assert.equal(first.outcome, 'restored');
+  const store = new DrizzleNativeLiveProviderSessionStoreRepository(f.database.db);
+  assert.deepEqual(await store.load({userId:f.owner,key:{sessionId:f.sessionId,subpath:`native-history-assets/${assetRevision}`}}), assets);
+  assert.deepEqual(await store.listSubkeys({userId:f.owner,sessionId:f.sessionId}), [], 'staged bytes are not exposed as SDK subagent transcripts');
+  const asset = await nativeSessionAsset(f.database.db,{userId:f.owner,conversationId:f.input.conversationId,sessionId:f.sessionId,expectedRevision:revision(1),sourceEntryUuid:u,sourceBlockOrdinal:0});
+  assert.equal(asset.sizeBytes, Buffer.byteLength('synthetic staged bytes'));
+  assert.equal((await f.write({...input,expectedHeadMessageId:first.headMessageId,expectedRevision:revision(1)})).outcome, 'already_current');
+}));
+
+test('asset staging appends only by position and discards a complete set that does not match its revision', { skip: !enabled }, async () => fixture(async f => {
+  const { nativeDisplayAssetRevision } = await import('../tools/claude-bridge/src/native-session-history.mjs');
+  const { stageNativeDisplayAssets } = await import('../src/domains/conversation/native-session-asset-staging.js');
+  const carriers = [1, 2, 3].map(n => ({ type: 'user', uuid: randomUUID(), message: { content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: Buffer.from(`bytes ${n}`).toString('base64') } }] } }));
+  const assetRevision = nativeDisplayAssetRevision(carriers);
+  const stage = (offset: number, entries: unknown[], rev = assetRevision) => stageNativeDisplayAssets(f.database.db, { userId: f.owner, sessionId: f.sessionId, revision: rev, total: 3, offset, entries } as any);
+  const rows = async (rev = assetRevision) => Number((await f.database.db.execute(sql`SELECT count(*) AS c FROM native_live_provider_session_entries
+    WHERE user_id=${f.owner}::uuid AND provider_session_id=${f.sessionId} AND subpath=${`native-history-assets/${rev}`}`))[0].c);
+  assert.deepEqual(await stage(2, carriers.slice(2)), { stored: 0, complete: false }, 'a gap is never written');
+  assert.deepEqual(await stage(0, carriers.slice(0, 2)), { stored: 2, complete: false });
+  assert.deepEqual(await stage(1, carriers.slice(1)), { stored: 3, complete: true }, 'overlap appends only the missing tail');
+  assert.equal(await rows(), 3);
+  await assert.rejects(stage(0, [{ type: 'user', uuid: randomUUID(), message: { content: [{ type: 'text', text: 'no asset' }] } }]), (e: any) => e.code === 'INVALID_NATIVE_SNAPSHOT');
+  await assert.rejects(stage(2, carriers), (e: any) => e.code === 'INVALID_NATIVE_SNAPSHOT', 'batch beyond total');
+  const wrong = revision(7);
+  assert.deepEqual(await stage(0, carriers, wrong), { stored: 0, complete: false }, 'mismatching complete set is discarded');
+  assert.equal(await rows(wrong), 0);
+  assert.equal(await rows(), 3, 'other revisions are untouched');
+}));

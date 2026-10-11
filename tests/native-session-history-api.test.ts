@@ -86,3 +86,27 @@ test('native asset endpoint binds authenticated owner, validates references and 
     assert.equal(calls, 1);
   });
 });
+test('native asset staging endpoint binds authenticated owner, refuses spoofed fields and staged restore carries no bytes', async () => {
+  const staged: any[] = [];
+  const stageBody = { sessionId: sid, revision, total: 1, offset: 0, entries: [{ type: 'user', uuid: cp, message: { content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'UFJJVkFURQ==' } }] } }] };
+  await withServer(app => {
+    app.use((request, _response, next) => { request.mcpUserId = userId; next(); });
+    app.use('/store', createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any,
+      stageNativeHistoryAssets: async (input: any) => { staged.push(input); return { stored: 1, complete: true }; },
+      restoreNativeHistory: async (input: any) => { assert.deepEqual(input.nativeSnapshot.displayAssets, { revision, stagedCount: 1 });
+        return { outcome: 'restored', conversationId, headMessageId: cp, inserted: 2 }; } } as any));
+  }, async url => {
+    const send = (body: any) => fetch(url + '/store/native-history/asset-stage', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const ok = await send(stageBody);
+    assert.equal(ok.status, 200);
+    assert.deepEqual((await ok.json()).data, { stored: 1, complete: true });
+    assert.equal(staged[0].userId, userId);
+    for (const bad of [{ ...stageBody, userId: sid }, { ...stageBody, entries: 'x' }, { ...stageBody, total: '1' }]) assert.equal((await send(bad)).status, 400);
+    assert.equal(staged.length, 1, 'invalid staging never reaches the writer');
+    const restore = body();
+    restore.nativeSnapshot = { ...restore.nativeSnapshot, displayAssets: { revision, stagedCount: 1 } };
+    assert.equal((await post(url, restore)).status, 200);
+    restore.nativeSnapshot.displayAssets = { revision, stagedCount: 1, entries: [] };
+    assert.equal((await post(url, restore)).status, 400, 'staged form cannot also carry entries');
+  });
+});

@@ -54,6 +54,27 @@ export function nativeDisplayAssetRevision(entries: unknown): string {
   return createHash("sha256").update(JSON.stringify(canonical(entries))).digest("hex");
 }
 
+export const nativeDisplayAssetSubpath = (revision: string) => `native-history-assets/${revision}`;
+
+/** One display-asset carrier: a user/assistant record holding image or document bytes. */
+export function validateNativeDisplayAssetEntry(entry: unknown, seen: Set<string>) {
+  const value = entry as (Record<string, unknown> & { type?: unknown }) | null;
+  const content = (value?.message as { content?: unknown[] } | undefined)?.content;
+  if (!value || typeof value !== "object" || typeof value.uuid !== "string" || !uuid.test(value.uuid) || seen.has(value.uuid) ||
+    !["user", "assistant"].includes(String(value.type)) || !Array.isArray(content) ||
+    !content.some(block => block && typeof block === "object" && ["image", "document"].includes(String((block as { type?: unknown }).type)))) throw fail("INVALID_NATIVE_SNAPSHOT");
+  seen.add(value.uuid);
+}
+
+/** Complete display-asset set: bounded, uniquely identified and matching its revision. */
+export function validateNativeDisplayAssets(entries: unknown, revision: string) {
+  if (!Array.isArray(entries) || !entries.length || entries.length > 10_000 ||
+    Buffer.byteLength(JSON.stringify(entries)) > 24 * 1024 * 1024 ||
+    !hash.test(revision) || nativeDisplayAssetRevision(entries) !== revision) throw fail("INVALID_NATIVE_SNAPSHOT");
+  const seen = new Set<string>();
+  for (const entry of entries) validateNativeDisplayAssetEntry(entry, seen);
+}
+
 // Display ends at the assistant; execution may include its native Stop hook receipt.
 // Preserve the execution checkpoint. Only this explicitly proven trailing carrier
 // is equivalent: never accept a generic ancestor, compact, tool or another turn.
@@ -104,17 +125,11 @@ export function validateNativeHistoryRestoreInput(input: Parameters<typeof resto
 
   const assets = snapshot?.displayAssets;
   if (assets) {
-    if (!Array.isArray(assets.entries) || !assets.entries.length || assets.entries.length > 10_000 ||
-      Buffer.byteLength(JSON.stringify(assets.entries)) > 24 * 1024 * 1024 ||
-      nativeDisplayAssetRevision(assets.entries) !== assets.revision || !hash.test(assets.revision)) throw fail("INVALID_NATIVE_SNAPSHOT");
-    const assetIds = new Set<string>();
-    for (const entry of assets.entries) {
-      const content = (entry.message as { content?: unknown[] } | undefined)?.content;
-      if (typeof entry.uuid !== "string" || !uuid.test(entry.uuid) || assetIds.has(entry.uuid) ||
-        !["user", "assistant"].includes(entry.type) || !Array.isArray(content) ||
-        !content.some(block => block && typeof block === "object" && ["image", "document"].includes(String((block as { type?: unknown }).type)))) throw fail("INVALID_NATIVE_SNAPSHOT");
-      assetIds.add(entry.uuid);
-    }
+    // Staged form: bytes arrived earlier in small batches; verified in the transaction.
+    if (assets.stagedCount !== undefined) {
+      if (assets.entries !== undefined || !hash.test(assets.revision) || !Number.isSafeInteger(assets.stagedCount) ||
+        assets.stagedCount < 1 || assets.stagedCount > 10_000) throw fail("INVALID_NATIVE_SNAPSHOT");
+    } else validateNativeDisplayAssets(assets.entries, assets.revision);
   }
 
   const seen = new Set<string>();
@@ -143,7 +158,7 @@ export async function restoreNativeSessionHistory(db: Database, input: {
   expectedRevision: string | null;
   effectiveWorkingDirectory: string;
   projection: NativeHistoryProjection;
-  nativeSnapshot?: { sessionId: string; revision: string; entries: Array<Record<string, unknown> & { type: string }>; displayAssets?: { revision: string; entries: Array<Record<string, unknown> & { type: string }> } };
+  nativeSnapshot?: { sessionId: string; revision: string; entries: Array<Record<string, unknown> & { type: string }>; displayAssets?: { revision: string; entries?: Array<Record<string, unknown> & { type: string }>; stagedCount?: number } };
 }): Promise<{ outcome: "restored" | "already_current"; conversationId: string; headMessageId: string; inserted: number }> {
   validateNativeHistoryRestoreInput(input);
   const p = input.projection;
@@ -167,6 +182,13 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       inArray(nativeLiveManualCompactions.status, ["pending", "reserved"]),
     )).limit(1);
     if (activeTurns.length || compacts.length) throw fail("NATIVE_CONVERSATION_BUSY");
+    // Staged display assets must be complete and exactly match the claimed revision.
+    if (snapshot?.displayAssets?.stagedCount !== undefined) {
+      const staged = await new DrizzleNativeLiveProviderSessionStoreRepository(tx).load({ userId: input.userId,
+        key: { sessionId: p.sessionId, subpath: nativeDisplayAssetSubpath(snapshot.displayAssets.revision) } });
+      if (staged?.length !== snapshot.displayAssets.stagedCount) throw fail("INVALID_NATIVE_SNAPSHOT");
+      validateNativeDisplayAssets(staged, snapshot.displayAssets.revision);
+    }
     if (source && (source.messages.length > p.messages.length || source.messages.some((old, i) => old.sourceMessageId !== p.messages[i]?.sourceMessageId))) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
     if (source?.messages.some((old, i) => old.fingerprint !== p.messages[i]?.fingerprint)) throw fail("NATIVE_HISTORY_REWRITTEN");
     const unchanged = existing?.currentHeadMessageId === source?.headMessageId && source?.revision === p.revision && source.checkpointId === p.checkpointId && source.messages.length === p.messages.length
@@ -217,8 +239,8 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       const store = new DrizzleNativeLiveProviderSessionStoreRepository(tx);
       await store.preserveExternalSession({ userId: input.userId, sessionId: p.sessionId });
       await store.synchronizeNativeSnapshot({ userId: input.userId, key: { sessionId: p.sessionId }, entries: snapshot.entries });
-      if (snapshot.displayAssets) await store.synchronizeNativeSnapshot({ userId: input.userId,
-        key: { sessionId: p.sessionId, subpath: `native-history-assets/${snapshot.displayAssets.revision}` }, entries: snapshot.displayAssets.entries });
+      if (snapshot.displayAssets?.entries) await store.synchronizeNativeSnapshot({ userId: input.userId,
+        key: { sessionId: p.sessionId, subpath: nativeDisplayAssetSubpath(snapshot.displayAssets.revision) }, entries: snapshot.displayAssets.entries });
     }
     if (unchanged) {
       if (source!.owner === "desktop") await tx.update(conversations).set({ providerMetadata: {
