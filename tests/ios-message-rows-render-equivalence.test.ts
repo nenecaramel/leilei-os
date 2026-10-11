@@ -10,6 +10,7 @@ function approvedProcessChrome(s:string, file:string) {
  if(file==='NativeLiveAssistantTurnRow.swift') {
   s=s.replace('timestampText:turn.timestamp.map { MessageTimestampFormatter.string(from:$0) },header:turn.header,','header:turn.header,');
   s=s.replace(/\} else if let timestamp = turn\.timestamp \{\n                Text\(MessageTimestampFormatter\.string\(from:timestamp\)\)\.font\(\.system\(size:13\.5\)\)\.foregroundStyle\(\.secondary\)\n            \}/, '}');
+  s=s.replace('            }\n            NativeLiveMessagePresentationView', '            }.padding(.bottom, turn.stepCount > 0 ? ChatPresentationLayout.processSectionSpacing - ChatPresentationLayout.assistantSpacing : 0)\n            NativeLiveMessagePresentationView');
   s=s.replace('            }.font(.system(size:14))', '                if let timestamp = turn.timestamp {\n                    Text(MessageTimestampFormatter.string(from:timestamp)).font(.system(size:13.5)).tracking(0.12).foregroundStyle(.secondary)\n                }\n            }.font(.system(size:14))');
  }
  if(file==='NativeLiveMessageRows.swift') {

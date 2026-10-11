@@ -29,3 +29,12 @@ test('thinking disclosure is independent and timestamp belongs only to the foote
   assert.match(actions, /if let timestamp = turn\.timestamp/);
   assert.ok(actions.indexOf('if let timestamp') > actions.indexOf('if turn.canRetry'));
 });
+test('process section gaps are 18 while body/footer spacing stays 6', () => {
+  const layout = readFileSync('ios/LeileiOS/LeileiOS/Chat/ChatPresentationLayout.swift', 'utf8');
+  const row = readFileSync(root + 'NativeLiveAssistantTurnRow.swift', 'utf8');
+  assert.match(layout, /processSectionSpacing: CGFloat = 18/);
+  assert.match(layout, /assistantSpacing: CGFloat = 6/);
+  assert.match(row, /ChatPresentationLayout\.processSectionSpacing - ChatPresentationLayout\.assistantSpacing/);
+  assert.match(row, /processSections\.showsThinking && \(processSections\.showsActivity \|\| !turn\.bodyPresentation\.nodes\.isEmpty\)/);
+  assert.match(row, /processSections\.showsActivity && !turn\.bodyPresentation\.nodes\.isEmpty/);
+});
