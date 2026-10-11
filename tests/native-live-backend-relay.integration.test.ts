@@ -517,3 +517,31 @@ test("relay rejection constraint upgrades 0105 without changing rows and disting
     }, JSON.stringify(values));
   }
 });
+
+test('relay supplies failed input receipts only for the exact canonical resume binding', {skip: !enabled}, async t => {
+  const database=createDatabase(process.env.DATABASE_URL!,{ssl:false});
+  const [user]=await database.db.insert(users).values({email:`failed-native-tail-${crypto.randomUUID()}@example.com`,displayName:'Failed native tail'}).returning();
+  t.after(async()=>{try{await database.db.delete(nativeLiveRuntimeListenerLeases).where(eq(nativeLiveRuntimeListenerLeases.userId,user.id));await database.db.delete(conversations).where(eq(conversations.userId,user.id));await database.db.delete(users).where(eq(users.id,user.id));}finally{await database.close();}});
+  const service=new NativeLiveConversationService(new DrizzleNativeLiveConversationRepository(database.db));
+  const conversation=await service.createConversation({userId:user.id,title:'Synthetic failed input binding'});
+  const coordinator=new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(database.db));
+  const repo=new DrizzleNativeLiveBackendRelayRepository(database.db);
+  const relay=new NativeLiveBackendRelayService(repo,coordinator);
+  const session=crypto.randomUUID(), checkpoint=crypto.randomUUID(), listener=crypto.randomUUID();
+  const binding={runtimeMode:'resume' as const,parentProviderSessionId:session,parentProviderCheckpointId:checkpoint,expectedWorkingDirectory:'/synthetic/native-tail'};
+  async function prepare(){const result=await coordinator.prepare(user.id,{dispatch_target:'claude_code',request_id:crypto.randomUUID(),operation:'send',conversation_id:conversation.id,expected_head_message_id:null,text:'synthetic'});assert.equal(result.ok,true);if(!result.ok)throw Error('prepare failed');return result.command;}
+  const ids:string[]=[];
+  for(const mismatch of [{}, {parentProviderSessionId:crypto.randomUUID()}, {parentProviderCheckpointId:crypto.randomUUID()}, {expectedWorkingDirectory:'/different'}, {runtimeMode:'fork' as const}]){
+    const command=await prepare();ids.push(command.canonical_user_message_id!);
+    const now=new Date();await database.db.update(nativeLiveTurnPreparations).set({...binding,...mismatch,status:'finalized_failure',dispatchStatus:'completed',failureCode:'PROVIDER_SESSION_CONFLICT',resultHash:'a'.repeat(64),finalizedAt:now,reservedBy:listener,reservedAt:now,reservationExpiresAt:now,executionStartedAt:now}).where(eq(nativeLiveTurnPreparations.id,command.prepare_id));
+  }
+  // An unresolved turn at the same position is not proof of a failed input.
+  const unresolved=await prepare();await database.db.update(nativeLiveTurnPreparations).set(binding).where(eq(nativeLiveTurnPreparations.id,unresolved.prepare_id));
+  const current=await prepare();await database.db.update(nativeLiveTurnPreparations).set(binding).where(eq(nativeLiveTurnPreparations.id,current.prepare_id));
+  assert.equal(await relay.renewLease({userId:user.id,listenerInstanceId:listener,dispatchTarget:'claude_code'}),'acquired');
+  await relay.enqueuePreparation({userId:user.id,prepareId:current.prepare_id});
+  const reserved=await relay.reserveNext({userId:user.id,listenerInstanceId:listener,dispatchTarget:'claude_code'});
+  assert.ok(reserved);assert.equal(reserved.reservationId,current.prepare_id);
+  assert.deepEqual(reserved.command.failed_user_message_uuids,[ids[0]]);
+  assert.equal(reserved.command.parent_provider_session_id,session);assert.equal(reserved.command.parent_provider_checkpoint_id,checkpoint);
+});

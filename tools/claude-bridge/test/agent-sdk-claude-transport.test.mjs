@@ -2774,3 +2774,39 @@ test("local exact resume permits same-user interrupted re-delivery but refuses u
     }
   }
 });
+
+test('local exact resume accepts only canonically failed input-only tails and never Desktop execution', async () => {
+  const sessionId = '00000000-0000-4000-8000-000000000081';
+  const cp = '00000000-0000-4000-8000-000000000082';
+  const failed = '00000000-0000-4000-8000-000000000083';
+  const user = '00000000-0000-4000-8000-000000000084';
+  const child = '00000000-0000-4000-8000-000000000085';
+  for (const [extra, evidence, allowed] of [
+    [[], [failed], true],
+    [[], [], false],
+    [[{type:'assistant',uuid:'answer',parentUuid:'context'}], [failed], false],
+    [[{type:'user',uuid:'desktop',parentUuid:'context',message:{content:'another turn'}}], [failed], false],
+    [[{type:'system',subtype:'compact_boundary',uuid:'compact',parentUuid:'context'}], [failed], false],
+    [[{type:'user',uuid:'tool',parentUuid:'context',message:{content:[{type:'tool_result'}]}}], [failed], false],
+  ]) {
+    const entries = [{type:'assistant',uuid:cp,parentUuid:null},
+      {type:'user',uuid:failed,parentUuid:cp,message:{content:'failed canonical input'}},
+      {type:'attachment',uuid:'context',parentUuid:failed}, ...extra];
+    let queries=0;
+    const transport=new AgentSdkClaudeTransport({environment:{},cwd:'/synthetic/local-daemon',
+      sessionMessagesImpl:async()=>[{type:'assistant'}],
+      importSessionToStoreImpl:async(_id,store)=>store.append({},entries),
+      queryImpl:input=>{queries++;assert.equal(input.options.resume,sessionId);assert.equal(input.options.resumeSessionAt,cp);assert.notEqual(input.options.forkSession,true);
+        return {close(){},async *[Symbol.asyncIterator](){
+          yield successFixture(sessionId)[0];
+          const prompt=await input.prompt[Symbol.asyncIterator]().next();assert.equal(prompt.value.uuid,user);
+          entries.push({type:'user',uuid:user,parentUuid:cp},{type:'assistant',uuid:child,parentUuid:user});
+          yield successFixture(sessionId)[1];yield successFixture(sessionId)[2];
+        }};
+      }});
+    const run=transport.executeTurn('synthetic',{mode:'resume',parentProviderSessionId:sessionId,
+      parentProviderCheckpointId:cp,requireProviderCheckpoint:true,userMessageUuid:user,failedUserMessageUuids:evidence});
+    if(allowed){const result=await run;assert.equal(result.providerSessionId,sessionId);assert.equal(result.providerCheckpointId,child);assert.equal(queries,1);}
+    else {await assert.rejects(run,e=>e.runtimeCode==='PROVIDER_SESSION_CONFLICT');assert.equal(queries,0);}
+  }
+});

@@ -478,6 +478,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       requireProviderCheckpoint = false,
       streaming = true,
       userMessageUuid = null,
+      failedUserMessageUuids = [],
       execution = null,
       onNormalizedEvent = null,
       permissionHandler = null,
@@ -587,7 +588,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     if (mode === "resume" && parentProviderCheckpointId !== null
       && !this.sessionStore && !nativeScheduleCommand) {
       await this.#validateLocalResumeTail(
-        parentProviderSessionId, parentProviderCheckpointId, userMessageUuid,
+        parentProviderSessionId, parentProviderCheckpointId, userMessageUuid, failedUserMessageUuids,
       );
     }
     const localSendFileServer =
@@ -1113,7 +1114,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       && typeof entry.uuid === "string" && Object.hasOwn(entry, "parentUuid"));
   }
 
-  async #validateLocalResumeTail(sessionId, checkpointId, userMessageUuid) {
+  async #validateLocalResumeTail(sessionId, checkpointId, userMessageUuid, failedUserMessageUuids) {
     // An ancestry cache proves presence, not that Desktop has stayed at that
     // checkpoint. Read again before query so an unseen native turn is not rewound.
     const allEntries = await this.#checkpointEntries(sessionId, true);
@@ -1131,14 +1132,24 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     const byId = new Map(this.#chainEntries(verified.prefix).map(entry => [entry.uuid, entry]));
     const suffix = [];
     for (let id = tailId; id !== checkpointId; id = byId.get(id).parentUuid) suffix.push(byId.get(id));
+    const failedInputs = new Set(failedUserMessageUuids);
     let sameCanonicalTurn = false;
+    let failedInputOnly = false;
     for (const entry of suffix.reverse()) {
       const toolResult = entry.type === "user" && Array.isArray(entry.message?.content)
         && entry.message.content.length > 0
         && entry.message.content.every(block => block?.type === "tool_result");
       if (entry.type === "user" && !toolResult) {
-        if (!userMessageUuid || entry.uuid !== userMessageUuid) throw conflict();
-        sameCanonicalTurn = true;
+        if (userMessageUuid && entry.uuid === userMessageUuid) {
+          sameCanonicalTurn = true;
+          failedInputOnly = false;
+        } else if (failedInputs.has(entry.uuid)) {
+          sameCanonicalTurn = false;
+          failedInputOnly = true;
+        } else throw conflict();
+      } else if (failedInputOnly && entry.type !== "attachment") {
+        // A failed receipt proves the input, not that generated output is safe to discard.
+        throw conflict();
       } else if ((entry.type === "assistant" || toolResult) && !sameCanonicalTurn) {
         throw conflict();
       }

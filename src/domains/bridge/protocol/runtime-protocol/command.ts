@@ -40,6 +40,7 @@ export function parseNativeLiveRuntimeCommand(
     "attachments",
     "output_attachments_enabled",
     "parent_provider_checkpoint_id",
+    "failed_user_message_uuids",
   ]);
 
   if (body.output_attachments_enabled !== undefined && typeof body.output_attachments_enabled !== "boolean") {
@@ -74,6 +75,17 @@ export function parseNativeLiveRuntimeCommand(
   }
   if (runtimeMode === "resume" && parentProviderCheckpointId === null) {
     throw new NativeLiveRuntimeProtocolError("Resume runtime command requires a parent checkpoint.");
+  }
+  let failedUserMessageUuids: string[] | undefined;
+  if (body.failed_user_message_uuids !== undefined) {
+    const value = body.failed_user_message_uuids;
+    if (protocolVersion < 4 || runtimeMode !== "resume" || !Array.isArray(value) || value.length > 64) {
+      throw new NativeLiveRuntimeProtocolError("Failed input receipts require checkpoint-addressed resume and at most 64 UUIDs.");
+    }
+    failedUserMessageUuids = value.map(id => requireUuid(id, "failed_user_message_uuids"));
+    if (new Set(failedUserMessageUuids).size !== failedUserMessageUuids.length || failedUserMessageUuids.includes(body.canonical_user_message_id as string)) {
+      throw new NativeLiveRuntimeProtocolError("Failed input receipts must be distinct from the current user UUID.");
+    }
   }
   const expectedWorkingDirectory =
     body.expected_working_directory === undefined
@@ -127,6 +139,7 @@ export function parseNativeLiveRuntimeCommand(
     parent_provider_session_id: parentProviderSessionId,
     expected_working_directory: expectedWorkingDirectory,
     ...(Object.hasOwn(body, "parent_provider_checkpoint_id") ? { parent_provider_checkpoint_id: parentProviderCheckpointId } : {}),
+    ...(failedUserMessageUuids !== undefined ? { failed_user_message_uuids: failedUserMessageUuids } : {}),
     execution_selection:
       body.execution_selection === undefined
         || body.execution_selection === null

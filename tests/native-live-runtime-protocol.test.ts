@@ -1068,3 +1068,18 @@ test('v4 exact fork carries historical UUID; legacy whole-session fork stays exp
  assert.throws(()=>parseNativeLiveRuntimeCommand({...shape,protocol_version:3}),/checkpoint|protocol/i);
  assert.throws(()=>parseNativeLiveRuntimeCommand({...shape,runtime_mode:'new',parent_provider_session_id:null}),/checkpoint/i);
 });
+
+test('failed native input receipts are bounded exact UUIDs exclusive to checkpoint resume', () => {
+  const base = { protocol_version: 4, dispatch_target: 'claude_code', prepare_id: prepareId,
+    request_id: requestId, conversation_id: conversationId, canonical_user_message_id: userMessageId,
+    operation: 'send', runtime_mode: 'resume', parent_provider_session_id: conversationId,
+    parent_provider_checkpoint_id: requestId, prompt: 'synthetic' };
+  assert.deepEqual(parseNativeLiveRuntimeCommand({ ...base, failed_user_message_uuids: [prepareId] }).failed_user_message_uuids, [prepareId]);
+  for (const patch of [
+    {failed_user_message_uuids: [userMessageId]}, {failed_user_message_uuids: [prepareId, prepareId]},
+    {failed_user_message_uuids: ['invalid']}, {failed_user_message_uuids: Array(65).fill(prepareId)},
+    {runtime_mode: 'fork', failed_user_message_uuids: [prepareId]},
+    {failed_user_message_uuids: 'invalid'},
+  ]) assert.throws(() => parseNativeLiveRuntimeCommand({...base,...patch}), NativeLiveRuntimeProtocolError);
+  assert.equal(Object.hasOwn(parseNativeLiveRuntimeCommand(base), 'failed_user_message_uuids'), false);
+});

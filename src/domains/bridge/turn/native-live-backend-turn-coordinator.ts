@@ -47,6 +47,7 @@ export type NativeLivePreparedTurn = {
   parentProviderSessionId: string | null;
   expectedWorkingDirectory: string | null;
   parentProviderCheckpointId?: string | null;
+  failedUserMessageUuids?: readonly string[];
   executionSelection?: NativeLiveExecutionSelection | null;
   attachments?: NativeLiveRuntimeAttachment[];
   prompt: string;
@@ -667,6 +668,7 @@ export function nativeLiveRuntimeCommandFromPreparation(
     expected_working_directory:
       preparation.expectedWorkingDirectory ?? null,
     ...(preparation.parentProviderCheckpointId !== undefined ? { parent_provider_checkpoint_id: preparation.parentProviderCheckpointId } : {}),
+    ...(preparation.failedUserMessageUuids?.length ? { failed_user_message_uuids: [...preparation.failedUserMessageUuids] } : {}),
     execution_selection: preparation.executionSelection ?? null,
     ...(attachments.length > 0
       ? { attachments }

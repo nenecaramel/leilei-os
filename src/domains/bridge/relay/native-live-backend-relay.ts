@@ -860,7 +860,38 @@ implements NativeLiveBackendRelayPort {
         ),
       )
       .limit(1);
-    return row ? mapPreparation(row) : null;
+    if (!row) return null;
+    const preparation = mapPreparation(row);
+    if (preparation.runtimeMode === "resume" && preparation.parentProviderCheckpointId) {
+      // Only terminal canonical failures at this exact native branch position
+      // can explain an abandoned input; never trust the caller or a JSONL UUID alone.
+      const failures = await executor.execute<{ canonical_user_message_id: string }>(sql`
+        SELECT failed.canonical_user_message_id
+        FROM native_live_turn_preparations AS failed
+        WHERE failed.user_id = ${userId}::uuid
+          AND failed.conversation_id = ${preparation.conversationId}::uuid
+          AND failed.parent_provider_session_id = ${preparation.parentProviderSessionId}
+          AND failed.parent_provider_checkpoint_id = ${preparation.parentProviderCheckpointId}
+          AND failed.expected_working_directory IS NOT DISTINCT FROM ${preparation.expectedWorkingDirectory}
+          AND failed.runtime_mode = 'resume'
+          AND failed.status = 'finalized_failure'
+          AND failed.dispatch_status = 'completed'
+          AND failed.failure_code IS NOT NULL
+          AND failed.result_hash IS NOT NULL
+          AND failed.finalized_at IS NOT NULL
+          AND failed.assistant_message_id IS NULL
+          AND failed.canonical_user_message_id IS NOT NULL
+          AND failed.canonical_user_message_id <> ${preparation.canonicalUserMessageId}::uuid
+          AND failed.created_at < (SELECT current_turn.created_at
+            FROM native_live_turn_preparations AS current_turn
+            WHERE current_turn.id = ${prepareId}::uuid)
+        ORDER BY failed.created_at DESC, failed.id DESC
+        LIMIT 64
+      `);
+      const ids = [...new Set(failures.map(failure => failure.canonical_user_message_id))];
+      if (ids.length) preparation.failedUserMessageUuids = ids;
+    }
+    return preparation;
   }
 }
 

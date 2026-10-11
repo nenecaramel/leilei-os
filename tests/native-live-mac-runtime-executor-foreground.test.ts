@@ -538,3 +538,17 @@ test("MCP startup retry is never used after any runtime event was observed", asy
   if (result.status !== "failure") throw new Error("expected failure");
   assert.equal(result.error_code, "RUNTIME_UNAVAILABLE");
 });
+
+test('exact resume passes authoritative failed input receipts to the transport without changing its identity', async () => {
+  const session = '55555555-5555-4555-8555-555555555555';
+  const checkpoint = '66666666-6666-4666-8666-666666666666';
+  const failed = '77777777-7777-4777-8777-777777777777';
+  let received: Record<string, unknown> | null = null;
+  const runtime = {
+    async sendNew(){throw Error('unused');}, async resume(){throw Error('unused');}, async fork(){throw Error('unused');},
+    async executeTurn(_prompt: string, options: Record<string, unknown>){received=options;return {providerSessionId:session,providerCheckpointId:checkpoint,normalizedEvents:[]};},
+  };
+  const result=await new NativeLiveMacRuntimeExecutor(runtime).execute(command({runtime_mode:'resume',parent_provider_session_id:session,parent_provider_checkpoint_id:checkpoint,failed_user_message_uuids:[failed]}));
+  assert.equal(result.status,'success');
+  assert.deepEqual(received,{mode:'resume',parentProviderSessionId:session,parentProviderCheckpointId:checkpoint,requireProviderCheckpoint:true,failedUserMessageUuids:[failed],streaming:true,userMessageUuid:userMessageId});
+});
