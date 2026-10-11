@@ -7,7 +7,7 @@ import {
   nativeLiveTurnPreparations,
   conversations,
 } from "../../../../database/schema.js";
-import { DrizzleNativeLiveConversationRepository } from "../../../conversation/native-live-conversation-repository.js";
+import { DrizzleNativeLiveConversationRepository, nativeSessionHeldByDesktop } from "../../../conversation/native-live-conversation-repository.js";
 import type {
   NativeLivePreparedTurn,
   NativeLivePreparePortResult,
@@ -70,6 +70,8 @@ export async function prepareSend(
           input.requestId,
         );
         if (existing) return requestConflictOrReplay(existing, requestHash);
+
+        if (await nativeSessionHeldByDesktop(transaction as Transaction, input)) return { ok: false as const, code: "SESSION_OWNED_BY_DESKTOP" as const };
 
         const conversations =
           new DrizzleNativeLiveConversationRepository(
@@ -201,6 +203,8 @@ export async function prepareRetry(
         );
         if (existing) return requestConflictOrReplay(existing, requestHash);
 
+        if (await nativeSessionHeldByDesktop(transaction as Transaction, input)) return { ok: false as const, code: "SESSION_OWNED_BY_DESKTOP" as const };
+
         const conversations =
           new DrizzleNativeLiveConversationRepository(
               transaction as Transaction,
@@ -324,6 +328,8 @@ export async function prepareEdit(
           input.requestId,
         );
         if (existing) return requestConflictOrReplay(existing, requestHash);
+
+        if (await nativeSessionHeldByDesktop(transaction as Transaction, input)) return { ok: false as const, code: "SESSION_OWNED_BY_DESKTOP" as const };
 
         const conversations =
           new DrizzleNativeLiveConversationRepository(

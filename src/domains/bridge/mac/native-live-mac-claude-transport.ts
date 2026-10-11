@@ -33,6 +33,7 @@ export type NativeLiveMacInteractiveTurnOptions = {
   requireProviderCheckpoint?: boolean;
   streaming: boolean;
   userMessageUuid?: string | null;
+  failedUserMessageUuids?: readonly string[];
   execution?: NativeLiveExecutionSelection | null;
   onNormalizedEvent?: (
     event: NativeLiveNormalizedEvent,

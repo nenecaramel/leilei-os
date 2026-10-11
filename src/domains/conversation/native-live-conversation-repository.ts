@@ -42,6 +42,14 @@ type Transaction = Parameters<Database["transaction"]>[0] extends (
   : never;
 type DbExecutor = Database | Transaction;
 
+/** Native handoff blocks LeileiOS execution while Desktop owns this conversation. */
+export async function nativeSessionHeldByDesktop(db: Pick<Database, "execute">, input: { userId: string; conversationId: string }) {
+  const [row] = await db.execute(sql`SELECT provider_metadata->'nativeSessionSource'->>'owner' AS owner
+    FROM conversations WHERE user_id = ${input.userId}::uuid AND id = ${input.conversationId}::uuid
+      AND origin = 'native_live' FOR UPDATE`);
+  return row?.owner === "desktop";
+}
+
 function toIso(value: Date | null): string | null {
   return value?.toISOString() ?? null;
 }
@@ -1225,7 +1233,7 @@ export function parseNativeLiveConversationListCursor(
 
 
 /** Archive and true Delete must protect exactly the same recovery evidence. */
-function inFlightConversationTurns(input: { userId: string; conversationId: string }) {
+export function inFlightConversationTurns(input: { userId: string; conversationId: string }) {
   return and(
     eq(nativeLiveTurnPreparations.userId, input.userId),
     eq(nativeLiveTurnPreparations.conversationId, input.conversationId),

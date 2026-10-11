@@ -33,6 +33,7 @@ export type NativeLiveRuntimeCommand = {
   parent_provider_session_id: string | null;
   expected_working_directory: string | null;
   parent_provider_checkpoint_id?: string | null;
+  failed_user_message_uuids?: string[];
   execution_selection?: NativeLiveExecutionSelection | null;
   attachments?: NativeLiveRuntimeAttachment[];
   output_attachments_enabled?: boolean;

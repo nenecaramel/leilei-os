@@ -1,3 +1,4 @@
+import { isNativeSessionMirror } from "./native-session-mirror.mjs";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
@@ -235,6 +236,7 @@ export async function createAgentSdkTurnHandle({
   userMessageUuid = null,
   executionReadback = false,
   mcpStartupTimeoutMs = 120_000,
+  requireSameSessionBeforePrompt = false,
 } = {}) {
   if (environment.ANTHROPIC_API_KEY) {
     throw new Error(
@@ -259,6 +261,51 @@ export async function createAgentSdkTurnHandle({
   ) {
     throw new Error("Agent SDK MCP startup timeout must be positive.");
   }
+  if (requireSameSessionBeforePrompt !== false && requireSameSessionBeforePrompt !== true) {
+    throw new Error("Native resume identity guard must be boolean.");
+  }
+  if (requireSameSessionBeforePrompt && (mode !== "resume" || forkSession ||
+      !nonblankString(resumeSessionAt) || !nonblankString(resume) || resume !== parentProviderSessionId ||
+      (queryOptions.sessionStore && !isNativeSessionMirror(queryOptions.sessionStore, resume)) ||
+      queryOptions.persistSession === false || queryOptions.verbatimPrompts === false)) {
+    throw new Error("Native resume requires an exact same-session checkpoint without a materializing SessionStore.");
+  }
+  // Resume SessionStart runs before the CLI handles initialize and installs SDK
+  // callbacks. A launch-time command hook gives us a pre-input receipt instead.
+  const startupReceipt = requireSameSessionBeforePrompt
+    ? JSON.stringify({ continue: true, suppressOutput: true, stopReason: `native-resume-${randomUUID()}` })
+    : null;
+  if (requireSameSessionBeforePrompt && queryOptions.settings != null &&
+      (typeof queryOptions.settings !== "object" || Array.isArray(queryOptions.settings))) {
+    throw new Error("Native resume startup identity requires object-form launch settings.");
+  }
+  if (requireSameSessionBeforePrompt && queryOptions.settings?.disableAllHooks === true) {
+    throw new Error("Native resume startup identity requires enabled startup hooks.");
+  }
+  let settleNativeIdentity;
+  const nativeIdentity = requireSameSessionBeforePrompt
+    ? new Promise(resolve => { settleNativeIdentity = resolve; }) : null;
+
+  let rejectNativeStartup;
+  const nativeStartupFailure = requireSameSessionBeforePrompt
+    ? new Promise(resolve => { rejectNativeStartup = resolve; })
+    : new Promise(() => {});
+  const nativeSessionStart = async input => {
+    const sessionId = nonblankString(input?.session_id);
+    if (input?.hook_event_name !== "SessionStart" || sessionId !== parentProviderSessionId) {
+      const error = runtimeError("Native resume startup did not retain the original provider session.", {
+        runtimeCode: "PROVIDER_SESSION_CONFLICT",
+      });
+      settleNativeIdentity(false);
+      rejectNativeStartup(error);
+      return { continue: false, stopReason: error.message };
+    }
+    // Preserve callbacks for SDKs that register them before resume. The launch
+    // receipt below is required for CLIs whose initialization happens later.
+    settleNativeIdentity(true);
+    return {};
+  };
+
   const initialUserMessageUuid =
     nonblankString(userMessageUuid) ?? randomUUID();
 
@@ -359,6 +406,12 @@ export async function createAgentSdkTurnHandle({
     // SDK query() starts reading input immediately, before output iteration.
     // A false outcome ends that read cleanly without releasing the user message.
     if (!(await mcpReadiness)) return;
+    if (nativeIdentity && !(await nativeIdentity)) return;
+    yield* (inputQueue ?? promptStream());
+  }
+
+  async function* nativePromptStream() {
+    if (!(await nativeIdentity)) return;
     yield* (inputQueue ?? promptStream());
   }
 
@@ -371,6 +424,16 @@ export async function createAgentSdkTurnHandle({
       preset: "claude_code",
     },
     ...queryOptions,
+    ...(startupReceipt ? { settings: {
+      ...queryOptions.settings,
+      hooks: {
+        ...queryOptions.settings?.hooks,
+        SessionStart: [
+          { hooks: [{ type: "command", command: `printf '%s' '${startupReceipt}'` }] },
+          ...(queryOptions.settings?.hooks?.SessionStart ?? []),
+        ],
+      },
+    } } : {}),
     ...(streaming
       ? { includePartialMessages: true }
       : {}),
@@ -379,6 +442,15 @@ export async function createAgentSdkTurnHandle({
         ? { canUseTool: interactiveCallback }
         : {}
     ),
+    ...(requireSameSessionBeforePrompt
+      ? { hooks: {
+          ...queryOptions.hooks,
+          SessionStart: [
+            { hooks: [nativeSessionStart] },
+            ...(queryOptions.hooks?.SessionStart ?? []),
+          ],
+        } }
+      : {}),
     ...(resume ? { resume } : {}),
     ...(forkSession ? { forkSession: true } : {}),
     ...(resumeSessionAt ? { resumeSessionAt } : {}),
@@ -389,7 +461,9 @@ export async function createAgentSdkTurnHandle({
     query = resolvedQuery({
       prompt: requiresMcpReadiness
         ? readyPromptStream()
-        : inputQueue
+        : nativeIdentity
+          ? nativePromptStream()
+          : inputQueue
         ?? (
           queryOptions.verbatimPrompts === false
             ? prompt
@@ -398,6 +472,7 @@ export async function createAgentSdkTurnHandle({
       options,
     });
   } catch (cause) {
+    settleNativeIdentity?.(false);
     settleMcpReadiness?.(false);
     inputQueue?.end();
     throw runtimeError(
@@ -409,6 +484,7 @@ export async function createAgentSdkTurnHandle({
   }
 
   if (!query || typeof query[Symbol.asyncIterator] !== "function") {
+    settleNativeIdentity?.(false);
     settleMcpReadiness?.(false);
     inputQueue?.end();
     try {
@@ -430,6 +506,7 @@ export async function createAgentSdkTurnHandle({
         { timeoutMs: mcpStartupTimeoutMs },
       );
     } catch (cause) {
+      settleNativeIdentity?.(false);
       settleMcpReadiness(false);
       inputQueue?.end();
       try {
@@ -450,6 +527,11 @@ export async function createAgentSdkTurnHandle({
     inputQueue,
     midTurnInput,
     executionReadback,
+    settleNativeIdentity,
+    nativeStartupTimeoutMs: mcpStartupTimeoutMs,
+    nativeStartupFailure,
+    startupReceipt,
+    initialUserMessageUuid,
   });
 }
 
@@ -462,7 +544,19 @@ export class AgentSdkTurnHandle {
     inputQueue = null,
     midTurnInput = false,
     executionReadback = false,
+    settleNativeIdentity = null,
+    nativeStartupTimeoutMs = 120_000,
+    nativeStartupFailure = new Promise(() => {}),
+    startupReceipt = null,
+    initialUserMessageUuid = null,
   }) {
+    this.settleNativeIdentity = settleNativeIdentity;
+    this.nativeIdentityConfirmed = false;
+    this.nativeStartupTimeoutMs = nativeStartupTimeoutMs;
+    this.nativeStartupFailure = nativeStartupFailure;
+    this.startupReceipt = startupReceipt;
+    this.initialUserMessageUuid = initialUserMessageUuid;
+    this.nativeStartupReceiptConfirmed = false;
     this.query = query;
     this.mode = mode;
     this.parentProviderSessionId = parentProviderSessionId;
@@ -597,6 +691,7 @@ export class AgentSdkTurnHandle {
 
   abort() {
     if (this.closed) return;
+    this.settleNativeIdentity?.(false);
     this.abortRequested = true;
     this.inputQueue?.end();
     this.query.close?.();
@@ -616,6 +711,12 @@ export class AgentSdkTurnHandle {
     });
     let terminalResult = null;
     let terminalFailure = null;
+    let nativeStartupTimer;
+    const nativeStartupDeadline = this.settleNativeIdentity
+      ? new Promise(resolve => { nativeStartupTimer = setTimeout(() => resolve({ kind: "native_startup_timeout" }), this.nativeStartupTimeoutMs); })
+      : new Promise(() => {});
+
+    const nativeStartupFailure = this.nativeStartupFailure.then(error => ({ kind: "native_startup_failure", error }));
 
     try {
       const iterator = this.query[Symbol.asyncIterator]();
@@ -628,7 +729,14 @@ export class AgentSdkTurnHandle {
           this.interruptSignal.then(() => ({
             kind: "interrupt",
           })),
+          nativeStartupDeadline,
+          ...(this.settleNativeIdentity && !this.nativeIdentityConfirmed
+            ? [nativeStartupFailure] : []),
         ]);
+        if (step.kind === "native_startup_failure") throw step.error;
+        if (step.kind === "native_startup_timeout") {
+          throw runtimeError("Native resume init did not confirm the original session before startup deadline.", { runtimeCode: "RUNTIME_UNAVAILABLE" });
+        }
         if (step.kind === "interrupt") {
           break;
         }
@@ -636,6 +744,37 @@ export class AgentSdkTurnHandle {
           break;
         }
         const message = step.value.value;
+        if (this.settleNativeIdentity) {
+          const sessionId = nonblankString(message?.session_id) ?? nonblankString(message?.sessionId);
+          if (sessionId && sessionId !== this.parentProviderSessionId) {
+            throw runtimeError("Native resume started a different provider session before prompt delivery.", {
+              runtimeCode: "PROVIDER_SESSION_CONFLICT",
+            });
+          }
+          if (this.startupReceipt && message?.type === "system" &&
+              message?.subtype === "hook_response" && message?.hook_event === "SessionStart" &&
+              message?.stdout?.trim() === this.startupReceipt && message?.outcome === "success" &&
+              message?.exit_code === 0) {
+            if (!sessionId) throw runtimeError("Native resume startup receipt has no session identity.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
+            this.nativeStartupReceiptConfirmed = true;
+            this.settleNativeIdentity(true);
+          }
+          // CLI acknowledges the queued command before emitting per-turn init.
+          // These are transport receipts, never approval for assistant execution.
+          const verifiedQueueReceipt = this.nativeStartupReceiptConfirmed &&
+            sessionId === this.parentProviderSessionId &&
+            message?.type === "command_lifecycle" &&
+            message?.command_uuid === this.initialUserMessageUuid &&
+            (message?.state === "queued" || message?.state === "started");
+          if (message?.type === "system" && message?.subtype === "init") {
+            if (!sessionId) throw runtimeError("Native resume init has no session identity.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
+            clearTimeout(nativeStartupTimer);
+            this.nativeIdentityConfirmed = true;
+            this.settleNativeIdentity(true);
+          } else if (!this.nativeIdentityConfirmed && message?.type !== "system" && !verifiedQueueReceipt) {
+            throw runtimeError("Native resume has no verified init before execution.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
+          }
+        }
         parsedEvents.push(message);
         this.providerSessionId =
           this.providerSessionId
@@ -700,7 +839,15 @@ export class AgentSdkTurnHandle {
           terminalFailure = message;
         }
       }
+      if (this.settleNativeIdentity && !this.nativeIdentityConfirmed) {
+        throw runtimeError("Native resume ended before confirming session identity.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
+      }
     } catch (cause) {
+      if (this.settleNativeIdentity && ["PROVIDER_SESSION_CONFLICT", "RUNTIME_UNAVAILABLE"].includes(cause?.runtimeCode)) {
+        this.settleNativeIdentity(false);
+        try { await this.query.close?.(); } catch { /* Preserve identity refusal. */ }
+        throw cause;
+      }
       if (this.abortRequested) {
         throw runtimeError(
           "Claude Agent SDK turn was aborted.",
@@ -751,6 +898,8 @@ export class AgentSdkTurnHandle {
         );
       }
     } finally {
+      clearTimeout(nativeStartupTimer);
+      this.settleNativeIdentity?.(false);
       this.inputQueue?.end();
       this.closed = true;
     }

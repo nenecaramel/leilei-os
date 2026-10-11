@@ -1,4 +1,4 @@
-import {providerSessionUnreferenced} from "./native-live-provider-session-references.js";
+import {providerSessionUnreferenced, providerSessionOwnershipLock} from "./native-live-provider-session-references.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import {
@@ -92,6 +92,7 @@ export class DrizzleNativeLiveProviderSessionCleanupRepository {
           WHERE user_id = ${input.userId}::uuid
             AND status = 'pending'
             AND attempt < ${MAX_CLEANUP_ATTEMPTS}
+            AND ${providerSessionOwnershipLock({ providerSessionId: sql`queued.provider_session_id`, wait: false })}
             AND ${providerSessionUnreferenced({userId: input.userId,providerSessionId: sql`queued.provider_session_id`})}
           ORDER BY created_at ASC, id ASC
           FOR UPDATE SKIP LOCKED

@@ -42,6 +42,7 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
       requireProviderCheckpoint?: boolean;
       streaming: boolean;
       userMessageUuid?: string | null;
+      failedUserMessageUuids?: readonly string[];
       execution?: NativeLiveExecutionSelection | null;
       onNormalizedEvent?: (
         event: NativeLiveNormalizedEvent,
@@ -224,6 +225,7 @@ export class NativeLiveMacRuntimeExecutor {
             parentProviderCheckpointId: command.parent_provider_checkpoint_id ?? null,
             requireProviderCheckpoint: true,
           } : {}),
+          ...(command.failed_user_message_uuids ? { failedUserMessageUuids: command.failed_user_message_uuids } : {}),
           streaming: true,
           userMessageUuid:
             command.canonical_user_message_id,

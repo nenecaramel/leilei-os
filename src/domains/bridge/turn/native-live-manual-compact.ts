@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { nativeSessionHeldByDesktop } from "../../conversation/native-live-conversation-repository.js";
 import type { createDatabase } from "../../../database/client.js";
 import type {
   NativeLiveRuntimeContextUsage,
@@ -176,6 +177,9 @@ export class NativeLiveManualCompactService {
           "NOT_FOUND",
           "Native live conversation was not found.",
         );
+      }
+      if (await nativeSessionHeldByDesktop(tx, input)) {
+        throw new NativeLiveManualCompactError("CONVERSATION_BUSY", "This native session is currently held by Desktop.");
       }
       if (!conversation.current_head_message_id) {
         throw new NativeLiveManualCompactError(
