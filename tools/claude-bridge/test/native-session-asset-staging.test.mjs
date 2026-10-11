@@ -61,26 +61,46 @@ test('staging resumes from the server stored count instead of resending', async 
   assert.deepEqual(server.stored, entries);
 });
 
+// Staging through the real relay request: transport retries live there.
+async function relayStaging(entries, { dropAfterWrite = [], unavailable = 0, refuse = null } = {}) {
+  const { nativeHistoryRequest } = await import('../src/native-session-switch-restore.mjs');
+  const server = stagingServer(entries);
+  let calls = 0, outages = unavailable;
+  const request = nativeHistoryRequest({ relayUrl: 'https://relay.invalid', relayToken: 'PRIVATE_TOKEN', sleep: async () => {},
+    fetchImpl: async (_url, options) => {
+      calls++;
+      if (refuse) return new Response(JSON.stringify({ success: false, error: { code: refuse } }), { status: 400 });
+      if (outages > 0) { outages--; return new Response('{}', { status: 503 }); }
+      const data = await server.request('asset-stage', JSON.parse(options.body));
+      if (dropAfterWrite.includes(calls)) throw new Error('socket hang up');
+      return new Response(JSON.stringify({ success: true, data }));
+    } });
+  return { request, server, calls: () => calls };
+}
+
 test('a dropped connection or lost response retries the same batch without duplicating carriers', async () => {
   const { stageNativeDisplayAssets } = await import('../src/native-session-switch-restore.mjs');
   const entries = Array.from({ length: 4 }, (_, n) => carrier(n, 600 * 1024));
-  const server = stagingServer(entries, { lostResponses: [2] });
-  await stageNativeDisplayAssets({ request: server.request, sessionId: uuid(1), assets: { revision: 'r'.repeat(64), entries }, batchBytes: 1024 * 1024 });
-  assert.deepEqual(server.stored, entries);
-  assert.equal(server.calls[1].offset, server.calls[2].offset, 'lost response retried at the same offset');
+  const relay = await relayStaging(entries, { dropAfterWrite: [2] });
+  await stageNativeDisplayAssets({ request: relay.request, sessionId: uuid(1), assets: { revision: 'r'.repeat(64), entries }, batchBytes: 1024 * 1024 });
+  assert.deepEqual(relay.server.stored, entries);
+  assert.equal(relay.server.calls[1].offset, relay.server.calls[2].offset, 'lost response retried at the same offset');
 });
 
 test('transport failures retry a bounded number of times; refusals never retry', async () => {
   const { stageNativeDisplayAssets } = await import('../src/native-session-switch-restore.mjs');
   const entries = [carrier(1, 1024)];
-  const flaky = stagingServer(entries, { transportFailures: 3 });
+  const flaky = await relayStaging(entries, { unavailable: 4 });
   await assert.rejects(stageNativeDisplayAssets({ request: flaky.request, sessionId: uuid(1), assets: { revision: 'r'.repeat(64), entries } }),
     e => e.code === 'NATIVE_RESTORE_UNAVAILABLE');
-  assert.equal(flaky.calls.length, 3);
-  const refused = stagingServer(entries, { refuse: 'INVALID_NATIVE_SNAPSHOT' });
+  assert.equal(flaky.calls(), 4);
+  const recovered = await relayStaging(entries, { unavailable: 3 });
+  await stageNativeDisplayAssets({ request: recovered.request, sessionId: uuid(1), assets: { revision: 'r'.repeat(64), entries } });
+  assert.deepEqual(recovered.server.stored, entries);
+  const refused = await relayStaging(entries, { refuse: 'INVALID_NATIVE_SNAPSHOT' });
   await assert.rejects(stageNativeDisplayAssets({ request: refused.request, sessionId: uuid(1), assets: { revision: 'r'.repeat(64), entries } }),
     e => e.code === 'INVALID_NATIVE_SNAPSHOT');
-  assert.equal(refused.calls.length, 1);
+  assert.equal(refused.calls(), 1);
 });
 
 test('a discarded mismatching set restages once, then fails with a sanitized code', async () => {

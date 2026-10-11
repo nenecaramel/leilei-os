@@ -372,7 +372,7 @@ test('switch CLI reports canonical rejection reason without exposing server deta
   });
 });
 
-test('native history requests extend only large restore timeout, retaining normal 30-second requests and the 30-MiB budget', async () => {
+test('native history requests give restore the long bound, retaining normal 30-second requests and the 30-MiB budget', async () => {
   const { nativeHistoryRequest } = await import('../src/native-session-switch-restore.mjs');
   const original = AbortSignal.timeout;
   const durations = [];
@@ -395,7 +395,7 @@ test('native history requests extend only large restore timeout, retaining norma
     await request('restore', { small: true });
     await request('restore', { snapshot: 'x'.repeat(4 * 1024 * 1024) });
     await request('release', { snapshot: 'x'.repeat(4 * 1024 * 1024) });
-    assert.deepEqual(durations, [30_000, 30_000, 180_000, 30_000]);
+    assert.deepEqual(durations, [30_000, 180_000, 180_000, 30_000]);
     assert.equal(calls, 4);
     await assert.rejects(request('restore', { snapshot: 'x'.repeat(30 * 1024 * 1024) }),
       error => error.code === 'NATIVE_RESTORE_PAYLOAD_TOO_LARGE');
