@@ -243,6 +243,9 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     ));
     const checkpointByMessage = new Map(checkpoints.map(cp => [cp.canonicalMessageId, cp]));
     const assistants = rows.flatMap((row, i) => row.role === "assistant" ? [{ row, message: p.messages[i]! }] : []);
+    // LeileiOS may run unsynchronized turns in its own forks. Their checkpoint
+    // session is acceptable when the restored session carries that exact record.
+    const carried = new Set(snapshot?.entries.flatMap(entry => typeof entry.uuid === "string" ? [entry.uuid] : []) ?? []);
     if (assistants.some(({ row, message }) => {
       const cp = checkpointByMessage.get(row.id);
       // Display-only historical records have no valid checkpoint in the
@@ -250,7 +253,8 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       const index = rows.indexOf(row);
       if (!cp && index < indexedCount && source?.messages[index]?.displayOnly === true && snapshot
         && !snapshot.entries.some(entry => entry.uuid === message.providerCheckpointId)) return false;
-      return !cp || cp.provider !== "claude_code" || !(cp.providerSessionId === p.sessionId || nativeSourceSessions(source).has(cp.providerSessionId)) ||
+      return !cp || cp.provider !== "claude_code" || !(cp.providerSessionId === p.sessionId || nativeSourceSessions(source).has(cp.providerSessionId)
+        || (index >= indexedCount && cp.providerCheckpointId !== null && carried.has(cp.providerCheckpointId))) ||
         !sameCompletedTurnCheckpoint(cp.providerCheckpointId, message.providerCheckpointId, p.sessionId, snapshot?.entries)
         || cp.effectiveWorkingDirectory !== input.effectiveWorkingDirectory;
     })) throw fail("CANONICAL_CHECKPOINT_CHANGED");

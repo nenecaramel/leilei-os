@@ -478,13 +478,15 @@ test("fixed restore entry reaches authenticated HTTP writer and isolated DB; los
       }));
     }, async relayUrl => {
       const options = { input, conversationId: f.input.conversationId, relayUrl, relayToken: "synthetic-restore-token" };
-      let requests = 0;
-      await assert.rejects(restoreDesktopNativeSession({ ...options, fetchImpl: async (url: any, value: any) => {
+      let requests = 0, lost = false;
+      const replayed = await restoreDesktopNativeSession({ ...options, sleep: async () => {}, fetchImpl: async (url: any, value: any) => {
         requests++; const response = await fetch(url, value);
-        if (String(url).endsWith("/restore")) { await response.text(); throw new Error("synthetic lost HTTP response after commit"); }
+        if (String(url).endsWith("/restore") && !lost) { lost = true; await response.text(); throw new Error("synthetic lost HTTP response after commit"); }
         return response;
-      } }), { code: "NATIVE_RESTORE_UNAVAILABLE" });
-      assert.equal(requests, 2, "no automatic HTTP replay");
+      } });
+      // The committed restore is replayed automatically and is idempotent.
+      assert.equal(replayed.outcome, "already_current");
+      assert.equal(requests, 3, "state, lost restore, one replay");
       assert.equal((await f.messages()).length, 2);
       const retry = await restoreDesktopNativeSession(options);
       assert.equal(retry.outcome, "already_current"); assert.equal(retry.inserted, 0);
@@ -588,9 +590,9 @@ test('native restore materializes original image and PDF through upload/HEAD/com
     app.post('/internal/native-live-relay/attachments/:attachmentId/complete', completeInternalAttachmentUploadHandler({ attachmentService: attachments } as any));
   }, async url => {
     base=url;
-    const restore = () => restoreDesktopNativeSession({ input, conversationId: f.input.conversationId, relayUrl: url, relayToken: 'SYNTHETIC', recoveryDirectory: join(root,'recovery') });
-    await assert.rejects(restore(), { code: 'NATIVE_RESTORE_UNAVAILABLE' });
-    const result=await restore(); assert.deepEqual(result.assets,{ materialized:2,unavailable:0 });
+    const restore = () => restoreDesktopNativeSession({ input, conversationId: f.input.conversationId, relayUrl: url, relayToken: 'SYNTHETIC', recoveryDirectory: join(root,'recovery'), sleep: async () => {} });
+    // The lost bind ack is replayed automatically; binding is idempotent.
+    const result=await restore(); assert.deepEqual(result.assets,{ materialized:2,unavailable:0 }); assert.equal(lostBind,false);
     const { conversationAttachments } = await import('../src/database/schema.js');
     const rows=await f.database.db.select().from(conversationAttachments).where(eq(conversationAttachments.userId,f.owner)).orderBy(conversationAttachments.ordinal);
     assert.equal(rows.length,2); assert.equal((await f.messages()).length,2); assert.equal(puts,2); assert.equal(heads,2);
@@ -855,4 +857,27 @@ test('a continued session reuses the staged display assets of the same revision 
   const rows = await f.database.db.execute(sql`SELECT entry FROM native_live_provider_session_entries
     WHERE user_id=${f.owner}::uuid AND provider_session_id=${next} AND subpath=${`native-history-assets/${rev}`} ORDER BY id`);
   assert.deepEqual(rows.map((r: any) => r.entry), carriers);
+}));
+
+test("handoff continues through sessions LeileiOS itself switched to, proven by records the new session carries", { skip: !enabled }, async () => fixture(async f => {
+  // Edit/Retry ran in a LeileiOS fork W; the branch then moved to Y, which carries W's records (same UUIDs).
+  const W = randomUUID(), Y = randomUUID();
+  const local = await localContinuation(f, true);
+  // As in production: the Retry turn's checkpoint names the LeileiOS fork W.
+  await f.database.db.execute(sql`UPDATE conversation_provider_session_checkpoints SET provider_session_id=${W}
+    WHERE canonical_message_id=${local.finalized.assistantMessageId}::uuid`);
+  const entries = local.entries.map((entry: any) => ({ ...entry, sessionId: Y }));
+  const continued = { ...f.input, expectedHeadMessageId: local.finalized.assistantMessageId, expectedRevision: revision(1),
+    projection: projectNativeHistory({ sessionId: Y, revision: revision(5), entries }, entries.at(-2).uuid),
+    nativeSnapshot: { sessionId: Y, revision: revision(5), entries } };
+  const result = await f.write(continued);
+  assert.equal(result.outcome, "restored");
+  assert.equal(result.headMessageId, local.finalized.assistantMessageId, "adopts the local turn, inserts nothing");
+  const source = (await f.state()).conversation.providerMetadata.nativeSessionSource;
+  assert.deepEqual([source.sessionId, source.lineage], [Y, [f.sessionId]]);
+  // A session that does not carry the execution record cannot vouch for it.
+  const stranger = randomUUID();
+  const other = local.entries.slice(0, 2).map((entry: any) => ({ ...entry, sessionId: stranger }));
+  await assert.rejects(f.write({ ...continued, expectedRevision: revision(5), projection: projectNativeHistory({ sessionId: stranger, revision: revision(6), entries: other }, other[1].uuid),
+    nativeSnapshot: { sessionId: stranger, revision: revision(6), entries: other } }), (e: any) => e.code === "EXPLICIT_BRANCH_SELECTION_REQUIRED");
 }));

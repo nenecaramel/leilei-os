@@ -91,9 +91,9 @@ export function nativeHistoryRequest({ relayUrl, relayToken, fetchImpl = fetch,
 }
 
 export async function restoreDesktopNativeSession({ input, conversationId, relayUrl, relayToken, fetchImpl = fetch,
-  recoveryDirectory = input?.recoveryDirectory ?? path.join(homedir(), '.leileios'), uploadImpl = fetch }) {
+  recoveryDirectory = input?.recoveryDirectory ?? path.join(homedir(), '.leileios'), uploadImpl = fetch, sleep, retryDelaysMs }) {
   if (!uuid.test(conversationId ?? '')) throw fail('INVALID_NATIVE_RESTORE_ENDPOINT');
-  const request = nativeHistoryRequest({ relayUrl, relayToken, fetchImpl });
+  const request = nativeHistoryRequest({ relayUrl, relayToken, fetchImpl, sleep, retryDelaysMs });
   await assertNativeHandoffRecoveryClear(recoveryDirectory);
   const selection = await preflightNativeSessionSwitch(input);
   input = { ...input, expectedHistoryRevision: selection.historyRevision };
@@ -185,10 +185,10 @@ export async function launchDesktopNativeSession(selection, execute = promisify(
 }
 
 export async function handoffNativeSessionToDesktop({ input, conversationId, relayUrl, relayToken, fetchImpl = fetch,
-  recoveryDirectory = path.join(homedir(), '.leileios'), launchImpl = launchDesktopNativeSession }) {
-  const request = nativeHistoryRequest({ relayUrl, relayToken, fetchImpl });
+  recoveryDirectory = path.join(homedir(), '.leileios'), launchImpl = launchDesktopNativeSession, sleep, retryDelaysMs }) {
+  const request = nativeHistoryRequest({ relayUrl, relayToken, fetchImpl, sleep, retryDelaysMs });
   await assertNativeHandoffRecoveryClear(recoveryDirectory);
-  const synced = await restoreDesktopNativeSession({ input, conversationId, relayUrl, relayToken, fetchImpl, recoveryDirectory });
+  const synced = await restoreDesktopNativeSession({ input, conversationId, relayUrl, relayToken, fetchImpl, recoveryDirectory, sleep, retryDelaysMs });
   const selected = await preflightNativeSessionSwitch(input);
   await assertNativeHandoffRecoveryClear(recoveryDirectory);
   const released = await request('release', { conversationId, sessionId: synced.providerSessionId,
