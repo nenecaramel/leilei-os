@@ -275,11 +275,9 @@ final class NativeLiveCallAudioController: NSObject, ObservableObject, AVAudioPl
                 onBus: 0,
                 bufferSize: 1024,
                 format: format
-            ) { [weak self] buffer, _ in
-                // AVAudioEngine invokes this outside the main actor.
-                // Append through the request captured here, without sending raw audio to Claude.
+            ) { buffer, _ in
+                // Audio remains on the device for on-device speech recognition.
                 newRequest.append(buffer)
-                _ = self
             }
             tapInstalled = true
             engine.prepare()
@@ -316,7 +314,7 @@ final class NativeLiveCallAudioController: NSObject, ObservableObject, AVAudioPl
     func play(_ audio: Data, onFinished: @escaping () -> Void) throws {
         guard phase == .processing else { return }
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .spokenAudio, options: [.defaultToSpeaker])
+        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
         try session.setActive(true)
         let newPlayer = try AVAudioPlayer(data: audio)
         newPlayer.delegate = self
@@ -327,7 +325,13 @@ final class NativeLiveCallAudioController: NSObject, ObservableObject, AVAudioPl
         phase = .speaking
     }
 
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor [weak self] in
+            self?.finishPlayback(successfully: flag)
+        }
+    }
+
+    private func finishPlayback(successfully flag: Bool) {
         guard phase == .speaking else { return }
         self.player = nil
         let next = afterPlayback
