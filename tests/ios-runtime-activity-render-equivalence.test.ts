@@ -57,6 +57,37 @@ function instrument(source: string) {
   return source.replace(/^private struct /gm, 'struct ');
 }
 
+// Apply only the explicitly approved disclosure-header visual change to the
+// historical reference; expanded content and the padding mutation stay pinned.
+function approvedDisclosureHeader(source: string) {
+  const start = source.indexOf('    var body: some View {');
+  const end = source.indexOf('            if effectiveExpanded {', start);
+  let header = source.slice(start, end)
+    .replace('spacing: 8', 'spacing: 12')
+    .replace(/size: 13\.5,\s*weight: \.medium/, 'size: 14')
+    .replace('                        Spacer(minLength: 8)\n', '')
+    .replace('                        maxWidth: .infinity,\n', '')
+    .replace(/size: 10,\s*weight: \.semibold/, 'size: 14');
+  const murmurStart = header.indexOf('                if normalizedMurmurText != nil {');
+  const arrowStart = header.indexOf('                if !header.isEmpty {', murmurStart);
+  const murmur = header.slice(murmurStart, arrowStart);
+  header = header.slice(0, murmurStart) + header.slice(arrowStart);
+  header = header.replace('.frame(width: 22, height: 22)', '.frame(height: 22)');
+  const close = header.lastIndexOf('            }');
+  header = header.slice(0, close) + murmur + '                Spacer(minLength: 8)\n' + header.slice(close);
+  return source.slice(0, start) + header + source.slice(end);
+}
+
+test('render reference applies only the approved disclosure header layout', () => {
+  const reference = approvedDisclosureHeader(readFileSync(fixture + 'NativeLiveRuntimeActivity.swift', 'utf8'));
+  const current = readFileSync('ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveRuntimeActivity.swift', 'utf8');
+  const header = (source: string) => source.slice(source.indexOf('    var body: some View {'), source.indexOf('            if effectiveExpanded {')).replace(/\s+/g, '').replace(/,/g, '');
+  assert.equal(header(reference), header(current));
+  const original = readFileSync(fixture + 'NativeLiveRuntimeActivity.swift', 'utf8');
+  const content = '            if effectiveExpanded {';
+  assert.equal(reference.slice(reference.indexOf(content)), original.slice(original.indexOf(content)));
+});
+
 test('Runtime Activity real rendering and compiled interactions match exact main; padding negative is rejected', {
   skip: process.platform !== 'darwin' || !process.env.UI_ACTIVITY_SIMULATOR_ID ? 'Requires UI_ACTIVITY_SIMULATOR_ID' : false,
 }, () => {
@@ -66,7 +97,7 @@ test('Runtime Activity real rendering and compiled interactions match exact main
   try {
     cpSync('ios/LeileiOS', path.join(dir, 'ios'), { recursive: true, filter: p => !p.includes('xcuserdata') });
     const root = path.join(dir, 'ios/LeileiOS/Chat/MessageSurface');
-    const original = readFileSync(fixture + 'NativeLiveRuntimeActivity.swift', 'utf8');
+    const original = approvedDisclosureHeader(readFileSync(fixture + 'NativeLiveRuntimeActivity.swift', 'utf8'));
     const cards = readFileSync(fixture + 'NativeLiveInteractions.swift', 'utf8');
     const names = [...new Set([...original.matchAll(/\b(?:struct|enum|func|let)\s+(\w+)/g)].filter(m => /^[A-Z]/.test(m[1]) || m[1].startsWith('nativeLive')).filter(m => m[1] !== 'NativeLiveToolCallState').map(m => m[1]).concat('NativeLivePermissionInteractionCard', 'NativeLiveQuestionInteractionCard'))];
     const rename = (s: string, prefix: string) => s.replace(new RegExp('\\b(' + names.join('|') + ')\\b', 'g'), n => prefix + n);

@@ -38,3 +38,17 @@ test('process section gaps are 18 while body/footer spacing stays 6', () => {
   assert.match(row, /processSections\.showsThinking && \(processSections\.showsActivity \|\| !turn\.bodyPresentation\.nodes\.isEmpty\)/);
   assert.match(row, /processSections\.showsActivity && !turn\.bodyPresentation\.nodes\.isEmpty/);
 });
+test('process labels and arrows use 14 regular with an adjacent fixed gap', () => {
+  const thinking = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
+  const activity = readFileSync(root + 'NativeLiveRuntimeActivity.swift', 'utf8');
+  const row = readFileSync(root + 'NativeLiveAssistantTurnRow.swift', 'utf8');
+  assert.match(row, /Text\("Thinking\.\.\."\)\.font\(\.system\(size: 14\)\)/);
+  assert.match(thinking, /HStack\(spacing: 12\)/);
+  assert.doesNotMatch(thinking, /size: 13\.5|size: 10|weight: \.medium|weight: \.semibold/);
+  assert.ok(thinking.indexOf('Image(systemName:') < thinking.indexOf('Spacer(minLength:'));
+  const header = activity.slice(activity.indexOf('var body:'), activity.indexOf('if effectiveExpanded {'));
+  assert.match(header, /Text\(header\)\s*\.font\(\.system\(size: 14\)\)/);
+  assert.match(header, /\.font\(\.system\(size: 14\)\)\s*\.foregroundStyle\(\.tertiary\)/);
+  assert.doesNotMatch(header, /maxWidth: \.infinity/);
+  assert.ok(header.indexOf('? "chevron.down"') < header.indexOf('Spacer(minLength:'));
+});
