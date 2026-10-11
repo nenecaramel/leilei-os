@@ -10,9 +10,9 @@ const old=(name:string)=>readFileSync(fixture+name,'utf8');
 const withoutRetiredAlbum=(s:string)=>s
  .replace('AlbumSaveIndicator(count:turn.parentUserMessageID.flatMap { appModel.albumSavesByUserMessageID[$0]?.total } ?? 0)', '')
  .replace('if let user = turn.parentUserMessageID { await appModel.refreshAlbumSaves(userMessageID:user,force:isCurrentHead) }', '');
-// Only the approved footer timestamp and copy-glyph rotation are excluded from historical
+// Only approved footer timestamp and action-glyph styling are excluded from historical
 // callback conservation. Copy/retry targets, order and disabled remain exact.
-const withoutFooterTimestamp=(s:string)=>s.replace('.rotationEffect(.degrees(isCopied ? 0 : 180))', '').replace(/\n        if let timestamp = turn\.timestamp \{[\s\S]*?\n        \}/, '');
+const withoutFooterTimestamp=(s:string)=>s.replaceAll('.font(.system(size:14,weight:.light))', '').replace('.rotationEffect(.degrees(20))', '').replace('.rotationEffect(.degrees(isCopied ? 0 : 180))', '').replace(/\n        if let timestamp = turn\.timestamp \{[\s\S]*?\n        \}/, '');
 const compact=(s:string)=>s.replace(/\s/g,'');
 function block(s:string,marker:string) {
  const start=s.indexOf(marker);assert.notEqual(start,-1,marker);const open=s.indexOf('{',start);let depth=1,end=open+1;
