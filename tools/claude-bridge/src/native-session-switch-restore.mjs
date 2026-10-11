@@ -15,6 +15,10 @@ const fail = code => Object.assign(new Error(code), { code });
 export const NATIVE_HISTORY_REQUEST_TIMEOUT_MS = 30_000;
 export const NATIVE_RESTORE_UPLOAD_TIMEOUT_MS = 180_000;
 export const NATIVE_SERVER_REQUEST_TIMEOUT_MS = 300_000;
+// Image/document bytes travel in small idempotent batches ahead of the restore,
+// so one dropped connection costs one batch instead of the whole history.
+export const NATIVE_DISPLAY_ASSET_BATCH_BYTES = 2 * 1024 * 1024;
+const NATIVE_DISPLAY_ASSET_BATCH_ATTEMPTS = 3;
 const publicCodes = new Set(['NATIVE_CONVERSATION_BUSY', 'STALE_NATIVE_PROJECTION', 'CANONICAL_HEAD_CHANGED', 'CANONICAL_HISTORY_CHANGED', 'CANONICAL_CHECKPOINT_CHANGED', 'NATIVE_SOURCE_BINDING_REQUIRED', 'EXPLICIT_BRANCH_SELECTION_REQUIRED', 'NATIVE_HISTORY_REWRITTEN', 'NATIVE_TRANSCRIPT_DIVERGED', 'NATIVE_SESSION_RECOVERY_REQUIRED', 'CLEANUP_IN_PROGRESS', 'NATIVE_CONVERSATION_NOT_FOUND', 'INVALID_NATIVE_PROJECTION', 'INVALID_NATIVE_SNAPSHOT', 'BATCH_TOO_LARGE', 'NATIVE_SESSION_ALREADY_ATTACHED', 'INVALID_NATIVE_ASSET', 'NATIVE_ASSET_UNAVAILABLE', 'NATIVE_ASSET_MISMATCH']);
 
 // Explicit history restore only: no SDK query, native file writes, Desktop
@@ -34,7 +38,8 @@ export function nativeHistoryRequest({ relayUrl, relayToken, fetchImpl = fetch }
     const bytes = Buffer.byteLength(body, 'utf8');
     if (bytes > 30 * 1024 * 1024) throw fail('NATIVE_RESTORE_PAYLOAD_TOO_LARGE');
     // A large, single-transaction restore needs upload time on slow links.
-    const timeoutMs = route === 'restore' && bytes >= 4 * 1024 * 1024 ? NATIVE_RESTORE_UPLOAD_TIMEOUT_MS : NATIVE_HISTORY_REQUEST_TIMEOUT_MS;
+    const upload = (route === 'restore' && bytes >= 4 * 1024 * 1024) || (route === 'asset-stage' && bytes >= 1024 * 1024);
+    const timeoutMs = upload ? NATIVE_RESTORE_UPLOAD_TIMEOUT_MS : NATIVE_HISTORY_REQUEST_TIMEOUT_MS;
     let signal;
     try {
       signal = AbortSignal.timeout(timeoutMs);
@@ -78,13 +83,18 @@ export async function restoreDesktopNativeSession({ input, conversationId, relay
   const state = await request('state', { conversationId, sessionId: selection.providerSessionId });
   if (!state || !(state.expectedHeadMessageId === null || uuid.test(state.expectedHeadMessageId ?? '')) ||
     !(state.expectedRevision === null || /^[0-9a-f]{64}$/.test(state.expectedRevision ?? ''))) throw fail('NATIVE_RESTORE_INVALID_RESPONSE');
+  const displayAssets = history.nativeSnapshot.displayAssets;
+  if (displayAssets) await stageNativeDisplayAssets({ request, sessionId: history.nativeSnapshot.sessionId, assets: displayAssets });
+  const nativeSnapshot = displayAssets
+    ? { ...history.nativeSnapshot, displayAssets: { revision: displayAssets.revision, stagedCount: displayAssets.entries.length } }
+    : history.nativeSnapshot;
   // A remote round trip may take time. Pin source/index and release again
   // immediately before submitting; backend still checks canonical CAS/busy.
   await preflightNativeSessionSwitch(input);
   await assertNativeHandoffRecoveryClear(recoveryDirectory);
   const result = await request('restore', { conversationId, expectedHeadMessageId: state.expectedHeadMessageId,
     expectedRevision: state.expectedRevision, effectiveWorkingDirectory: selection.workingDirectory,
-    projection: history.projection, nativeSnapshot: history.nativeSnapshot });
+    projection: history.projection, nativeSnapshot });
   if (!result || !['restored', 'already_current'].includes(result.outcome) || result.conversationId !== conversationId ||
     !uuid.test(result.headMessageId ?? '') || !Number.isSafeInteger(result.inserted) || result.inserted < 0) throw fail('NATIVE_RESTORE_INVALID_RESPONSE');
   await preflightNativeSessionSwitch(input);
@@ -92,6 +102,41 @@ export async function restoreDesktopNativeSession({ input, conversationId, relay
   return { outcome: result.outcome, conversationId, headMessageId: result.headMessageId, inserted: result.inserted,
     providerSessionId: selection.providerSessionId, providerCheckpointId: selection.providerCheckpointId,
     nativeRevision: selection.nativeRevision, executionAuthorized: false, assets };
+}
+
+// Resume from the server's stored count; staged rows stay inert until a restore
+// names their revision and the server verifies the complete set.
+export async function stageNativeDisplayAssets({ request, sessionId, assets, batchBytes = NATIVE_DISPLAY_ASSET_BATCH_BYTES }) {
+  const { revision, entries } = assets;
+  const send = async (offset, batch) => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const state = await request('asset-stage', { sessionId, revision, total: entries.length, offset, entries: batch });
+        if (!Number.isSafeInteger(state?.stored) || state.stored < 0 || state.stored > entries.length || typeof state.complete !== 'boolean'
+          || (state.complete && state.stored !== entries.length)) throw fail('NATIVE_RESTORE_INVALID_RESPONSE');
+        return state;
+      } catch (error) {
+        // Staging is positional and idempotent, so only transport failures retry.
+        if (attempt >= NATIVE_DISPLAY_ASSET_BATCH_ATTEMPTS || !['NATIVE_RESTORE_UNAVAILABLE', 'NATIVE_RESTORE_TIMEOUT'].includes(error?.code)) throw error;
+      }
+    }
+  };
+  let state = await send(0, []), restarted = false, batches = 0;
+  while (!state.complete) {
+    const offset = state.stored;
+    let end = offset + 1, bytes = Buffer.byteLength(JSON.stringify(entries[offset]));
+    while (end < entries.length && bytes + Buffer.byteLength(JSON.stringify(entries[end])) <= batchBytes) {
+      bytes += Buffer.byteLength(JSON.stringify(entries[end])); end++;
+    }
+    state = await send(offset, entries.slice(offset, end));
+    batches++;
+    if (!state.complete && state.stored <= offset) {
+      // The server discarded a complete set that did not match its revision.
+      if (restarted) throw fail('NATIVE_ASSET_STAGE_INVALID');
+      restarted = true;
+    }
+  }
+  return { staged: entries.length, batches };
 }
 
 // Conservative local gate: outstanding recovery on this Mac must be replayed by
