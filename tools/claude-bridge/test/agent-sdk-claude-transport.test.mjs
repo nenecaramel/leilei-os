@@ -2840,3 +2840,66 @@ test("interactive summarized thinking respects explicit disabled and between-too
     assert.deepEqual(call.options.thinking, { type: execution.thinking });
   }
 });
+
+
+test("local resume recovers a proven SDK interrupted failed turn without admitting Desktop or unclosed tails", async t => {
+  const sessionId = "00000000-0000-4000-8000-000000000091";
+  const cp = "00000000-0000-4000-8000-000000000092";
+  const failed = "00000000-0000-4000-8000-000000000093";
+  const user = "00000000-0000-4000-8000-000000000094";
+  const child = "00000000-0000-4000-8000-000000000095";
+  const promptId = "sdk-interrupted-prompt";
+  const makeTail = () => [
+    {type:"user",uuid:failed,parentUuid:cp,promptId,message:{content:"synthetic failed turn"}},
+    {type:"attachment",uuid:"context",parentUuid:failed},
+    {type:"assistant",uuid:"thinking",parentUuid:"context",message:{content:[{type:"thinking",thinking:"synthetic summary"}]}},
+    {type:"assistant",uuid:"tool",parentUuid:"thinking",message:{content:[{type:"tool_use",id:"call",name:"Read",input:{file_path:"/synthetic"}}]}},
+    {type:"user",uuid:"tool-result",parentUuid:"tool",promptId,message:{content:[{type:"tool_result",tool_use_id:"call",content:"synthetic result"}]}},
+    {type:"user",uuid:"interrupted",parentUuid:"tool-result",promptId,message:{content:[{type:"text",text:"[Request interrupted by user for tool use]"}]}},
+  ].map(row => ({sessionId,entrypoint:"sdk-ts",...row}));
+  const cases = [
+    ["confirmed SDK interruption", tail => tail, [failed], true],
+    ["same canonical user re-delivery", tail => tail, [], true, true],
+    ["plain SDK interruption marker", tail => {tail.at(-1).message.content="[Request interrupted by user]";return tail;}, [failed], true],
+    ["no canonical failure evidence", tail => tail, [], false],
+    ["blank SDK prompt ID", tail => {for(const entry of tail)if(entry.promptId)entry.promptId=" ";return tail;}, [failed], false],
+    ["Desktop closing marker", tail => {tail.at(-1).entrypoint="claude-desktop";return tail;}, [failed], false],
+    ["no closing marker", tail => tail.slice(0,-1), [failed], false],
+    ["wrong marker prompt ID", tail => {tail.at(-1).promptId="other";return tail;}, [failed], false],
+    ["missing prompt ID", tail => {delete tail[0].promptId;return tail;}, [failed], false],
+    ["Desktop output in failed tail", tail => {tail[2].entrypoint="claude-desktop";return tail;}, [failed], false],
+    ["wrong source session", tail => {tail[2].sessionId="another-session";return tail;}, [failed], false],
+    ["compaction in tail", tail => {tail[2].type="system";tail[2].subtype="compact_boundary";return tail;}, [failed], false],
+    ["different user text before marker", tail => {tail[4].message.content=[{type:"text",text:"new user turn"}];return tail;}, [failed], false],
+    ["different tool result prompt ID", tail => {tail[4].promptId="other";return tail;}, [failed], false],
+    ["text alongside interruption marker", tail => {tail.at(-1).message.content.push({type:"text",text:"real user text"});return tail;}, [failed], false],
+    ["real later user turn", tail => [...tail,{type:"user",uuid:"desktop",parentUuid:"interrupted",entrypoint:"claude-desktop",sessionId,message:{content:"new turn"}}], [failed], false],
+  ];
+  for (const [name, mutate, evidence, allowed, redelivery] of cases) {
+    await t.test(name, async () => {
+    const sendUuid = redelivery ? failed : user;
+    const entries = [{type:"assistant",uuid:cp,parentUuid:null},...mutate(makeTail())];
+    let queries=0, delivered=0;
+    const transport=new AgentSdkClaudeTransport({environment:{},cwd:"/synthetic/interrupted",
+      sessionMessagesImpl:async()=>[{type:"assistant"}],
+      importSessionToStoreImpl:async(_id,store)=>store.append({},entries),
+      queryImpl:input=>{
+        queries++;
+        assert.equal(input.options.resume,sessionId);
+        assert.equal(input.options.resumeSessionAt,cp);
+        assert.notEqual(input.options.forkSession,true);
+        return {close(){},async *[Symbol.asyncIterator](){
+          yield successFixture(sessionId)[0];
+          const prompt=await input.prompt[Symbol.asyncIterator]().next();
+          assert.equal(prompt.value.uuid,sendUuid);delivered++;
+          entries.push({type:"user",uuid:sendUuid,parentUuid:cp},{type:"assistant",uuid:child,parentUuid:sendUuid});
+          yield successFixture(sessionId)[1];yield successFixture(sessionId)[2];
+        }};
+      }});
+    const run=transport.executeTurn("synthetic next turn",{mode:"resume",parentProviderSessionId:sessionId,
+      parentProviderCheckpointId:cp,requireProviderCheckpoint:true,userMessageUuid:sendUuid,failedUserMessageUuids:evidence});
+    if(allowed){const result=await run;assert.equal(result.providerSessionId,sessionId,name);assert.equal(result.providerCheckpointId,child,name);assert.equal(delivered,1,name);}
+    else{await assert.rejects(run,error=>error.runtimeCode==="PROVIDER_SESSION_CONFLICT",name);assert.equal(queries,0,name);assert.equal(delivered,0,name);}
+    });
+  }
+});
