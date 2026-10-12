@@ -24,7 +24,12 @@ Relevant memories:
 Breath retains shared retrieval/ranking and the existing memory budget. Hook transcript
 chain proof excludes context still present on the active native branch; abandoned tails
 do not establish delivery. Compact starts a fresh recall epoch. See
-[the Hook contract](claude-code-mind.md) for signed receipts and deduplication.
+[the Hook operating guide](claude-code-mind.md) for signed receipts, deduplication,
+installation, and the local pause switch. Automatic recall can be paused with
+`node ~/.claude/leileios-mind/toggle.mjs off` and resumed with `on`; its `status`
+command shows the local switch. The emergency environment override
+`LEILEI_MIND_HOOK_DISABLED=1` takes precedence over `on`. This affects only
+the installed Hook, not manual MCP tools or other services that may wake Railway.
 
 Native Live sends the user's text without backend recall or a backend-generated time
 label. The existing user timestamp Hook stays unchanged and supplies current-turn time

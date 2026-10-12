@@ -130,5 +130,8 @@ Repository documentation describes the checked-in release path, not the live dep
 - [`docs/deployment.md`](docs/deployment.md) — current release and production verification path.
 - [`docs/branch-release-policy.md`](docs/branch-release-policy.md) — branch and release rules.
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) — recurring build/deployment diagnostics.
+- [`docs/claude-code-mind.md`](docs/claude-code-mind.md) — **current** Mind Hook install, pause/resume and acceptance guide.
+- [`docs/native-session/catalog.md`](docs/native-session/catalog.md) — **current** manual Desktop ↔ LeileiOS switching steps and safety gates.
+- [`docs/mind-memory-api.md`](docs/mind-memory-api.md) — Memory API and iOS/Web date filtering.
 
-Dated implementation plans and design specs are historical engineering records. Completed plan/spec trees are retired from the current HEAD and remain recoverable through Git history; current procedure belongs in the authoritative docs above.
+Dated implementation plans and design specs in the [historical engineering index](docs/superpowers/README.md) are **not current operating instructions**. Old superseded versions of the Mind Hook and session-switch guides remain available at fixed Git commits linked from those guides; the current procedure belongs in the authoritative documents above.
