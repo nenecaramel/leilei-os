@@ -10,6 +10,7 @@ struct NativeLiveCallView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var call = NativeLiveCallAudioController()
     @State private var language: VoiceInputLanguage = .chinese
+    @State private var speechModel: NativeLiveCallSpeechModel = .v4Turbo
 
     let conversationID: UUID
     let execution: NativeLiveExecutionSelection
@@ -28,6 +29,18 @@ struct NativeLiveCallView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
+
+            Menu {
+                Picker("Voice model", selection: $speechModel) {
+                    ForEach(NativeLiveCallSpeechModel.allCases) { option in
+                        Text(option.displayName).tag(option)
+                    }
+                }
+            } label: {
+                Label(speechModel.displayName, systemImage: "waveform")
+                    .font(.subheadline)
+            }
+            .disabled(call.phase == .processing)
 
             if !call.lastHeard.isEmpty {
                 Text(call.lastHeard)
@@ -150,7 +163,10 @@ struct NativeLiveCallView: View {
 
             // TTS does not alter the canonical message. Bound audio spend per turn.
             let speechText = String(assistant.displayText.prefix(1_100))
-            let body = try JSONSerialization.data(withJSONObject: ["text": speechText])
+            let body = try JSONSerialization.data(withJSONObject: [
+                "text": speechText,
+                "model_id": speechModel.rawValue
+            ])
             let bytes = try await appModel.api.rawRequest(
                 path: "/api/v1/voice/speak",
                 method: "POST",
@@ -397,4 +413,20 @@ final class NativeLiveCallAudioController: NSObject, ObservableObject, AVAudioPl
 private enum CallAudioError: LocalizedError {
     case playbackFailed
     var errorDescription: String? { "The speech audio could not be played." }
+}
+
+private enum NativeLiveCallSpeechModel: String, CaseIterable, Identifiable {
+    case v4Turbo = "eleven_v4_turbo"
+    case v4 = "eleven_v4"
+    case v3 = "eleven_v3"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .v4Turbo: "V4 Turbo"
+        case .v4: "V4"
+        case .v3: "V3"
+        }
+    }
 }
