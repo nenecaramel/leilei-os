@@ -14,6 +14,7 @@ struct ChatView: View {
     @StateObject var voiceInput = VoiceInputController()
     @State private var voiceLanguage: VoiceInputLanguage = .english
     @State var messageText = ""
+    @State var sendFailureMessage: String?
     @State var model: NativeLiveClaudeModel = .opus55
     @State var thinking: NativeLiveThinkingMode = .adaptive
     @State var effort: NativeLiveEffortLevel = .high
@@ -269,6 +270,14 @@ struct ChatView: View {
             )
         ) { _ in
             isSystemKeyboardVisible = false
+        }
+        .alert("Failed", isPresented: Binding(
+            get: { sendFailureMessage != nil },
+            set: { if !$0 { sendFailureMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { sendFailureMessage = nil }
+        } message: {
+            Text(sendFailureMessage ?? "")
         }
         .overlay {
             if isConversationLoading {

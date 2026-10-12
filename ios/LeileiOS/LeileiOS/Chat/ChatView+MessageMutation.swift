@@ -165,6 +165,7 @@ extension ChatView {
         pendingAttachments: [NativeLiveComposerAttachmentDraft],
         inputMode: NativeLiveInputMode = .text
     ) {
+        sendFailureMessage = nil
         let attachmentIDs = pendingAttachments.compactMap(\.remoteAttachmentID)
         let shouldCreateConversation = isDraftConversation
         pendingOperation = NativeLivePendingOperation(
@@ -210,6 +211,7 @@ extension ChatView {
             } catch NativeLiveSendError.interrupted {
                 pendingOperation = nil
             } catch {
+                sendFailureMessage = error.localizedDescription
                 pendingOperation = nil
                 if inputMode == .voice {
                     voiceInput.reportSendFailure()

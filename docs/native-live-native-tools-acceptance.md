@@ -13,6 +13,12 @@ No SDK upgrade or replacement of `mcp__leileios_local__send_file` is included.
 
 LeileiOS native iPhone push is deferred by user choice while using a free Apple Personal Team. No APNs capability, registration or backend sender is added. Official notification acceptance remains distinct from LeileiOS push.
 
+## Existing runtime capability evidence
+
+Read-only inspection of existing successful Native Live init metadata on 2026-10-12 (no new model call) found a complete 81-tool snapshot containing WebFetch, WebSearch, RemoteTrigger, CronCreate/List/Delete, ScheduleWakeup, Monitor and PushNotification. It also contained the existing local send_file tool. Artifact and Chrome tool names were absent in that snapshot. A later snapshot hit the existing 256-name observability bound; presence is evidence, but absence in that truncated list is inconclusive. These records prove tool advertisement on that runtime, not execution, persistence or delivery.
+
+The branch is aligned to main including #1044's interrupted SDK tail recovery and #1045's send-failure visibility. Their tests and production changes are preserved.
+
 ## Boundaries not solved by adding tool names
 
 `AgentSdkTurnHandle` ends the input stream on a terminal result and closes the query at cleanup. The Mac daemon remaining alive does not keep that SDK session alive.

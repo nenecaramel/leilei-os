@@ -199,6 +199,34 @@ function nonblankString(value) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+// Only a backend-confirmed failed input (or this exact re-delivery input)
+// may explain generated residue. An SDK-owned closing interruption marker,
+// bound to the same prompt ID, proves the tail is not a new Desktop turn.
+function sdkInterruptedTailStart(entries, approvedInputs, sessionId) {
+  const end = entries.at(-1);
+  const content = end?.message?.content;
+  const text = typeof content === "string" ? content
+    : Array.isArray(content) && content.length === 1 && content[0]?.type === "text"
+      ? content[0].text : null;
+  if (end?.type !== "user" || ![
+    "[Request interrupted by user]",
+    "[Request interrupted by user for tool use]",
+  ].includes(text) || !nonblankString(end.promptId)) return null;
+  const start = entries.findLastIndex(entry => entry.type === "user"
+    && approvedInputs.has(entry.uuid) && entry.promptId === end.promptId);
+  if (start < 0 || start === entries.length - 1) return null;
+  for (const [index, entry] of entries.slice(start).entries()) {
+    if (entry.entrypoint !== "sdk-ts" || entry.sessionId !== sessionId) return null;
+    if (entry.type === "user") {
+      if (entry.promptId !== end.promptId) return null;
+      if (index > 0 && entry !== end && !(Array.isArray(entry.message?.content)
+        && entry.message.content.length > 0
+        && entry.message.content.every(block => block?.type === "tool_result"))) return null;
+    } else if (!["assistant", "attachment"].includes(entry.type)) return null;
+  }
+  return start;
+}
+
 function isNativeClaudeScheduleCommand(value) {
   return typeof value === "string"
     && /^\/(?:schedule|routines)(?:\s|$)/iu.test(value);
@@ -1155,7 +1183,13 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     const failedInputs = new Set(failedUserMessageUuids);
     let sameCanonicalTurn = false;
     let failedInputOnly = false;
-    for (const entry of suffix.reverse()) {
+    const orderedSuffix = suffix.reverse();
+    const interruptedStart = sdkInterruptedTailStart(orderedSuffix,
+      new Set([...failedInputs, ...(userMessageUuid ? [userMessageUuid] : [])]), sessionId);
+    // Keep validating any earlier residue. Only the proven closed SDK segment
+    // is superseded by resumeSessionAt; the underlying JSONL is never edited.
+    const unprovenSuffix = interruptedStart === null ? orderedSuffix : orderedSuffix.slice(0, interruptedStart);
+    for (const entry of unprovenSuffix) {
       const toolResult = entry.type === "user" && Array.isArray(entry.message?.content)
         && entry.message.content.length > 0
         && entry.message.content.every(block => block?.type === "tool_result");
