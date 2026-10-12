@@ -180,6 +180,19 @@ struct ChatView: View {
                 onPickFile: {
                     isFileImporterPresented = true
                 },
+                canStartVoiceCall:
+                    !isDraftConversation
+                        && appModel.isAuthenticated
+                        && appModel.activeNativeLiveConversationID != nil
+                        && appModel.chatSendState != .sending
+                        && !isRuntimeTurnActive
+                        && pendingOperation == nil
+                        && !voiceInput.isActive,
+                onStartVoiceCall: {
+                    voiceInput.cancel()
+                    isComposerFocused = false
+                    isNativeCallPresented = true
+                },
                 onRemoveAttachment: { id in
                     composerAttachments.removeAll {
                         $0.id == id
@@ -217,26 +230,6 @@ struct ChatView: View {
                     ? 0
                     : ChatPresentationLayout.composerHiddenKeyboardPaintOffset
             )
-        }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    voiceInput.cancel()
-                    isNativeCallPresented = true
-                } label: {
-                    Image(systemName: "phone.fill")
-                }
-                .accessibilityLabel("Voice call with Claude")
-                .disabled(
-                    isDraftConversation
-                        || !appModel.isAuthenticated
-                        || appModel.activeNativeLiveConversationID == nil
-                        || appModel.chatSendState == .sending
-                        || isRuntimeTurnActive
-                        || pendingOperation != nil
-                        || voiceInput.isActive
-                )
-            }
         }
         .sheet(isPresented: $isNativeCallPresented) {
             if let conversationID = appModel.activeNativeLiveConversationID {
