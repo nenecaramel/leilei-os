@@ -8,6 +8,7 @@ import { createServer } from "node:http";
 import { createHash } from "node:crypto";
 import { runHook, writtenMemoryId } from "../tools/claude-code-mind/hook.mjs";
 import { configureHooks, install } from "../tools/claude-code-mind/install.mjs";
+import { isMindHookPaused, setMindHookPaused } from "../tools/claude-code-mind/toggle.mjs";
 import { startMindRecallSemanticServer } from "../src/domains/bridge/mac/native-live-mac-mind-recall-server.js";
 
 const ID = "11111111-1111-4111-8111-111111111111";
@@ -206,6 +207,47 @@ test("fresh installer produces a working standalone hook without transcript pars
   const result=await childHook(installed,prompt());
   assert.equal(result.status,0);assert.equal(result.stdout,`${CONTEXT}\n`);assert.equal(result.stderr,"");
   await assert.rejects(readFile(join(installed,"transcript.mjs")),{code:"ENOENT"});
+});
+
+test("local Mind Hook switch pauses all events without a server request and resumes immediately", async t => {
+  const f = await fixture(t);
+  assert.equal(await isMindHookPaused(f.home), false);
+  assert.equal(await setMindHookPaused(true, f.home), true);
+  assert.equal(await setMindHookPaused(true, f.home), true, "turning off twice is idempotent");
+  const result = await childHook(f.home, prompt());
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr, "");
+  await runHook({hook_event_name: "SessionStart", session_id: "s", source: "startup"});
+  assert.equal(f.calls.length, 0);
+  await assert.rejects(readdir(join(f.home, "state")), {code: "ENOENT"});
+
+  assert.equal(await setMindHookPaused(false, f.home), false);
+  assert.equal(await setMindHookPaused(false, f.home), false, "turning on twice is idempotent");
+  const resumed = await childHook(f.home, prompt());
+  assert.equal(resumed.status, 0);
+  assert.equal(resumed.stdout, `${CONTEXT}\n`);
+  assert.equal(f.calls.length, 1);
+});
+
+test("installed Mind Hook includes standalone toggle and preserves pause across reinstall", async t => {
+  const f = await fixture(t);
+  const claudeHome = join(f.home, "installed-claude");
+  await mkdir(claudeHome);
+  const installed = await install({claudeHome, serverName: "LeileiOS"});
+  await writeFile(join(installed, "mind.env"), envContent(f.config), {mode: 0o600});
+  assert.match(await readFile(join(installed, "toggle.mjs"), "utf8"), /setMindHookPaused/);
+  assert.equal(await setMindHookPaused(true, installed), true);
+  await install({claudeHome, serverName: "LeileiOS"});
+  assert.equal(await isMindHookPaused(installed), true, "installer must never clear pause state");
+  const off = await childHook(installed, prompt());
+  assert.equal(off.status, 0);
+  assert.equal(off.stdout, "");
+  assert.equal(f.calls.length, 0);
+  await setMindHookPaused(false, installed);
+  const on = await childHook(installed, prompt());
+  assert.equal(on.stdout, `${CONTEXT}\n`);
+  assert.equal(f.calls.length, 1);
 });
 
 test("explicit emergency disable skips recall and state access", async t => {
