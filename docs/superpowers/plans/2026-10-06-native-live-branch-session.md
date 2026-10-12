@@ -1,5 +1,10 @@
 # Native Live Branch Session Implementation Plan
 
+> Historical task plan. Its checkboxes and closeout evidence reflect the state when this
+> plan was written. PR [#908](https://github.com/nenecaramel/leilei-os/pull/908)
+> was **merged on 2026-10-06**; do not treat the Draft/no-merge closeout below as
+> current PR status. Production/physical acceptance must still be verified separately.
+
 > **For agentic workers:** Use superpowers:executing-plans to implement task-by-task in this session. No delegation unless the user chooses it. Steps use checkbox syntax for tracking.
 
 **Goal:** Each new canonical foreground branch uses one Claude session; Retry/Edit fork the precise historical provider point.
@@ -96,4 +101,4 @@
 
 ## Closeout status
 
-Tasks 1–6 implemented and verified; see [verification and full changed-file list](2026-10-06-native-live-branch-session-verification.md). Real SDK compact evidence is complete. Production acceptance remains deliberately unexecuted. PR #908 remains Draft; no merge or deployment. Temporary task resources are removed at closeout.
+Tasks 1–6 implemented and verified; see [verification and full changed-file list](2026-10-06-native-live-branch-session-verification.md). Real SDK compact evidence is complete. Production acceptance remains deliberately unexecuted. At this plan's closeout PR #908 was still Draft; it subsequently merged on 2026-10-06. No production deployment or device acceptance was established by the plan itself. Temporary task resources are removed at closeout.
