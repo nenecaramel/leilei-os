@@ -87,7 +87,7 @@ struct ComposerAttachmentMenu: View {
             Button {
                 onStartVoiceCall?()
             } label: {
-                Label("语音通话", systemImage: "phone.fill")
+                Label("Call Claude", systemImage: "phone.fill")
             }
             .disabled(!canStartVoiceCall)
         } label: {
