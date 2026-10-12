@@ -55,17 +55,18 @@ const stylesSource = readFileSync(new URL("../web/src/styles.css", import.meta.u
 const todayPanelSource = readFileSync(new URL("../web/src/pages/TodayPanel.tsx", import.meta.url), "utf8");
 const prototypeDataPath = new URL("../web/src/pages/home-prototype-data.ts", import.meta.url);
 
-function installDom() {
+function installDom(actEnvironment = false) {
   const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "https://leilei.test/" });
   const previous = new Map<string, PropertyDescriptor | undefined>();
-  for (const key of ["window", "document", "navigator", "React"]) {
+  const keys = ["window", "document", "navigator", "React", ...(actEnvironment ? ["IS_REACT_ACT_ENVIRONMENT"] : [])];
+  for (const key of keys) {
     previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
-    Object.defineProperty(globalThis, key, { configurable: true, value: key === "React" ? React : dom.window[key as keyof Window] });
+    Object.defineProperty(globalThis, key, { configurable: true, value: key === "IS_REACT_ACT_ENVIRONMENT" ? true : key === "React" ? React : dom.window[key as keyof Window] });
   }
   dom.window.requestAnimationFrame = (callback) => dom.window.setTimeout(callback, 0);
   dom.window.cancelAnimationFrame = (handle) => dom.window.clearTimeout(handle);
   return { dom, restore() {
-    for (const key of ["window", "document", "navigator", "React"]) {
+    for (const key of keys) {
       const descriptor = previous.get(key);
       if (descriptor) Object.defineProperty(globalThis, key, descriptor);
       else Reflect.deleteProperty(globalThis, key);
@@ -221,45 +222,54 @@ test("Home keeps all Todo panels visible while the day request is loading", asyn
   env.restore();
 });
 
-test("Home opens C's dialog and saves only C's paper", async () => {
-  const env = installDom();
+test("Home opens C's dialog and saves only C's paper", async (t) => {
+  const env = installDom(true);
   const container = env.dom.window.document.getElementById("root")!;
   const requests: Array<{ path: string; init?: RequestInit }> = [];
+  let acknowledge!: () => void;
+  const acknowledgement = new Promise<void>(resolve => { acknowledge = resolve; });
   const root = createRoot(container);
-  root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
-    now: () => new Date(2026, 7, 12, 12, 0, 0),
-    api: { request: async (path: string, init?: RequestInit) => {
-      requests.push({ path, init });
-      if (path === "/todo/dates" || path === "/diary/dates") return { success: true, data: { dates: [] } };
-      if (init?.method === "PUT") return { success: true, data: { author: "C", date: "2026-08-12", revision: 2, entries: JSON.parse(String(init.body)).entries } };
-      return { success: true, data: { date: "2026-08-12", papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_TODO_ENTRIES }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_TODO_ENTRIES }, C: { author: "C", date: "2026-08-12", revision: 1, entries: C_TODO_ENTRIES } } } };
-    } },
-  })));
-  await waitForCondition(() => container.querySelectorAll(".today-panel").length === 3, "three Todo panels");
-  await waitForCondition(
-    () =>
-      (container.querySelector(".today-panel-l")?.textContent ?? "").includes("整理今天的事情") &&
-      (container.querySelector(".today-panel-g")?.textContent ?? "").includes("项目下一步：确定侧边栏交互") &&
-      (container.querySelector(".today-panel-c")?.textContent ?? "").includes("整理 Claude 的下一步"),
-    "loaded L/G/C Todo previews",
-  );
+  t.after(async () => {
+    try { await React.act(async () => { acknowledge(); root.unmount(); }); }
+    finally { env.restore(); }
+  });
+  await React.act(async () => {
+    root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
+      now: () => new Date(2026, 7, 12, 12, 0, 0),
+      api: { request: async (path: string, init?: RequestInit) => {
+        requests.push({ path, init });
+        if (path === "/todo/dates" || path === "/diary/dates") return { success: true, data: { dates: [] } };
+        if (init?.method === "PUT") {
+          await acknowledgement;
+          return { success: true, data: { author: "C", date: "2026-08-12", revision: 2, entries: JSON.parse(String(init.body)).entries } };
+        }
+        return { success: true, data: { date: "2026-08-12", papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_TODO_ENTRIES.map(entry => ({ ...entry })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_TODO_ENTRIES.map(entry => ({ ...entry })) }, C: { author: "C", date: "2026-08-12", revision: 1, entries: C_TODO_ENTRIES.map(entry => ({ ...entry })) } } } };
+      } },
+    })));
+  });
+  assert.equal(container.querySelectorAll(".today-panel").length, 3);
+  assert.match(container.querySelector(".today-panel-c")?.textContent ?? "", /整理 Claude 的下一步/);
   const lPreviewBefore = container.querySelector(".today-panel-l")?.textContent;
   const gPreviewBefore = container.querySelector(".today-panel-g")?.textContent;
   const cPanel = container.querySelector<HTMLButtonElement>(".today-panel-c")!;
-  cPanel.click();
-  await waitForCondition(() => container.querySelector("#today-panel-dialog-c") !== null, "C Todo dialog");
-  container.querySelector<HTMLButtonElement>(".todo-paper-status")!.click();
-  await waitForPaint();
-  container.querySelector<HTMLButtonElement>(".paper-detail-veil")!.click();
-  await waitForCondition(() => container.querySelector('[role="dialog"]') === null, "C dialog close");
-  assert.equal(requests.filter((request) => request.init?.method === "PUT").length, 1);
-  assert.equal(requests.find((request) => request.init?.method === "PUT")?.path, "/todo/2026-08-12/C");
+  await React.act(async () => { cPanel.click(); });
+  assert.ok(container.querySelector("#today-panel-dialog-c"));
+  const status = container.querySelector<HTMLButtonElement>(".todo-paper-status")!;
+  await React.act(async () => { status.click(); });
+  assert.equal(status.dataset.kind, "completed");
+  const veil = container.querySelector<HTMLButtonElement>(".paper-detail-veil")!;
+  await React.act(async () => { veil.click(); veil.click(); });
+  const writes = requests.filter(request => request.init?.method === "PUT");
+  assert.equal(writes.length, 1, "repeat close must not duplicate the pending save");
+  assert.equal(writes[0].path, "/todo/2026-08-12/C");
+  assert.equal(JSON.parse(String(writes[0].init?.body)).entries[0].kind, "completed");
+  assert.ok(container.querySelector('[role="dialog"]'), "close waits for the save acknowledgement");
+  await React.act(async () => { acknowledge(); await acknowledgement; });
+  assert.equal(container.querySelector('[role="dialog"]'), null);
+  await waitForCondition(() => env.dom.window.document.activeElement === cPanel, "C trigger focus restoration");
   assert.equal(container.querySelector(".today-panel-l")?.textContent, lPreviewBefore);
   assert.equal(container.querySelector(".today-panel-g")?.textContent, gPreviewBefore);
-  assert.match(container.querySelector(".today-panel-c")?.textContent ?? "", /整理 Claude 的下一步/);
-  root.unmount();
-  await waitForPaint();
-  env.restore();
+  assert.ok(container.querySelector(".today-panel-c .today-note")?.classList.contains("today-note-completed"));
 });
 
 test("Calendar loading keeps its shell without visible loading copy", async () => {
@@ -283,66 +293,56 @@ test("Calendar loading keeps its shell without visible loading copy", async () =
   env.restore();
 });
 
-test("Home saves an edited L paper, updates only L preview, and restores trigger focus", async () => {
-  const env = installDom();
+test("Home saves an edited L paper, updates only L preview, and restores trigger focus", async (t) => {
+  const env = installDom(true);
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
-
+  const writes: Array<{ path: string; init: RequestInit }> = [];
+  t.after(async () => {
+    try { await React.act(async () => { root.unmount(); }); }
+    finally { env.restore(); }
+  });
   env.dom.window.localStorage.clear();
-
-  root.render(
-    React.createElement(
-      BrowserRouter,
-      null,
-      React.createElement(DashboardPageContent, {
-        api: { request: async (path: string, init?: RequestInit) => ({ success: true, data: init?.method === "PUT" ? { author: "L", date: path.split("/").at(-2), revision: 2, entries: JSON.parse(String(init.body)).entries } : { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_TODO_ENTRIES.map((entry) => ({ ...entry })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_TODO_ENTRIES.map((entry) => ({ ...entry })) }, C: { author: "C", date: "2026-08-12", revision: 1, entries: C_TODO_ENTRIES.map((entry) => ({ ...entry })) } } } }) },
-      }),
-    ),
-  );
-  await waitForPaint();
-
+  await React.act(async () => {
+    root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
+      now: () => new Date(2026, 7, 12, 12, 0, 0),
+      api: { request: async (path: string, init?: RequestInit) => {
+        if (path === "/todo/dates" || path === "/diary/dates") return { success: true, data: { dates: [] } };
+        if (init?.method === "PUT") {
+          writes.push({ path, init });
+          return { success: true, data: { author: "L", date: "2026-08-12", revision: 2, entries: JSON.parse(String(init.body)).entries } };
+        }
+        return { success: true, data: { date: "2026-08-12", papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_TODO_ENTRIES.map(entry => ({ ...entry })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_TODO_ENTRIES.map(entry => ({ ...entry })) }, C: { author: "C", date: "2026-08-12", revision: 1, entries: C_TODO_ENTRIES.map(entry => ({ ...entry })) } } } };
+      } },
+    })));
+  });
   const lPanel = container.querySelector<HTMLButtonElement>(".today-panel-l")!;
   const gPanel = container.querySelector<HTMLButtonElement>(".today-panel-g")!;
+  const cPanel = container.querySelector<HTMLButtonElement>(".today-panel-c")!;
   const gPreviewBefore = gPanel.textContent;
-
-  lPanel.focus();
-  lPanel.click();
-  await waitForPaint();
-
+  const cPreviewBefore = cPanel.textContent;
+  await React.act(async () => { lPanel.focus(); lPanel.click(); });
   const dialog = container.querySelector<HTMLElement>('[role="dialog"]');
   assert.ok(dialog);
   assert.equal(dialog.getAttribute("aria-modal"), "true");
   assert.equal(document.body.style.overflow, "hidden");
-  assert.equal(
-    dialog.querySelector('button[aria-label*="关闭"]'),
-    null,
-  );
-
+  assert.equal(dialog.querySelector('button[aria-label*="关闭"]'), null);
   const firstStatus = dialog.querySelector<HTMLButtonElement>(".todo-paper-status");
   assert.ok(firstStatus);
-  firstStatus.click();
-  await waitForPaint();
+  await React.act(async () => { firstStatus.click(); });
   assert.equal(firstStatus.dataset.kind, "completed");
-
   const veil = container.querySelector<HTMLButtonElement>(".paper-detail-veil");
   assert.ok(veil);
-  veil.click();
-  await waitForPaint();
-
+  await React.act(async () => { veil.click(); });
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].path, "/todo/2026-08-12/L");
+  assert.equal(JSON.parse(String(writes[0].init.body)).entries[0].kind, "completed");
   assert.equal(container.querySelector('[role="dialog"]'), null);
   assert.equal(document.body.style.overflow, "");
-  assert.equal(env.dom.window.document.activeElement, lPanel);
-
-  const lPreviewFirst = container.querySelector<HTMLElement>(
-    ".today-panel-l .today-note",
-  );
-  assert.ok(lPreviewFirst?.classList.contains("today-note-completed"));
+  await waitForCondition(() => env.dom.window.document.activeElement === lPanel, "L trigger focus restoration");
+  assert.ok(container.querySelector(".today-panel-l .today-note")?.classList.contains("today-note-completed"));
   assert.equal(gPanel.textContent, gPreviewBefore);
-
-
-  root.unmount();
-  await waitForPaint();
-  env.restore();
+  assert.equal(cPanel.textContent, cPreviewBefore);
 });
 
 test("mobile top bar uses the approved Home geometry globally", () => {
