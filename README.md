@@ -134,4 +134,4 @@ Repository documentation describes the checked-in release path, not the live dep
 - [`docs/native-session/catalog.md`](docs/native-session/catalog.md) — **current** manual Desktop ↔ LeileiOS switching steps and safety gates.
 - [`docs/mind-memory-api.md`](docs/mind-memory-api.md) — Memory API and iOS/Web date filtering.
 
-Dated implementation plans and design specs under `docs/superpowers/` are historical engineering records, **not current operating instructions**. Old superseded versions of the Mind Hook and session-switch guides remain available at fixed Git commits linked from those guides; the current procedure belongs in the authoritative documents above.
+Dated implementation plans and design specs in the [historical engineering index](docs/superpowers/README.md) are **not current operating instructions**. Old superseded versions of the Mind Hook and session-switch guides remain available at fixed Git commits linked from those guides; the current procedure belongs in the authoritative documents above.
