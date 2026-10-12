@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { request as httpRequest } from "node:http";
 import { pathToFileURL } from "node:url";
 import { parseEnv } from "node:util";
+import { isMindHookPaused } from "./toggle.mjs";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_SEEN = 20000;
@@ -584,6 +585,7 @@ async function acknowledgeStop(config, sessionId, invocationStarted) {
 export async function runHook(input, output = text => new Promise((resolve, reject) => process.stdout.write(text, error => error ? reject(error) : resolve()))) {
   const invocationStarted = Date.now();
   if (process.env.LEILEI_MIND_HOOK_DISABLED === "1" ||
+      await isMindHookPaused() ||
       (input?.agent_id && ["UserPromptSubmit", "Stop", "StopFailure", "Notification", "SessionEnd"].includes(input.hook_event_name))) return;
   if (!input || typeof input.session_id !== "string" || !input.session_id || input.session_id.length > 256) return;
   const config = await readConfig();
