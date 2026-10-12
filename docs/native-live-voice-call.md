@@ -34,10 +34,12 @@ Without an API key, the voice endpoint reports unconfigured and returns HTTP 503
 grant this independently deployed Railway service API credentials. Confirm that
 the chosen ElevenLabs voice is available to the API key's workspace.
 
-The service defaults to ElevenLabs `eleven_v4_turbo` for calls, with V4 and V3
-selectable in the call view (`eleven_v4` / `eleven_v3`). Each `POST /speak` may
-specify an allowlisted `model_id`; older clients default to V4 Turbo. The audio
-format is `mp3_44100_128`; requests are text-limited, audio-bounded, time-limited, and
+The service defaults to `eleven_v4`, with V3 (`eleven_v3`) selectable in the
+call view. Both are sent through ElevenLabs HTTP Text to Dialogue with one
+Robert voice input per turn. Each `POST /speak` may specify an allowlisted
+`model_id`; older clients default to V4. The audio format is `mp3_44100_128`.
+V4 Turbo is deferred until the Text to Dialogue WebSocket path is implemented; it
+is not compatible with the current HTTP voice-call transport; requests are text-limited, audio-bounded, time-limited, and
 returned without cache storage. It must not be exposed outside the existing
 authenticated `/api/v1` mount.
 
