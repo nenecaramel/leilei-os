@@ -17,7 +17,7 @@ test('ToolActivity is provider-neutral and AssistantTurn owns results between Ac
   assert.match(tool, /NativeLiveToolCallCard\(/);
   assert.match(tool, /ForEach\(permissionInteractions\)/);
   const assistant = readFileSync(surface+'NativeLiveAssistantTurnRow.swift','utf8');
-  assert.match(assistant, /activityArea\s+NativeLiveVisibleThinkingSurface\(items: turn\.visibleThinking\)\s+spotifyResultArea\s+elevenLabsResultArea\s+NativeLiveMessagePresentationView/);
+  assert.match(assistant, /NativeLiveVisibleThinkingSurface\(items: turn\.visibleThinking\)\s*\.padding\([^\n]*\)\s+activityArea\s*\.padding\([^\n]*\)\s+spotifyResultArea\s+elevenLabsResultArea\s+NativeLiveMessagePresentationView/);
   assert.match(assistant, /NativeLiveSpotifyResultSurface\(items: items\)/);
   const view = readFileSync(surface+'NativeLiveSpotifyResultSurface.swift','utf8');
   assert.doesNotMatch(view, /isActivityExpanded|Permission|Interaction|runtimeSurface|blocks/);
@@ -52,15 +52,25 @@ test('real Swift standalone items consume existing live/durable tool truth in pr
   } finally { rmSync(dir,{recursive:true,force:true}); }
 });
 
-test('projection, reconciliation, Spotify schema/card and voice production stay byte-identical to main', () => {
+test('Spotify baseline stays byte-identical except explicitly accepted assistant presentation additions', () => {
   // Frozen hashes also work in CI's shallow checkout; never require old Git objects.
   const manifest=JSON.parse(readFileSync('tests/fixtures/spotify-surface-main-41bf880f.json','utf8'));
   assert.equal(manifest.ref,'41bf880f24a5d42dd48fb39603c47080b3ec75bd');
   for (const [file,sha] of Object.entries(manifest.sha256)) {
     const content=readFileSync(file,'utf8');
-    const equivalent=file.endsWith('/NativeLiveAssistantTurnPresentation.swift')
-      ? content.replace('    var visibleThinking: [NativeLiveVisibleThinkingItem] = []\n','')
-      : content;
+    let equivalent = content;
+    if (file.endsWith('/NativeLiveAssistantTurnPresentation.swift')) {
+      // Accepted additive fields: thinking (65563ed6) and display-only timestamp (2e6505e0).
+      // Keep the original hashes: no other projection/reconciliation change is allowed.
+      for (const addition of [
+        '    var visibleThinking: [NativeLiveVisibleThinkingItem] = []\n',
+        '    // Preserve the timestamp while the foreground reply is generating; only hide its display.\n' +
+          '    var visibleTimestamp: String? { activityProjection.turnIsActive ? nil : timestamp }\n',
+      ]) {
+        assert.equal(content.split(addition).length, 2, `expected one accepted addition: ${addition}`);
+        equivalent = equivalent.replace(addition, '');
+      }
+    }
     assert.equal(createHash('sha256').update(equivalent).digest('hex'),sha,file);
   }
 });

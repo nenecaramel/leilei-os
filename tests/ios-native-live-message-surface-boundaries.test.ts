@@ -300,10 +300,14 @@ test("message rows and canonical block rendering are extracted while root compos
   assert.ok(activityIndex >= 0);
   assert.ok(messageIndex > activityIndex);
   assert.ok(actionsIndex > messageIndex);
-  assert.match(
-    assistant,
-    /timestampText:turn\.timestamp\.map \{ MessageTimestampFormatter\.string/,
+  // cccf6e6e moved timing out of the process disclosure into assistant actions.
+  assert.doesNotMatch(assistant, /timestampText:/);
+  assert.match(assistant, /header:activityHeader/);
+  const actions = readExisting(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveAssistantActions.swift",
   );
+  assert.match(actions, /if let timestamp = turn\.visibleTimestamp/);
+  assert.match(actions, /Text\(MessageTimestampFormatter\.string\(from:timestamp\)\)/);
   assert.match(assistant, /murmurText:turn\.murmurText/);
 
   assert.match(user, /struct NativeLiveUserMessagePresentationView: View/);

@@ -19,7 +19,7 @@ test("murmur is a separate activity-row bubble that opens a sheet", () => {
   const activity = fs.readFileSync(activityPath, "utf8") + fs.readFileSync(activityPath.replace("NativeLiveRuntimeActivity.swift", "NativeLiveActivitySheets.swift"), "utf8");
   const row = fs.readFileSync(rowPath, "utf8");
 
-  assert.match(row, /!turn\.header\.isEmpty \|\| turn\.murmurText != nil/u);
+  assert.match(row, /processSections\.showsActivity \|\| turn\.murmurText != nil/u);
   assert.match(row, /murmurText:turn\.murmurText/u);
 
   assert.match(activity, /let murmurText: String\?/u);
@@ -39,7 +39,11 @@ test("murmur is a separate activity-row bubble that opens a sheet", () => {
     /HStack\(\s*alignment: \.firstTextBaseline,\s*spacing: 8\s*\) \{([\s\S]*?)\n            if effectiveExpanded/u,
   )?.[1] ?? "";
   assert.ok(header.indexOf('Image(systemName: "bubble.left")') >= 0);
-  assert.ok(header.indexOf('"chevron.right"') > header.indexOf('"bubble.left"'));
+  // de3bd060 places disclosure next to its label, before the independent murmur button.
+  assert.ok(header.indexOf('"chevron.right"') >= 0);
+  assert.ok(header.indexOf('Image(systemName: "bubble.left")') > header.indexOf('"chevron.right"'));
+  assert.match(header, /if normalizedMurmurText != nil/);
+  assert.match(header, /\.accessibilityLabel\("Murmur"\)/);
 });
 
 test("murmur never becomes assistant body or generic display text", () => {
