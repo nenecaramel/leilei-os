@@ -1,6 +1,23 @@
 import Foundation
 
 enum MindPresentation {
+    static func filterDayKey(_ date: Date) -> String {
+        filterDayFormatter().string(from: date)
+    }
+
+    static func filterDayDate(_ key: String?) -> Date {
+        key.flatMap { filterDayFormatter().date(from: $0) } ?? Date()
+    }
+
+    private static func filterDayFormatter() -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }
+
     static func normalized(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(

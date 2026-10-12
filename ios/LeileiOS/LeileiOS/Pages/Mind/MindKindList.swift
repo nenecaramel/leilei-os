@@ -10,6 +10,8 @@ struct MindMemoryListView: View {
     @State private var loadingMore = false
     @State private var failed = false
     @State private var reloadToken = UUID()
+    @State private var dateFilterPresented = false
+    @State private var selectedDate: String?
     @State private var undatedOnly = false
     @State private var sort: MindListSort = .updatedDesc
     @State private var listGeneration = 0
@@ -92,6 +94,15 @@ struct MindMemoryListView: View {
                     .pickerStyle(.inline)
                     Divider()
                     Toggle("Undated Only", isOn: $undatedOnly)
+                    Divider()
+                    Button("Filter Date", systemImage: "calendar") {
+                        dateFilterPresented = true
+                    }
+                    if selectedDate != nil {
+                        Button("All Dates", systemImage: "xmark") {
+                            selectedDate = nil
+                        }
+                    }
                 } label: {
                     Image(systemName: "arrow.up.arrow.down")
                         .font(.system(size: 13, weight: .light))
@@ -102,13 +113,22 @@ struct MindMemoryListView: View {
         .task(id: "\(sort.rawValue)|\(undatedOnly)|\(reloadToken)") {
             await reload()
         }
-        .task(id: "\(query)|\(undatedOnly)|\(reloadToken)") {
+        .sheet(isPresented: $dateFilterPresented) {
+            MindDateFilter(selectedDate: selectedDate) { day in
+                undatedOnly = false
+                selectedDate = day
+            }
+        }
+        .onChange(of: undatedOnly) { _, undated in
+            if undated { selectedDate = nil }
+        }
+        .task(id: "\(query)|\(selectedDate ?? "")|\(undatedOnly)|\(reloadToken)") {
             await searchIfNeeded()
         }
     }
 
     private var isSearching: Bool {
-        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        selectedDate != nil || !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     @ViewBuilder
@@ -168,6 +188,7 @@ struct MindMemoryListView: View {
     private func searchIfNeeded(skipDelay: Bool = false) async {
         searchGeneration += 1
         let ticket = searchGeneration
+        let requestedDate = selectedDate
         let requestedUndated = undatedOnly
         let requestedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searchLoadingMore = false
@@ -179,24 +200,25 @@ struct MindMemoryListView: View {
             return
         }
         searchLoading = true
-        if !skipDelay {
+        if !skipDelay && !requestedQuery.isEmpty {
             do {
                 try await Task.sleep(for: .milliseconds(250))
             } catch {
                 return
             }
         }
-        guard ticket == searchGeneration, !Task.isCancelled, requestedUndated == undatedOnly, requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+        guard ticket == searchGeneration, !Task.isCancelled, requestedDate == selectedDate, requestedUndated == undatedOnly, requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
         do {
             let page = try await appModel.api.memorySearch(
                 query: requestedQuery,
+                date: requestedDate,
                 undated: requestedUndated
             )
-            guard ticket == searchGeneration, !Task.isCancelled, requestedUndated == undatedOnly, requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+            guard ticket == searchGeneration, !Task.isCancelled, requestedDate == selectedDate, requestedUndated == undatedOnly, requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
             searchRows = page.items
             searchCursor = page.nextCursor
         } catch {
-            guard ticket == searchGeneration, !Task.isCancelled, requestedUndated == undatedOnly, requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+            guard ticket == searchGeneration, !Task.isCancelled, requestedDate == selectedDate, requestedUndated == undatedOnly, requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
             searchFailed = true
         }
         if ticket == searchGeneration { searchLoading = false }
@@ -208,6 +230,7 @@ struct MindMemoryListView: View {
             return
         }
         let ticket = searchGeneration
+        let requestedDate = selectedDate
         let requestedUndated = undatedOnly
         let requestedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searchLoadingMore = true
@@ -216,12 +239,13 @@ struct MindMemoryListView: View {
         do {
             let page = try await appModel.api.memorySearch(
                 query: requestedQuery,
+                date: requestedDate,
                 undated: requestedUndated,
                 cursor: cursor
             )
             guard ticket == searchGeneration,
                   !Task.isCancelled,
-                  requestedUndated == undatedOnly,
+                  requestedDate == selectedDate, requestedUndated == undatedOnly,
                   requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines)
             else { return }
             var ids = Set(searchRows.map(\.id))
