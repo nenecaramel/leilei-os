@@ -278,6 +278,9 @@ function networkCauseDiagnostics(error: unknown): {
 }
 
 let consecutiveWakeErrors = 0;
+// A lost semantic reserve response can strand a prepared turn behind its lease.
+// Following an ambiguous error, bounded broker timeouts recheck the durable queue.
+let durableRecoveryDeadline = 0;
 
 async function waitForWork(): Promise<
   "ready" | "timeout" | "busy" | "retry" | "silence_due" | "stopped"
@@ -329,6 +332,9 @@ async function waitForWork(): Promise<
         if (controller.signal.aborted) {
           return "stopped";
         }
+        if (result.outcome === "timeout" && Date.now() < durableRecoveryDeadline) {
+          return "ready";
+        }
         if (result.outcome === "reset") {
           process.stdout.write(
             JSON.stringify({
@@ -350,6 +356,7 @@ async function waitForWork(): Promise<
         if (controller.signal.aborted) {
           return "stopped";
         }
+        durableRecoveryDeadline = Date.now() + 6 * 60_000;
         process.stderr.write(
           JSON.stringify({
             at: new Date().toISOString(),
@@ -454,6 +461,10 @@ while (!stopping) {
       }) + "\n",
     );
 
+    if (outcome.outcome === "completed"
+      || outcome.outcome === "semantic_completed") {
+      durableRecoveryDeadline = 0;
+    }
     if (outcome.outcome === "completed") {
       await silenceWakeScheduler.refresh().catch((error) => {
         process.stderr.write(
@@ -604,6 +615,7 @@ while (!stopping) {
         : {};
     const causeDiagnostics = networkCauseDiagnostics(error);
     consecutiveWakeErrors += 1;
+    durableRecoveryDeadline = Date.now() + 6 * 60_000;
     const retryDelayMs = Math.min(
       5_000 * 2 ** Math.min(consecutiveWakeErrors - 1, 3),
       30_000,
