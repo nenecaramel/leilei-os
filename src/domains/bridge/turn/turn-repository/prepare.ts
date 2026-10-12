@@ -42,6 +42,7 @@ export async function prepareSend(
     expectedHeadMessageId: string | null;
     text: string;
     inputMode?: "voice";
+    interactionMode?: "live_call";
     attachmentIds: readonly string[];
     executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult> {
@@ -51,6 +52,7 @@ export async function prepareSend(
       expectedHeadMessageId: input.expectedHeadMessageId,
       text: input.text,
       ...(input.inputMode === "voice" ? { inputMode: "voice" } : {}),
+      ...(input.interactionMode === "live_call" ? { interactionMode: "live_call" } : {}),
       ...(input.attachmentIds.length > 0
         ? { attachmentIds: input.attachmentIds }
         : {}),
@@ -124,7 +126,8 @@ export async function prepareSend(
               rawType: "text",
               text: input.text,
               ...(input.inputMode === "voice"
-                ? { payload: { input_mode: "voice" } }
+                ? { payload: { input_mode: "voice",
+                    ...(input.interactionMode === "live_call" ? { interaction_mode: "live_call" } : {}) } }
                 : {}),
             },
           });
