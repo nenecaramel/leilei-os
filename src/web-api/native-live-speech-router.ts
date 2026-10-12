@@ -9,9 +9,9 @@ export type SpeechProviderConfig = {
 };
 
 const MAX_TEXT_CHARACTERS = 1_200;
-// A caller may select a model per speech turn; default favors conversational latency.
-const SPEECH_MODELS = new Set(["eleven_v3", "eleven_v4", "eleven_v4_turbo"]);
-const DEFAULT_SPEECH_MODEL = "eleven_v4_turbo";
+// V3 and V4 use the HTTP Text to Dialogue API; V4 Turbo requires a separate WebSocket transport.
+const SPEECH_MODELS = new Set(["eleven_v3", "eleven_v4"]);
+const DEFAULT_SPEECH_MODEL = "eleven_v4";
 const MAX_AUDIO_BYTES = 4 * 1024 * 1024;
 const UPSTREAM_TIMEOUT_MS = 20_000;
 
@@ -80,9 +80,7 @@ export function createNativeLiveSpeechRouter(
     const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
     try {
       const upstream = await fetcher(
-        "https://api.elevenlabs.io/v1/text-to-speech/"
-        + encodeURIComponent(voiceId)
-        + "?output_format=mp3_44100_128",
+        "https://api.elevenlabs.io/v1/text-to-dialogue?output_format=mp3_44100_128",
         {
           method: "POST",
           headers: {
@@ -91,7 +89,7 @@ export function createNativeLiveSpeechRouter(
             "Accept": "audio/mpeg",
           },
           body: JSON.stringify({
-            text,
+            inputs: [{ text, voice_id: voiceId }],
             model_id: modelId,
           }),
           signal: controller.signal,
