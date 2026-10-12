@@ -12,7 +12,7 @@ test("directory pool keeps durable paths outside the default, canonicalizes, and
   mkdirSync(base); mkdirSync(historical); symlinkSync(historical, alias);
   const calls: unknown[] = [], lifecycle: string[] = [];
   const store = { remote: true }, mcp = { type: "http" as const, url: "https://mcp.example", headers: {} };
-  const runtime = { abort() {}, async deleteSession(id: string) { lifecycle.push("delete:" + id); }, async compact(id: string) { lifecycle.push("compact:" + id); return {}; }, async listSessions(input: unknown) { assert.deepEqual(input, { allDirectories: true, limit: 100, offset: 0 }); return [{ cwd: historical, sessionId: "external", summary: null, customTitle: null, firstPrompt: null, gitBranch: null, lastModified: 1, createdAt: 1 }]; } };
+  const runtime = { abort() {}, async deleteSession(id: string) { lifecycle.push("delete:" + id); }, async compact(id: string) { lifecycle.push("compact:" + id); return { providerSessionId: id }; }, async listSessions(input: unknown) { assert.deepEqual(input, { allDirectories: true, limit: 100, offset: 0 }); return [{ cwd: historical, sessionId: "external", summary: null, customTitle: null, firstPrompt: null, gitBranch: null, lastModified: 1, createdAt: 1 }]; } };
   const pool = new Pool({}, base, async (_env: unknown, cwd: string, remote: unknown, config: unknown) => { calls.push({ cwd, remote, config }); return { kind: "agent_sdk", runtime }; }, () => store, mcp);
   const defaultBinding = await pool.resolveWorkingDirectoryRuntime({ expectedWorkingDirectory: null });
   assert.equal(defaultBinding.workingDirectory, base);
@@ -58,4 +58,14 @@ test("directory pool forwards the canonical compact checkpoint without changing 
   const pool = new Pool({}, root, async () => ({ kind: "agent_sdk", runtime }));
   const result = await pool.compactSession("A", root, checkpoint);
   assert.equal(result.providerSessionId, "A"); assert.equal(result.providerCheckpointId, next);
+});
+
+test("directory pool rejects compact results without a provider session instead of reporting success", async (t) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "directory-invalid-compact-test-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runtime = { abort() {}, async deleteSession() {}, async compact() {
+    return { providerSessionId: null };
+  } };
+  const pool = new Pool({}, root, async () => ({ kind: "agent_sdk", runtime }));
+  await assert.rejects(pool.compactSession("A", root), /provider session/i);
 });
