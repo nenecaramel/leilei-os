@@ -292,14 +292,14 @@ test("native live turns accept validated optional execution selection", () => {
   }
 });
 
-test("call mode requires a voice send and never leaks into other operations", () => {
+test("live call marker requires a voice send and never leaks into other operations", () => {
   const plain = { dispatch_target: "claude_code", request_id: requestId,
     operation: "send", conversation_id: conversationId,
     expected_head_message_id: null, text: "喂？" };
   assert.deepEqual(parseNativeLiveRelayRequest({
-    ...plain, input_mode: "voice", interaction_mode: "call",
-  }), {...plain, input_mode: "voice", interaction_mode: "call"});
-  for (const mode of ["call", "text", null, false, 1]) {
+    ...plain, input_mode: "voice", interaction_mode: "live_call",
+  }), {...plain, input_mode: "voice", interaction_mode: "live_call"});
+  for (const mode of ["live_call", "text", null, false, 1]) {
     assert.throws(() => parseNativeLiveRelayRequest({
       ...plain, interaction_mode: mode,
     }), NativeLiveRelayContractError);
@@ -310,6 +310,6 @@ test("call mode requires a voice send and never leaks into other operations", ()
   assert.throws(() => parseNativeLiveRelayRequest({
     dispatch_target: "claude_code", request_id: requestId,
     operation: "retry", conversation_id: conversationId,
-    target_user_message_id: userMessageId, interaction_mode: "call",
+    target_user_message_id: userMessageId, interaction_mode: "live_call",
   }), NativeLiveRelayContractError);
 });
