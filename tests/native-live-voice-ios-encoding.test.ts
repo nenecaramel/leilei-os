@@ -11,10 +11,11 @@ test("actual Swift send encoder adds voice identity without changing ordinary wi
   const mode = readFileSync("ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLive/NativeLiveInputMode.swift", "utf8");
   const dir=mkdtempSync(join(tmpdir(),"leileios-voice-encoder-"));
   try {
-    writeFileSync(join(dir,"main.swift"), `${mode}\nstruct NativeLiveExecutionSelection: Encodable, Sendable {}\n${body}\nfor mode in [NativeLiveInputMode.text, .voice] {\n let body = NativeLiveSendBody(dispatchTarget:"claude_code",requestId:"request",operation:"send",conversationId:"conversation",expectedHeadMessageId:nil,text:"我今天好累",attachmentIds:[],execution:nil,inputMode:mode)\n print(String(data:try JSONEncoder().encode(body),encoding:.utf8)!)\n}\nlet callBody = NativeLiveSendBody(dispatchTarget:"claude_code",requestId:"request",operation:"send",conversationId:"conversation",expectedHeadMessageId:nil,text:"喂？",attachmentIds:[],execution:nil,inputMode:.voice,interactionMode:"call")\nprint(String(data:try JSONEncoder().encode(callBody),encoding:.utf8)!)\n`);
+    writeFileSync(join(dir,"main.swift"), `${mode}\nstruct NativeLiveExecutionSelection: Encodable, Sendable {}\n${body}\nfor mode in [NativeLiveInputMode.text, .voice] {\n let body = NativeLiveSendBody(dispatchTarget:"claude_code",requestId:"request",operation:"send",conversationId:"conversation",expectedHeadMessageId:nil,text:"我今天好累",attachmentIds:[],execution:nil,inputMode:mode)\n print(String(data:try JSONEncoder().encode(body),encoding:.utf8)!)\n}\nlet callBody = NativeLiveSendBody(dispatchTarget:"claude_code",requestId:"request",operation:"send",conversationId:"conversation",expectedHeadMessageId:nil,text:"喂？",attachmentIds:[],execution:nil,inputMode:.voice,interactionMode:"live_call")\nprint(String(data:try JSONEncoder().encode(callBody),encoding:.utf8)!)\n`);
     execFileSync("swiftc",[join(dir,"main.swift"),"-o",join(dir,"encode")]);
     const [text,voice,call]=execFileSync(join(dir,"encode"),{encoding:"utf8"}).trim().split("\n").map(line=>JSON.parse(line));
     assert.deepEqual(text,{dispatch_target:"claude_code",request_id:"request",operation:"send",conversation_id:"conversation",expected_head_message_id:null,text:"我今天好累"});
-    assert.deepEqual(voice,{...text,input_mode:"voice"});\n    assert.deepEqual(call,{...text,text:"喂？",input_mode:"voice",interaction_mode:"call"});
+    assert.deepEqual(voice,{...text,input_mode:"voice"});
+    assert.deepEqual(call,{...text,text:"喂？",input_mode:"voice",interaction_mode:"live_call"});
   } finally {rmSync(dir,{recursive:true,force:true});}
 });
