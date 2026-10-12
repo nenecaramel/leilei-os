@@ -1,10 +1,10 @@
-# Native Live foreground voice call (draft)
+# Native Live foreground voice call (device acceptance pending)
 
 This is an incremental iPhone foreground call UI built on the existing Native Live
 conversation, Mac Claude Agent SDK and Mind Hook. It does not create another Claude
 session or memory store and does not require a database migration.
 
-## What exists on this branch
+## Implementation present on main
 
 - The composer `+` menu includes a `Call Claude` action that opens the foreground
   SwiftUI call sheet for the active authenticated canonical conversation (not drafts).
@@ -45,7 +45,7 @@ authenticated `/api/v1` mount.
 
 ## Real-device acceptance required
 
-1. From an isolated feature branch, install the intended iOS sources on the
+1. From an approved current checkout, install the intended iOS sources on the
    iPhone using Xcode. Preserve the owner's existing local signing settings.
 2. Check that the active Native Live conversation and Mac Companion are ready.
 3. Start a call; approve speech and microphone permissions; speak in Chinese.
@@ -67,5 +67,6 @@ PushKit/CallKit calls and body-sound recognition remain separate future work.
 Long assistant messages are read only through their first 1,100 characters,
 while the canonical written response remains complete. The selected voice ID is an explicit owner-provided default, not a guessed choice;
 keep API credentials separate and allow override via Railway environment.
-No production deployment, schema mutation, or main merge is authorized by this
-branch alone.
+The feature is present on `main`, but that is not evidence of Railway configuration,
+production voice availability or physical-device acceptance. No deployment,
+secret change or live call is authorized by this document alone.
