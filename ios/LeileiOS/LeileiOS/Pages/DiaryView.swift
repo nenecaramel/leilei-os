@@ -19,6 +19,7 @@ struct DiaryView: View {
     @State private var draftCustomEndDate = Date.now
     @State private var diaryCount: Int?
     @State private var state: DiaryLoadState = .loading
+    @State private var loadGeneration = 0
 
     var body: some View {
         Group {
@@ -204,25 +205,38 @@ struct DiaryView: View {
             onTargetConsumed()
         }
         .refreshable {
-            await loadDiary()
+            await loadDiary(preservingContent: true)
         }
     }
 
     @MainActor
-    private func loadDiary() async {
-        state = .loading
+    private func loadDiary(preservingContent: Bool = false) async {
+        loadGeneration += 1
+        let ticket = loadGeneration
+        let retainsContent: Bool
+        if preservingContent, case .loaded = state {
+            retainsContent = true
+        } else {
+            retainsContent = false
+            state = .loading
+        }
 
         do {
             let result = try await loadAllDiaryPages()
+            guard ticket == loadGeneration, !Task.isCancelled else { return }
             diaryCount = result.count
             state = .loaded(result.diaries)
         } catch LeileiAPIError.missingAccessToken {
-            state = .authRequired("Sign in")
+            guard ticket == loadGeneration, !Task.isCancelled else { return }
+            if !retainsContent { state = .authRequired("Sign in") }
         } catch LeileiAPIError.unauthorized {
+            guard ticket == loadGeneration, !Task.isCancelled else { return }
             await appModel.refreshConnectivity()
-            state = .authRequired("Sign in")
+            guard ticket == loadGeneration, !Task.isCancelled else { return }
+            if !retainsContent { state = .authRequired("Sign in") }
         } catch {
-            state = .unavailable("Unavailable")
+            guard ticket == loadGeneration, !Task.isCancelled else { return }
+            if !retainsContent { state = .unavailable("Unavailable") }
         }
     }
 

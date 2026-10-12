@@ -21,6 +21,7 @@ struct MindMemoryListView: View {
     @State private var searchLoading = false
     @State private var searchLoadingMore = false
     @State private var searchFailed = false
+    @State private var searchRefreshFailed = false
     @State private var searchGeneration = 0
 
     var body: some View {
@@ -77,7 +78,7 @@ struct MindMemoryListView: View {
                 .scrollContentBackground(.hidden)
                 .background(Color(.systemBackground))
                 .refreshable {
-                    await reload()
+                    await reload(preservingContent: true)
                 }
             }
         }
@@ -173,28 +174,38 @@ struct MindMemoryListView: View {
                 }
                 if searchFailed {
                     Button("Retry") {
-                        Task { await loadMoreSearch() }
+                        Task {
+                            if searchRefreshFailed {
+                                await searchIfNeeded(skipDelay: true, preservingContent: true)
+                            } else {
+                                await loadMoreSearch()
+                            }
+                        }
                     }
                 }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Color(.systemBackground))
-            .refreshable { await searchIfNeeded(skipDelay: true) }
+            .refreshable { await searchIfNeeded(skipDelay: true, preservingContent: true) }
         }
     }
 
     @MainActor
-    private func searchIfNeeded(skipDelay: Bool = false) async {
+    private func searchIfNeeded(skipDelay: Bool = false, preservingContent: Bool = false) async {
         searchGeneration += 1
         let ticket = searchGeneration
+        defer { if ticket == searchGeneration { searchLoading = false } }
         let requestedDate = selectedDate
         let requestedUndated = undatedOnly
         let requestedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searchLoadingMore = false
-        searchRows = []
-        searchCursor = nil
+        if !preservingContent {
+            searchRows = []
+            searchCursor = nil
+        }
         searchFailed = false
+        searchRefreshFailed = false
         guard isSearching else {
             searchLoading = false
             return
@@ -220,8 +231,8 @@ struct MindMemoryListView: View {
         } catch {
             guard ticket == searchGeneration, !Task.isCancelled, requestedDate == selectedDate, requestedUndated == undatedOnly, requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
             searchFailed = true
+            searchRefreshFailed = preservingContent
         }
-        if ticket == searchGeneration { searchLoading = false }
     }
 
     @MainActor
@@ -235,6 +246,7 @@ struct MindMemoryListView: View {
         let requestedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searchLoadingMore = true
         searchFailed = false
+        searchRefreshFailed = false
         defer { if ticket == searchGeneration { searchLoadingMore = false } }
         do {
             let page = try await appModel.api.memorySearch(
@@ -257,7 +269,7 @@ struct MindMemoryListView: View {
     }
 
     @MainActor
-    private func reload() async {
+    private func reload(preservingContent: Bool = false) async {
         listGeneration += 1
         let ticket = listGeneration
         let requestedSort = sort
@@ -265,8 +277,10 @@ struct MindMemoryListView: View {
         loading = true
         failed = false
         loadingMore = false
-        items = []
-        nextCursor = nil
+        if !preservingContent {
+            items = []
+            nextCursor = nil
+        }
         defer {
             if ticket == listGeneration { loading = false }
         }
@@ -288,6 +302,7 @@ struct MindMemoryListView: View {
     @MainActor
     private func loadMore() async {
         guard !loadingMore,
+              !loading,
               let nextCursor else {
             return
         }
