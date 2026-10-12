@@ -170,6 +170,43 @@ test("relay prepare forwards voice identity into canonical send preparation", as
   assert.equal(port.prepareSendCalls[0]?.inputMode, "voice");
 });
 
+test("HTTP relay prepare forwards live_call on spoken calls, unlike ordinary dictation", async () => {
+  const port = new FakePort();
+  const coordinator = new NativeLiveBackendRelayPrepareCoordinator(
+    port, null, null, () => prepareId,
+  );
+
+  const callResult = await coordinator.prepare(userId, {
+    ...request(),
+    input_mode: "voice",
+    interaction_mode: "live_call",
+  });
+  assert.equal(callResult.ok, true);
+  assert.equal(port.prepareSendCalls[0]?.inputMode, "voice");
+  assert.equal(port.prepareSendCalls[0]?.interactionMode, "live_call");
+
+  const normalVoice = await coordinator.prepare(userId, {
+    ...request(),
+    input_mode: "voice",
+  });
+  assert.equal(normalVoice.ok, true);
+  assert.equal(port.prepareSendCalls[1]?.inputMode, "voice");
+  assert.equal(port.prepareSendCalls[1]?.interactionMode, undefined);
+
+  const rejected = await coordinator.prepare(userId, {
+    ...request(),
+    interaction_mode: "live_call",
+  });
+  assert.deepEqual(rejected, {
+    ok: false,
+    requestId,
+    operation: "send",
+    conversationId,
+    code: "INVALID_REQUEST",
+  });
+  assert.equal(port.prepareSendCalls.length, 2);
+});
+
 test("relay prepare stages semantic scoring without persisting a lexical prompt first", async () => {
   const port = new FakePort();
   const mind = new FakeMind();
