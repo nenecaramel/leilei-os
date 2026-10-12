@@ -6,7 +6,7 @@ session or memory store and does not require a database migration.
 
 ## What exists on this branch
 
-- The composer `+` menu includes a `语音通话` action that opens the foreground
+- The composer `+` menu includes a `Call Claude` action that opens the foreground
   SwiftUI call sheet for the active authenticated canonical conversation (not drafts).
   This action remains accessible when the attachment limit is reached; attachment
   actions are disabled separately. The old top-bar call button was removed.
