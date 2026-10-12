@@ -76,7 +76,7 @@ test("voice route sends the owner-selected ElevenLabs voice, never the secret, a
       assert.equal(String(_url), "https://api.elevenlabs.io/v1/text-to-speech/BtWabtumIemAotTjP5sk?output_format=mp3_44100_128");
       requests += 1;
       assert.equal((init?.headers as Record<string, string>)["xi-api-key"], "server-secret");
-      assert.match(String(init?.body), /eleven_multilingual_v2/u);
+      assert.match(String(init?.body), /eleven_v4_turbo/u);
       return new Response(new Uint8Array([0x49, 0x44, 0x33, 0x04]), {
         status: 200,
         headers: { "Content-Type": "audio/mpeg" },
@@ -124,5 +124,40 @@ test("upstream errors are sanitized instead of leaking provider responses", asyn
     const output = await response.text();
     assert.equal(output.includes("raw-secret-diagnostic"), false);
     assert.equal(output.includes("server-secret"), false);
+  });
+});
+
+test("voice route supports V3, V4, and V4 Turbo per request and rejects unknown models", async () => {
+  const seenModels: string[] = [];
+  await withServer({
+    apiKey: "server-secret",
+    voiceId: "BtWabtumIemAotTjP5sk",
+    fetcher: (async (_url: URL | RequestInfo, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { model_id: string; text: string };
+      seenModels.push(body.model_id);
+      assert.equal(body.text, "你好");
+      return new Response(new Uint8Array([0x49, 0x44, 0x33, 0x04]), {
+        status: 200,
+        headers: { "Content-Type": "audio/mpeg" },
+      });
+    }) as typeof fetch,
+  }, async (origin) => {
+    for (const modelId of ["eleven_v3", "eleven_v4", "eleven_v4_turbo"]) {
+      const response = await fetch(origin + "/api/v1/voice/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "你好", model_id: modelId }),
+      });
+      assert.equal(response.status, 200);
+    }
+    for (const modelId of ["eleven_multilingual_v2", "unknown", null, 12]) {
+      const response = await fetch(origin + "/api/v1/voice/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "你好", model_id: modelId }),
+      });
+      assert.equal(response.status, 400);
+    }
+    assert.deepEqual(seenModels, ["eleven_v3", "eleven_v4", "eleven_v4_turbo"]);
   });
 });
