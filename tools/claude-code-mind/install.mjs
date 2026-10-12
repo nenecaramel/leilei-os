@@ -40,8 +40,11 @@ export async function install({claudeHome = join(homedir(), ".claude"), serverNa
   try { settings = JSON.parse(await fs.readFile(settingsPath, "utf8")); }
   catch (error) { if (error.code !== "ENOENT") throw error; settings = {}; }
   const next = configureHooks(settings, {home, serverName, nodeCommand});
-  const source = join(dirname(fileURLToPath(import.meta.url)), "hook.mjs");
-  await fs.copyFile(source, join(home, "hook.mjs"));
+  const sourceDirectory = dirname(fileURLToPath(import.meta.url));
+  // Install the toggle before the updated hook, so the hook is never missing its dependency.
+  await fs.copyFile(join(sourceDirectory, "toggle.mjs"), join(home, "toggle.mjs"));
+  await fs.chmod(join(home, "toggle.mjs"), 0o600);
+  await fs.copyFile(join(sourceDirectory, "hook.mjs"), join(home, "hook.mjs"));
   await fs.chmod(join(home, "hook.mjs"), 0o600);
   const temporary = `${settingsPath}.${randomUUID()}.tmp`;
   try {
