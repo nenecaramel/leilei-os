@@ -35,7 +35,13 @@ test('responsibility boundaries preserve complete action bodies and Task ownersh
     assert.doesNotMatch(source, /ObservableObject|\bactor\b|@State|@FocusState/);
     for (const name of names) {
       const marker = /:$/.test(name) ? 'var ' + name : 'func ' + name;
-      assert.equal(compact(block(source, marker)), compact(withoutRetiredBinding(block(baseline, marker))), `${file}: ${name}`);
+      let expected = compact(withoutRetiredBinding(block(baseline, marker)));
+      if (file === 'ChatView+MessageMutation.swift' && name === 'sendNewMessage(') {
+        expected = expected
+          .replace('letattachmentIDs=', 'sendFailureMessage=nilletattachmentIDs=')
+          .replace('}catch{pendingOperation=nilifinputMode==.voice', '}catch{sendFailureMessage=error.localizedDescriptionpendingOperation=nilifinputMode==.voice');
+      }
+      assert.equal(compact(block(source, marker)), expected, `${file}: ${name}`);
     }
   }
   assert.equal(compact(block(read('NativeLiveCameraPicker.swift'), 'struct NativeLiveCameraPicker:')), compact(block(baseline, 'struct NativeLiveCameraPicker:')));
@@ -44,11 +50,25 @@ test('page retains state wrappers, lifecycle installation and exact UI/scroll wi
   assert.ok(existsSync(root + 'ChatView+ConversationLifecycle.swift'), 'Conversation refresh boundary must exist');
   const current = read('ChatView.swift');
   const stateSection = (s: string) => compact(s.slice(s.indexOf('struct ChatView:'), s.indexOf('var body:')).replace(/\bprivate\s+/g, ''));
-  assert.equal(stateSection(current), stateSection(withoutRetiredBinding(baseline)), 'All page state and AppModel pending-operation ownership stay in place');
+  const expectedState = stateSection(withoutRetiredBinding(baseline))
+    .replace('@StatevarmessageText=""', '@StatevarmessageText=""@StatevarsendFailureMessage:String?');
+  assert.equal(stateSection(current), expectedState, 'All page state and AppModel pending-operation ownership stay in place');
   const lifecycle = read('ChatView+ConversationLifecycle.swift');
   const sequence = block(lifecycle, 'func refreshConversationPage()');
   const expandedBody = block(current, 'var body:').replace(/await refreshConversationPage\(\)/g, sequence);
-  assert.equal(compact(expandedBody), compact(block(baseline, 'var body:')), 'Only repeated refresh sequence is extracted; every modifier, Task, callback, focus and layout stays identical');
+  const sendFailureAlert = compact(`
+    .alert("Failed", isPresented: Binding(
+        get: { sendFailureMessage != nil },
+        set: { if !$0 { sendFailureMessage = nil } }
+    )) {
+        Button("OK", role: .cancel) { sendFailureMessage = nil }
+    } message: {
+        Text(sendFailureMessage ?? "")
+    }
+  `);
+  const expectedBody = compact(block(baseline, 'var body:'))
+    .replace('.overlay{ifisConversationLoading{', sendFailureAlert + '.overlay{ifisConversationLoading{');
+  assert.equal(compact(expandedBody), expectedBody, 'Only refresh extraction and send-failure alert differ; every other modifier, Task, callback, focus and layout stays identical');
   assert.equal((block(current, 'var body:').match(/await refreshConversationPage\(\)/g) ?? []).length, 3);
   assert.doesNotMatch(current, /ScrollView|ScrollViewReader|scrollPosition|GeometryReader|\.scrollDismissesKeyboard/);
 });
