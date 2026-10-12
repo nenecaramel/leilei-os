@@ -6,7 +6,27 @@ export type SpeechProviderConfig = {
   apiKey?: string;
   voiceId?: string;
   fetcher?: typeof fetch;
+  onProviderDiagnostic?: (diagnostic: SpeechProviderDiagnostic) => void;
 };
+
+export type SpeechProviderDiagnostic = {
+  kind: "provider_http" | "network_error" | "timeout";
+  modelId: string;
+  upstreamStatus?: number;
+};
+
+function publicProviderErrorCode(status: number): string {
+  switch (status) {
+    case 401: return "VOICE_PROVIDER_AUTH_FAILED";
+    case 402: return "VOICE_PROVIDER_QUOTA_EXCEEDED";
+    case 403: return "VOICE_PROVIDER_ACCESS_DENIED";
+    case 404: return "VOICE_PROVIDER_VOICE_UNAVAILABLE";
+    case 400:
+    case 422: return "VOICE_PROVIDER_REQUEST_REJECTED";
+    case 429: return "VOICE_PROVIDER_RATE_LIMITED";
+    default: return "VOICE_PROVIDER_FAILURE";
+  }
+}
 
 const MAX_TEXT_CHARACTERS = 1_200;
 // V3 and V4 use the HTTP Text to Dialogue API; V4 Turbo requires a separate WebSocket transport.
@@ -22,6 +42,10 @@ export function createNativeLiveSpeechRouter(
   const fetcher = config.fetcher ?? fetch;
   const voiceId = config.voiceId?.trim();
   const apiKey = config.apiKey?.trim();
+  const reportProviderFailure = config.onProviderDiagnostic ?? ((diagnostic: SpeechProviderDiagnostic) => {
+    // Never log the provider response body, API key, user speech or exception message.
+    console.warn(JSON.stringify({ event: "elevenlabs_speech_failure", ...diagnostic }));
+  });
   const configured = Boolean(
     apiKey && voiceId && /^[A-Za-z0-9]{10,80}$/u.test(voiceId),
   );
@@ -97,9 +121,12 @@ export function createNativeLiveSpeechRouter(
       );
 
       if (!upstream.ok) {
+        reportProviderFailure({ kind: "provider_http", upstreamStatus: upstream.status, modelId });
+        // Do not read or echo the provider response body: it may contain private content.
+        await upstream.body?.cancel().catch(() => undefined);
         response.status(502).json({
           success: false,
-          error: { code: "VOICE_PROVIDER_FAILURE", message: "Speech provider unavailable." },
+          error: { code: publicProviderErrorCode(upstream.status), message: "ElevenLabs rejected the speech request." },
         });
         return;
       }
@@ -144,11 +171,13 @@ export function createNativeLiveSpeechRouter(
         return;
       }
       response.type("audio/mpeg").send(Buffer.concat(chunks.map((x) => Buffer.from(x)), totalBytes));
-    } catch {
-      // Do not log provider body, credentials, or the user's spoken text.
+    } catch (error) {
+      const timedOut = controller.signal.aborted
+        || (error instanceof Error && error.name === "AbortError");
+      reportProviderFailure({ kind: timedOut ? "timeout" : "network_error", modelId });
       response.status(502).json({
         success: false,
-        error: { code: "VOICE_PROVIDER_FAILURE", message: "Speech provider unavailable." },
+        error: { code: timedOut ? "VOICE_PROVIDER_TIMEOUT" : "VOICE_PROVIDER_FAILURE", message: "Speech provider unavailable." },
       });
     } finally {
       clearTimeout(timeout);

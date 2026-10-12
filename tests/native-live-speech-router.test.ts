@@ -10,6 +10,7 @@ async function withServer(
     apiKey?: string;
     voiceId?: string;
     fetcher?: typeof fetch;
+    onProviderDiagnostic?: (value: { kind: string; modelId: string; upstreamStatus?: number }) => void;
   },
   run: (origin: string) => Promise<void>,
 ): Promise<void> {
@@ -163,4 +164,68 @@ test("voice route supports V3 and V4 per request and rejects unknown models", as
     }
     assert.deepEqual(seenModels, ["eleven_v3", "eleven_v4"]);
   });
+});
+
+test("voice errors classify safe upstream HTTP failures without exposing secrets", async () => {
+  for (const [providerStatus, expectedCode] of [
+    [401, "VOICE_PROVIDER_AUTH_FAILED"],
+    [402, "VOICE_PROVIDER_QUOTA_EXCEEDED"],
+    [403, "VOICE_PROVIDER_ACCESS_DENIED"],
+    [404, "VOICE_PROVIDER_VOICE_UNAVAILABLE"],
+    [422, "VOICE_PROVIDER_REQUEST_REJECTED"],
+    [429, "VOICE_PROVIDER_RATE_LIMITED"],
+    [500, "VOICE_PROVIDER_FAILURE"],
+  ] as const) {
+    const diagnostics: unknown[] = [];
+    await withServer({
+      apiKey: "server-secret",
+      voiceId: "BtWabtumIemAotTjP5sk",
+      onProviderDiagnostic: (value) => diagnostics.push(value),
+      fetcher: (async () => new Response(
+        JSON.stringify({ detail: { status: "private-user-words", message: "private-user-words" } }),
+        { status: providerStatus, headers: { "content-type": "application/json" } },
+      )) as typeof fetch,
+    }, async (origin) => {
+      const response = await fetch(origin + "/api/v1/voice/speak", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "top-secret-user-transcript", model_id: "eleven_v4" }),
+      });
+      assert.equal(response.status, 502);
+      const payload = await response.json() as { error: { code: string; message: string } };
+      assert.equal(payload.error.code, expectedCode);
+      assert.equal(payload.error.message.includes("private-user-words"), false);
+      assert.equal(JSON.stringify(diagnostics).includes("server-secret"), false);
+      assert.equal(JSON.stringify(diagnostics).includes("top-secret-user-transcript"), false);
+      assert.deepEqual(diagnostics, [{ kind: "provider_http", upstreamStatus: providerStatus, modelId: "eleven_v4" }]);
+    });
+  }
+});
+
+test("network failures and timeout get different safe diagnostics", async () => {
+  for (const [isTimeout, code, kind] of [
+    [false, "VOICE_PROVIDER_FAILURE", "network_error"],
+    [true, "VOICE_PROVIDER_TIMEOUT", "timeout"],
+  ] as const) {
+    const diagnostics: unknown[] = [];
+    await withServer({
+      apiKey: "server-secret",
+      voiceId: "BtWabtumIemAotTjP5sk",
+      onProviderDiagnostic: (value) => diagnostics.push(value),
+      fetcher: (async (_url: unknown, options?: RequestInit) => {
+        if (isTimeout) (options?.signal as AbortSignal & { throwIfAborted(): void }).throwIfAborted();
+        if (isTimeout) throw Object.assign(new Error("abort details must not leak"), { name: "AbortError" });
+        throw new Error("network exception contains key server-secret and user text");
+      }) as typeof fetch,
+    }, async (origin) => {
+      const response = await fetch(origin + "/api/v1/voice/speak", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "private text" }),
+      });
+      assert.equal(response.status, 502);
+      const output = await response.text();
+      assert.match(output, new RegExp(code));
+      assert.doesNotMatch(output, /server-secret|private text|abort details/u);
+      assert.deepEqual(diagnostics, [{ kind, modelId: "eleven_v4" }]);
+    });
+  }
 });
