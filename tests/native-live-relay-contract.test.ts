@@ -291,3 +291,25 @@ test("native live turns accept validated optional execution selection", () => {
     assert.throws(() => parseNativeLiveRelayRequest({dispatch_target: "claude_code", request_id: requestId, operation, conversation_id: conversationId, target_user_message_id: userMessageId, ...(operation === "edit" ? {text:"edited"} : {}), input_mode:"voice"}), NativeLiveRelayContractError);
   }
 });
+
+test("call mode requires a voice send and never leaks into other operations", () => {
+  const plain = { dispatch_target: "claude_code", request_id: requestId,
+    operation: "send", conversation_id: conversationId,
+    expected_head_message_id: null, text: "喂？" };
+  assert.deepEqual(parseNativeLiveRelayRequest({
+    ...plain, input_mode: "voice", interaction_mode: "call",
+  }), {...plain, input_mode: "voice", interaction_mode: "call"});
+  for (const mode of ["call", "text", null, false, 1]) {
+    assert.throws(() => parseNativeLiveRelayRequest({
+      ...plain, interaction_mode: mode,
+    }), NativeLiveRelayContractError);
+  }
+  assert.throws(() => parseNativeLiveRelayRequest({
+    ...plain, input_mode: "voice", interaction_mode: "unsupported",
+  }), NativeLiveRelayContractError);
+  assert.throws(() => parseNativeLiveRelayRequest({
+    dispatch_target: "claude_code", request_id: requestId,
+    operation: "retry", conversation_id: conversationId,
+    target_user_message_id: userMessageId, interaction_mode: "call",
+  }), NativeLiveRelayContractError);
+});
