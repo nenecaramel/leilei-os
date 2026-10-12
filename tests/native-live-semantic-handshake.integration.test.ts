@@ -510,3 +510,76 @@ test(
     );
   },
 );
+
+test("lost semantic reservation transport response preserves owner, expiry recovery and score idempotence", { skip: !enabled }, async t => {
+  const url = process.env.DATABASE_URL;
+  assert.ok(url);
+  assert.ok(new URL(url).hostname === "127.0.0.1" || new URL(url).hostname === "localhost", "this fault-injection test requires an isolated local database");
+  assert.match(new URL(url).pathname, /test|regression|scratch/);
+  const database = createDatabase(url, { ssl: false });
+  const [user] = await database.db.insert(users).values({
+    email: `bounded-recovery-${crypto.randomUUID()}@example.com`, displayName: "Synthetic recovery test",
+  }).returning({ id: users.id });
+  assert.ok(user);
+  t.after(async () => {
+    try {
+      await database.db.delete(nativeLiveRuntimeListenerLeases).where(eq(nativeLiveRuntimeListenerLeases.userId, user.id));
+      await database.db.delete(conversations).where(eq(conversations.userId, user.id));
+      await database.db.delete(users).where(eq(users.id, user.id));
+    } finally { await database.close(); }
+  });
+  const conversation = await new NativeLiveConversationService(new DrizzleNativeLiveConversationRepository(database.db))
+    .createConversation({ userId: user.id, title: "Synthetic reservation recovery" });
+  const turnPort = new DrizzleNativeLiveBackendTurnPort(database.db);
+  const prepared = await turnPort.prepareSend({
+    prepareId: crypto.randomUUID(), userId: user.id, requestId: crypto.randomUUID(),
+    conversationId: conversation.id, expectedHeadMessageId: null,
+    text: "synthetic recovery input", attachmentIds: [], executionSelection: null,
+  });
+  assert.equal(prepared.ok, true);
+  if (!prepared.ok) throw new Error("synthetic preparation failed");
+  const repository = new DrizzleNativeLiveSemanticScoringRepository(database.db);
+  const stateId = crypto.randomUUID();
+  await repository.stage({ userId: user.id, preparation: prepared.preparation, plan: {
+    manifestId: crypto.randomUUID(), assembledAt: new Date().toISOString(), snapshotSequence: 0,
+    query: "synthetic recovery query", candidates: [{ stateId, kind: "memory", text: "synthetic candidate" }],
+  } });
+  const listener = crypto.randomUUID();
+  const relay = new NativeLiveBackendRelayService(new DrizzleNativeLiveBackendRelayRepository(database.db), new NativeLiveBackendTurnCoordinator(turnPort));
+  assert.equal(await relay.renewLease({ userId: user.id, listenerInstanceId: listener, dispatchTarget: "claude_code" }), "acquired");
+  let responses = 0;
+  const client = new NativeLiveMacHttpRelayClient("https://synthetic-relay.invalid", "test-only", async () => {
+    const data = await repository.reserveNext({ userId: user.id, listenerInstanceId: listener });
+    if (++responses === 1) {
+      return new Response(new ReadableStream({ start(controller) {
+        controller.error(new TypeError("synthetic HTTP 200 body lost after transaction commit"));
+      } }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ success: true, data }));
+  });
+  await assert.rejects(() => client.reserveSemanticScoring({ listenerInstanceId: listener, dispatchTarget: "claude_code" }));
+  const [committed] = await database.db.select().from(nativeLiveSemanticScoringRequests)
+    .where(eq(nativeLiveSemanticScoringRequests.prepareId, prepared.preparation.prepareId));
+  assert.ok(committed);
+  assert.equal(committed.status, "reserved");
+  assert.equal(committed.reservedBy, listener);
+  const recovered = await client.reserveSemanticScoring({ listenerInstanceId: listener, dispatchTarget: "claude_code" });
+  assert.equal(recovered?.reservationId, prepared.preparation.prepareId);
+  const repeated = await Promise.all([0, 1].map(() => repository.reserveNext({ userId: user.id, listenerInstanceId: listener })));
+  assert.deepEqual(repeated, [recovered, recovered]);
+  const [unchanged] = await database.db.select().from(nativeLiveSemanticScoringRequests)
+    .where(eq(nativeLiveSemanticScoringRequests.prepareId, committed.prepareId));
+  assert.deepEqual(unchanged, committed, "redelivery must not extend or rewrite the committed reservation");
+  await assert.rejects(() => repository.reserveNext({ userId: user.id, listenerInstanceId: crypto.randomUUID() }),
+    (error: unknown) => (error as { code?: string }).code === "LISTENER_NOT_ACTIVE");
+  await database.db.update(nativeLiveSemanticScoringRequests).set({ reservationExpiresAt: new Date(Date.now() - 1_000) })
+    .where(eq(nativeLiveSemanticScoringRequests.prepareId, committed.prepareId));
+  assert.deepEqual(await repository.reserveNext({ userId: user.id, listenerInstanceId: listener }), recovered);
+  const input = { userId: user.id, listenerInstanceId: listener, prepareId: committed.prepareId, scores: { [stateId]: 0.9 } };
+  const accepted = await repository.acceptScores(input);
+  assert.deepEqual(await repository.acceptScores(input), accepted);
+  assert.equal(await repository.reserveNext({ userId: user.id, listenerInstanceId: listener }), null);
+  const rows = await database.db.select().from(nativeLiveSemanticScoringRequests).where(eq(nativeLiveSemanticScoringRequests.userId, user.id));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.status, "completed");
+});

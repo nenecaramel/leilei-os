@@ -172,6 +172,7 @@
         "src/web-api/native-live-*",
         "scripts/native-live-mac-*.ts",
         "tests/native-live-*.test.ts",
+        "tests/native-live-mac-daemon-control-fixture.ts",
         "tests/native-session-*.test.ts",
         "cmd/native-live-wake-broker/**",
         "src/app/process-runtime.ts",
