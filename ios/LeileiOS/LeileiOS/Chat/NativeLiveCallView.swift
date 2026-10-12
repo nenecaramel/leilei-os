@@ -128,6 +128,7 @@ struct NativeLiveCallView: View {
             try await appModel.sendNativeLiveMessage(
                 transcript,
                 inputMode: .voice,
+                interactionMode: "live_call",
                 execution: execution
             )
             guard call.phase != .ended,
