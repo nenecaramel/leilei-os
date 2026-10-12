@@ -6,8 +6,10 @@ session or memory store and does not require a database migration.
 
 ## What exists on this branch
 
-- Chat toolbar telephone action opens a foreground SwiftUI call sheet for the
-  active authenticated canonical conversation (not draft conversations).
+- The composer `+` menu includes a `语音通话` action that opens the foreground
+  SwiftUI call sheet for the active authenticated canonical conversation (not drafts).
+  This action remains accessible when the attachment limit is reached; attachment
+  actions are disabled separately. The old top-bar call button was removed.
 - iPhone's on-device Speech recognizer transcribes user audio; a 1.5s pause
   sends the transcript through the existing Native Live `inputMode: voice`.
 - After a completed canonical assistant message, the iPhone submits up to
