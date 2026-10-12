@@ -101,6 +101,7 @@ extension LeileiAPIClient {
 
     func memorySearch(
         query: String? = nil,
+        date: String? = nil,
         undated: Bool = false,
         cursor: String? = nil
     ) async throws -> MemorySearchPage {
@@ -111,6 +112,10 @@ extension LeileiAPIClient {
         ]
         if let query, !query.isEmpty {
             components.queryItems?.append(URLQueryItem(name: "query", value: query))
+        }
+        if let date {
+            components.queryItems?.append(URLQueryItem(name: "date_from", value: date))
+            components.queryItems?.append(URLQueryItem(name: "date_to", value: date))
         }
         if undated {
             components.queryItems?.append(URLQueryItem(name: "undated", value: "true"))
