@@ -55,6 +55,9 @@ struct ComposerAttachmentMenu: View {
     let onPickPhoto: (() -> Void)?
     let onTakePhoto: (() -> Void)?
     let onPickFile: (() -> Void)?
+    var canAttach = true
+    let onStartVoiceCall: (() -> Void)?
+    var canStartVoiceCall = false
 
     var body: some View {
         Menu {
@@ -63,19 +66,30 @@ struct ComposerAttachmentMenu: View {
             } label: {
                 Label("Photo", systemImage: "photo")
             }
+            .disabled(!canAttach)
 
             Button {
                 onTakePhoto?()
             } label: {
                 Label("Camera", systemImage: "camera")
             }
+            .disabled(!canAttach)
 
             Button {
                 onPickFile?()
             } label: {
                 Label("File", systemImage: "doc")
             }
+            .disabled(!canAttach)
 
+            Divider()
+
+            Button {
+                onStartVoiceCall?()
+            } label: {
+                Label("Call Claude", systemImage: "phone.fill")
+            }
+            .disabled(!canStartVoiceCall)
         } label: {
             ComposerCircleButton(
                 systemName: "plus",

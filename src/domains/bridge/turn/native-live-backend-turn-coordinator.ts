@@ -188,6 +188,7 @@ export interface NativeLiveBackendTurnPort {
     expectedHeadMessageId: string | null;
     text: string;
     inputMode?: "voice";
+    interactionMode?: "live_call";
     attachmentIds: readonly string[];
     executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult>;
@@ -298,6 +299,7 @@ export class NativeLiveBackendTurnCoordinator {
           expectedHeadMessageId: request.expected_head_message_id,
           text: request.text,
           ...(request.input_mode === "voice" ? { inputMode: "voice" as const } : {}),
+          ...(request.interaction_mode === "live_call" ? { interactionMode: "live_call" as const } : {}),
           attachmentIds: request.attachment_ids ?? [],
           executionSelection: request.execution ?? null,
         });

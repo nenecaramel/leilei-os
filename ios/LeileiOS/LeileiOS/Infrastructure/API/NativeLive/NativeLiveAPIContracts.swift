@@ -241,6 +241,7 @@ struct NativeLiveSendBody: Encodable, Sendable {
     let attachmentIds: [String]
     let execution: NativeLiveExecutionSelection?
     var inputMode: NativeLiveInputMode = .text
+    var interactionMode: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case dispatchTarget = "dispatch_target"
@@ -251,6 +252,7 @@ struct NativeLiveSendBody: Encodable, Sendable {
         case text
         case attachmentIds = "attachment_ids"
         case inputMode = "input_mode"
+        case interactionMode = "interaction_mode"
         case execution
     }
 
@@ -278,6 +280,9 @@ struct NativeLiveSendBody: Encodable, Sendable {
         try container.encodeIfPresent(execution, forKey: .execution)
         if inputMode == .voice {
             try container.encode(inputMode.rawValue, forKey: .inputMode)
+            if interactionMode == "live_call" {
+                try container.encode("live_call", forKey: .interactionMode)
+            }
         }
     }
 }

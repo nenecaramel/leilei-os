@@ -292,3 +292,33 @@ test("legacy follow-up cannot reconcile on a missing finalized assistant", async
   }), /Finalized canonical assistant/);
   assert.deepEqual(mind.calls, []);
 });
+
+test("live call sends one short message marker, preserving the ordinary voice prompt", async () => {
+  const reader = new Reader();
+  const voiceCall = userMessage();
+  voiceCall.blocks[0]!.payload = {input_mode:"voice", interaction_mode:"live_call"};
+  reader.value = {...conversation(), messages:[parentAssistant(), voiceCall]};
+  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, new Mind());
+  const prompt = await runtime.preparePrompt({
+    userId, preparation:{...prepared(), prompt:"喂 & <我>"},
+  });
+  assert.equal(prompt, '<user_message input_mode="voice" interaction_mode="live_call">[voice] 喂 &amp; &lt;我&gt;</user_message>');
+});
+
+test("text sent after a call exits call mode; unrelated turns stay untouched", async () => {
+  const reader = new Reader();
+  const lastCall = {...userMessage(), id:"88888888-8888-4888-8888-888888888888"};
+  lastCall.blocks = [{...lastCall.blocks[0]!, payload:{input_mode:"voice",interaction_mode:"live_call"}}];
+  const answer = {...parentAssistant(), id:parentId, parentMessageId:lastCall.id};
+  const typed = userMessage();
+  reader.value = {...conversation(), messages:[lastCall, answer, typed]};
+  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, new Mind());
+  const prompt = await runtime.preparePrompt({
+    userId, preparation:{...prepared(), prompt:"我们打完电话了"},
+  });
+  assert.equal(prompt, "我们打完电话了");
+  reader.value = {...conversation(), messages:[parentAssistant(), typed]};
+  assert.equal(await runtime.preparePrompt({
+    userId, preparation:{...prepared(), prompt:"普通文字消息"},
+  }), "普通文字消息");
+});

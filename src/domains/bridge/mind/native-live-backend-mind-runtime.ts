@@ -127,7 +127,13 @@ implements NativeLiveBackendMindRuntime {
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;");
-    return `<user_message input_mode="voice">[voice] ${text}</user_message>`;
+    const isLiveCall = userMessage.blocks.some(
+      (block) => block.payload?.input_mode === "voice"
+        && block.payload?.interaction_mode === "live_call",
+    );
+    return isLiveCall
+      ? `<user_message input_mode="voice" interaction_mode="live_call">[voice] ${text}</user_message>`
+      : `<user_message input_mode="voice">[voice] ${text}</user_message>`;
   }
 
   async planSemanticPrompt(_input: {

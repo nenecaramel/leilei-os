@@ -12,6 +12,7 @@ struct ChatView: View {
     let onDraftCommitted: () -> Void
 
     @StateObject var voiceInput = VoiceInputController()
+    @State private var isNativeCallPresented = false
     @State private var voiceLanguage: VoiceInputLanguage = .english
     @State var messageText = ""
     @State var sendFailureMessage: String?
@@ -180,6 +181,19 @@ struct ChatView: View {
                 onPickFile: {
                     isFileImporterPresented = true
                 },
+                canStartVoiceCall:
+                    !isDraftConversation
+                        && appModel.isAuthenticated
+                        && appModel.activeNativeLiveConversationID != nil
+                        && appModel.chatSendState != .sending
+                        && !isRuntimeTurnActive
+                        && pendingOperation == nil
+                        && !voiceInput.isActive,
+                onStartVoiceCall: {
+                    voiceInput.cancel()
+                    isComposerFocused = false
+                    isNativeCallPresented = true
+                },
                 onRemoveAttachment: { id in
                     composerAttachments.removeAll {
                         $0.id == id
@@ -217,6 +231,17 @@ struct ChatView: View {
                     ? 0
                     : ChatPresentationLayout.composerHiddenKeyboardPaintOffset
             )
+        }
+        .sheet(isPresented: $isNativeCallPresented) {
+            if let conversationID = appModel.activeNativeLiveConversationID {
+                NavigationStack {
+                    NativeLiveCallView(
+                        conversationID: conversationID,
+                        execution: executionSelection
+                    )
+                }
+                .environmentObject(appModel)
+            }
         }
         .photosPicker(
             isPresented: $isPhotoPickerPresented,

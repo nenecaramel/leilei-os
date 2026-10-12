@@ -17,6 +17,8 @@ struct ChatComposer: View {
     var onPickPhoto: (() -> Void)? = nil
     var onTakePhoto: (() -> Void)? = nil
     var onPickFile: (() -> Void)? = nil
+    var canStartVoiceCall = false
+    var onStartVoiceCall: (() -> Void)? = nil
     var onRemoveAttachment: ((UUID) -> Void)? = nil
     var onRetryAttachment: ((UUID) -> Void)? = nil
     var onInterrupt: (() -> Void)? = nil
@@ -80,12 +82,12 @@ struct ChatComposer: View {
             ComposerAttachmentMenu(
                 onPickPhoto: onPickPhoto,
                 onTakePhoto: onTakePhoto,
-                onPickFile: onPickFile
-            )
-            .disabled(
-                isRuntimeTurnActive
-                    || isSending
-                    || attachments.count >= 8
+                onPickFile: onPickFile,
+                canAttach: !isRuntimeTurnActive
+                    && !isSending
+                    && attachments.count < 8,
+                onStartVoiceCall: onStartVoiceCall,
+                canStartVoiceCall: canStartVoiceCall
             )
 
             ComposerModelMenu(
