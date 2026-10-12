@@ -47,7 +47,10 @@ RunLoop.main.run()
 test("date picker remains native and list/search lifecycle fences changes to the selected day", () => {
   const source = readFileSync("ios/LeileiOS/LeileiOS/Pages/Mind/MindKindList.swift","utf8");
   const picker = readFileSync("ios/LeileiOS/LeileiOS/Pages/Mind/MindDateFilter.swift","utf8");
-  assert.match(source, /Button\("Filter Date"/);
+  assert.match(source, /Button\("Filter Date"\)/);
+  assert.match(source, /Button\("All Dates"\)/);
+  assert.ok(source.indexOf('Button("Filter Date")') < source.indexOf('Toggle("Undated Only"'));
+  assert.match(source, /Divider\(\)\s*Toggle\("Undated Only"/);
   assert.match(source, /Button\("All Dates"/);
   assert.match(source, /\.sheet\(isPresented: \$dateFilterPresented\)/);
   assert.match(picker, /\.datePickerStyle\(\.graphical\)/);

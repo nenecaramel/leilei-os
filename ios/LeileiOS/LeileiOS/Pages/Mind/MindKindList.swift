@@ -93,16 +93,16 @@ struct MindMemoryListView: View {
                     .labelsHidden()
                     .pickerStyle(.inline)
                     Divider()
-                    Toggle("Undated Only", isOn: $undatedOnly)
-                    Divider()
-                    Button("Filter Date", systemImage: "calendar") {
+                    Button("Filter Date") {
                         dateFilterPresented = true
                     }
                     if selectedDate != nil {
-                        Button("All Dates", systemImage: "xmark") {
+                        Button("All Dates") {
                             selectedDate = nil
                         }
                     }
+                    Divider()
+                    Toggle("Undated Only", isOn: $undatedOnly)
                 } label: {
                     Image(systemName: "arrow.up.arrow.down")
                         .font(.system(size: 13, weight: .light))
