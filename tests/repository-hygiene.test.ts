@@ -85,8 +85,10 @@ test("coding-agent workspace policy is enforced by closeout commands", () => {
   );
   const gitignore = readFileSync(".gitignore", "utf8");
 
-  assert.match(agents, /only long-lived LeileiOS working copies/i);
-  assert.match(agents, /Do not create persistent clones, worktrees/i);
+  assert.match(agents, /exactly one long-lived LeileiOS checkout/i);
+  assert.match(agents, /Do not create another\s+persistent clone\/worktree/i);
+  assert.doesNotMatch(hygieneScript, /leilei-os-ui/);
+  assert.doesNotMatch(readFileSync("scripts/leileios-switch.command", "utf8"), /leilei-os-ui/);
   assert.match(agents, /pnpm hygiene:finish/);
   assert.equal(
     rootPackage.scripts?.["hygiene:finish"],
