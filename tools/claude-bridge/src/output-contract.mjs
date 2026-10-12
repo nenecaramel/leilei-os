@@ -134,7 +134,7 @@ export function provenance(raw, rawType = raw?.type, extra = {}) {
         : "unknown",
     raw_subtype:
       typeof raw?.subtype === "string" ? raw.subtype.slice(0, 128) : null,
-    provider_schema: "claude-agent-sdk/0.3.286",
+    provider_schema: "claude-agent-sdk/0.3.296",
     ...Object.fromEntries(
       ["uuid", "task_id", "parent_tool_use_id", "parent_agent_id"]
         .filter((k) => typeof raw?.[k] === "string")

@@ -40,7 +40,7 @@ test("tool_use_meta is preserved for Runtime UI and durable Activity strips disp
 
   assert.equal(events.length, 1);
   assert.deepEqual(events[0]?.payload, {
-    provenance: {provider:'claude_code', raw_type:'tool_use', raw_subtype:null, provider_schema:'claude-agent-sdk/0.3.286', tool_use_id:'toolu-1'},
+    provenance: {provider:'claude_code', raw_type:'tool_use', raw_subtype:null, provider_schema:'claude-agent-sdk/0.3.296', tool_use_id:'toolu-1'},
     tool_use_id: "toolu-1",
     tool_name: "mcp__leileios__global_search",
     input: { query: "Mind" },

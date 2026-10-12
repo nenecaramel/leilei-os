@@ -1339,7 +1339,7 @@ test("preserves assistant subagent parent linkage on provenance and tool use", (
   assert.deepEqual(events[2].payload, {
     provenance: {
       provider: "claude_code", raw_type: "tool_use", raw_subtype: null,
-      provider_schema: "claude-agent-sdk/0.3.286",
+      provider_schema: "claude-agent-sdk/0.3.296",
       parent_tool_use_id: "tool-subagent", parent_agent_id: "agent-parent",
       tool_use_id: "tool-child",
     },
