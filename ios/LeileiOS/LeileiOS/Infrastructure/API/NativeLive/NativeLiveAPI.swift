@@ -229,6 +229,7 @@ extension LeileiAPIClient {
         expectedHeadMessageID: String?,
         text: String,
         inputMode: NativeLiveInputMode = .text,
+        interactionMode: String? = nil,
         attachmentIDs: [String] = [],
         execution: NativeLiveExecutionSelection? = nil,
         requestID: UUID = UUID()
@@ -243,7 +244,8 @@ extension LeileiAPIClient {
                 text: text,
                 attachmentIds: attachmentIDs,
                 execution: execution,
-                inputMode: inputMode
+                inputMode: inputMode,
+                interactionMode: interactionMode
             )
         )
         let envelope: NativeLivePrepareEnvelope = try await request(
