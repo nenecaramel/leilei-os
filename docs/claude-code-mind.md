@@ -13,6 +13,36 @@ no plan; old staged plans drain without adding backend Mind context. Reply tags 
 only MCP creates new model-authored Memory. Manual product management/restore remain unchanged.
 The separate existing timestamp Hook is untouched, and Voice retains its input-mode label.
 
+## Local pause switch (no Railway calls)
+
+The installed Mind Hook can be paused per Mac user without editing Claude settings,
+changing Railway configuration, or restarting Claude Desktop. The installer copies
+`toggle.mjs` next to the installed `hook.mjs`. From any terminal:
+
+```sh
+node ~/.claude/leileios-mind/toggle.mjs off
+node ~/.claude/leileios-mind/toggle.mjs status
+node ~/.claude/leileios-mind/toggle.mjs on
+```
+
+`off` atomically creates the local mode marker
+`~/.claude/leileios-mind/disabled` (0600). Every installed hook invocation
+checks it before loading credentials, reading state or sending HTTP, including
+UserPromptSubmit and Stop/confirm. `on` removes only that marker; the next
+prompt resumes automatic Mind recall without restarting the client. Both
+commands are idempotent. The installer preserves the marker on upgrades.
+
+This switch affects only the installed Mind Hook, including the Native Live
+SDK path which loads user hooks. It does **not** disable LeileiOS MCP tools
+or iPhone API traffic: those can still wake Railway when used. It does not
+stop Railway deployments or guarantee that a background worker, a persistent
+database connection or another client will let the services sleep. The old
+`LEILEI_MIND_HOOK_DISABLED=1` emergency environment flag remains supported
+and takes precedence: remove that environment override before expecting
+`on` to enable recall.
+
+
+
 ## Audited original chains (historical; not current Native Live entry points)
 
 - Native Live turn coordinator → backend Mind runtime → `DefaultNativeLiveMindRuntime` → `NativeLiveMindLoopService.planSemanticRecall` / `prepareTurn` → `DrizzleSubjectStateRuntimePort.list` → shared candidate selection and `recallBreath` → `assembleTurnContext` → `assembledTurnContextFromManifest`.
