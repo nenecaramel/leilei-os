@@ -50,12 +50,17 @@ test("actual Swift contracts preserve omitted versus null fields and response en
                 precondition((send["input_mode"] as? String) == (mode == .voice ? "voice" : nil))
             }
         }
+        print("Native Live six call modes PASS")
     `;
-    writeFileSync(harness,readFileSync("tests/fixtures/native-live-api-contracts.swift","utf8").replace('        print("Native Live contracts PASS")',extra+'        print("Native Live contracts PASS")'));
+    const fixtureSource=readFileSync("tests/fixtures/native-live-api-contracts.swift","utf8");
+    const insertion='        print("Native Live contracts PASS")';
+    assert.equal(fixtureSource.split(insertion).length,2,"six-mode insertion anchor must occur exactly once");
+    writeFileSync(harness,fixtureSource.replace(insertion,extra+insertion));
     const files = [root + "Infrastructure/NativeLiveRuntimeModels.swift", root + "Infrastructure/API/NativeLive/NativeLiveModels.swift", root + "Infrastructure/API/NativeLive/NativeLiveInputMode.swift", implementation, harness];
     const build = spawnSync("xcrun", ["swiftc", "-parse-as-library", "-module-cache-path", path.join(dir, "cache"), ...files, "-o", path.join(dir, "check")], { encoding: "utf8", timeout: 180000 });
     assert.equal(build.status, 0, build.stderr);
     const run = spawnSync(path.join(dir, "check"), [], { encoding: "utf8", timeout: 60000 });
-    assert.equal(run.status, 0, run.stderr); assert.match(run.stdout, /Native Live contracts PASS/);
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(run.stdout.trim(), "Native Live six call modes PASS\nNative Live contracts PASS");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
