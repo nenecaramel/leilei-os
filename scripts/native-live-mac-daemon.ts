@@ -282,6 +282,15 @@ let consecutiveWakeErrors = 0;
 // Following an ambiguous error, bounded broker timeouts recheck the durable queue.
 let durableRecoveryDeadline = 0;
 
+function armDurableRecoveryWindow(): void {
+  // Anchor an ambiguous episode to its first failure. Keep an expired deadline
+  // latched until real work wakes/completes; retries alone must not rearm it.
+  if (durableRecoveryDeadline === 0) {
+    durableRecoveryDeadline = Date.now() + 6 * 60_000;
+  }
+}
+
+
 async function waitForWork(): Promise<
   "ready" | "timeout" | "busy" | "retry" | "silence_due" | "stopped"
 > {
@@ -332,6 +341,9 @@ async function waitForWork(): Promise<
         if (controller.signal.aborted) {
           return "stopped";
         }
+        if (result.outcome === "ready" || result.outcome === "reset") {
+          durableRecoveryDeadline = 0;
+        }
         if (result.outcome === "timeout" && Date.now() < durableRecoveryDeadline) {
           return "ready";
         }
@@ -356,7 +368,7 @@ async function waitForWork(): Promise<
         if (controller.signal.aborted) {
           return "stopped";
         }
-        durableRecoveryDeadline = Date.now() + 6 * 60_000;
+        armDurableRecoveryWindow();
         process.stderr.write(
           JSON.stringify({
             at: new Date().toISOString(),
@@ -464,6 +476,8 @@ while (!stopping) {
     if (outcome.outcome === "completed"
       || outcome.outcome === "semantic_completed") {
       durableRecoveryDeadline = 0;
+    } else if (outcome.outcome === "semantic_delivery_unknown") {
+      armDurableRecoveryWindow();
     }
     if (outcome.outcome === "completed") {
       await silenceWakeScheduler.refresh().catch((error) => {
@@ -615,7 +629,7 @@ while (!stopping) {
         : {};
     const causeDiagnostics = networkCauseDiagnostics(error);
     consecutiveWakeErrors += 1;
-    durableRecoveryDeadline = Date.now() + 6 * 60_000;
+    armDurableRecoveryWindow();
     const retryDelayMs = Math.min(
       5_000 * 2 ** Math.min(consecutiveWakeErrors - 1, 3),
       30_000,
