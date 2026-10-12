@@ -269,8 +269,11 @@ async function measureLayout(
 }
 
 test("Diary route date fields share NativeDateInput", () => {
-  assert.match(diaryPageHeaderSource, /import \{ NativeDateInput \}/);
-  assert.match(diaryPageHeaderSource, /<NativeDateInput[\s\S]*?type="date"/);
+  assert.match(diaryPageHeaderSource, /<ModulePageHeader/);
+  // f1fa4659 extracted the real date controls into the shared header.
+  const header = readFileSync("web/src/pages/ModulePageHeader.tsx", "utf8");
+  assert.match(header, /import \{ NativeDateInput \}/);
+  assert.equal([...header.matchAll(/<NativeDateInput[\s\S]*?type="date"/g)].length, 2);
 });
 
 test("Global Search date fields share NativeDateInput and its constrained class", () => {

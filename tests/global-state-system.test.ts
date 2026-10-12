@@ -4,7 +4,9 @@ import test from "node:test";
 
 const stateSource = readFileSync(new URL("../web/src/components/StateSurface.tsx", import.meta.url), "utf8");
 const moduleSource = readFileSync(new URL("../web/src/components/ModuleSearch.tsx", import.meta.url), "utf8");
-const universeSource = readFileSync(new URL("../web/src/pages/UniversePage.tsx", import.meta.url), "utf8");
+// Presentation ownership extracted in 7d4c54b2; route still mounts the shared state.
+const universeSource = readFileSync(new URL("../web/src/pages/universe/UniversePagePresentation.tsx", import.meta.url), "utf8");
+const universePageSource = readFileSync(new URL("../web/src/pages/UniversePage.tsx", import.meta.url), "utf8");
 const daySpaceSource = readFileSync(new URL("../web/src/pages/DaySpacePage.tsx", import.meta.url), "utf8");
 const quickSearchSource = readFileSync(new URL("../web/src/layout/QuickSearchPanel.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
@@ -30,6 +32,7 @@ test("global state typography and geometry use one explicit visual contract", ()
 });
 
 test("major custom surfaces now participate in the shared state system", () => {
+  assert.match(universePageSource, /<UniverseFrame><UniverseLoadingState \/><\/UniverseFrame>/);
   assert.match(universeSource, /<PageState[\s\S]*message="Reading\.\.\."/);
   assert.match(daySpaceSource, /<PageState state="loading" message="Reading\.\.\."/);
   assert.match(quickSearchSource, /<StateSurface[\s\S]*message="Unable to read search results\."[\s\S]*onRetry=/);
