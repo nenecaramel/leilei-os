@@ -42,7 +42,8 @@ RunLoop.main.run()
 
 test("native undated toggle uses the existing menu with a native separator and fences replaced pages", () => {
   const source = readFileSync("ios/LeileiOS/LeileiOS/Pages/Mind/MindKindList.swift","utf8");
-  assert.match(source,/\.pickerStyle\(\.inline\)\s*Divider\(\)\s*Toggle\("Undated Only", isOn: \$undatedOnly\)/);
+  assert.match(source,/\.pickerStyle\(\.inline\)\s*Divider\(\)\s*Button\("Filter Date"\)/);
+  assert.match(source,/Divider\(\)\s*Toggle\("Undated Only", isOn: \$undatedOnly\)/);
   assert.match(source,/requestedUndated == undatedOnly/);
   assert.match(source,/if ticket == listGeneration \{ loadingMore = false \}/);
   assert.match(source,/if ticket == searchGeneration \{ searchLoadingMore = false \}/);
