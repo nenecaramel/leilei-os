@@ -10,7 +10,7 @@ struct NativeLiveCallView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var call = NativeLiveCallAudioController()
     @State private var language: VoiceInputLanguage = .chinese
-    @State private var speechModel: NativeLiveCallSpeechModel = .v4Turbo
+    @State private var speechModel: NativeLiveCallSpeechModel = .v4
 
     let conversationID: UUID
     let execution: NativeLiveExecutionSelection
@@ -416,7 +416,6 @@ private enum CallAudioError: LocalizedError {
 }
 
 private enum NativeLiveCallSpeechModel: String, CaseIterable, Identifiable {
-    case v4Turbo = "eleven_v4_turbo"
     case v4 = "eleven_v4"
     case v3 = "eleven_v3"
 
@@ -424,7 +423,6 @@ private enum NativeLiveCallSpeechModel: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .v4Turbo: "V4 Turbo"
         case .v4: "V4"
         case .v3: "V3"
         }
