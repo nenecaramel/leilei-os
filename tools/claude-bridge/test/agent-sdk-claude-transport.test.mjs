@@ -77,6 +77,57 @@ function successFixture(sessionId = "provider-sdk-1") {
   ];
 }
 
+for (const enabled of [undefined, "0", "1"]) {
+  for (const interactive of [false, true]) {
+    test(`official Chrome launch flag is opt-in (${enabled ?? "unset"}, interactive=${interactive})`, async () => {
+      let call;
+      const permissions = [];
+      const transport = new AgentSdkClaudeTransport({
+        environment: enabled === undefined ? {} : { LEILEI_NATIVE_LIVE_CLAUDE_CHROME: enabled },
+        queryImpl: (input) => {
+          call = input;
+          return {
+            close() {},
+            async *[Symbol.asyncIterator]() {
+              if (interactive) {
+                const decision = await input.options.canUseTool(
+                  "mcp__claude-in-chrome__computer",
+                  { action: "left_click", tabId: 1 },
+                  { toolUseID: "chrome-permission-test" },
+                );
+                assert.equal(decision.behavior, "deny");
+              }
+              yield* successFixture();
+            },
+          };
+        },
+      });
+      const result = interactive
+        ? await transport.executeTurn("hello", { permissionHandler: async (request) => {
+          permissions.push(request);
+          return { decision: "deny", message: "Browser action denied by user" };
+        } })
+        : await transport.sendNew("hello");
+      assert.equal(result.providerSessionId, "provider-sdk-1");
+      assert.deepEqual(call.options.extraArgs, enabled === "1" ? { chrome: null } : undefined);
+      assert.deepEqual(call.options.settingSources, ["user", "project", "local"]);
+      assert.equal(call.options.allowedTools, undefined);
+      assert.notEqual(call.options.permissionMode, "bypassPermissions");
+      if (interactive) assert.equal(typeof call.options.canUseTool, "function", "preserve permission callback");
+      assert.deepEqual(permissions.map((request) => request.toolName), interactive ? ["mcp__claude-in-chrome__computer"] : []);
+    });
+  }
+}
+
+test("invalid Chrome switch fails before starting an SDK query", () => {
+  let called = false;
+  assert.throws(() => new AgentSdkClaudeTransport({
+    environment: { LEILEI_NATIVE_LIVE_CLAUDE_CHROME: "maybe" },
+    queryImpl: () => { called = true; return fakeQuery(successFixture()); },
+  }), /LEILEI_NATIVE_LIVE_CLAUDE_CHROME must be 0 or 1/u);
+  assert.equal(called, false);
+});
+
 test("sendNew preserves Claude Code settings and normalized event parity", async () => {
   let call;
   const transport = new AgentSdkClaudeTransport({
@@ -2841,6 +2892,100 @@ test("interactive summarized thinking respects explicit disabled and between-too
   }
 });
 
+
+for (const interactive of [false, true]) {
+  for (const setting of [undefined, "0", "1"]) {
+    test(`Artifact opt-in ${setting ?? "unset"} preserves ${interactive ? "interactive" : "ordinary"} query permissions`, async () => {
+      let call;
+      const environment = setting === undefined ? {} : { LEILEI_NATIVE_LIVE_CLAUDE_ARTIFACT: setting };
+      const transport = new AgentSdkClaudeTransport({ environment,
+        queryImpl: input => { call = input; return fakeQuery(successFixture()); },
+      });
+      if (interactive) await transport.executeTurn("synthetic", { mode: "new" });
+      else await transport.sendNew("synthetic");
+      assert.deepEqual(call.options.settings, setting === "1" ? { enableArtifact: true } : undefined);
+      assert.deepEqual(call.options.settingSources, ["user", "project", "local"]);
+      assert.equal(call.options.allowedTools, undefined);
+      assert.notEqual(call.options.permissionMode, "bypassPermissions");
+      assert.equal(call.options.env.CLAUDE_CODE_DISABLE_ARTIFACT, undefined);
+    });
+  }
+}
+
+test("invalid Artifact switch fails before creating an SDK query", () => {
+  assert.throws(() => new AgentSdkClaudeTransport({
+    environment: { LEILEI_NATIVE_LIVE_CLAUDE_ARTIFACT: "yes" },
+    queryImpl: () => assert.fail("must not start SDK"),
+  }), /LEILEI_NATIVE_LIVE_CLAUDE_ARTIFACT must be 0 or 1/);
+});
+
+test("Artifact opt-in preserves explicit SDK environment disable", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: { LEILEI_NATIVE_LIVE_CLAUDE_ARTIFACT: "1", CLAUDE_CODE_DISABLE_ARTIFACT: "1" },
+    queryImpl: input => { call = input; return fakeQuery(successFixture()); },
+  });
+  await transport.executeTurn("synthetic", { mode: "new" });
+  assert.equal(call.options.env.CLAUDE_CODE_DISABLE_ARTIFACT, "1");
+});
+
+for (const toolName of ["WebFetch", "Artifact", "RemoteTrigger", "Monitor", "PushNotification"]) {
+  test(`native ${toolName} callback preserves user denial without trusted auto-allow`, async () => {
+    const requests = [];
+    const transport = new AgentSdkClaudeTransport({ environment: {},
+      queryImpl: ({ options }) => ({ close() {}, async *[Symbol.asyncIterator]() {
+        const decision = await options.canUseTool(toolName, { synthetic: true }, { toolUseID: "native-test" });
+        assert.equal(decision.behavior, "deny");
+        assert.equal(decision.message, "user declined");
+        for (const event of successFixture()) yield event;
+      } }),
+    });
+    await transport.executeTurn("synthetic", { mode: "new", permissionHandler: async request => {
+      requests.push(request); return { decision: "deny", message: "user declined" };
+    } });
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].toolName, toolName);
+    assert.deepEqual(requests[0].input, { synthetic: true });
+  });
+}
+
+
+for (const prompt of ["/schedule list", "/routines list"]) {
+  test(`official cloud routine command ${prompt} retains command dispatch without a local scheduler`, async () => {
+    let call;
+    const transport = new AgentSdkClaudeTransport({ environment: {},
+      queryImpl: input => { call = input; return fakeQuery(successFixture()); },
+    });
+    await transport.executeTurn(prompt, { mode: "new", streaming: true });
+    assert.equal(call.options.verbatimPrompts, false);
+    assert.equal(call.options.thinking, undefined);
+    assert.equal(call.options.allowedTools, undefined);
+    assert.notEqual(call.options.permissionMode, "bypassPermissions");
+    assert.equal(call.options.sessionStore, undefined);
+  });
+}
+
+
+for (const interactive of [false, true]) {
+  for (const chrome of ["0", "1"]) {
+    for (const artifact of ["0", "1"]) {
+      test(`combined native opt-ins chrome=${chrome} artifact=${artifact} ${interactive ? "interactive" : "ordinary"} do not overwrite each other`, async () => {
+        let call;
+        const transport = new AgentSdkClaudeTransport({
+          environment: { LEILEI_NATIVE_LIVE_CLAUDE_CHROME: chrome, LEILEI_NATIVE_LIVE_CLAUDE_ARTIFACT: artifact },
+          queryImpl: input => { call = input; return fakeQuery(successFixture()); },
+        });
+        if (interactive) await transport.executeTurn("synthetic", { mode: "new" });
+        else await transport.sendNew("synthetic");
+        assert.deepEqual(call.options.extraArgs, chrome === "1" ? { chrome: null } : undefined);
+        assert.deepEqual(call.options.settings, artifact === "1" ? { enableArtifact: true } : undefined);
+        assert.deepEqual(call.options.settingSources, ["user", "project", "local"]);
+        assert.equal(call.options.allowedTools, undefined);
+        assert.notEqual(call.options.permissionMode, "bypassPermissions");
+      });
+    }
+  }
+}
 
 test("local resume recovers a proven SDK interrupted failed turn without admitting Desktop or unclosed tails", async t => {
   const sessionId = "00000000-0000-4000-8000-000000000091";
