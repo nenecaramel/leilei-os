@@ -5,11 +5,13 @@ No SDK upgrade or replacement of `mcp__leileios_local__send_file` is included.
 
 ## Prepared paths
 
-- Chrome: PR #1041 requests the official `--chrome` flag only when the Mac environment explicitly enables it. The extension/native messaging connection still needs acceptance.
+- Chrome: this branch includes PR #1041 and requests the official `--chrome` flag only when the Mac environment explicitly enables it. The extension/native messaging connection still needs acceptance.
 - WebFetch: the existing SDK default tool set is retained; there is no extra LeileiOS fetch server or forced `allowedTools`. Availability still comes from SDK initialization and account/settings policy.
 - Artifact: `LEILEI_NATIVE_LIVE_CLAUDE_ARTIFACT=1` passes invocation settings `{ enableArtifact: true }` in ordinary and interactive queries. Unset/0 leaves existing SDK defaults unchanged. The SDK honors its own account/organization checks, environment disable and permission denies; the adapter does not rewrite user settings or clear disables. This is an opt-in request, not proof the account can publish.
 - Cloud routines: existing `/schedule` and `/routines` command dispatch is preserved. These create tasks on claude.ai, not a local LeileiOS scheduling service. No routine was created, fired, or modified during preparation.
 - Tool permissions: tests invoke the actual adapter callback with synthetic native tool requests and preserve user denial. They do not prove that every native tool invokes a callback; the SDK also has tools that do not ask for permission.
+
+LeileiOS native iPhone push is deferred by user choice while using a free Apple Personal Team. No APNs capability, registration or backend sender is added. Official notification acceptance remains distinct from LeileiOS push.
 
 ## Boundaries not solved by adding tool names
 

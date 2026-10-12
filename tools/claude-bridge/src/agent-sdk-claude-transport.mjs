@@ -404,6 +404,11 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       throw new Error("LEILEI_NATIVE_LIVE_CLAUDE_ARTIFACT must be 0 or 1.");
     }
     this.artifactEnabled = artifactSetting === "1";
+    const chromeSetting = environment.LEILEI_NATIVE_LIVE_CLAUDE_CHROME?.trim() || "0";
+    if (chromeSetting !== "0" && chromeSetting !== "1") {
+      throw new Error("LEILEI_NATIVE_LIVE_CLAUDE_CHROME must be 0 or 1.");
+    }
+    this.chromeEnabled = chromeSetting === "1";
     this.queryImpl = queryImpl;
     this.loadQuery = loadQuery;
     this.deleteSessionImpl = deleteSessionImpl;
@@ -647,6 +652,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       cwd: this.cwd,
       queryOptions: {
         ...(this.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
+        ...(this.chromeEnabled ? { extraArgs: { chrome: null } } : {}),
         verbatimPrompts: !nativeScheduleCommand,
         systemPrompt: {
           type: "preset",
@@ -1712,6 +1718,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     const options = {
       cwd: this.cwd,
       env: this.environment,
+      ...(this.chromeEnabled ? { extraArgs: { chrome: null } } : {}),
       settingSources: ["user", "project", "local"],
       ...(this.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
       systemPrompt: {
