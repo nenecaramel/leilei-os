@@ -199,11 +199,11 @@ test('live production query historical fork after compact is isolated and resume
     assert.deepEqual(await getSessionMessages(a, { dir: f.dir, limit: 500 }), localSource);
     assert.equal(f.calls.length, 5);
     console.info('LIVE_GATE_RESULT', JSON.stringify({ outcome: 'PASS', queries: f.calls.length,
-      sdk: '0.3.286', sessionA: a, sessionB: b, compactIdentity: true,
+      sdk: '0.3.296', sessionA: a, sessionB: b, compactIdentity: true,
       historicalIsolation: true, sourceUnchanged: true, resumeBIdentity: true }));
   } catch (error) {
     console.error('LIVE_GATE_RESULT', JSON.stringify({ outcome: 'FAIL', step, queries: f.calls.length,
-      sdk: '0.3.286', sessionA: a, sessionB: b, errorName: error.name,
+      sdk: '0.3.296', sessionA: a, sessionB: b, errorName: error.name,
       errorMessage: error.message, runtimeCode: error.runtimeCode ?? null }));
     throw error;
   } finally { clearTimeout(deadline); await f.cleanup(); }
