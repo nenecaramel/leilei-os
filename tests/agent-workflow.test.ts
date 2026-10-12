@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -174,6 +174,21 @@ test('source-only Native Live conversation changes retain runtime gates and refr
   assert.equal(plan.productionAcceptanceRequired, true);
 });
 
+test('actual Mac, relay and protocol paths select Native Live gates without needing a matching test edit', (t) => {
+  for (const path of [
+    'src/domains/bridge/mac/native-live-mac-working-directory-runtime.ts',
+    'src/domains/bridge/relay/native-live-backend-relay.ts',
+    'src/domains/bridge/protocol/native-live-runtime-protocol.ts',
+  ]) {
+    const root = fixture(t);
+    file(root, path);
+    const plan = json(verifyScript, root, '--plan');
+    assert.ok(plan.changedSurfaces.includes('native-live'), path);
+    assert.ok(plan.gates.some((gate: { id: string }) => gate.id === 'production-runtime'), path);
+    assert.equal(plan.macDaemonFreshRequired, true, path);
+  }
+});
+
 test('status remains bounded when the package-manager version probe stalls', (t) => {
   const root = fixture(t);
   const bin = join(root, 'bin');
@@ -194,4 +209,40 @@ test('workflow-only changes include the existing workspace policy regression gat
   assert.ok(plan.gates.some((gate: { command: string[] }) =>
     gate.command.includes('tests/repository-hygiene.test.ts') &&
     gate.command.includes('coding-agent workspace policy is enforced by closeout commands')));
+});
+
+test('canonical typecheck covers executable TypeScript scripts as well as server source', () => {
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+  assert.match(pkg.scripts.typecheck, /tsconfig\.scripts\.json/);
+  const scripts = JSON.parse(readFileSync('tsconfig.scripts.json', 'utf8'));
+  assert.ok(scripts.include.includes('scripts/**/*.ts'));
+  assert.equal(scripts.compilerOptions.noEmit, true);
+  const map = JSON.parse(readFileSync('.agent/domain-map.json', 'utf8'));
+  assert.ok(map.surfaces.some((surface: { paths: string[] }) => surface.paths.includes('tsconfig.scripts.json')));
+});
+
+test('production runtime gate includes real daemon recovery and message surface regressions', () => {
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+  for (const path of ['tests/native-live-mac-wake-broker-fallback.test.ts', 'tests/native-live-message-surface-contract.test.ts']) {
+    assert.ok(pkg.scripts['test:production-runtime-gate'].split(/\s+/).includes(path), path);
+  }
+});
+
+test('script typecheck rejects unsafe new scripts and emits or executes nothing', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'leilei-script-types-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  copyFileSync('tsconfig.json', join(root, 'tsconfig.json'));
+  copyFileSync('tsconfig.scripts.json', join(root, 'tsconfig.scripts.json'));
+  mkdirSync(join(root, 'scripts'));
+  const path = join(root, 'scripts', 'probe.ts');
+  writeFileSync(path, 'const value: number = "unsafe";\nthrow new Error("STARTUP_MUST_NOT_RUN");\n');
+  const runCheck = () => spawnSync(process.execPath, [resolve('node_modules/typescript/bin/tsc'), '-p', join(root, 'tsconfig.scripts.json')], { encoding: 'utf8' });
+  const red = runCheck();
+  assert.notEqual(red.status, 0);
+  assert.match(red.stdout, /TS2322/);
+  writeFileSync(path, 'const value: number = 1;\nthrow new Error("STARTUP_MUST_NOT_RUN");\n');
+  const green = runCheck();
+  assert.equal(green.status, 0, green.stdout + green.stderr);
+  assert.equal(existsSync(join(root, 'dist')), false);
+  assert.equal(existsSync(join(root, 'scripts', 'probe.js')), false);
 });

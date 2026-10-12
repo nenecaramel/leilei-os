@@ -161,6 +161,16 @@
         "tests/repository-hygiene.test.ts"
       ],
       "cwd": "."
+    },
+    "ios-import-parser": {
+      "command": [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "tests/ios-universe-import-parser.test.ts"
+      ],
+      "cwd": "."
     }
   },
   "surfaces": [
@@ -169,6 +179,9 @@
       "name": "Native Live / Mac runtime",
       "paths": [
         "src/domains/bridge/native-live-*",
+        "src/domains/bridge/mac/native-live-*",
+        "src/domains/bridge/relay/native-live-*",
+        "src/domains/bridge/protocol/native-live-*",
         "src/web-api/native-live-*",
         "scripts/native-live-mac-*.ts",
         "tests/native-live-*.test.ts",
@@ -312,7 +325,8 @@
       "name": "iOS",
       "paths": [
         "ios/**",
-        "tests/ios-*.test.ts"
+        "tests/ios-*.test.ts",
+        "tests/fixtures/universe-import-parser.swift"
       ],
       "verification": [
         "ios-contract"
@@ -446,7 +460,11 @@
         "tests/native-live-mac-daemon-fresh.test.ts",
         ".github/PULL_REQUEST_TEMPLATE.md",
         ".node-version",
-        "package.json"
+        "package.json",
+        "tsconfig.scripts.json",
+        "scripts/local-hygiene.mjs",
+        "tests/repository-hygiene.test.ts",
+        "docs/testing-baseline.md"
       ],
       "verification": [
         "agent-workflow",
@@ -479,6 +497,15 @@
       ],
       "gates": [
         "wake-broker"
+      ]
+    },
+    {
+      "paths": [
+        "tests/fixtures/universe-import-parser.swift",
+        "tests/ios-universe-import-parser.test.ts"
+      ],
+      "gates": [
+        "ios-import-parser"
       ]
     }
   ]
