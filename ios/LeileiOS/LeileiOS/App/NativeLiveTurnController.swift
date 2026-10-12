@@ -4,6 +4,7 @@ extension AppModel {
     func sendNativeLiveMessage(
         _ text: String,
         inputMode: NativeLiveInputMode = .text,
+        interactionMode: String? = nil,
         attachmentIDs: [String] = [],
         execution: NativeLiveExecutionSelection? = nil,
         presentationOperation: NativeLivePendingOperation? = nil
@@ -38,6 +39,7 @@ extension AppModel {
                 expectedHeadMessageID: snapshot.currentHeadMessageId,
                 text: normalized,
                 inputMode: inputMode,
+                interactionMode: interactionMode,
                 attachmentIDs: attachmentIDs,
                 execution: execution
             )
