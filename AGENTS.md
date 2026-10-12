@@ -17,13 +17,32 @@
 
 ## Workspace and closeout
 
-On the owner's Mac, the only long-lived LeileiOS working copies are:
+The owner's Mac has **exactly one long-lived LeileiOS checkout**:
+`~/Developer/leilei-os-main`. Use Git branches in that checkout for ordinary work.
+There is no permanent UI/feature clone, including `leilei-os-ui`,
+`leilei-os-ios-elevenlabs` or `leilei-os-ios-thinking`.
 
-- `~/Developer/leilei-os-main` for mainline work.
-- `~/Developer/leilei-os-ui` for the current UI integration branch.
+When isolation is essential, create a **disposable** worktree under
+`${TMPDIR:-/tmp}` only; remove it at task closeout. Do not create another
+persistent clone/worktree under `~/Developer`, `~/Documents`, Desktop, iCloud
+Drive, Dropbox, OneDrive or another sync-provider folder. Do not move the live
+Mac daemon's working directory under it or remove a worktree in use by a running
+process. Keep the canonical checkout on `main` when using the supported
+`runtime:native-live-mac-daemon:fresh` command.
 
-Do not create persistent clones, worktrees, recovery copies, dependency stores, or build directories under `~/Documents`, iCloud Drive, Desktop, Dropbox, OneDrive, or another sync-provider location. Do not create a third persistent LeileiOS clone just to isolate a task. Use disposable worktrees under `${TMPDIR:-/tmp}` when isolation is needed, and preserve the owner's unrelated edits.
+Existing extra LeileiOS folders are **retirement candidates, not disposable
+artifacts by name**. Before retiring one, inspect Git status, untracked/ignored
+files, local-only commits/branches, Xcode signing, opened projects, running
+processes, and any runtime configuration; preserve intended work in Git or an
+explicitly approved patch/bundle. Do not automatically delete, move, reset or
+overwrite those folders. Obtain owner approval for any uncertain data.
 
-Before closeout: commit/push work that must survive; run `pnpm hygiene:finish` and `git status --short --branch`; remove task-created temporary worktrees, dependency/build/cache artifacts and files; run `git worktree prune`. Report any residue that cannot safely be removed. Dependencies in the two canonical clones may stay. Never remove tracked files, `.env`, DBs, keys, backups, runtime/user data or uncertain-provenance files as cleanup; use the repository hygiene script for known disposable residue. No ad hoc backup clones: preserve work in Git or an explicitly requested patch/bundle.
+Before closeout: commit/push work that must survive; run
+`pnpm hygiene:finish` and `git status --short --branch`; remove only
+**task-created** temporary worktrees and known disposable dependency/build/cache
+artifacts; run `git worktree prune`. Report residue that cannot safely be
+removed. Dependencies in the one canonical checkout may stay. Never remove
+tracked files, `.env`, DBs, keys, backups, runtime/user data or
+uncertain-provenance files as cleanup. No ad hoc backup clones.
 
 Open a PR with scope, verification and refresh/acceptance evidence; do not merge unless requested.
