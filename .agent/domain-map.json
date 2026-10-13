@@ -157,8 +157,6 @@
         "exec",
         "tsx",
         "--test",
-        "--test-name-pattern",
-        "coding-agent workspace policy is enforced by closeout commands",
         "tests/repository-hygiene.test.ts"
       ],
       "cwd": "."

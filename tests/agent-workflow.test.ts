@@ -202,13 +202,13 @@ test('status remains bounded when the package-manager version probe stalls', (t)
   assert.equal(JSON.parse(result.stdout).pnpmVersion, 'unavailable');
 });
 
-test('workflow-only changes include the existing workspace policy regression gate', (t) => {
+test('workflow-only changes include the full workspace policy regression suite', (t) => {
   const root = fixture(t);
   file(root, 'AGENTS.md');
   const plan = json(verifyScript, root, '--plan');
   assert.ok(plan.gates.some((gate: { command: string[] }) =>
     gate.command.includes('tests/repository-hygiene.test.ts') &&
-    gate.command.includes('coding-agent workspace policy is enforced by closeout commands')));
+    !gate.command.includes('--test-name-pattern')));
 });
 
 test('canonical typecheck covers executable TypeScript scripts as well as server source', () => {
