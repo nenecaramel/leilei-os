@@ -219,6 +219,24 @@
         "tests/isolated-postgres-target.test.ts"
       ],
       "cwd": "."
+    },
+    "web-diary": {
+      "command": [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--tsconfig",
+        "web/tsconfig.app.json",
+        "--import",
+        "./tests/register-css-loader.mjs",
+        "--test",
+        "tests/diary-page.test.ts",
+        "tests/diary-page-presentation.test.ts",
+        "tests/diary-mobile-page.test.ts",
+        "tests/diary-paper-editor.test.ts"
+      ],
+      "cwd": ".",
+      "node_major": 24
     }
   },
   "surfaces": [
@@ -352,7 +370,8 @@
         "tests/retired-product-surfaces.test.ts",
         "tests/system-data-activity-contract.test.ts",
         "tests/todo-web-search.test.ts",
-        "tests/universe-monochrome-ui.test.ts"
+        "tests/universe-monochrome-ui.test.ts",
+        "tests/diary-page.test.ts"
       ],
       "verification": [
         "web-typecheck",
@@ -622,6 +641,16 @@
       ],
       "gates": [
         "tooling-guardrails"
+      ]
+    },
+    {
+      "paths": [
+        "web/src/pages/DiaryPage.tsx",
+        "web/src/pages/diary/**",
+        "tests/diary-page.test.ts"
+      ],
+      "gates": [
+        "web-diary"
       ]
     }
   ],
