@@ -59,6 +59,11 @@ export type MindProductItem = {
 export type MindProductPage = {
   items: MindProductItem[];
   nextCursor: string | null;
+};
+
+// Only the main list has a global count. Date-scoped memory reads retain
+// their existing paginated response contract without a total.
+export type MindProductListPage = MindProductPage & {
   totalCount: number;
 };
 
@@ -210,7 +215,7 @@ export class MindProductService {
     undated?: boolean;
     limit?: number;
     cursor?: string | null;
-  }): Promise<MindProductPage> {
+  }): Promise<MindProductListPage> {
     const sort = input.sort ?? "updated_desc";
     if (sort !== "updated_desc" && sort !== "occurred_desc") {
       throw new MindProductServiceError("INVALID_MIND", "Mind sort is invalid.");
