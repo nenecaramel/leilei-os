@@ -505,10 +505,12 @@ test("live Mind excludes legacy storage kinds without changing stored rows", { s
       assert.equal(prepared.command.prompt.includes(row.text), false);
       assert.equal(prepared.command.prompt.includes(row.id), false);
     }
-    const [manifest] = await db.select({ items: runtimeContextManifests.items })
-      .from(runtimeContextManifests).where(eq(runtimeContextManifests.id, prepared.command.prepare_id));
-    assert.ok(manifest);
-    for (const row of legacy) assert.equal(JSON.stringify(manifest.items).includes(row.id), false);
+    // Native Claude delegates recall to installed Hooks. Preparing a turn must not
+    // create a backend recall manifest or inject legacy states itself.
+    assert.equal(prepared.command.prompt, "reader-memory");
+    const manifests = await db.select({ items: runtimeContextManifests.items })
+      .from(runtimeContextManifests).where(eq(runtimeContextManifests.userId, userId));
+    assert.deepEqual(manifests, [], "Hook-only preparation must not create a backend recall receipt");
   });
   await t.test("Mind list pagination excludes legacy rows", async () => {
     const ids: string[] = [];
@@ -587,3 +589,120 @@ test("undated Mind list filters before pagination without changing either existi
   const afterDelete = await service.list({userId:user.id,kind:"memory",undated:true,limit:1});
   assert.equal(afterDelete.totalCount,3,"count reflects deletion despite page limit");
 });
+
+test("Memory header count matches visibility and isolates users and subjects", { skip: !enabled }, async (t) => {
+  const url = process.env.DATABASE_URL;
+  assert.ok(url && /test|scratch|regression/.test(new URL(url).pathname));
+  const database = createDatabase(url, { ssl: false });
+  const createdUsers: string[] = [];
+  t.after(async () => {
+    try {
+      for (const id of createdUsers) {
+        await database.db.delete(runtimeSubjectStates).where(eq(runtimeSubjectStates.userId, id));
+        await database.db.delete(productCreateIdempotency).where(eq(productCreateIdempotency.userId, id));
+        await database.db.delete(users).where(eq(users.id, id));
+      }
+    } finally { await database.close(); }
+  });
+  for (let index = 0; index < 2; index++) {
+    const [user] = await database.db.insert(users).values({ email: `count-matrix-${crypto.randomUUID()}@example.com`, displayName: "Count fixture" }).returning({ id: users.id });
+    assert.ok(user); createdUsers.push(user.id);
+  }
+  const repository = new DrizzleMindProductRepository(database.db);
+  const service = new MindProductService(repository, "G");
+  const id = createdUsers[0]!;
+  assert.equal((await service.list({ userId: id })).totalCount, 0);
+  const keep = await service.createManual({ userId: id, kind: "memory", text: "Visible private fixture", idempotencyKey: crypto.randomUUID() });
+  const dated = await service.createManual({ userId: id, kind: "memory", text: "Dated fixture", occurredAt: "2026-10-13T00:00:00Z", idempotencyKey: crypto.randomUUID() });
+  const hidden = await service.createManual({ userId: id, kind: "memory", text: "Hidden fixture", idempotencyKey: crypto.randomUUID() });
+  await database.db.update(runtimeSubjectStates).set({ envelope: sql`jsonb_set(${runtimeSubjectStates.envelope}, '{scope,visibility}', '"hidden_system"'::jsonb)` }).where(eq(runtimeSubjectStates.id, hidden.id));
+  for (const update of [{ settlementStatus: "unsettled" }, { pathStatus: "superseded" }, { validityStatus: "invalidated" }, { validityStatus: "tombstoned" }] as const) {
+    const item = await service.createManual({ userId: id, kind: "memory", text: "Excluded status fixture", idempotencyKey: crypto.randomUUID() });
+    await database.db.update(runtimeSubjectStates).set(update).where(eq(runtimeSubjectStates.id, item.id));
+  }
+  const otherSubject = new MindProductService(repository, "C");
+  await otherSubject.createManual({ userId: id, kind: "memory", text: "Other subject fixture", idempotencyKey: crypto.randomUUID() });
+  await service.createManual({ userId: createdUsers[1]!, kind: "memory", text: "Other user fixture", idempotencyKey: crypto.randomUUID() });
+  for (const sort of ["updated_desc", "occurred_desc"] as const) {
+    const first = await service.list({ userId: id, sort, limit: 1 });
+    assert.equal(first.totalCount, 2);
+    assert.ok(first.nextCursor);
+    const second = await service.list({ userId: id, sort, limit: 1, cursor: first.nextCursor });
+    assert.equal(second.totalCount, 2);
+    assert.deepEqual([...first.items, ...second.items].map(row => row.id).sort(), [keep.id, dated.id].sort());
+    const undated = await service.list({ userId: id, sort, undated: true, limit: 1 });
+    assert.equal(undated.totalCount, 2);
+    assert.deepEqual(undated.items.map(row => row.id), [keep.id]);
+  }
+  assert.equal((await otherSubject.list({ userId: id })).totalCount, 1);
+  assert.equal((await service.list({ userId: createdUsers[1]! })).totalCount, 1);
+  await service.delete({ userId: id, stateId: dated.id });
+  assert.equal((await service.list({ userId: id, limit: 1 })).totalCount, 1);
+  for (let index = 0; index < 255; index++) {
+    await service.createManual({ userId: id, kind: "memory", text: `Synthetic count fixture ${index}`, idempotencyKey: crypto.randomUUID() });
+  }
+  const large = await service.list({ userId: id, limit: 1, undated: true });
+  assert.equal(large.totalCount, 256, "large global count is independent of the returned page");
+  assert.equal(large.items.length, 1);
+});
+
+for (const operation of ["create", "delete"] as const) {
+test(`Memory count and page use one snapshot during a concurrent ${operation}`, { skip: !enabled }, async (t) => {
+  const url = process.env.DATABASE_URL;
+  assert.ok(url && /test|scratch|regression/.test(new URL(url).pathname));
+  const database = createDatabase(url, { ssl: false });
+  const [user] = await database.db.insert(users).values({ email: `count-race-${crypto.randomUUID()}@example.com`, displayName: "Count race fixture" }).returning({ id: users.id });
+  assert.ok(user);
+  t.after(async () => {
+    try {
+      await database.db.delete(runtimeSubjectStates).where(eq(runtimeSubjectStates.userId, user.id));
+      await database.db.delete(productCreateIdempotency).where(eq(productCreateIdempotency.userId, user.id));
+      await database.db.delete(users).where(eq(users.id, user.id));
+    } finally { await database.close(); }
+  });
+  const writer = new MindProductService(new DrizzleMindProductRepository(database.db), "G");
+  const previous = operation === "delete"
+    ? await writer.createManual({ userId: user.id, kind: "memory", text: "Synthetic deletion fixture", idempotencyKey: crypto.randomUUID() })
+    : null;
+  let inserted = false;
+  const afterCount = async () => {
+    assert.equal(inserted, false);
+    inserted = true;
+    if (previous) await writer.delete({ userId: user.id, stateId: previous.id });
+    else await writer.createManual({ userId: user.id, kind: "memory", text: "Concurrent synthetic fixture", idempotencyKey: crypto.randomUUID() });
+  };
+  function wrapCountBuilder<T extends object>(builder: T): T {
+    return new Proxy(builder, {
+      get(target, property) {
+        const value = Reflect.get(target, property, target);
+        if (property === "then") return (resolve: (value: unknown) => unknown, reject: (error: unknown) => unknown) => value.call(target, async (result: unknown) => { await afterCount(); return resolve(result); }, reject);
+        if (typeof value === "function") return (...args: unknown[]) => {
+          const result = value.apply(target, args);
+          return result && typeof result === "object" ? wrapCountBuilder(result) : result;
+        };
+        return value;
+      },
+    });
+  }
+  function wrapDatabase<T extends object>(db: T): T {
+    return new Proxy(db, {
+      get(target, property) {
+        const value = Reflect.get(target, property, target);
+        if (property === "transaction") return (callback: (tx: unknown) => unknown, options: unknown) => value.call(target, (tx: object) => callback(wrapDatabase(tx)), options);
+        if (property === "select") return (selection: Record<string, unknown>) => {
+          const builder = value.call(target, selection);
+          return "totalCount" in selection ? wrapCountBuilder(builder) : builder;
+        };
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  }
+  const reader = new MindProductService(new DrizzleMindProductRepository(wrapDatabase(database.db)), "G");
+  const page = await reader.list({ userId: user.id });
+  assert.equal(inserted, true, "write commits exactly after count query resolves");
+  assert.equal(page.totalCount, previous ? 1 : 0);
+  assert.deepEqual(page.items.map(row => row.id), previous ? [previous.id] : [], "same response must not mix old count and new rows");
+  assert.equal((await writer.list({ userId: user.id })).totalCount, previous ? 0 : 1);
+});
+
+}

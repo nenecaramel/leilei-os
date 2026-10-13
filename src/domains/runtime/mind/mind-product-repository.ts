@@ -210,65 +210,68 @@ implements MindProductRepository {
     if (input.kind) {
       baseConditions.push(eq(runtimeSubjectStates.kind, input.kind));
     }
-    const [countRow] = await this.db
-      .select({ totalCount: sql<number>`count(*)::int` })
-      .from(runtimeSubjectStates)
-      .where(and(...baseConditions));
-    const totalCount = Number(countRow?.totalCount ?? 0);
+    // Count and page must describe one MVCC snapshot, even during writes.
+    return this.db.transaction(async (transaction) => {
+      const [countRow] = await transaction
+        .select({ totalCount: sql<number>`count(*)::int` })
+        .from(runtimeSubjectStates)
+        .where(and(...baseConditions));
+      const totalCount = Number(countRow?.totalCount ?? 0);
 
-    const conditions = [...baseConditions];
-    if (input.undated) conditions.push(sql`${memoryOccurredAtSql()} IS NULL`);
-    const occurredSort = input.sort === "occurred_desc";
-    const occurredOrdering = sql`coalesce(${memoryOccurredAtSql()}, '-infinity'::timestamptz)`;
-    if (input.cursor) {
-      const updatedAt = new Date(input.cursor.updatedAt);
-      if (occurredSort) {
-        const occurredCursor = input.cursor.occurredAt === null
-          ? sql`'-infinity'::timestamptz`
-          : sql`${input.cursor.occurredAt}::timestamptz`;
-        conditions.push(sql`(
-          ${occurredOrdering}, ${runtimeSubjectStates.updatedAt}, ${runtimeSubjectStates.id}
-        ) < (
-          ${occurredCursor}, ${updatedAt.toISOString()}::timestamptz, ${input.cursor.id}::uuid
-        )`);
-      } else {
-        const cursorCondition = or(
-          lt(runtimeSubjectStates.updatedAt, updatedAt),
-          and(
-            eq(runtimeSubjectStates.updatedAt, updatedAt),
-            lt(runtimeSubjectStates.id, input.cursor.id),
-          ),
-        );
-        if (cursorCondition) conditions.push(cursorCondition);
+      const conditions = [...baseConditions];
+      if (input.undated) conditions.push(sql`${memoryOccurredAtSql()} IS NULL`);
+      const occurredSort = input.sort === "occurred_desc";
+      const occurredOrdering = sql`coalesce(${memoryOccurredAtSql()}, '-infinity'::timestamptz)`;
+      if (input.cursor) {
+        const updatedAt = new Date(input.cursor.updatedAt);
+        if (occurredSort) {
+          const occurredCursor = input.cursor.occurredAt === null
+            ? sql`'-infinity'::timestamptz`
+            : sql`${input.cursor.occurredAt}::timestamptz`;
+          conditions.push(sql`(
+            ${occurredOrdering}, ${runtimeSubjectStates.updatedAt}, ${runtimeSubjectStates.id}
+          ) < (
+            ${occurredCursor}, ${updatedAt.toISOString()}::timestamptz, ${input.cursor.id}::uuid
+          )`);
+        } else {
+          const cursorCondition = or(
+            lt(runtimeSubjectStates.updatedAt, updatedAt),
+            and(
+              eq(runtimeSubjectStates.updatedAt, updatedAt),
+              lt(runtimeSubjectStates.id, input.cursor.id),
+            ),
+          );
+          if (cursorCondition) conditions.push(cursorCondition);
+        }
       }
-    }
 
-    const rows = await this.db
-      .select(rowSelection())
-      .from(runtimeSubjectStates)
-      .where(and(...conditions))
-      .orderBy(
-        ...(occurredSort ? [desc(occurredOrdering)] : []),
-        desc(runtimeSubjectStates.updatedAt),
-        desc(runtimeSubjectStates.id),
-      )
-      .limit(input.limit + 1);
+      const rows = await transaction
+        .select(rowSelection())
+        .from(runtimeSubjectStates)
+        .where(and(...conditions))
+        .orderBy(
+          ...(occurredSort ? [desc(occurredOrdering)] : []),
+          desc(runtimeSubjectStates.updatedAt),
+          desc(runtimeSubjectStates.id),
+        )
+        .limit(input.limit + 1);
 
-    const hasMore = rows.length > input.limit;
-    const pageRows = hasMore ? rows.slice(0, input.limit) : rows;
-    const last = pageRows[pageRows.length - 1];
-    return {
-      rows: pageRows.map(toProductRow),
-      totalCount,
-      nextCursor:
-        hasMore && last
-          ? {
-              updatedAt: last.updatedAt.toISOString(),
-              id: last.id,
-              ...(occurredSort ? { occurredAt: readSubjectStateOccurredAt(last.payload) } : {}),
-            }
-          : null,
-    };
+      const hasMore = rows.length > input.limit;
+      const pageRows = hasMore ? rows.slice(0, input.limit) : rows;
+      const last = pageRows[pageRows.length - 1];
+      return {
+        rows: pageRows.map(toProductRow),
+        totalCount,
+        nextCursor:
+          hasMore && last
+            ? {
+                updatedAt: last.updatedAt.toISOString(),
+                id: last.id,
+                ...(occurredSort ? { occurredAt: readSubjectStateOccurredAt(last.payload) } : {}),
+              }
+            : null,
+      };
+    }, { isolationLevel: "repeatable read", accessMode: "read only" });
   }
 
   async get(input: {
