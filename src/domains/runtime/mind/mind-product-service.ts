@@ -59,6 +59,7 @@ export type MindProductItem = {
 export type MindProductPage = {
   items: MindProductItem[];
   nextCursor: string | null;
+  totalCount: number;
 };
 
 export type MindProductWriteProjection = {
@@ -146,6 +147,7 @@ export interface MindProductRepository {
   }): Promise<{
     rows: MindProductRow[];
     nextCursor: MindProductCursor | null;
+    totalCount: number;
   }>;
 
   get(input: {
@@ -249,6 +251,7 @@ export class MindProductService {
       nextCursor: page.nextCursor
         ? encodeCursor(page.nextCursor, undated)
         : null,
+      totalCount: page.totalCount,
     };
   }
 
