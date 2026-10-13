@@ -6,6 +6,7 @@ struct MindMemoryListView: View {
 
     @State private var items: [MindProductItem] = []
     @State private var nextCursor: String?
+    @State private var totalCount: Int?
     @State private var loading = false
     @State private var loadingMore = false
     @State private var failed = false
@@ -84,6 +85,9 @@ struct MindMemoryListView: View {
         }
         .searchable(text: $query, prompt: "Search")
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                DiaryNavigationTitle(title: "Mind", count: totalCount)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Picker("Sort By", selection: $sort) {
@@ -294,8 +298,12 @@ struct MindMemoryListView: View {
             guard ticket == listGeneration, !Task.isCancelled, requestedSort == sort, requestedUndated == undatedOnly else { return }
             items = page.items
             nextCursor = page.nextCursor
+            totalCount = page.totalCount
         } catch {
-            if ticket == listGeneration, !Task.isCancelled { failed = true }
+            if ticket == listGeneration, !Task.isCancelled {
+                failed = true
+                if items.isEmpty { totalCount = nil }
+            }
         }
     }
 
@@ -327,6 +335,7 @@ struct MindMemoryListView: View {
                 }
             )
             self.nextCursor = page.nextCursor
+            totalCount = page.totalCount
         } catch {
             return
         }
