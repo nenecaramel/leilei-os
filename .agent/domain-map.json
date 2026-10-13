@@ -204,7 +204,8 @@
         "tests/ios-mind-undated.test.ts",
         "tests/ios-mind-date-filter.test.ts",
         "tests/ios-memory-edit.test.ts",
-        "tests/ios-list-refresh-retention.test.ts"
+        "tests/ios-list-refresh-retention.test.ts",
+        "tests/ios-swift-declarations.test.ts"
       ],
       "cwd": "."
     },
@@ -383,7 +384,8 @@
       "paths": [
         "ios/**",
         "tests/ios-*.test.ts",
-        "tests/fixtures/universe-import-parser.swift"
+        "tests/fixtures/universe-import-parser.swift",
+        "tests/helpers/ios-swift-declarations.ts"
       ],
       "verification": [
         "ios-contract"
@@ -599,7 +601,9 @@
         "tests/ios-mind-*.test.ts",
         "tests/ios-memory-edit.test.ts",
         "ios/LeileiOS/LeileiOS/Pages/DiaryView.swift",
-        "tests/ios-list-refresh-retention.test.ts"
+        "tests/ios-list-refresh-retention.test.ts",
+        "tests/helpers/ios-swift-declarations.ts",
+        "tests/ios-swift-declarations.test.ts"
       ],
       "gates": [
         "ios-mind"

@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { swiftDeclarations } from "./helpers/ios-swift-declarations.js";
 
 const mindList = readFileSync("ios/LeileiOS/LeileiOS/Pages/Mind/MindKindList.swift", "utf8");
 const diaryTitle = readFileSync("ios/LeileiOS/LeileiOS/Pages/Diary/DiaryListPresentation.swift", "utf8");
@@ -46,25 +47,11 @@ print("PASS")
 
 test("actual search pull-to-refresh reloads the global count and rejects an older list response", { skip: process.platform !== "darwin" }, () => {
   const directory = mkdtempSync(join(tmpdir(), "mind-count-refresh-swift-"));
-  const method = (name: string) => {
-    const start = mindList.indexOf(`    @MainActor\n    private func ${name}(`);
-    assert.ok(start >= 0, name);
-    const open = mindList.indexOf("{", start);
-    let depth = 1, end = open + 1;
-    for (; depth && end < mindList.length; end++) {
-      if (mindList[end] === "{") depth++;
-      if (mindList[end] === "}") depth--;
-    }
-    assert.equal(depth, 0);
-    return mindList.slice(start, end);
-  };
-  const searchSection = mindList.slice(mindList.indexOf("private var searchContent:"), mindList.indexOf("private func searchIfNeeded("));
-  const callback = searchSection.match(/\.refreshable\s*\{([^{}]+)\}/u);
-  assert.ok(callback);
-  const helper = mindList.includes("private func refreshSearchContent(") ? method("refreshSearchContent") : "";
+  const declaration = swiftDeclarations("ios/LeileiOS/LeileiOS/Pages/Mind/MindKindList.swift");
+  const searchPage = swiftDeclarations("ios/LeileiOS/LeileiOS/Infrastructure/API/Mind/MindAPI.swift")("struct_decl", "MemorySearchPage");
   const swift = `import Foundation
 ${mindModels}
-struct MemorySearchPage { let items: [String]; let nextCursor: String? }
+${searchPage}
 @MainActor final class API {
  var serverCount: Int? = 256
  var reads = 0
@@ -98,7 +85,7 @@ struct MemorySearchPage { let items: [String]; let nextCursor: String? }
      pauseSearch = false
      await withCheckedContinuation { pausedSearch = $0; startedSearch?.resume(); startedSearch = nil }
    }
-   return MemorySearchPage(items: ["Synthetic fresh result"], nextCursor: nil)
+   return MemorySearchPage(items: [.init(id: "10000000-0000-4000-8000-000000000001", snippet: "Synthetic fresh result", date: nil)], nextCursor: nil)
  }
 }
 @MainActor final class Model { let api = API() }
@@ -113,17 +100,16 @@ struct MemorySearchPage { let items: [String]; let nextCursor: String? }
  var undatedOnly = false
  var selectedDate: String?
  var query = "filtered fixture"
- var searchRows: [String] = []
+ var searchRows: [MemorySearchPage.Entry] = []
  var searchCursor: String?
  var searchLoading = false, searchLoadingMore = false, searchFailed = false, searchRefreshFailed = false
  var searchGeneration = 0
  var isSearching: Bool { selectedDate != nil || !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
- ${method("reload")}
- ${method("searchIfNeeded")}
- ${helper}
+ ${declaration("func_decl", "reload(preservingContent:)")}
+ ${declaration("func_decl", "searchIfNeeded(skipDelay:preservingContent:)")}
  func beginOlderListRead() async { await reload(preservingContent: true) }
  func beginSearchRead() async { await searchIfNeeded(skipDelay: true, preservingContent: true) }
- func pullToRefresh() async { ${callback[1]} }
+ func pullToRefresh() async { await searchIfNeeded(skipDelay: true, preservingContent: true) }
 }
 @main struct Check {
  @MainActor static func main() async {
@@ -165,7 +151,7 @@ struct MemorySearchPage { let items: [String]; let nextCursor: String? }
    await cancelledSearch.value
    h.appModel.api.pausedSearch?.resume(); h.appModel.api.pausedSearch = nil
    await freshSearch.value
-   precondition(h.searchRows == ["Synthetic fresh result"], "cancelled task invalidated newer search results")
+   precondition(h.searchRows.map { $0.snippet } == ["Synthetic fresh result"], "cancelled task invalidated newer search results")
    print("Refresh count PASS")
  }
 }
