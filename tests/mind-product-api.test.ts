@@ -28,7 +28,7 @@ class FakeMindService {
   async list(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "list", input });
-    return { items: [], nextCursor: null };
+    return { items: [], nextCursor: null, totalCount: 37 };
   }
 
   async get(input: unknown) {
@@ -92,6 +92,12 @@ test("Mind API lists, creates, deletes, and reads message write projection", asy
   await withServer(service, async (baseUrl) => {
     const list = await fetch(`${baseUrl}?kind=memory&limit=25`);
     assert.equal(list.status, 200);
+    const listBody = await list.json() as {
+      success: boolean;
+      data: { items: unknown[]; nextCursor: string | null; totalCount: number };
+    };
+    assert.equal(listBody.data.items.length, 0);
+    assert.equal(listBody.data.totalCount, 37);
 
     const create = await fetch(baseUrl, {
       method: "POST",
