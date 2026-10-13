@@ -83,7 +83,7 @@ await cleanupOrphanedLocalCheckpointForks({
       }) + "\n",
     );
   }
-}).catch((error) => {
+}).catch((error: unknown) => {
   process.stderr.write(
     JSON.stringify({
       at: new Date().toISOString(),

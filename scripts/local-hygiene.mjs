@@ -40,7 +40,7 @@ if (locationViolations.length > 0) {
     `hygiene: refusing a sync-provider-backed working copy: ${root}`,
   );
   console.error(
-    "Use ~/Developer/leilei-os-main, ~/Developer/leilei-os-ui, or a disposable local worktree.",
+    "Use ~/Developer/leilei-os-main or a disposable local worktree.",
   );
   process.exit(1);
 }
