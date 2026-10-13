@@ -235,6 +235,16 @@
       ],
       "cwd": ".",
       "node_major": 24
+    },
+    "dependency-security": {
+      "command": [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "tests/dependency-security.test.ts"
+      ],
+      "cwd": "."
     }
   },
   "surfaces": [
@@ -501,7 +511,8 @@
         "Dockerfile*",
         "pnpm-lock.yaml",
         ".github/workflows/**",
-        "tests/import-repository.integration.test.ts"
+        "tests/import-repository.integration.test.ts",
+        "tests/dependency-security.test.ts"
       ],
       "verification": [
         "root-typecheck",
@@ -649,6 +660,16 @@
       ],
       "gates": [
         "web-diary"
+      ]
+    },
+    {
+      "paths": [
+        "pnpm-lock.yaml",
+        "package.json",
+        "tests/dependency-security.test.ts"
+      ],
+      "gates": [
+        "dependency-security"
       ]
     }
   ],
