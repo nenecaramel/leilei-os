@@ -1,9 +1,17 @@
 import assert from "node:assert/strict";
 import {
   existsSync,
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  symlinkSync,
   readFileSync,
 } from "node:fs";
 import test from "node:test";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const authoritativeDocs = [
   "README.md",
@@ -98,4 +106,46 @@ test("coding-agent workspace policy is enforced by closeout commands", () => {
   assert.match(hygieneScript, /git\(\["ls-files"/);
   assert.match(gitignore, /\*\.tsbuildinfo/);
   assert.match(gitignore, /\*\*\/xcuserdata\//);
+});
+
+
+test("hygiene cleans build output while preserving Xcode user data, tracked files and symlink targets", () => {
+  const container = mkdtempSync(join(tmpdir(), "leileios-hygiene-contract-"));
+  const repo = join(container, "repo");
+  const outside = join(container, "external");
+  mkdirSync(repo);
+  mkdirSync(outside);
+  const write = (path: string, value: string) => {
+    mkdirSync(join(repo, path, ".."), { recursive: true });
+    writeFileSync(join(repo, path), value);
+  };
+  try {
+    execFileSync("git", ["init", "--quiet"], { cwd: repo });
+    write("scripts/local-hygiene.mjs", readFileSync("scripts/local-hygiene.mjs", "utf8"));
+    write("tracked/dist/important.txt", "tracked content");
+    execFileSync("git", ["add", "."], { cwd: repo });
+    const userFiles = [
+      "ios/App.xcodeproj/xcuserdata/Fixture.xcuserdatad/xcschemes/xcschememanagement.plist",
+      "ios/App.xcodeproj/project.xcworkspace/xcuserdata/Fixture.xcuserdatad/UserInterfaceState.xcuserstate",
+      "ios/App.xcodeproj/xcuserdata/nested/dist/state.txt",
+      "ios/App.xcodeproj/xcuserdata/nested/cache.tsbuildinfo",
+    ];
+    for (const path of userFiles) write(path, `private fixture ${path}`);
+    write("web/dist/bundle.js", "generated");
+    write("web/tsconfig.app.tsbuildinfo", "generated");
+    writeFileSync(join(outside, "keep.txt"), "external content");
+    symlinkSync(outside, join(repo, "dist"));
+    const run = (mode: string) => execFileSync(process.execPath, ["scripts/local-hygiene.mjs", mode], {
+      cwd: repo, encoding: "utf8", timeout: 10_000,
+    });
+    run("--clean");
+    for (const path of userFiles) assert.equal(readFileSync(join(repo, path), "utf8"), `private fixture ${path}`);
+    assert.equal(existsSync(join(repo, "web/dist")), false);
+    assert.equal(existsSync(join(repo, "web/tsconfig.app.tsbuildinfo")), false);
+    assert.equal(readFileSync(join(repo, "tracked/dist/important.txt"), "utf8"), "tracked content");
+    assert.equal(readFileSync(join(outside, "keep.txt"), "utf8"), "external content");
+    assert.match(run("--check"), /hygiene: clean/);
+  } finally {
+    rmSync(container, { recursive: true, force: true });
+  }
 });

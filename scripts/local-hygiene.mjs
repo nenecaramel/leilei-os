@@ -55,12 +55,13 @@ const disposableDirectoryNames = new Set([
   "dist",
   "playwright-report",
   "test-results",
-  "xcuserdata",
 ]);
 
 const ignoredTraversalNames = new Set([
   ".git",
   "node_modules",
+  // Xcode user schemes and UI state are user data, not disposable build output.
+  "xcuserdata",
 ]);
 
 function isDisposableFile(path) {
