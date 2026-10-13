@@ -260,6 +260,7 @@ jobs:
         if: ${{ !cancelled() && steps.migrate.outcome == 'success' && steps.ledger.outcome == 'success' }}
         env:
           RUN_ISOLATED_POSTGRES_REGRESSIONS: "1"
+          ISOLATED_POSTGRES_CONTAINER_ID: ${{ job.services.postgres.id }}
         run: pnpm test:isolated-postgres-regressions
 
       - name: Run retention PostgreSQL regression

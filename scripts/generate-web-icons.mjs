@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { deflateSync } from "node:zlib";
+import { deflateSync, inflateSync } from "node:zlib";
 
 const outputDirectory = new URL("../web/public/", import.meta.url);
 const checkOnly = process.argv.includes("--check");
@@ -73,6 +73,49 @@ function pngChunk(type, data) {
   return chunk;
 }
 
+// PNG compression differs between supported Node/zlib versions. Validate the
+// generated format and compare decoded scanlines instead of compressed bytes.
+function pngContent(bytes) {
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  if (!bytes.subarray(0, 8).equals(signature)) throw new Error("PNG signature");
+  let offset = 8;
+  let header;
+  const data = [];
+  while (offset < bytes.length) {
+    if (offset + 12 > bytes.length) throw new Error("PNG truncation");
+    const length = bytes.readUInt32BE(offset);
+    const end = offset + 12 + length;
+    if (end > bytes.length) throw new Error("PNG chunk truncation");
+    const type = bytes.toString("ascii", offset + 4, offset + 8);
+    const body = bytes.subarray(offset + 8, end - 4);
+    if (crc32(bytes.subarray(offset + 4, end - 4)) !== bytes.readUInt32BE(end - 4)) throw new Error("PNG checksum");
+    if (type === "IHDR" && !header && offset === 8 && length === 13) {
+      header = body;
+    } else if (type === "IDAT" && header) {
+      data.push(body);
+    } else if (type === "IEND" && header && data.length && length === 0 && end === bytes.length) {
+      const compressed = Buffer.concat(data);
+      const decoded = inflateSync(compressed, { info: true, maxOutputLength: 512 * (1 + 512 * 3) });
+      if (decoded.engine.bytesWritten !== compressed.length) throw new Error("PNG compressed stream has extra data");
+      return { header, rows: decoded.buffer };
+    } else {
+      throw new Error("Unexpected generated PNG structure");
+    }
+    offset = end;
+  }
+  throw new Error("PNG end missing");
+}
+
+function sameGeneratedPng(actual, expected) {
+  try {
+    const left = pngContent(actual);
+    const right = pngContent(expected);
+    return left.header.equals(right.header) && left.rows.equals(right.rows);
+  } catch {
+    return false;
+  }
+}
+
 function renderPng(size, scale = 1) {
   const samplesPerAxis = 4;
   const rows = [];
@@ -132,7 +175,7 @@ if (checkOnly) {
   const staleArtifacts = [];
   for (const [filename, expected] of expectedOutputs) {
     const actual = await readFile(new URL(filename, outputDirectory)).catch(() => null);
-    if (!actual || !actual.equals(expected)) staleArtifacts.push(filename);
+    if (!actual || !(filename.endsWith(".png") ? sameGeneratedPng(actual, expected) : actual.equals(expected))) staleArtifacts.push(filename);
   }
 
   if (staleArtifacts.length > 0) {

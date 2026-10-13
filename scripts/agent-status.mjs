@@ -104,6 +104,9 @@ export function collectStatus({ base = 'origin/main', cwd = process.cwd() } = {}
     if (changedFiles.some(path => extra.paths.some(pattern => matches(path, pattern))))
       gateIds.push(...extra.gates);
   }
+  const manualDatabaseVerification = (map.manual_database_verification ?? [])
+    .filter(item => changedFiles.some(path => item.paths.some(pattern => matches(path, pattern))))
+    .map(({ paths, ...item }) => item);
   const uniqueCommands = new Set();
   const recommendedVerification = [];
   for (const id of gateIds) {
@@ -135,7 +138,7 @@ export function collectStatus({ base = 'origin/main', cwd = process.cwd() } = {}
     nodeRequirements: map.node_versions ?? {},
     changedSurfaces: surfaces.map(surface => surface.id), surfaces,
     conflictHotspots: (map.conflict_hotspots ?? []).filter(path => changedFiles.some(file => matches(file, path))),
-    unmappedFiles, recommendedVerification,
+    unmappedFiles, recommendedVerification, manualDatabaseVerification,
     macDaemonFreshRequired: surfaces.some(surface => surface.local_refresh.mac_daemon),
     iosRebuildRequired: surfaces.some(surface => surface.local_refresh.ios_rebuild),
     productionAcceptanceRequired: surfaces.some(surface => surface.production_acceptance.required),
@@ -160,6 +163,8 @@ export function printStatus(status) {
   console.log('Recommended verification:');
   for (const gate of status.recommendedVerification)
     console.log(`  ${displayCommand(gate)}${gate.node_major ? ` [Node ${gate.node_major}]` : ''}`);
+  for (const item of status.manualDatabaseVerification)
+    console.log(`  MANUAL DATABASE: ${displayCommand(item)}; flags ${Object.entries(item.environment).map(([key, value]) => `${key}=${value}`).join(" ")}. ${item.instructions}`);
   console.log(`Mac daemon fresh required? ${status.macDaemonFreshRequired ? 'YES' : 'NO'}`);
   console.log(`iOS rebuild required? ${status.iosRebuildRequired ? 'YES' : 'NO'}`);
   console.log(`Production acceptance required? ${status.productionAcceptanceRequired ? 'YES' : 'NO'}`);

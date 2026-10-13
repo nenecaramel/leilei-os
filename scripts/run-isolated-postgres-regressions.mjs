@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { isolatedPostgresTarget, verifyIsolatedPostgresTarget } from "./isolated-postgres-target.mjs";
 
 const REQUIRED_ACK = "RUN_ISOLATED_POSTGRES_REGRESSIONS";
 
@@ -17,31 +18,17 @@ if (!process.env.DATABASE_URL) {
   fail("DATABASE_URL is required");
 }
 
-let databaseUrl;
 try {
-  databaseUrl = new URL(process.env.DATABASE_URL);
-} catch {
-  fail("DATABASE_URL is not a valid URL");
-}
-
-const databaseName = decodeURIComponent(
-  databaseUrl.pathname.replace(/^\//u, ""),
-);
-if (!/(?:test|ci|regression|ephemeral|scratch)/iu.test(databaseName)) {
-  fail(
-    `database name "${databaseName || "<empty>"}" is not explicitly test/CI/regression-scoped`,
-  );
-}
-
-if (
-  process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === "production"
-  || process.env.NODE_ENV?.toLowerCase() === "production"
-) {
-  fail("refusing to run in a production-marked environment");
+  const target = isolatedPostgresTarget(process.env.DATABASE_URL);
+  await verifyIsolatedPostgresTarget(target);
+  console.log("isolated-postgres-regressions: verified local test database/server (read-only)");
+} catch (error) {
+  fail(error.message);
 }
 
 const env = {
   ...process.env,
+  RUN_DATABASE_TARGET_TEST: "1",
   RUN_NATIVE_LIVE_CONVERSATION_DATABASE_TEST: "1",
   RUN_CLAUDE_CODE_MIND_DATABASE_TEST: "1",
   RUN_RUNTIME_BREATH_DATABASE_TEST: "1",
@@ -80,6 +67,7 @@ run([
   "tsx",
   "--test",
   "--test-concurrency=1",
+  "tests/isolated-postgres-target.integration.test.ts",
   "tests/native-live-conversation-repository.integration.test.ts",
   "tests/runtime-breath-recall-repository.integration.test.ts",
   "tests/claude-code-mind.integration.test.ts",

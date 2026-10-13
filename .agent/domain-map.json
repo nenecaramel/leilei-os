@@ -192,6 +192,32 @@
         "tests/data-import-retention.test.ts"
       ],
       "cwd": "."
+    },
+    "ios-mind": {
+      "command": [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "tests/ios-mind-header-count.test.ts",
+        "tests/ios-mind-boundaries.test.ts",
+        "tests/ios-mind-undated.test.ts",
+        "tests/ios-mind-date-filter.test.ts",
+        "tests/ios-memory-edit.test.ts",
+        "tests/ios-list-refresh-retention.test.ts"
+      ],
+      "cwd": "."
+    },
+    "tooling-guardrails": {
+      "command": [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "tests/generated-icons.test.ts",
+        "tests/isolated-postgres-target.test.ts"
+      ],
+      "cwd": "."
     }
   },
   "surfaces": [
@@ -496,7 +522,11 @@
         "tsconfig.scripts.json",
         "scripts/local-hygiene.mjs",
         "tests/repository-hygiene.test.ts",
-        "docs/testing-baseline.md"
+        "docs/testing-baseline.md",
+        "scripts/generate-web-icons.mjs",
+        "tests/generated-icons.test.ts",
+        "tests/isolated-postgres-target.test.ts",
+        "tests/isolated-postgres-target.integration.test.ts"
       ],
       "verification": [
         "agent-workflow",
@@ -559,6 +589,77 @@
       "gates": [
         "import-planning"
       ]
+    },
+    {
+      "paths": [
+        "ios/LeileiOS/LeileiOS/Pages/Mind/**",
+        "ios/LeileiOS/LeileiOS/Pages/MindView.swift",
+        "ios/LeileiOS/LeileiOS/Infrastructure/API/Mind/**",
+        "ios/LeileiOS/LeileiOS/Pages/Diary/DiaryListPresentation.swift",
+        "tests/ios-mind-*.test.ts",
+        "tests/ios-memory-edit.test.ts",
+        "ios/LeileiOS/LeileiOS/Pages/DiaryView.swift",
+        "tests/ios-list-refresh-retention.test.ts"
+      ],
+      "gates": [
+        "ios-mind"
+      ]
+    },
+    {
+      "paths": [
+        "scripts/generate-web-icons.mjs",
+        "scripts/*postgres*",
+        "tests/generated-icons.test.ts",
+        "tests/isolated-postgres-target.test.ts"
+      ],
+      "gates": [
+        "tooling-guardrails"
+      ]
+    }
+  ],
+  "manual_database_verification": [
+    {
+      "id": "mind-product-db",
+      "paths": [
+        "src/domains/runtime/mind/mind-product-*.ts",
+        "src/domains/runtime/mind/mind-memory-content.ts",
+        "src/web-api/mind-*.ts",
+        "tests/mind-product-*.test.ts",
+        "tests/mind-memory-api.integration.test.ts"
+      ],
+      "command": [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "tests/mind-product-repository.integration.test.ts",
+        "tests/mind-memory-api.integration.test.ts"
+      ],
+      "cwd": ".",
+      "environment": {
+        "RUN_RUNTIME_MIND_PRODUCT_DATABASE_TEST": "1"
+      },
+      "instructions": "Explicitly provision and verify an isolated local PostgreSQL target; never inherit a production DATABASE_URL. Apply test migrations there before executing. Not run by agent:verify."
+    },
+    {
+      "id": "schema-db",
+      "paths": [
+        "src/database/**",
+        "drizzle/**",
+        "drizzle.config.*",
+        "scripts/*postgres*",
+        "tests/isolated-postgres-*.test.ts"
+      ],
+      "command": [
+        "pnpm",
+        "test:isolated-postgres-regressions"
+      ],
+      "cwd": ".",
+      "environment": {
+        "RUN_ISOLATED_POSTGRES_REGRESSIONS": "1"
+      },
+      "instructions": "This destructive suite verifies a localhost test database before migrations. Explicitly provision that target; never use production. Not run by agent:verify."
     }
   ]
 }

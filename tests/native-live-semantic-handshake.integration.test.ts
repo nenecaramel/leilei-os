@@ -45,7 +45,7 @@ const enabled =
   process.env.RUN_NATIVE_LIVE_SEMANTIC_DATABASE_TEST === "1";
 
 test(
-  "semantic score receipt is durable and backend recovery assembles the exact scored Context Manifest",
+  "Hook-only prepare skips new semantic work while legacy score receipts recover durably without another context",
   { skip: !enabled },
   async (t) => {
     const databaseUrl = process.env.DATABASE_URL;
@@ -161,7 +161,35 @@ test(
       semanticService,
     );
 
+    const memoryBefore = await database.db.select().from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.id, memoryId));
+    await t.test("current preparation and replay do not stage backend recall", async () => {
+      const currentConversation = await conversationService.createConversation({ userId: user.id, title: "Hook-owned recall" });
+      const request = { dispatch_target: "claude_code", request_id: crypto.randomUUID(), operation: "send",
+        conversation_id: currentConversation.id, expected_head_message_id: null, text: "solo travel made me feel independent" };
+      const current = await prepareCoordinator.prepare(user.id, request);
+      assert.equal(current.ok, true); if (!current.ok) throw new Error("prepare failed");
+      assert.equal(current.semanticPending, false); assert.equal(current.command.prompt, request.text);
+      const replay = await prepareCoordinator.prepare(user.id, request);
+      assert.equal(replay.ok, true); if (!replay.ok) throw new Error("replay failed");
+      assert.equal(replay.semanticPending, false); assert.equal(replay.outcome, "replayed");
+      assert.equal(replay.command.prepare_id, current.command.prepare_id);
+      assert.equal(await semanticRepository.get({ userId: user.id, prepareId: current.command.prepare_id }), null);
+      assert.deepEqual(await database.db.select({ id: runtimeContextManifests.id }).from(runtimeContextManifests)
+        .where(eq(runtimeContextManifests.userId, user.id)), []);
+    });
+
+    // The remaining assertions exercise a task already staged by an older
+    // deployment, not a new semantic recall by the Hook-only default runtime.
     const requestId = crypto.randomUUID();
+    const legacy = await turnPort.prepareSend({ prepareId: crypto.randomUUID(), userId: user.id,
+      requestId, conversationId: conversation.id, expectedHeadMessageId: null,
+      text: "solo travel made me feel independent", attachmentIds: [] });
+    assert.equal(legacy.ok, true); if (!legacy.ok) throw new Error("legacy preparation failed");
+    const legacyPlan = { manifestId: crypto.randomUUID(), assembledAt: new Date().toISOString(), snapshotSequence: 1,
+      query: legacy.preparation.prompt, candidates: [{ stateId: memoryId, kind: "memory" as const,
+        text: "那趟独自旅行让我第一次真切感到自己可以照顾好自己" }] };
+    await semanticRepository.stage({ userId: user.id, preparation: legacy.preparation, plan: legacyPlan });
     const prepared = await prepareCoordinator.prepare(user.id, {
       dispatch_target: "claude_code",
       request_id: requestId,
@@ -257,6 +285,9 @@ test(
       prepareId: scoring.reservationId,
       scores,
     });
+    const receipt = await semanticRepository.get({ userId: user.id, prepareId: scoring.reservationId });
+    assert.equal(receipt?.status, "completed"); assert.deepEqual(receipt?.scores, scores);
+    assert.deepEqual(receipt?.candidates, legacyPlan.candidates);
     assert.equal(await semanticService.reserveNext({ userId: user.id, listenerInstanceId: listenerId }), null,
       "completed semantic tasks must not be redelivered");
 
@@ -299,7 +330,7 @@ test(
       prepareId: scoring.reservationId,
     });
     assert.ok(stagedPlan);
-    const firstAssembledPrompt = await backendMind.completeSemanticPrompt({
+    const firstRecoveredPrompt = await backendMind.completeSemanticPrompt({
       userId: user.id,
       preparation: beforeRecovery,
       plan: stagedPlan,
@@ -323,13 +354,12 @@ test(
     });
     assert.ok(afterRecovery);
     assert.equal(afterRecovery.mindPrepared, true);
-    assert.equal(afterRecovery.prompt, firstAssembledPrompt);
-    assert.equal(
-      afterRecovery.prompt.includes(
-        "那趟独自旅行让我第一次真切感到自己可以照顾好自己",
-      ),
-      true,
-    );
+    assert.equal(afterRecovery.prompt, firstRecoveredPrompt);
+    assert.equal(afterRecovery.prompt, legacy.preparation.prompt,
+      "recovery drains legacy scores without a second automatic recall context");
+    assert.equal(await semanticService.processNextCompletion(), "idle", "completed recovery is idempotent");
+    assert.deepEqual(await semanticRepository.get({ userId: user.id, prepareId: scoring.reservationId }), receipt,
+      "recovery preserves the durable accepted score receipt");
 
     const reservation = await relayService.reserveNext({
       userId: user.id,
@@ -339,27 +369,12 @@ test(
     assert.ok(reservation);
     assert.equal(reservation.reservationId, scoring.reservationId);
 
-    const manifests = await database.db
-      .select({ items: runtimeContextManifests.items })
-      .from(runtimeContextManifests)
-      .where(eq(runtimeContextManifests.userId, user.id));
-    const selected = manifests
-      .flatMap((manifest) => manifest.items)
-      .find((item) => item.sourceId === memoryId) as
-        | {
-            selection?: {
-              reason?: unknown;
-              score?: unknown;
-            };
-          }
-        | undefined;
-    assert.ok(selected);
-    assert.equal(
-      selected.selection?.reason,
-      "breath_semantic_match",
-    );
-    assert.equal(typeof selected.selection?.score, "number");
-    assert.ok((selected.selection?.score as number) > 0);
+    const manifests = await database.db.select({ id: runtimeContextManifests.id })
+      .from(runtimeContextManifests).where(eq(runtimeContextManifests.userId, user.id));
+    assert.deepEqual(manifests, [], "legacy completion does not fabricate a new context receipt");
+    assert.deepEqual(await database.db.select().from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.id, memoryId)), memoryBefore,
+      "preparation, scoring and recovery do not update Memory lifecycle");
   },
 );
 
