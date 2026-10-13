@@ -136,8 +136,9 @@ test("unknown provider content and events retain bounded diagnostics without bin
       type: "assistant",
       message: {
         content: [
-          { type: "thinking", thinking: secret },
           { type: "redacted_thinking", data: secret },
+          { type: "thinking_delta", thinking: secret },
+          { type: "signature_delta", signature: secret },
         ],
       },
     },
@@ -157,6 +158,33 @@ test("unknown provider content and events retain bounded diagnostics without bin
     ),
   );
   assert.equal(canonicalizeNativeLiveEvents(events).blocks[0]?.kind, "unknown");
+});
+
+test("visible assistant thinking stays distinct from redacted compatibility diagnostics", () => {
+  const visible = "SYNTHETIC_VISIBLE_SUMMARY";
+  const hidden = "SYNTHETIC_HIDDEN_REASONING";
+  const events = normalize([
+    { type: "assistant", message: { content: [
+      { type: "thinking", thinking: visible, signature: hidden },
+      { type: "future_widget", reasoning: hidden },
+    ] } },
+    { type: "future_event", payload: { reasoning: hidden } },
+    { type: "assistant", parent_tool_use_id: "nested", message: { content: [
+      { type: "thinking", thinking: hidden },
+    ] } },
+  ]);
+  const thinking = events.filter(event => event.payload?.kind === "user_visible_thinking");
+  assert.equal(thinking.length, 1);
+  assert.equal(thinking[0].payload.text, visible);
+  const diagnostics = events.filter(event => event.payload?.diagnostic_code);
+  assert.equal(diagnostics.length, 2);
+  assert.ok(diagnostics.every(event => event.payload.compatibility.redacted === true));
+  assert.ok(!JSON.stringify(events).includes(hidden));
+  assert.ok(!JSON.stringify(diagnostics).includes(visible));
+  const blocks = canonicalizeNativeLiveEvents(events).blocks;
+  assert.deepEqual(blocks.map(block => block.kind), ["unknown"]);
+  assert.ok(!JSON.stringify(blocks).includes(visible));
+  assert.ok(!JSON.stringify(blocks).includes(hidden));
 });
 
 test("structured output preserves result-level bounded payload and requires explicit projection", () => {

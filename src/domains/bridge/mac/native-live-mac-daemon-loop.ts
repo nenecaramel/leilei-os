@@ -335,7 +335,8 @@ export interface NativeLivePreparedCommandExecutor {
 }
 
 export interface NativeLiveDaemonIdleOpportunity {
-  offer(): void | Promise<void>;
+  // Scheduling results are intentionally ignored; completion is still awaited.
+  offer(): void | Promise<unknown>;
 }
 
 export interface NativeLiveExternalSessionExecutor {

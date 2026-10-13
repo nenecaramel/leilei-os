@@ -43,7 +43,7 @@ struct UniverseImportParserChecks {
             try operation()
             fatalError("Expected invalid import")
         } catch UniverseImportValidationError.invalid {
-            precondition(errorText == "文件无法用于迁移")
+            precondition(errorText == "Unable to import this file.")
         } catch {
             fatalError("Unexpected error type: \(error)")
         }

@@ -6,7 +6,7 @@ case "$mode" in
   *) echo '用法：bash ~/Documents/Codex/leileios-switch.command desktop|leileios|list [session-id]' >&2; exit 1 ;;
 esac
 if [ "$#" -gt 2 ]; then echo '最多指定一个 session-id' >&2; exit 1; fi
-for repo in "$HOME/Developer/leilei-os-main" "$HOME/Developer/leilei-os-ui"; do
+for repo in "$HOME/Developer/leilei-os-main"; do
   if [ -f "$repo/scripts/native-session-pick.mjs" ]; then
     if [ "$mode" = list ]; then
       exec /opt/homebrew/opt/node@22/bin/node "$repo/scripts/native-session-local.mjs" list
