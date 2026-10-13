@@ -197,6 +197,7 @@ struct MindMemoryListView: View {
 
     @MainActor
     private func searchIfNeeded(skipDelay: Bool = false, preservingContent: Bool = false) async {
+        guard !Task.isCancelled else { return }
         searchGeneration += 1
         let ticket = searchGeneration
         defer { if ticket == searchGeneration { searchLoading = false } }
@@ -232,6 +233,7 @@ struct MindMemoryListView: View {
             guard ticket == searchGeneration, !Task.isCancelled, requestedDate == selectedDate, requestedUndated == undatedOnly, requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
             searchRows = page.items
             searchCursor = page.nextCursor
+            if preservingContent { await reload(preservingContent: true) }
         } catch {
             guard ticket == searchGeneration, !Task.isCancelled, requestedDate == selectedDate, requestedUndated == undatedOnly, requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
             searchFailed = true
@@ -274,6 +276,7 @@ struct MindMemoryListView: View {
 
     @MainActor
     private func reload(preservingContent: Bool = false) async {
+        guard !Task.isCancelled else { return }
         listGeneration += 1
         let ticket = listGeneration
         let requestedSort = sort
@@ -288,7 +291,6 @@ struct MindMemoryListView: View {
         defer {
             if ticket == listGeneration { loading = false }
         }
-
         do {
             let page = try await appModel.api.mindPage(
                 kind: .memory,
