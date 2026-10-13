@@ -64,7 +64,9 @@ test('harmless padding, method spacing and a string brace leave production Swift
     .replace('private func reload(preservingContent: Bool = false) async {',
       'private func reload(preservingContent: Bool = false) async {\n        let brace = "}"; _ = brace'));
   const { NODE_TEST_CONTEXT, ...env } = process.env;
-  const result = execFileSync(process.execPath, [resolve('node_modules/tsx/dist/cli.mjs'), '--test', '--test-reporter=tap',
+  // The child changes cwd: do not inherit the parent's relative --tsconfig path.
+  const result = execFileSync(process.execPath, [resolve('node_modules/tsx/dist/cli.mjs'),
+    '--tsconfig', resolve('web/tsconfig.app.json'), '--test', '--test-reporter=tap',
     resolve('tests/ios-mind-header-count.test.ts'), resolve('tests/ios-list-refresh-retention.test.ts'),
     resolve('tests/ios-mind-boundaries.test.ts')], { cwd: root, env, encoding: 'utf8', timeout: 60_000 });
   assert.match(result, /# fail 0/);
