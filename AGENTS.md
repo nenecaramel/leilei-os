@@ -46,3 +46,17 @@ tracked files, `.env`, DBs, keys, backups, runtime/user data or
 uncertain-provenance files as cleanup. No ad hoc backup clones.
 
 Open a PR with scope, verification and refresh/acceptance evidence; do not merge unless requested.
+
+## Runtime and test maintenance
+
+Consult [runtime concurrency contracts](docs/runtime-concurrency-contracts.md)
+before changing a state owner or asynchronous boundary. Exercise stale operations
+with deferred responses/barriers against production logic; source text matching
+only establishes declarations, wiring or resource contracts. Do not use it as
+evidence that a callback, fallback or concurrency fence actually executes.
+
+The complete ordinary suite uses two isolated file processes. Shared-resource
+opt-ins force serial execution; use `pnpm test:serial` for an explicit baseline
+and `pnpm test:profile` for metadata-only timing output. Keep database/device
+acceptance isolated and the production runtime gate serial. See
+[test execution](docs/test-execution.md) for limits and commands.

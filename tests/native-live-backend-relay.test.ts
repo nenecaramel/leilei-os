@@ -389,3 +389,64 @@ test("relay mutations accept applied/idempotent outcomes and reject stale owners
   );
   assert.equal(wake.calls.length, 1);
 });
+
+test("a stale listener result cannot finalize or wake the current reservation", async () => {
+  const { port, coordinator, wake, service } = setup();
+  port.owns = false;
+  await assert.rejects(service.submitResult({
+    userId, listenerInstanceId, reservationId: prepareId, result: failureResult(),
+  }), (error: unknown) => error instanceof NativeLiveBackendRelayError
+    && error.code === "RESERVATION_CONFLICT");
+  assert.equal(coordinator.calls.length, 0);
+  assert.deepEqual(port.calls.map(call => call.name), [
+    "ownsSubmitReservation", "isDiscardedWakeReservation",
+  ]);
+  assert.deepEqual(wake.calls, []);
+});
+
+test("completion rejected after an awaited finalize cannot emit a terminal wake", { timeout: 1_000 }, async t => {
+  const { port, coordinator, wake, service } = setup();
+  let enterFinalize!: () => void;
+  let releaseFinalize!: () => void;
+  const entered = new Promise<void>(resolve => { enterFinalize = resolve; });
+  const released = new Promise<void>(resolve => { releaseFinalize = resolve; });
+  t.after(() => releaseFinalize());
+  coordinator.finalize = async (user, result) => {
+    coordinator.calls.push({ user, result });
+    enterFinalize();
+    await released;
+    return coordinator.result;
+  };
+  const submitting = service.submitResult({
+    userId, listenerInstanceId, reservationId: prepareId, result: failureResult(),
+  });
+  await entered;
+  assert.deepEqual(port.calls.map(call => call.name), ["ownsSubmitReservation"]);
+  assert.deepEqual(wake.calls, []);
+  // Model the repository refusing the completion mutation after ownership/state
+  // changes during canonical finalization; the service must honor that fence.
+  port.mutation = "conflict";
+  releaseFinalize();
+  await assert.rejects(submitting, (error: unknown) =>
+    error instanceof NativeLiveBackendRelayError && error.code === "RESERVATION_CONFLICT");
+  assert.deepEqual(port.calls.map(call => call.name), ["ownsSubmitReservation", "markCompleted"]);
+  assert.deepEqual(wake.calls, []);
+});
+
+test("advisory wake failure cannot undo durable completion or enqueue", async () => {
+  const { port, coordinator, wake, service } = setup();
+  wake.notify = async input => {
+    wake.calls.push(input);
+    throw new Error("synthetic wake unavailable");
+  };
+  await service.enqueuePreparation({ userId, prepareId });
+  assert.deepEqual(await service.submitResult({
+    userId, listenerInstanceId, reservationId: prepareId, result: failureResult(),
+  }), coordinator.result);
+  assert.deepEqual(port.calls.map(call => call.name), [
+    "enqueuePreparation", "ownsSubmitReservation", "markCompleted",
+  ]);
+  assert.deepEqual(wake.calls, [
+    { userId, kind: "foreground" }, { userId, kind: "turn_terminal", prepareId },
+  ]);
+});
