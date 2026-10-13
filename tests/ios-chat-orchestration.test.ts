@@ -52,7 +52,10 @@ test('page retains state wrappers, lifecycle installation and exact UI/scroll wi
   const stateSection = (s: string) => compact(s.slice(s.indexOf('struct ChatView:'), s.indexOf('var body:')).replace(/\bprivate\s+/g, ''));
   const expectedState = stateSection(withoutRetiredBinding(baseline))
     .replace('@StateObjectvarvoiceInput=VoiceInputController()', '@StateObjectvarvoiceInput=VoiceInputController()@StatevarisNativeCallPresented=false')
-    .replace('@StatevarmessageText=""', '@StatevarmessageText=""@StatevarsendFailureMessage:String?');
+    .replace('@StatevarmessageText=""', '@StatevarmessageText=""@StatevarsendFailureMessage:String?')
+    // Composer selections persist across page recreation; other ownership stays exact.
+    .replace('@Statevarmodel:NativeLiveClaudeModel=.opus55', '@AppStorage("nativeLive.model")varmodel:NativeLiveClaudeModel=.opus55')
+    .replace('@Statevareffort:NativeLiveEffortLevel=.high', '@AppStorage("nativeLive.effort")vareffort:NativeLiveEffortLevel=.high');
   assert.equal(stateSection(current), expectedState, 'All page state and AppModel pending-operation ownership stay in place');
   const lifecycle = read('ChatView+ConversationLifecycle.swift');
   const sequence = block(lifecycle, 'func refreshConversationPage()');
