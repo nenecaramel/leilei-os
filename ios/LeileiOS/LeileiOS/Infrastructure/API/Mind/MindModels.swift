@@ -67,6 +67,8 @@ enum MindListSort: String, Sendable, CaseIterable {
 struct MindProductPage: Decodable, Sendable, Equatable {
     let items: [MindProductItem]
     let nextCursor: String?
+    // Optional so an updated iOS build can safely talk to an older backend.
+    let totalCount: Int?
 }
 
 struct MindProductMessageWriteProjection:
