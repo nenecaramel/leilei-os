@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { execFileSync } from "node:child_process";
 import test from "node:test";
 
 const pages = "ios/LeileiOS/LeileiOS/Pages/";
@@ -66,18 +65,5 @@ test("Results keep module order, retry presentation and navigation callbacks wit
     const source = read(name);
     assert.ok(source.trimEnd().split("\n").length <= 350);
     assert.doesNotMatch(source, /ObservableObject|@Observable\b|@StateObject|@ObservedObject|@Published|UserDefaults|@AppStorage|@State\b|Task\s*\{|service\.search|GlobalSearchRequest\(/);
-  }
-});
-
-// This PR's scope gate must not freeze API/backend files for future feature branches.
-const branch = process.env.GITHUB_HEAD_REF
-  ?? execFileSync("git", ["branch", "--show-current"], { encoding: "utf8" }).trim();
-test("Global Search structural branch leaves API and backend tracked files untouched", {
-  skip: branch !== "refactor/ios-global-search-structure",
-}, () => {
-  const base = execFileSync("git", ["merge-base", "HEAD", "origin/main"], { encoding: "utf8" }).trim();
-  for (const args of [["diff", "--name-only", base], ["diff", "--cached", "--name-only"]]) {
-    const paths = execFileSync("git", args, { encoding: "utf8" }).trim().split("\n");
-    assert.deepEqual(paths.filter(path => /^(?:src\/|drizzle\/|railway)|\/Infrastructure\/API\/|GlobalSearchService\.swift$/.test(path)), []);
   }
 });

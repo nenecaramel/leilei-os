@@ -557,7 +557,8 @@
         "scripts/generate-web-icons.mjs",
         "tests/generated-icons.test.ts",
         "tests/isolated-postgres-target.test.ts",
-        "tests/isolated-postgres-target.integration.test.ts"
+        "tests/isolated-postgres-target.integration.test.ts",
+        "docs/operations/historical-test-scope-checks.md"
       ],
       "verification": [
         "agent-workflow",

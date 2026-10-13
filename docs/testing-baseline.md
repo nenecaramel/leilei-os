@@ -2,6 +2,30 @@
 
 This is a dated investigation record, not an allowed-failure list. `pnpm test` keeps its nonzero exit status, all existing tests remain enabled, and a green scoped gate does not mean the full suite is green.
 
+## Latest local verification — 2026-10-13
+
+Snapshot: `6f1fad855c7c9972e637685388dffcde49eb899e` (after PR #1068).
+The fresh local run reported **2705 total / 2502 pass / 0 fail / 203 skip** on
+Node 24.19.0. Node 22.23.3 typecheck/build, Web build, the 444-server + 204-bridge
+runtime gate, and an unsigned iOS Simulator Debug build also passed.
+
+The 203 skips comprise 188 isolated-database tests, 11 simulator UI/behavior
+tests, one Safari layout test, and three historical PR scope checks. They are
+not passes. Database/live UI/Safari acceptance was not enabled, and the Mac did
+not have Go available for the wake-broker gate. GitHub CI prevented from starting
+by account billing/spending limits is not a passing CI result.
+
+The three completed-branch scope checks are now preserved in the
+[historical scope archive](operations/historical-test-scope-checks.md), outside
+the executable suite. All other assertions remain unchanged. Removing these
+three historical checks changes suite membership; it does not add three passes
+or prove any database/UI acceptance.
+
+The remaining-failure list below records the earlier investigation at
+`d3f95eac`; it is **historical**, not the current backlog or an allowed-failure
+list. A passing current run does not retroactively change that record or prove
+that an intermittent failure can never recur.
+
 ## Reproduction
 
 Baseline: `d3f95eac0a6b8ae43dab7daa4ce908bd732cb267` (latest main at task start). Node 22.23.3, pnpm 11.9.0; locked root/bridge dependencies and Web dependencies installed under Node 24.19.0. Both comparisons use disposable worktrees. No private `.env`, live model opt-ins or production database.

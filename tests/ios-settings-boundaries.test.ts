@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 
@@ -63,20 +62,4 @@ test("Settings shared presentation and existing detail boundaries stay separate"
   for (const source of sources) {
     assert.doesNotMatch(source, /@Observable\b|@StateObject|@Published|:\s*ObservableObject|UserDefaults\.standard|AuthSessionController\(/);
   }
-});
-
-const branch = process.env.GITHUB_HEAD_REF
-  ?? execFileSync("git", ["branch", "--show-current"], { encoding: "utf8" }).trim();
-test("Settings structural branch changes only its iOS presentation and tests", {
-  skip: branch !== "refactor/ios-settings-structure",
-}, () => {
-  const base = execFileSync("git", ["merge-base", "HEAD", "origin/main"], { encoding: "utf8" }).trim();
-  const files = execFileSync("git", ["diff", "--name-only", base], { encoding: "utf8" }).trim().split("\n").filter(Boolean);
-  const allowed = new Set([
-    navigation + "SettingsSheetView.swift",
-    ...["HomeContent", "SummaryContent", "Presentation"].map(name => navigation + `Settings/Settings${name}.swift`),
-    "tests/ios-settings-boundaries.test.ts",
-    "tests/ios-settings-export-restore-v4.test.ts",
-  ]);
-  for (const file of files) assert.ok(allowed.has(file), `out-of-scope diff: ${file}`);
 });
