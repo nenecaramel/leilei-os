@@ -110,7 +110,12 @@ verify `current_database()`, server address and port before any migration/test
 command. It never prints the connection URL. This verifies the connection target;
 it does not prove a localhost database is disposable, so do not point it at a
 local database holding real user data. A local tunnel to a remote database fails
-the server address check.
+the server address check. For the existing CI PostgreSQL18 service, the runner
+uses `ISOLATED_POSTGRES_CONTAINER_ID` from `job.services.postgres.id` to inspect
+that exact container through the local Docker socket. Database name, container
+identity, image, running state, server address/internal port and localhost port
+mapping must all match. An arbitrary private address or remote Docker context
+is never accepted. Local Docker tests may use the same explicit container ID.
 
 `check:generated` validates PNG structure/checksums and decoded scanlines rather
 than compressed bytes, so supported Node 22/24 zlib differences do not create a

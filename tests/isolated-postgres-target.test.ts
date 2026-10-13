@@ -54,3 +54,28 @@ test('server identity rejects database, address and port mismatches', async () =
     { database: 'leileios_test', address: null, port: 5433 },
   ]) assert.throws(() => assertIsolatedPostgresServer(target, row));
 });
+
+test('only an inspected local test container may account for a non-loopback server address', async () => {
+  const { isolatedPostgresTarget, assertIsolatedPostgresServer } = await import('../scripts/isolated-postgres-target.mjs');
+  const id = 'a'.repeat(64);
+  const target = isolatedPostgresTarget('postgres://synthetic@127.0.0.1:55432/leileios_test', {
+    NODE_ENV: 'test', ISOLATED_POSTGRES_CONTAINER_ID: id,
+  });
+  const row = { database: 'leileios_test', address: '172.18.0.2', port: 5432 };
+  const inspected = {
+    Id: id, State: { Running: true }, Config: { Image: 'postgres:18', Env: ['POSTGRES_DB=leileios_test'] },
+    NetworkSettings: { Networks: { local: { IPAddress: '172.18.0.2' } },
+      Ports: { '5432/tcp': [{ HostIp: '0.0.0.0', HostPort: '55432' }] } },
+  };
+  assert.doesNotThrow(() => assertIsolatedPostgresServer(target, row, inspected));
+  assert.throws(() => assertIsolatedPostgresServer(target, row));
+  for (const change of [
+    { Id: 'b'.repeat(64) }, { State: { Running: false } },
+    { Config: { Image: 'postgres:18', Env: ['POSTGRES_DB=other_test'] } },
+    { NetworkSettings: { ...inspected.NetworkSettings, Networks: { local: { IPAddress: '172.18.0.3' } } } },
+    { NetworkSettings: { ...inspected.NetworkSettings, Ports: { '5432/tcp': [{ HostIp: '0.0.0.0', HostPort: '55433' }] } } },
+  ]) assert.throws(() => assertIsolatedPostgresServer(target, row, { ...inspected, ...change }));
+  assert.throws(() => isolatedPostgresTarget('postgres://synthetic@127.0.0.1/leileios_test', {
+    ISOLATED_POSTGRES_CONTAINER_ID: 'not-a-container-id',
+  }));
+});

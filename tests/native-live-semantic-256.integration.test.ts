@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { isolatedPostgresTarget, verifyIsolatedPostgresTarget } from "../scripts/isolated-postgres-target.mjs";
 import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import { conversations, nativeLiveRuntimeListenerLeases, nativeLiveSemanticScoringRequests, users } from "../src/database/schema.js";
@@ -16,10 +17,9 @@ const enabled = process.env.RUN_NATIVE_LIVE_SEMANTIC_256_DATABASE_TEST === "1";
 test("disposable Postgres preserves full 256-candidate semantic scoring and rejects 257", { skip: !enabled }, async () => {
   const rawUrl = process.env.DATABASE_URL;
   assert.ok(rawUrl, "A disposable localhost DATABASE_URL is required");
-  const url = new URL(rawUrl);
-  assert.ok(["localhost", "127.0.0.1"].includes(url.hostname), "Refusing a non-local database");
-  assert.equal(url.pathname, "/leileios_native_session_test", "Refusing a non-disposable database");
-  assert.notEqual(process.env.NODE_ENV, "production", "Refusing production");
+  // Verify the actual local test server instead of pinning one database name:
+  // CI uses leileios_test, while local Native Live fixtures use a longer name.
+  await verifyIsolatedPostgresTarget(isolatedPostgresTarget(rawUrl));
 
   const database = createDatabase(rawUrl, { ssl: false });
   let userId: string | null = null;

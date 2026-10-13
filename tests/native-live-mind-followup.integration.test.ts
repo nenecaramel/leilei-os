@@ -29,7 +29,6 @@ import {
 import {
   DrizzleNativeLiveMindFollowUpRepository,
   NativeLiveMindFollowUpService,
-  nativeLiveMindFollowUpStateId,
 } from "../src/domains/bridge/mind/native-live-mind-followup.js";
 import {
   DrizzleNativeLiveConversationRepository,
@@ -45,7 +44,7 @@ const enabled =
   process.env.RUN_NATIVE_LIVE_MIND_FOLLOWUP_DATABASE_TEST === "1";
 
 test(
-  "durable Mind follow-up survives the canonical/follow-up crash window and retry stays idempotent",
+  "Hook-only follow-up survives a canonical crash window and drains legacy intents without implicit Memory writes",
   { skip: !enabled },
   async (t) => {
     const databaseUrl = process.env.DATABASE_URL;
@@ -185,10 +184,11 @@ test(
     assert.equal(finalized.ok, true);
     if (!finalized.ok) throw new Error("expected canonical success");
 
-    const expectedStateId = nativeLiveMindFollowUpStateId(
-      prepared.command.prepare_id,
-      0,
-    );
+    const canonical = await conversationService.getConversation({ userId, conversationId: conversation.id });
+    const answer = canonical?.messages.find(message => message.id === finalized.assistantMessageId);
+    assert.ok(answer);
+    assert.equal(answer.blocks.filter(block => block.kind === "text").map(block => block.text).join(""),
+      "VISIBLE <memory>durable outbox memory</memory>", "tags remain visible prose, not a successful Memory write");
     const [lineageAfterCanonical] = await database.db
       .select({
         seenStateIds: runtimeContextLineageStates.seenStateIds,
@@ -204,12 +204,8 @@ test(
         ),
       )
       .limit(1);
-    assert.ok(lineageAfterCanonical);
-    assert.deepEqual(
-      lineageAfterCanonical.seenStateIds,
-      [expectedStateId],
-      "a Memory written by Claude is already seen before its durable follow-up materializes",
-    );
+    assert.equal(lineageAfterCanonical, undefined,
+      "Hook-only completion has no backend manifest or tag-write lineage");
 
     const lineageReader =
       new DrizzleNativeLiveContextLineageReader(database.db);
@@ -221,7 +217,7 @@ test(
       }),
       {
         epoch: 0,
-        seenStateIds: [expectedStateId],
+        seenStateIds: [],
       },
     );
 
@@ -239,6 +235,8 @@ test(
         status: nativeLiveMindFollowUps.status,
         retryCount: nativeLiveMindFollowUps.retryCount,
         assistantMessageId: nativeLiveMindFollowUps.assistantMessageId,
+        intents: nativeLiveMindFollowUps.intents,
+        actions: nativeLiveMindFollowUps.actions,
       })
       .from(nativeLiveMindFollowUps)
       .where(
@@ -252,7 +250,16 @@ test(
       status: "pending",
       retryCount: 0,
       assistantMessageId: finalized.assistantMessageId,
+      intents: [],
+      actions: [],
     });
+
+    // Represent a pre-deployment queued tag intent. Recovery must drain it,
+    // never recreate the retired implicit Memory persistence channel.
+    await database.db.update(nativeLiveMindFollowUps).set({ intents: [{
+      kind: "memory", text: "durable outbox memory", sourceStart: 8, sourceEnd: 45,
+      raw: "<memory>durable outbox memory</memory>",
+    }] }).where(eq(nativeLiveMindFollowUps.prepareId, prepared.command.prepare_id));
 
     const beforeRecovery = await database.db
       .select({ id: runtimeSubjectStates.id })
@@ -311,10 +318,7 @@ test(
       })
       .from(runtimeSubjectStates)
       .where(eq(runtimeSubjectStates.userId, userId));
-    assert.deepEqual(afterRecovery, [{
-      id: expectedStateId,
-      text: "durable outbox memory",
-    }]);
+    assert.deepEqual(afterRecovery, [], "legacy outbox recovery must not create Memory from prose");
 
     const [completed] = await database.db
       .select({
@@ -353,10 +357,9 @@ test(
       })
       .from(runtimeSubjectStates)
       .where(eq(runtimeSubjectStates.userId, userId));
-    assert.deepEqual(afterReplay, [{
-      id: expectedStateId,
-      text: "durable outbox memory",
-    }]);
+    assert.deepEqual(afterReplay, [], "replaying a legacy job still has no implicit write");
+    assert.equal(await service.processPreparation({ userId, prepareId: prepared.command.prepare_id }), "idle",
+      "completed follow-ups cannot execute again");
 
     const scheduleRequestId = crypto.randomUUID();
     const schedulePrepared = await coordinator.prepare(userId, {
@@ -410,10 +413,6 @@ test(
       throw new Error("expected schedule canonical success");
     }
 
-    const scheduleStateId = nativeLiveMindFollowUpStateId(
-      schedulePrepared.command.prepare_id,
-      0,
-    );
     assert.deepEqual(
       await lineageReader.readForMessage({
         userId,
@@ -422,9 +421,9 @@ test(
       }),
       {
         epoch: 0,
-        seenStateIds: [expectedStateId, scheduleStateId],
+        seenStateIds: [],
       },
-      "a non-Mind turn carries its parent lineage and still reserves any self-authored Memory/Feel",
+      "a schedule turn does not invent written IDs from assistant prose",
     );
 
     const preCompactProbeRequestId = crypto.randomUUID();
@@ -443,7 +442,7 @@ test(
     assert.equal(
       preCompactProbe.command.prompt.includes("Relevant memories:"),
       false,
-      "the just-written Memory must not be handed back after a transparent non-Mind turn",
+      "backend preparation must not add a second context before compact",
     );
     const preCompactProbeFailure = await coordinator.finalize(userId, {
       protocol_version: 4,
@@ -520,16 +519,12 @@ test(
     });
     assert.equal(nextPrepared.ok, true);
     if (!nextPrepared.ok) throw new Error("expected next prepare success");
-    assert.equal(
-      nextPrepared.command.prompt.includes("Relevant memories:"),
-      true,
-      "compact clears the epoch seen set so a still-relevant Memory may be recalled again",
-    );
-    assert.equal(
-      nextPrepared.command.prompt.includes("durable outbox memory"),
-      true,
-      "the relevant Memory is available again in the fresh epoch",
-    );
+    assert.equal(nextPrepared.command.prompt, "durable outbox memory",
+      "compact keeps raw prompt delivery; automatic recall remains Hook-owned");
+    assert.deepEqual(await database.db.select({ id: runtimeSubjectStates.id }).from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.userId, userId)), []);
+    assert.deepEqual(await database.db.select({ id: runtimeContextManifests.id }).from(runtimeContextManifests)
+      .where(eq(runtimeContextManifests.userId, userId)), [], "backend creates no automatic recall receipt");
 
     assert.equal(nextPrepared.command.runtime_mode, "resume");
     assert.equal(nextPrepared.command.parent_provider_session_id, "followup-provider-1");
