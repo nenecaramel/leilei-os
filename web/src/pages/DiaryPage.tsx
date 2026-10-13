@@ -1,3 +1,4 @@
+import { useDiaryArchive } from "./diary/use-diary-archive";
 import { ModuleListLoading, ModuleListEmpty } from "./ModuleListState";
 import {
   useEffect,
@@ -8,14 +9,10 @@ import type { WebApiClient } from "../api/useWebApiClient";
 import { ModuleStateMessage } from "../components/ModuleSearch";
 import { DiaryPageHeader } from "./DiaryPageHeader";
 import {
-  DiaryPaperDateEditor,
-  DiaryPaperEditor,
-  DiaryPaperMetadataEditor,
   type DiaryPaperEditorHandle,
 } from "./DiaryPaperEditor";
-import { PaperDetailDialog } from "./PaperDetailDialog";
+import { DiaryCreatePaper } from "./diary/DiaryCreatePaper";
 import {
-  PaperAuthorSignature,
   type PaperAuthorValue,
 } from "./PaperAuthorSignature";
 import { MobileDiaryRows } from "./diary/DiaryListPresentation";
@@ -155,19 +152,11 @@ export function DiaryPageContent({
     () => initialLocation().diaryId ? "loading" : "idle",
   );
   const [state, setState] = useState<LoadState>({ status: "loading" });
-  const [archivedState, setArchivedState] =
-    useState<LoadState>({ status: "loading" });
-  const [archivedDetailState, setArchivedDetailState] =
-    useState<DetailState>(
-      () => initialArchivedDetailLocation().diaryId
-        ? "loading"
-        : "idle",
-    );
-  const [archivedDiary, setArchivedDiary] =
-    useState<DiaryEntry | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [archiveReloadKey, setArchiveReloadKey] = useState(0);
   const [detailReloadKey, setDetailReloadKey] = useState(0);
+  const { archivedState, setArchivedState, archivedDetailState, setArchivedDetailState, archivedDiary, setArchivedDiary } =
+    useDiaryArchive({ api, isArchived, archiveReloadKey, archivedDetailLocation, isMobileRef });
   const tracker = useRef(createLatestDiaryRequestTracker());
   const listController = useRef<AbortController | null>(null);
   const listAvailableRef = useRef(false);
@@ -506,56 +495,6 @@ export function DiaryPageContent({
       if (listController.current === controller) listController.current = null;
     };
   }, [api, filters, isArchived, isArchivedDetail, isDetail, reloadKey]);
-
-  useEffect(() => {
-    if (!isArchived) return;
-    const controller = new AbortController();
-    setArchivedState({ status: "loading" });
-    api.request<DiaryListResponse>("/diary/archived", {
-      signal: controller.signal,
-    }).then((response) => {
-      if (controller.signal.aborted) return;
-      setArchivedState({
-        status: "ready",
-        diaries: response.data.diaries,
-        count: response.data.metadata.count,
-      });
-      const position = readDiaryScrollPosition(
-        getDiaryScrollStorage(window),
-        window.location.pathname + window.location.search,
-      );
-      if (position !== null) {
-        requestAnimationFrame(() => window.scrollTo({ top: position }));
-      }
-    }).catch(() => {
-      if (!controller.signal.aborted) setArchivedState({ status: "error" });
-    });
-    return () => controller.abort();
-  }, [api, archiveReloadKey, isArchived]);
-
-  useEffect(() => {
-    const id = archivedDetailLocation.diaryId;
-    if (!id) {
-      setArchivedDiary(null);
-      setArchivedDetailState("idle");
-      return;
-    }
-    const controller = new AbortController();
-    setArchivedDiary(null);
-    setArchivedDetailState("loading");
-    api.request<DiaryEntryResponse>(
-      `/diary/archived/${encodeURIComponent(id)}`,
-      { signal: controller.signal },
-    ).then((response) => {
-      if (controller.signal.aborted) return;
-      setArchivedDiary(response.data);
-      setArchivedDetailState("ready");
-      if (!isMobileRef.current) window.scrollTo({ top: 0 });
-    }).catch(() => {
-      if (!controller.signal.aborted) setArchivedDetailState("error");
-    });
-    return () => controller.abort();
-  }, [api, archiveReloadKey, archivedDetailLocation]);
 
   useEffect(() => {
     const id = location.diaryId;
@@ -1070,95 +1009,42 @@ export function DiaryPageContent({
           {showActiveBackground ? (
             <>
               {showCreate ? (
-                <PaperDetailDialog
-                  id="diary-create-paper"
-                  open
-                  label="创建 Diary"
-                  dateLabel={
-                    <DiaryPaperDateEditor
-                      value={date}
-                      disabled={creating}
-                      onChange={(value) => {
-                        setDate(value);
-                        setActionError("");
-                      }}
-                    />
-                  }
-                  signature=""
-                  triggerRef={paperTriggerRef}
-                  onRequestClose={() => {
+                <DiaryCreatePaper
+                  title={title} content={content} date={date} mood={mood} tags={tags} author={author}
+                  creating={creating} createInvalid={createInvalid} actionError={actionError}
+                  createEditorRef={createEditorRef} paperTriggerRef={paperTriggerRef}
+                  onClose={() => {
                     if (!confirmAndDiscardDraft()) return false;
                     setShowCreate(false);
                     setActionError("");
                     return true;
                   }}
-                  topRight={
-                    <>
-                      <button
-                        className="memory-paper-control"
-                        disabled={creating}
-                        onClick={() => {
-                          if (!confirmAndDiscardDraft()) return;
-                          setShowCreate(false);
-                          setActionError("");
-                        }}
-                      >
-                        取消
-                      </button>
-                      <span>·</span>
-                      <button
-                        className="memory-paper-control"
-                        disabled={creating || createInvalid}
-                        onClick={() => void handleCreate()}
-                      >
-                        {creating ? "保存中…" : "保存"}
-                      </button>
-                    </>
-                  }
-                  bottomLeft={
-                    <>
-                      <DiaryPaperMetadataEditor
-                        moodValue={mood}
-                        tagsValue={tags}
-                        disabled={creating}
-                        onMoodChange={(value) => {
-                          setMood(value);
-                          setActionError("");
-                        }}
-                        onTagsChange={(value) => {
-                          setTags(value);
-                          setActionError("");
-                        }}
-                      />
-                      <PaperAuthorSignature
-                        value={author}
-                        editable
-                        disabled={creating}
-                        onChange={(value) => {
-                          setAuthor(value);
-                          setActionError("");
-                        }}
-                        error={author === null ? actionError : null}
-                      />
-                    </>
-                  }
-                  errorMessage={actionError || null}
-                >
-                  <DiaryPaperEditor
-                    ref={createEditorRef}
-                    title={title}
-                    content={content}
-                    disabled={creating}
-                    onTitleChange={(value) => {
-                      setTitle(value);
-                      setActionError("");
-                    }}
-                    onContentChange={(value) => {
-                      setContent(value);
-                      setActionError("");
-                    }}
-                  />
-                </PaperDetailDialog>
+                  onSave={() => void handleCreate()}
+                  onDateChange={(value) => {
+                    setDate(value);
+                    setActionError("");
+                  }}
+                  onMoodChange={(value) => {
+                    setMood(value);
+                    setActionError("");
+                  }}
+                  onTagsChange={(value) => {
+                    setTags(value);
+                    setActionError("");
+                  }}
+                  onAuthorChange={(value) => {
+                    setAuthor(value);
+                    setActionError("");
+                  }}
+                  onTitleChange={(value) => {
+                    setTitle(value);
+                    setActionError("");
+                  }}
+                  onContentChange={(value) => {
+                    setContent(value);
+                    setActionError("");
+                  }}
+                />
               ) : null}
 
               {state.status === "ready" ? (

@@ -1096,3 +1096,35 @@ test("Diary dirty edit cancellation and update retry are page-level single-fligh
     await page.cleanup();
   }
 });
+
+test("Diary archive rejects late details after navigation even when transport ignores abort", async () => {
+  const first = deferred<unknown>();
+  const second = deferred<unknown>();
+  const calls: Request[] = [];
+  const page = await render(createArchivedDiaryDetailLocation("diary-1", "/diary?archived=1"), {
+    request<T>(path: string, init?: RequestInit): Promise<T> {
+      calls.push({ path, init });
+      return (path.endsWith("diary-1") ? first.promise : second.promise) as Promise<T>;
+    },
+  });
+  try {
+    await React.act(async () => {
+      page.window.history.pushState(null, "", createArchivedDiaryDetailLocation("diary-2", "/diary?archived=1"));
+      page.window.dispatchEvent(new page.window.PopStateEvent("popstate"));
+    });
+    assert.equal(calls[0].init?.signal?.aborted, true);
+    await React.act(async () => {
+      second.resolve({ success: true, data: { ...diary, id: "diary-2", title: "Current archive" } });
+      await second.promise;
+    });
+    assert.match(page.container.textContent ?? "", /Current archive/);
+    await React.act(async () => {
+      first.resolve({ success: true, data: { ...diary, title: "Obsolete archive" } });
+      await first.promise;
+    });
+    assert.match(page.container.textContent ?? "", /Current archive/);
+    assert.doesNotMatch(page.container.textContent ?? "", /Obsolete archive/);
+  } finally {
+    await page.cleanup();
+  }
+});
