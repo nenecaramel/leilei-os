@@ -246,3 +246,32 @@ test('script typecheck rejects unsafe new scripts and emits or executes nothing'
   assert.equal(existsSync(join(root, 'dist')), false);
   assert.equal(existsSync(join(root, 'scripts', 'probe.js')), false);
 });
+
+
+test('Mind-only UI changes select actual Swift count and refresh regressions', (t) => {
+  const root = fixture(t);
+  file(root, 'ios/LeileiOS/LeileiOS/Pages/Mind/MindKindList.swift');
+  const plan = json(verifyScript, root, '--plan');
+  assert.ok(plan.gates.some((gate: { command: string[] }) => gate.command.includes('tests/ios-mind-header-count.test.ts')));
+});
+
+test('Mind repository changes recommend isolated DB regressions without executing them', (t) => {
+  const root = fixture(t);
+  file(root, 'src/domains/runtime/mind/mind-product-repository.ts');
+  const plan = json(verifyScript, root, '--plan');
+  assert.ok(plan.manualDatabaseVerification?.some((item: { command: string[] }) => item.command.includes('tests/mind-product-repository.integration.test.ts')));
+  assert.ok(!plan.gates.some((gate: { command: string[] }) => gate.command.some(arg => arg === 'db:migrate' || arg.endsWith('.integration.test.ts'))));
+});
+
+test('schema DB recommendations remain manual even during verify run', (t) => {
+  const map = {
+    version: 1, common_verification: [], gates: {},
+    surfaces: [{ id: 'db', paths: ['change.txt'], verification: [], runtime_locations: [], local_refresh: { mac_daemon: false, ios_rebuild: false, instructions: 'none' }, production_acceptance: { required: false, instructions: 'none' }, conflict_hotspots: [] }],
+    manual_database_verification: [{ id: 'isolated', paths: ['change.txt'], command: [process.execPath, '-e', "require('node:fs').writeFileSync('db-ran.txt','unsafe')"], cwd: '.', environment: {}, instructions: 'manual only' }],
+  };
+  const root = fixture(t, map); file(root, 'change.txt');
+  const result = run(verifyScript, root, '--run');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /MANUAL DATABASE/);
+  assert.equal(existsSync(join(root, 'db-ran.txt')), false);
+});

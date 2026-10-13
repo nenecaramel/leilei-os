@@ -26,7 +26,8 @@ test("Mind memory feed owns loading, retry, pagination and useful row metadata",
   }
   assert.match(source, /else if failed && items\.isEmpty/);
   assert.match(source, /actionTitle: "Retry"/);
-  assert.match(source, /AppStateSurface\(title: "No memories yet"\)/);
+  assert.match(source, /AppStateSurface\(title: "Nothing here"\)/);
+  assert.doesNotMatch(source, /No memories yet/);
   assert.match(source, /Button\("More"\)/);
   assert.match(source, /kind: \.memory/);
   assert.match(source, /cursor: nextCursor/);

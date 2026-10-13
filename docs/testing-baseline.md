@@ -90,3 +90,29 @@ Do not suppress these tests, rewrite pixel/source references automatically, or t
 `pnpm typecheck` now checks both `src/**/*.ts` and `scripts/**/*.ts` strictly without executing scripts. The runtime gate includes daemon recovery and message-surface regressions. Agent path mapping covers actual Mac/Relay/Protocol source directories; the Swift parser fixture explicitly selects its executable parser test. Negative compiler and source-only planning tests guard these boundaries.
 
 See the closeout PR for the final full-suite comparison, fresh gate counts and commands. No model invocation, daemon refresh, deployment or production DB operation is part of these local gates. The earlier #1046 isolated PostgreSQL semantic-admission fixture failure is outside this round and was not rerun or reclassified here.
+
+### Scoped Mind and database verification
+
+Mind iOS edits now select `ios-mind`, including the actual Swift count/refresh,
+Undated, date filter and editor regressions. Swift execution tests are Mac-only;
+a skipped test on Linux is not an iOS build or device acceptance.
+
+`agent:status` and `agent:verify --plan` expose `manualDatabaseVerification`
+separately from executable gates. Mind repository/API edits recommend the Mind
+PostgreSQL suites; schema/test-runner edits recommend the isolated suite.
+`agent:verify --run` never executes those recommendations or migrations.
+
+Before running `RUN_ISOLATED_POSTGRES_REGRESSIONS=1 pnpm test:isolated-postgres-regressions`,
+explicitly provision a disposable localhost PostgreSQL database with a test/CI/
+regression-scoped name. The entrypoint rejects remote hosts, URL connection-option
+overrides and production markers, then uses a bounded read-only transaction to
+verify `current_database()`, server address and port before any migration/test
+command. It never prints the connection URL. This verifies the connection target;
+it does not prove a localhost database is disposable, so do not point it at a
+local database holding real user data. A local tunnel to a remote database fails
+the server address check.
+
+`check:generated` validates PNG structure/checksums and decoded scanlines rather
+than compressed bytes, so supported Node 22/24 zlib differences do not create a
+false stale-icon result. Changed pixels, dimensions, corruption and SVG source
+changes still fail. Generated icon assets are not rewritten by the check.

@@ -12,7 +12,7 @@ try {
     const plan = {
       base: status.base, head: status.head, mergeBase: status.mergeBase,
       changedFiles: status.changedFiles, changedSurfaces: status.changedSurfaces,
-      gates: status.recommendedVerification, unmappedFiles: status.unmappedFiles,
+      gates: status.recommendedVerification, manualDatabaseVerification: status.manualDatabaseVerification, unmappedFiles: status.unmappedFiles,
       conflictHotspots: status.conflictHotspots, nodeRequirements: status.nodeRequirements,
       macDaemonFreshRequired: status.macDaemonFreshRequired,
       iosRebuildRequired: status.iosRebuildRequired,
@@ -25,6 +25,8 @@ try {
       console.log(`Verification ${options.run ? 'run' : 'plan'}: ${plan.changedSurfaces.join(', ') || 'no changed surfaces'}`);
       for (const gate of plan.gates)
         console.log(`  ${gate.id}: ${displayCommand(gate)}${gate.node_major ? ` [Node ${gate.node_major}]` : ''}`);
+      for (const item of plan.manualDatabaseVerification)
+        console.log(`  MANUAL DATABASE: ${displayCommand(item)}; flags ${Object.entries(item.environment).map(([key, value]) => `${key}=${value}`).join(" ")}. ${item.instructions}`);
       for (const item of plan.manualRequirements)
         console.log(`  ${item.surface}: ${item.localRefresh}\n    Acceptance: ${item.productionAcceptance}`);
       if (plan.unmappedFiles.length)

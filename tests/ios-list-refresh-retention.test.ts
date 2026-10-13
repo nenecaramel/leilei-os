@@ -31,7 +31,7 @@ enum LeileiAPIError: Error { case missingAccessToken, unauthorized }
 enum Fault: Error { case unavailable }
 enum MindListSort { case updatedDesc }
 enum Kind { case memory }
-struct Page { var items: [String]; var nextCursor: String? }
+struct Page { var items: [String]; var nextCursor: String?; var totalCount: Int? = nil }
 @MainActor final class API {
   var pending: [CheckedContinuation<Page, Error>] = []
   func fetch() async throws -> Page { try await withCheckedThrowingContinuation { pending.append($0) } }
@@ -46,6 +46,7 @@ struct Page { var items: [String]; var nextCursor: String? }
   let appModel = Model()
   var items = ["old"], nextCursor: String? = "old-cursor"
   var loading = false, failed = false, loadingMore = false, listGeneration = 0
+  var totalCount: Int? = 1
   var sort = MindListSort.updatedDesc, undatedOnly = false
   var searchRows = ["old"], searchCursor: String? = "old-cursor"
   var searchLoading = false, searchLoadingMore = false, searchFailed = false, searchGeneration = 0, searchRefreshFailed = false
@@ -83,7 +84,13 @@ Task { @MainActor in
     precondition(search.searchRows == ["old"] && search.searchCursor == "old-cursor")
     if outcome == 1 { search.appModel.api.pending[0].resume(throwing: Fault.unavailable) }
     else { if outcome == 2 { searchTask.cancel() }; search.appModel.api.pending[0].resume(returning: Page(items:["new"],nextCursor:"new-cursor")) }
+    if outcome == 0 {
+      await wait(search.appModel.api, 2)
+      precondition(search.items == ["old"] && search.totalCount == 1, "global refresh also retains existing feed/count while waiting")
+      search.appModel.api.pending[1].resume(returning: Page(items:["refreshed-feed"],nextCursor:nil,totalCount:2))
+    }
     await searchTask.value
+    precondition(search.totalCount == (outcome == 0 ? 2 : 1))
     precondition(search.searchRows == (outcome == 0 ? ["new"] : ["old"]))
     precondition(!search.searchLoading)
 
