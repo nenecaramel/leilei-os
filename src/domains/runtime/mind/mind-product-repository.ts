@@ -194,8 +194,11 @@ implements MindProductRepository {
   }): Promise<{
     rows: MindProductRow[];
     nextCursor: MindProductCursor | null;
+    totalCount: number;
   }> {
-    const conditions = [
+    // The header count is global to the selected kind, not the current page
+    // or a temporary Undated Only/date/search filter.
+    const baseConditions = [
       eq(runtimeSubjectStates.userId, input.userId),
       eq(runtimeSubjectStates.subjectId, input.subjectId),
       inArray(runtimeSubjectStates.kind, CURRENT_SUBJECT_STATE_KINDS),
@@ -205,8 +208,15 @@ implements MindProductRepository {
       productVisibilityCondition(),
     ];
     if (input.kind) {
-      conditions.push(eq(runtimeSubjectStates.kind, input.kind));
+      baseConditions.push(eq(runtimeSubjectStates.kind, input.kind));
     }
+    const [countRow] = await this.db
+      .select({ totalCount: sql<number>`count(*)::int` })
+      .from(runtimeSubjectStates)
+      .where(and(...baseConditions));
+    const totalCount = Number(countRow?.totalCount ?? 0);
+
+    const conditions = [...baseConditions];
     if (input.undated) conditions.push(sql`${memoryOccurredAtSql()} IS NULL`);
     const occurredSort = input.sort === "occurred_desc";
     const occurredOrdering = sql`coalesce(${memoryOccurredAtSql()}, '-infinity'::timestamptz)`;
@@ -249,6 +259,7 @@ implements MindProductRepository {
     const last = pageRows[pageRows.length - 1];
     return {
       rows: pageRows.map(toProductRow),
+      totalCount,
       nextCursor:
         hasMore && last
           ? {
