@@ -294,7 +294,17 @@
         "web/**",
         "src/web-api/**",
         "tests/*web*.test.ts",
-        "tests/pwa-*.test.ts"
+        "tests/pwa-*.test.ts",
+        "tests/diary-comment-spacing.test.ts",
+        "tests/global-state-system.test.ts",
+        "tests/mobile-home-shell.test.ts",
+        "tests/mobile-search-placeholder-polish.test.ts",
+        "tests/mobile-ui-polish-2026-08-10.test.ts",
+        "tests/native-date-layout.test.ts",
+        "tests/retired-product-surfaces.test.ts",
+        "tests/system-data-activity-contract.test.ts",
+        "tests/todo-web-search.test.ts",
+        "tests/universe-monochrome-ui.test.ts"
       ],
       "verification": [
         "web-typecheck",

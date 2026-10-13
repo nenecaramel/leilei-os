@@ -56,7 +56,14 @@ test('Moved chrome retains exact visual payloads, geometry and transition owners
   assert.equal(payload('NativeLivePaginationLabel'),compact(baseline.slice(olderStart,baseline.indexOf('}\n            .buttonStyle',olderStart))));
   for(const marker of ['.overlay(alignment: .top)', '.overlay(alignment: .bottom)']) assert.ok(current.includes(marker));
   for(const modifier of ['.offset(y: ChatPresentationLayout.scrollActionPaintOffset)', '.scale(scale: 0.9)', '.move(edge: .top)', '.accessibilityLabel("Scroll to latest")']) assert.ok(current.includes(modifier));
-  assert.equal(readFileSync(root+'ChatPresentationLayout.swift','utf8'),readFileSync(fixture+'ChatPresentationLayout.swift','utf8'));
+  // a553c665, 3cabae39 and d5a929c1 explicitly adjusted process/turn/action
+  // spacing. Chrome geometry and every other value remain byte-identical.
+  const layout=readFileSync(root+'ChatPresentationLayout.swift','utf8');
+  const accepted=readFileSync(fixture+'ChatPresentationLayout.swift','utf8')
+    .replace('turnSpacing: CGFloat = 21','turnSpacing: CGFloat = 25')
+    .replace('    static let assistantSpacing:', '    static let processSectionSpacing: CGFloat = 18\n    static let assistantSpacing:')
+    .replace('actionSpacing: CGFloat = 12','actionSpacing: CGFloat = 10');
+  assert.equal(layout,accepted);
 });
 test('actual main/current scroll states have identical transitions; a wrong follow condition is rejected', {skip:process.platform!=='darwin'},()=>{
   const old=readFileSync(fixture+'MessageSurface/NativeLiveConversationScrollState.swift','utf8');

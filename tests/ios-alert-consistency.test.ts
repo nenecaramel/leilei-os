@@ -25,8 +25,14 @@ test("Every non-input direct alert has explicit explanatory text", () => {
   assert.match(navigation, /TextField\("New name", text: \$renameTitle\)/);
   assert.match(navigation, /Text\("Enter a new name"\)/);
   assert.equal((navigation.match(/\.alert\(/g) ?? []).length, 1);
+  // Native Live send failures gained a direct, state-backed alert in 32d5505b.
+  const chat = read("Chat/ChatView.swift");
+  assert.match(chat, /\.alert\("Failed", isPresented: Binding\([\s\S]*get: \{ sendFailureMessage != nil \}/);
+  assert.match(chat, /Button\("OK", role: \.cancel\) \{ sendFailureMessage = nil \}/);
+  assert.match(chat, /\} message: \{\s*Text\(sendFailureMessage \?\? ""\)/);
+  assert.equal((chat.match(/\.alert\(/g) ?? []).length, 1);
   for (const file of files(root)) {
-    if (file.endsWith("AppStateSurface.swift") || file.endsWith("UniverseNodeSheet.swift") || file.endsWith("PageContainer.swift")) continue;
+    if (file.endsWith("Chat/ChatView.swift") || file.endsWith("AppStateSurface.swift") || file.endsWith("UniverseNodeSheet.swift") || file.endsWith("PageContainer.swift")) continue;
     assert.doesNotMatch(readFileSync(file, "utf8"), /\.alert\(/, file);
   }
 });

@@ -18,7 +18,9 @@ test("Todo Day Space exposes the shared module search UI and authoritative navig
 });
 
 test("Diary and Day Space use one module search primitive", () => {
-  for (const path of ["pages/DiaryPageHeader.tsx", "pages/DaySpacePage.tsx"]) {
+  // f1fa4659 delegates Diary search tools to ModulePageHeader.
+  assert.match(read("pages/DiaryPageHeader.tsx"), /<ModulePageHeader[\s\S]*searchLabel="搜索日记"/);
+  for (const path of ["pages/ModulePageHeader.tsx", "pages/DaySpacePage.tsx"]) {
     const source = read(path);
     assert.match(source, /ModuleSearchButton/);
     assert.match(source, /ModuleSearchField/);

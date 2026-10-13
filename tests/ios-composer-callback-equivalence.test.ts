@@ -37,7 +37,10 @@ test('Composer extraction preserves action guards and model correction bodies', 
   const disabled = /\.disabled\(\s*(isRuntimeControlInFlight[\s\S]*?)\n\s*\)\n/;
   assert.equal(compact(head.match(disabled)![1]), compact(baseline.match(disabled)![1]));
   const plusDisabled = /\.disabled\(\s*(isRuntimeTurnActive[\s\S]*?attachments\.count >= 8)\s*\)/;
-  assert.equal(compact(head.match(plusDisabled)![1]), compact(baseline.match(plusDisabled)![1]));
+  // 6d39a039 moved the conserved attachment gate onto individual actions so
+  // the separately guarded call entry remains usable when attachments are full.
+  assert.equal(compact(baseline.match(plusDisabled)![1]), 'isRuntimeTurnActive||isSending||attachments.count>=8');
+  assert.ok(compact(head).includes('canAttach:!isRuntimeTurnActive&&!isSending&&attachments.count<8,onStartVoiceCall:onStartVoiceCall,canStartVoiceCall:canStartVoiceCall'));
 });
 
 test('Moved voice bridge retains every gesture, language binding and accessibility operation', () => {
@@ -56,7 +59,13 @@ test('Composer keeps attachment IDs and callback routes through presentation bou
   const menu = presentation.slice(presentation.indexOf('struct ComposerModelMenu:'));
   const menuBody = block(menu, 'Menu {').replaceAll('modelOptions', compact('Array(NativeLiveClaudeModel.allCases.reversed())')).replaceAll('thinkingOptions', compact('Array(model.supportedThinkingModes.reversed())'));
   assert.equal(menuBody, block(oldMenu, 'Menu {'), 'Menu order, Picker style and selection routes');
-  assert.equal(block(presentation.slice(presentation.indexOf('struct ComposerAttachmentMenu:')), 'Menu {'), block(baseline, 'Menu {'));
+  const acceptedAttachmentMenu = block(baseline, 'Menu {')
+    .replace(/(Label\([^}]+\)})/g, '$1.disabled(!canAttach)')
+    + compact(`Divider() Button { onStartVoiceCall?() } label: {
+        Label("Call Claude", systemImage: "phone.fill")
+      }.disabled(!canStartVoiceCall)`);
+  assert.equal(block(presentation.slice(presentation.indexOf('struct ComposerAttachmentMenu:')), 'Menu {'), acceptedAttachmentMenu,
+    'Original attachment callbacks each retain their gate; accepted call has its own gate');
   assert.equal(block(presentation, 'struct NativeLiveComposerTextInput:'), block(baseline, 'struct NativeLiveComposerTextInput:'));
   assert.equal(block(presentation, 'struct ComposerPrimaryActionButtonStyle:'), block(baseline, 'struct ComposerPrimaryActionButtonStyle:'));
   const oldLabel = block(baseline, 'private var composerActionLabel:').replaceAll('actionPresentation.', 'presentation.').replaceAll('composerActionSymbol', 'presentation.symbol').replaceAll('composerActionWeight', 'presentation.weight');

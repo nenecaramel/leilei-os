@@ -51,6 +51,7 @@ test('page retains state wrappers, lifecycle installation and exact UI/scroll wi
   const current = read('ChatView.swift');
   const stateSection = (s: string) => compact(s.slice(s.indexOf('struct ChatView:'), s.indexOf('var body:')).replace(/\bprivate\s+/g, ''));
   const expectedState = stateSection(withoutRetiredBinding(baseline))
+    .replace('@StateObjectvarvoiceInput=VoiceInputController()', '@StateObjectvarvoiceInput=VoiceInputController()@StatevarisNativeCallPresented=false')
     .replace('@StatevarmessageText=""', '@StatevarmessageText=""@StatevarsendFailureMessage:String?');
   assert.equal(stateSection(current), expectedState, 'All page state and AppModel pending-operation ownership stay in place');
   const lifecycle = read('ChatView+ConversationLifecycle.swift');
@@ -66,9 +67,33 @@ test('page retains state wrappers, lifecycle installation and exact UI/scroll wi
         Text(sendFailureMessage ?? "")
     }
   `);
+  // Accepted 6d39a039 adds the call entry and sheet; all older wiring stays exact.
+  const callEntry = compact(`
+    canStartVoiceCall: !isDraftConversation && appModel.isAuthenticated
+        && appModel.activeNativeLiveConversationID != nil
+        && appModel.chatSendState != .sending && !isRuntimeTurnActive
+        && pendingOperation == nil && !voiceInput.isActive,
+    onStartVoiceCall: {
+        voiceInput.cancel()
+        isComposerFocused = false
+        isNativeCallPresented = true
+    },
+  `);
+  const callSheet = compact(`
+    .sheet(isPresented: $isNativeCallPresented) {
+        if let conversationID = appModel.activeNativeLiveConversationID {
+            NavigationStack {
+                NativeLiveCallView(conversationID: conversationID, execution: executionSelection)
+            }
+            .environmentObject(appModel)
+        }
+    }
+  `);
   const expectedBody = compact(block(baseline, 'var body:'))
+    .replace('onRemoveAttachment:', callEntry + 'onRemoveAttachment:')
+    .replace('.photosPicker(', callSheet + '.photosPicker(')
     .replace('.overlay{ifisConversationLoading{', sendFailureAlert + '.overlay{ifisConversationLoading{');
-  assert.equal(compact(expandedBody), expectedBody, 'Only refresh extraction and send-failure alert differ; every other modifier, Task, callback, focus and layout stays identical');
+  assert.equal(compact(expandedBody), expectedBody, 'Only accepted refresh, send-failure alert and guarded call entry differ; every other modifier, Task, callback, focus and layout stays identical');
   assert.equal((block(current, 'var body:').match(/await refreshConversationPage\(\)/g) ?? []).length, 3);
   assert.doesNotMatch(current, /ScrollView|ScrollViewReader|scrollPosition|GeometryReader|\.scrollDismissesKeyboard/);
 });

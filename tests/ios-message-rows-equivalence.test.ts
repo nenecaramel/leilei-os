@@ -12,7 +12,7 @@ const withoutRetiredAlbum=(s:string)=>s
  .replace('if let user = turn.parentUserMessageID { await appModel.refreshAlbumSaves(userMessageID:user,force:isCurrentHead) }', '');
 // Only approved footer timestamp and action-glyph styling are excluded from historical
 // callback conservation. Copy/retry targets, order and disabled remain exact.
-const withoutFooterTimestamp=(s:string)=>s.replaceAll('height:ChatPresentationLayout.actionDiameter,alignment:.leading)', 'height:ChatPresentationLayout.actionDiameter)').replaceAll('.font(.system(size:14,weight:.light))', '').replace('.rotationEffect(.degrees(20))', '').replace('.rotationEffect(.degrees(isCopied ? 0 : 180))', '').replace(/\n        if let timestamp = turn\.timestamp \{[\s\S]*?\n        \}/, '');
+const withoutFooterTimestamp=(s:string)=>s.replaceAll('height:ChatPresentationLayout.actionDiameter,alignment:.leading)', 'height:ChatPresentationLayout.actionDiameter)').replaceAll('.font(.system(size:14,weight:.light))', '').replace('.rotationEffect(.degrees(20))', '').replace('.rotationEffect(.degrees(isCopied ? 0 : 180))', '').replace(/\n        if let timestamp = turn\.(?:timestamp|visibleTimestamp) \{[\s\S]*?\n        \}/, '');
 const compact=(s:string)=>s.replace(/\s/g,'');
 function block(s:string,marker:string) {
  const start=s.indexOf(marker);assert.notEqual(start,-1,marker);const open=s.indexOf('{',start);let depth=1,end=open+1;
@@ -56,7 +56,14 @@ test('Assistant organization conserves activity bindings, refresh owner, indicat
  for(const exact of ['projection:turn.activityProjection', 'expansion:Binding(get:{ appModel.nativeLiveMessageUIState[turn.id] },set:{ appModel.nativeLiveMessageUIState[turn.id] = $0 })', 'onResolveInteraction:onResolveInteraction']) assert.ok(compact(block(current,'private var activityArea:')).includes(compact(exact)),exact);
  equal(block(current,'.task(id:turn.canonicalMessageID)'),withoutRetiredAlbum(block(baseline,'.task(id:turn.canonicalMessageID)')), 'Mind refresh order/head/IDs');
  equal(block(current,'private var mindWrites:'),block(baseline,'private var mindWrites:'),'Mind lookup');
- const rawAction=withoutFooterTimestamp(read('NativeLiveAssistantActions.swift'));
+ // 2e6505e0 hides the footer while generating; pin the accepted footer itself
+ // before comparing the unchanged copy/retry actions against their old bodies.
+ const footer=read('NativeLiveAssistantActions.swift');
+ equal(block(footer,'if let timestamp = turn.visibleTimestamp'),
+   'Text(MessageTimestampFormatter.string(from:timestamp)).font(.system(size:12)).tracking(0.12).foregroundStyle(.secondary)',
+   'Accepted generation-aware footer timestamp');
+ assert.doesNotMatch(footer,/if let timestamp = turn\.timestamp/);
+ const rawAction=withoutFooterTimestamp(footer);
  const action=process.env.ROWS_CALLBACK_NEGATIVE ? rawAction.replace('onRetryMessage(user)','onRetryMessage(turn.id)'):rawAction;
  equal(block(action,'HStack('),block(baseline,'HStack('),'copy and retry callbacks/targets/order/disabled');
  assert.ok(compact(action).includes(compact('}.font(.system(size:14)).foregroundStyle(.secondary).buttonStyle(.plain).padding(.top,ChatPresentationLayout.actionTopInset)')));

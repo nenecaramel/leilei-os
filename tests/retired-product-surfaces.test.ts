@@ -135,9 +135,10 @@ test("search export and restore contracts expose active modules only", () => {
     );
   }
 
+  // e6b52e49 adds active Mind Memory search, distinct from retired Memory records.
   assert.match(
     search,
-    /DEFAULT_MODULES = \["diary", "todo", "universe"\]/,
+    /DEFAULT_MODULES = \["diary", "todo", "universe", "mind"\]/,
   );
   assert.doesNotMatch(search, /"memory"|"task"|"shared_paper"/);
   assert.match(

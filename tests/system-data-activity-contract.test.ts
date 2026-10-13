@@ -10,7 +10,8 @@ const dataContentSource = readFileSync(
   new URL("../web/src/pages/SystemDataPageContent.tsx", import.meta.url),
   "utf8",
 );
-const dataSource = dataWrapperSource + dataContentSource;
+// Summary rows/order were extracted without changing Data contracts.
+const summarySource = readFileSync(new URL("../web/src/pages/system-data/SystemDataSummary.tsx", import.meta.url), "utf8");
 test("Data reads active-module counts and exposes active export actions", () => {
   assert.match(dataWrapperSource, /useWebApiClient/);
   assert.match(dataContentSource, /"\/system\/data"/);
@@ -21,7 +22,7 @@ test("Data reads active-module counts and exposes active export actions", () => 
     "Active",
     "Archived",
   ]) {
-    assert.match(dataContentSource, new RegExp(label));
+    assert.match(dataContentSource + summarySource, new RegExp(label));
   }
 
   // Rendered module rows are verified by system-data-activity-ui.test.ts.
@@ -30,7 +31,7 @@ test("Data reads active-module counts and exposes active export actions", () => 
   assert.match(dataContentSource, /"\/system\/export"/);
   assert.match(dataContentSource, /Full Backup/);
   assert.doesNotMatch(dataContentSource, /export\?scope=/);
-  const order = dataContentSource.match(/const IMPORT_MODULE_ORDER: WebImportModule\[\] = \[([\s\S]*?)\];/)?.[1];
+  const order = summarySource.match(/const IMPORT_MODULE_ORDER: WebImportModule\[\] = \[([\s\S]*?)\];/)?.[1];
   assert.ok(order);
   assert.deepEqual([...order.matchAll(/"([a-z_]+)"/g)].map((match) => match[1]),
     ["diary", "diary_comments", "todo", "workspaces", "conversations", "mind", "universe"]);

@@ -42,7 +42,7 @@ test("Memory and Diary content search stays real 16px while looking like 14px", 
   assert.match(input, /max-width:\s*114\.285714%\s*!important;/);
 });
 
-test("Chat Archive is removed from navigation, routing, and placeholder surfaces", () => {
+test("Chat Archive is removed from navigation, routing, and placeholder surfaces", async () => {
   assert.doesNotMatch(navigation, /Chat Archive|chat-archive|ArchiveIcon/);
   assert.doesNotMatch(app, /Chat Archive|chat-archive|PlaceholderPage/);
   assert.doesNotMatch(routeScroll, /chat-archive/);
@@ -54,5 +54,8 @@ test("Chat Archive is removed from navigation, routing, and placeholder surfaces
   );
   assert.match(app, /path="universe"[\s\S]*?<UniversePage\s*\/>/);
   assert.match(universePage, /import \{ UniverseMobileMap \}/);
-  assert.match(universePage, /className="universe-cosmos universe-cosmos-loading"/);
+  assert.match(universePage, /<UniverseFrame><UniverseLoadingState \/><\/UniverseFrame>/);
+  // Loading chrome moved with the presentation helpers in 7d4c54b2.
+  const presentation = await readFile("web/src/pages/universe/UniversePagePresentation.tsx", "utf8");
+  assert.match(presentation, /className="universe-cosmos universe-cosmos-loading"/);
 });
