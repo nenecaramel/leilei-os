@@ -74,6 +74,8 @@ class Repository implements MindProductRepository {
   async list() {
     return {
       rows: this.row ? [this.row] : [],
+      // Server count is not the size of the limited page.
+      totalCount: 123,
       nextCursor: {
         updatedAt: "2026-09-26T00:00:00.000Z",
         id: "44444444-4444-4444-8444-444444444444",
@@ -122,6 +124,7 @@ test("Mind product list exposes bounded product projection and opaque cursor", a
 
   const page = await service.list({ userId, limit: 50 });
   assert.equal(page.items.length, 1);
+  assert.equal(page.totalCount, 123, "count must not be derived from page length");
   assert.deepEqual(page.items[0], {
     id: stateId,
     kind: "memory",
@@ -338,12 +341,13 @@ test("undated list keeps sorting and fences cursors against a different filter",
   const calls: any[] = [];
   (repository as MindProductRepository).list = async (input: any) => {
     calls.push(input);
-    return {rows:[row()],nextCursor:{id:stateId,updatedAt:"2026-10-09T00:00:00Z"}};
+    return {rows:[row()],totalCount:4,nextCursor:{id:stateId,updatedAt:"2026-10-09T00:00:00Z"}};
   };
   const service = new MindProductService(repository,"G");
   const page = await service.list({userId,kind:"memory",undated:true} as any);
   assert.equal(calls[0].undated,true);
   assert.equal(calls[0].sort,"updated_desc");
+  assert.equal(page.totalCount, 4, "unfiltered count remains global under undated filter");
   await service.list({userId,kind:"memory",undated:true,cursor:page.nextCursor} as any);
   await assert.rejects(service.list({userId,kind:"memory",cursor:page.nextCursor}), MindProductServiceError);
   const all = await service.list({userId,kind:"memory"});
