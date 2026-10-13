@@ -515,6 +515,7 @@ test("live Mind excludes legacy storage kinds without changing stored rows", { s
     let cursor: string | null = null;
     do {
       const page = await service.list({ userId, limit: 1, cursor });
+      assert.equal(page.totalCount, current.length, "count excludes legacy states on every page");
       ids.push(...page.items.map(({ id }) => id));
       cursor = page.nextCursor;
       assert.ok(ids.length <= current.length, "legacy rows must not occupy a page");
@@ -558,9 +559,11 @@ test("undated Mind list filters before pagination without changing either existi
   });
   const service = new MindProductService(new DrizzleMindProductRepository(database.db),"G");
   const expected: string[] = [];
+  let datedId: string | null = null;
   for (let index=0;index<4;index++) {
     const item = await service.createManual({userId:user.id,kind:"memory",text:`list fixture ${index}`,idempotencyKey:crypto.randomUUID(),occurredAt:index===2 ? "2026-10-09T00:00:00Z" : null});
     if(index!==2) expected.push(item.id);
+    else datedId = item.id;
   }
   for(const sort of ["updated_desc","occurred_desc"] as const) {
     const ids: string[] = [];
@@ -568,6 +571,7 @@ test("undated Mind list filters before pagination without changing either existi
     do {
       const page = await service.list({userId:user.id,kind:"memory",sort,undated:true,limit:1,cursor});
       assert.equal(page.items.length,1);
+      assert.equal(page.totalCount,4,"Undated Only must retain the full Memory count");
       assert.equal(page.items[0]!.occurredAt,null);
       ids.push(page.items[0]!.id);
       cursor = page.nextCursor;
@@ -575,6 +579,11 @@ test("undated Mind list filters before pagination without changing either existi
     assert.deepEqual([...ids].sort(),[...expected].sort());
     assert.equal(new Set(ids).size,3);
     const unfiltered = await service.list({userId:user.id,kind:"memory",sort});
+    assert.equal(unfiltered.totalCount,4);
     assert.deepEqual(ids,unfiltered.items.filter(item=>item.occurredAt===null).map(item=>item.id));
   }
+  assert.ok(datedId);
+  await service.delete({userId:user.id,stateId:datedId});
+  const afterDelete = await service.list({userId:user.id,kind:"memory",undated:true,limit:1});
+  assert.equal(afterDelete.totalCount,3,"count reflects deletion despite page limit");
 });
