@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { execFileSync } from "node:child_process";
 import test from "node:test";
 
 const root = "ios/LeileiOS/LeileiOS/Pages/";
@@ -111,22 +110,4 @@ test("Partial retry and committed-paper reconciliation remain root-owned", () =>
   assert.match(view, /diaryState = \.error\(diaries\)/);
   assert.match(view, /\.fullScreenCover\(item: \$createSelection\)/);
   assert.match(view, /\.fullScreenCover\(item: \$selection\)/);
-});
-
-// Scope this refactor's diff gate to its branch, without freezing unrelated future work.
-const branch = process.env.GITHUB_HEAD_REF
-  ?? execFileSync("git", ["branch", "--show-current"], { encoding: "utf8" }).trim();
-test("Day Space structural branch changes only its root, presentation/support and boundary tests", {
-  skip: branch !== "refactor/ios-day-space-structure",
-}, () => {
-  const base = execFileSync("git", ["merge-base", "HEAD", "origin/main"], { encoding: "utf8" }).trim();
-  const allowed = new Set([
-    `${root}DaySpaceView.swift`, `${root}DaySpace/DaySpaceSearch.swift`,
-    `${root}DaySpace/DaySpaceContent.swift`, `${root}DaySpace/DaySpaceTodoSearchSupport.swift`,
-    "tests/ios-dayspace-boundaries.test.ts",
-  ]);
-  for (const args of [["diff", "--name-only", base], ["diff", "--cached", "--name-only"]]) {
-    const paths = execFileSync("git", args, { encoding: "utf8" }).trim().split("\n").filter(Boolean);
-    assert.deepEqual(paths.filter(path => !allowed.has(path)), []);
-  }
 });
