@@ -172,6 +172,26 @@
         "tests/ios-universe-import-parser.test.ts"
       ],
       "cwd": "."
+    },
+    "import-planning": {
+      "command": [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "tests/import-planner.test.ts",
+        "tests/import-planner-boundaries.test.ts",
+        "tests/import-schema.test.ts",
+        "tests/import-canonical.test.ts",
+        "tests/import-service-base.test.ts",
+        "tests/import-service-conversation.test.ts",
+        "tests/import-service-mind.test.ts",
+        "tests/import-service-diary-universe.test.ts",
+        "tests/import-service-projects.test.ts",
+        "tests/import-api.test.ts",
+        "tests/data-import-retention.test.ts"
+      ],
+      "cwd": "."
     }
   },
   "surfaces": [
@@ -432,6 +452,7 @@
         "src/app/**",
         "src/config/**",
         "src/domains/**",
+        "tests/import-planner*.test.ts",
         "Dockerfile*",
         "pnpm-lock.yaml",
         ".github/workflows/**"
@@ -517,6 +538,26 @@
       ],
       "gates": [
         "ios-import-parser"
+      ]
+    },
+    {
+      "paths": [
+        "src/domains/import/import-planner*.ts",
+        "tests/import-planner.test.ts",
+        "tests/import-planner-boundaries.test.ts",
+        "tests/import-schema.test.ts",
+        "tests/import-canonical.test.ts",
+        "tests/import-service-base.test.ts",
+        "tests/import-service-conversation.test.ts",
+        "tests/import-service-mind.test.ts",
+        "tests/import-service-diary-universe.test.ts",
+        "tests/import-service-projects.test.ts",
+        "tests/import-api.test.ts",
+        "tests/data-import-retention.test.ts",
+        "tests/helpers/import-service-fixtures.ts"
+      ],
+      "gates": [
+        "import-planning"
       ]
     }
   ]
