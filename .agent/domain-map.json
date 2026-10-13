@@ -481,7 +481,8 @@
         "tests/import-planner*.test.ts",
         "Dockerfile*",
         "pnpm-lock.yaml",
-        ".github/workflows/**"
+        ".github/workflows/**",
+        "tests/import-repository.integration.test.ts"
       ],
       "verification": [
         "root-typecheck",
@@ -584,7 +585,10 @@
         "tests/import-service-projects.test.ts",
         "tests/import-api.test.ts",
         "tests/data-import-retention.test.ts",
-        "tests/helpers/import-service-fixtures.ts"
+        "tests/helpers/import-service-fixtures.ts",
+        "src/domains/import/import-repository*.ts",
+        "src/domains/import/import-current-state-*.ts",
+        "tests/import-repository.integration.test.ts"
       ],
       "gates": [
         "import-planning"
@@ -660,6 +664,26 @@
         "RUN_ISOLATED_POSTGRES_REGRESSIONS": "1"
       },
       "instructions": "This destructive suite verifies a localhost test database before migrations. Explicitly provision that target; never use production. Not run by agent:verify."
+    },
+    {
+      "id": "import-repository-db",
+      "paths": [
+        "src/domains/import/import-repository*.ts",
+        "src/domains/import/import-current-state-*.ts",
+        "tests/import-repository.integration.test.ts"
+      ],
+      "command": [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "tests/import-repository.integration.test.ts"
+      ],
+      "cwd": ".",
+      "environment": {
+        "RUN_IMPORT_DATABASE_TEST": "1"
+      },
+      "instructions": "Explicitly provision and verify an isolated local PostgreSQL target; never inherit a production DATABASE_URL. Apply test migrations there before executing. Not run by agent:verify."
     }
   ]
 }
