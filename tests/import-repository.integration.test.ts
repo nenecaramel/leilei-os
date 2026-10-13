@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../src/database/schema.js";
@@ -865,3 +865,47 @@ test(
     }
   },
 );
+
+test('current-state reads preserve tenant collision sets and the transaction executor through rollback and commit', { skip: !runIntegration }, async () => {
+  const client = postgres(databaseUrl!, { max: 2, prepare: false, ssl: false });
+  const db = drizzle(client, { schema });
+  const firstUser = randomUUID(), secondUser = randomUUID();
+  const firstDiary = randomUUID(), secondDiary = randomUUID(), rolledBackDiary = randomUUID(), committedDiary = randomUUID();
+  const now = new Date('2026-10-13T00:00:00.000Z');
+  try {
+    await db.insert(schema.users).values([firstUser, secondUser].map(id => ({ id, email: `reader-${id}@example.invalid`, displayName: 'Reader fixture', status: 'active' as const })));
+    for (const [id, userId] of [[firstDiary, firstUser], [secondDiary, secondUser]]) {
+      await db.insert(schema.diaryEntries).values({ id, userId, title: 'Fixture', content: 'Synthetic body', date: '2026-10-13', tags: [], mood: null,
+        source: 'chatgpt_mcp', author: 'C', status: 'active', idempotencyKey: `reader-${id}`, requestHash: 'a'.repeat(64), createdAt: now, updatedAt: now });
+    }
+    const repository = new DrizzleImportRepository(db);
+    const original = await repository.readCurrentState(firstUser);
+    assert.deepEqual(original.diary.map(row => row.id), [firstDiary]);
+    assert.ok(original.foreign_diary_ids?.has(secondDiary));
+    assert.ok(!original.foreign_diary_ids?.has(firstDiary));
+    assert.deepEqual(original.mind, []);
+    assert.deepEqual(original.conversations?.conversations, []);
+    const record = { ...original.diary[0], id: rolledBackDiary };
+    await assert.rejects(repository.withTransaction(async transaction => {
+      await transaction.insertDiary(firstUser, record);
+      const inside = await transaction.readCurrentState(firstUser);
+      assert.deepEqual(new Set(inside.diary.map(row => row.id)), new Set([firstDiary, rolledBackDiary]));
+      assert.deepEqual((await repository.readCurrentState(firstUser)).diary.map(row => row.id), [firstDiary],
+        'external reads cannot see transaction-local inserts');
+      throw new Error('deliberate reader rollback');
+    }), /deliberate reader rollback/);
+    assert.deepEqual(await repository.readCurrentState(firstUser), original, 'rollback preserves the entire snapshot and collision sets');
+    await repository.withTransaction(async transaction => {
+      await transaction.insertDiary(firstUser, { ...record, id: committedDiary });
+      assert.deepEqual(new Set((await transaction.readCurrentState(firstUser)).diary.map(row => row.id)), new Set([firstDiary, committedDiary]));
+    });
+    const committed = await repository.readCurrentState(firstUser);
+    assert.deepEqual(new Set(committed.diary.map(row => row.id)), new Set([firstDiary, committedDiary]));
+    assert.ok(committed.foreign_diary_ids?.has(secondDiary));
+    assert.ok(!committed.foreign_diary_ids?.has(rolledBackDiary));
+  } finally {
+    await db.delete(schema.diaryEntries).where(inArray(schema.diaryEntries.userId, [firstUser, secondUser]));
+    await db.delete(schema.users).where(inArray(schema.users.id, [firstUser, secondUser]));
+    await client.end();
+  }
+});
