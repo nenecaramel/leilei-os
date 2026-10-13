@@ -245,6 +245,35 @@
         "tests/dependency-security.test.ts"
       ],
       "cwd": "."
+    },
+    "test-runner": {
+      "command": [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "tests/test-runner.test.ts"
+      ],
+      "cwd": "."
+    },
+    "web-auth-behavior": {
+      "command": [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--tsconfig",
+        "web/tsconfig.app.json",
+        "--import",
+        "./tests/register-css-loader.mjs",
+        "--test",
+        "tests/pwa-ios-auth-login.test.ts",
+        "tests/pwa-auth-persistence.test.ts",
+        "tests/pwa-state.test.ts",
+        "tests/pwa-status.test.ts",
+        "tests/pwa-registration-contract.test.ts"
+      ],
+      "cwd": ".",
+      "node_major": 24
     }
   },
   "surfaces": [
@@ -581,6 +610,41 @@
         "package.json",
         "pnpm-lock.yaml",
         ".github/workflows/ci.yml"
+      ]
+    },
+    {
+      "id": "test-maintainability",
+      "name": "Runtime contracts / test execution",
+      "paths": [
+        "scripts/run-tests.mjs",
+        "scripts/test-timing-reporter.mjs",
+        "tests/test-runner.test.ts",
+        "tests/test-command-contract.test.ts",
+        "tests/helpers/auth-component-harness.ts",
+        "tests/pwa-ios-auth-login.test.ts",
+        "tests/pwa-auth-persistence.test.ts",
+        "docs/runtime-concurrency-contracts.md",
+        "docs/test-execution.md"
+      ],
+      "verification": [
+        "test-runner",
+        "web-auth-behavior",
+        "root-typecheck"
+      ],
+      "runtime_locations": [
+        "Mac"
+      ],
+      "local_refresh": {
+        "mac_daemon": false,
+        "ios_rebuild": false,
+        "instructions": "Test-only changes: no daemon restart, Hook install or device refresh."
+      },
+      "production_acceptance": {
+        "required": false,
+        "instructions": "No application runtime code changes. Full Node 24 serial/parallel comparison complements the selected local gates."
+      },
+      "conflict_hotspots": [
+        "package.json"
       ]
     }
   ],

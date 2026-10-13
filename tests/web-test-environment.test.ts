@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { testPlan } from "../scripts/run-tests.mjs";
 import test from "node:test";
 
 function browserModule(code: string) {
@@ -11,8 +12,8 @@ function browserModule(code: string) {
 }
 
 test("Web component tests use the same automatic JSX runtime as the Web build", () => {
-  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-  assert.match(pkg.scripts.test, /--tsconfig \.\/web\/tsconfig\.app\.json/);
+  const plan = testPlan(resolve("."), [], {});
+  assert.equal(plan.argv[plan.argv.indexOf("--tsconfig") + 1], resolve("web/tsconfig.app.json"));
   const result = browserModule(`import React from './web/node_modules/react/index.js'; import { renderToStaticMarkup } from './web/node_modules/react-dom/server.js'; import { PaperAuthorSignature } from './web/src/pages/PaperAuthorSignature.tsx'; console.log(renderToStaticMarkup(React.createElement(PaperAuthorSignature, {value:'L',editable:false,placement:'inline'})));`);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, />L</);
