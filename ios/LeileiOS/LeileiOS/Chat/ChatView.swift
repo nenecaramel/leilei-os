@@ -16,9 +16,9 @@ struct ChatView: View {
     @State private var voiceLanguage: VoiceInputLanguage = .english
     @State var messageText = ""
     @State var sendFailureMessage: String?
-    @State var model: NativeLiveClaudeModel = .opus55
+    @AppStorage("nativeLive.model") var model: NativeLiveClaudeModel = .opus55
     @State var thinking: NativeLiveThinkingMode = .adaptive
-    @State var effort: NativeLiveEffortLevel = .high
+    @AppStorage("nativeLive.effort") var effort: NativeLiveEffortLevel = .high
     @State var editDraft: NativeLiveEditDraft?
     var pendingOperation: NativeLivePendingOperation? {
         get { appModel.nativeLivePendingOperation }

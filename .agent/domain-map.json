@@ -101,7 +101,8 @@
         "tsx",
         "--test",
         "tests/ios-native-live-current-path-idle.test.ts",
-        "tests/ios-settings-export-restore-v4.test.ts"
+        "tests/ios-settings-export-restore-v4.test.ts",
+        "tests/ios-chat-selection-persistence.test.ts"
       ],
       "cwd": "."
     },
