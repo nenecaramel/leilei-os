@@ -194,7 +194,10 @@ struct NativeLiveIMessageTextBubbleList: View {
                                     onRetry: onRetry,
                                     isRetryDisabled: isRetryDisabled
                                 )
-                                Spacer(minLength: ChatPresentationLayout.iMessageUserLeadingClearance)
+                                .frame(maxWidth:.infinity,alignment:.leading)
+                                // Mirror the user's exact 70pt clearance so
+                                // the wrapped bubble receives the full width.
+                                Color.clear.frame(width:ChatPresentationLayout.iMessageUserLeadingClearance)
                             }
                         } else {
                             NativeLiveIMessageTextBubble(side: side) {
