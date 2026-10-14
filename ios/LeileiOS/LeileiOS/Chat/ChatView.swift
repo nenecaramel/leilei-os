@@ -276,6 +276,10 @@ struct ChatView: View {
             }
         }
         .environment(\.chatTheme, selectedChatTheme)
+        .environment(
+            \.iMessageWallpaperVisible,
+            selectedChatTheme == .iMessage && wallpaperImage != nil
+        )
     }
 
     // Exactly one composer owner. Original and iMessage both use the native
