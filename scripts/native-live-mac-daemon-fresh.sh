@@ -92,9 +92,18 @@ else
   require_mac_safe_worktree
 fi
 
+node_version="$(node --version)"
+if [[ "$node_version" != v22.* ]]; then
+  echo "[mac-daemon:fresh] Node 22 is required (found $node_version); select Node 22 in PATH before retrying; old daemon was not stopped" >&2
+  exit 1
+fi
+echo "[mac-daemon:fresh] Node: $node_version"
 echo "[mac-daemon:fresh] starting from: $(git rev-parse --short HEAD)"
 
-daemon_pattern='tsx scripts/native-live-mac-daemon.ts'
+# tsx launches a separate Node process; stopping only its launcher leaves the
+# actual daemon alive and its single-instance lock correctly blocks restart.
+# Anchor the executable and script suffix so shell text/lookalikes do not match.
+daemon_pattern='^([^[:space:]]*/)?(node|tsx)([[:space:]]|$).*scripts/native-live-mac-daemon[.]ts([[:space:]]|$)'
 
 echo "[mac-daemon:fresh] stopping old Mac daemon..."
 pkill -f "$daemon_pattern" 2>/dev/null || true
