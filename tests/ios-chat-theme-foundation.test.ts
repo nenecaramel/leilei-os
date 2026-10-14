@@ -141,6 +141,7 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   const assistant = read('Chat/MessageSurface/NativeLiveAssistantTurnRow.swift');
   const history = read('Chat/MessageSurface/NativeLiveHistoryMessageRow.swift');
   const bubble = read('Chat/MessageSurface/NativeLiveIMessageTextBubbles.swift');
+  const actions = read('Chat/MessageSurface/NativeLiveMessageActions.swift');
   const markdown = read('Chat/MessageSurface/ChatMarkdown.swift');
   const math = read('Chat/MessageSurface/NativeLiveMathRenderer.swift');
 
@@ -161,17 +162,39 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   assert.match(bubble, /guard textNode, !isDivider else/);
   assert.match(bubble, /NativeLiveVisualNodeView\(node: segment\.node, role: presentation\.role\)/);
   assert.match(user, /NativeLiveIMessageTextBubbleList\(presentation: presentation, side: \.outgoing\)/);
-  assert.match(assistant, /NativeLiveIMessageTextBubbleList\(presentation:turn\.bodyPresentation,side:\.incoming\)/);
+  assert.match(assistant, /NativeLiveIMessageTextBubbleList\(\s*presentation: turn\.bodyPresentation,\s*side: \.incoming/);
   assert.match(history, /NativeLiveIMessageTextBubbleList\(presentation: presentation, side: \.outgoing\)/);
-  assert.match(history, /NativeLiveIMessageTextBubbleList\(presentation: presentation, side: \.incoming\)/);
+  assert.match(history, /NativeLiveIMessageTextBubbleList\(\s*presentation: presentation,\s*side: \.incoming/);
 
-  // Original footer remains callable; iMessage hides its chrome but retains
-  // Copy and Retry in the message context menu, guarded by original eligibility.
+  // Original footer remains intact; no row-level context menu intercepts
+  // thinking, tool controls, specialized blocks or links in iMessage mode.
   assert.match(assistant, /if chatTheme == \.original \{\s*nativeLiveAssistantActions\(/);
-  assert.match(assistant, /Button\("Copy"\) \{ onCopyMessage\(text\) \}/);
-  assert.match(assistant, /Button\("Retry"\) \{ onRetryMessage\(user\) \}/);
-  assert.match(assistant, /if turn\.canRetry, let user = turn\.parentUserMessageID/);
-  assert.match(assistant, /\.disabled\(isTurnInFlight\)/);
+  assert.doesNotMatch(assistant, /content\.contextMenu/);
+  assert.match(assistant, /guard turn\.canRetry, let userID = turn\.parentUserMessageID else \{ return nil \}/);
+  assert.match(assistant, /onRetryMessage\(userID\)/);
+  assert.match(assistant, /timestamp: turn\.visibleTimestamp\.map \{ MessageTimestampFormatter\.string\(from: \$0\) \}/);
+  assert.match(assistant, /onCopy: onCopyMessage/);
+  assert.match(assistant, /onRetry: retryAction/);
+  assert.match(assistant, /isRetryDisabled: isTurnInFlight/);
+
+  // Every assistant *text bubble*, not the whole row, receives the same
+  // UIKit long-press interaction used by the user bubble.
+  assert.match(bubble, /private struct NativeLiveIMessageAssistantTextBubble: View/);
+  assert.match(bubble, /IMessageAssistantBubbleContextMenuInteraction\(/);
+  assert.match(bubble, /\.overlay \{\s*IMessageAssistantBubbleContextMenuInteraction\(/);
+  assert.match(bubble, /\.translationPresentation\(/);
+  assert.match(bubble, /isPresented: \$showsTranslation/);
+  assert.match(bubble, /text: plainText/);
+  assert.doesNotMatch(bubble, /replacementAction:/);
+  assert.match(actions, /struct IMessageAssistantBubbleContextMenuInteraction: UIViewRepresentable/);
+  assert.match(actions, /UIContextMenuInteraction\(delegate: context\.coordinator\)/);
+  assert.match(actions, /UIAction\(title: "Copy"/);
+  assert.match(actions, /title: "Retry"/);
+  assert.match(actions, /self\.isRetryDisabled \? \[\.disabled\] : \[\]/);
+  assert.match(actions, /UIAction\(title: "Translate"/);
+  assert.match(actions, /UIMenu\(title: stamp, options: \.displayInline, children: actions\)/);
+  assert.match(history, /timeZoneIdentifier: timeZone/);
+  assert.match(history, /UIPasteboard\.general\.string = text/);
   assert.match(history, /if chatTheme == \.iMessage \{[\s\S]*?\} else \{[\s\S]*?MessageTimestampFormatter\.string/);
 
   // Shared markdown renderers style only iMessage, leaving both roles'
