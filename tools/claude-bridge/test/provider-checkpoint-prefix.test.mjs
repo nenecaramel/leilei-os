@@ -101,3 +101,26 @@ test("only an unanswered call's single result is kept: never a reused UUID, a du
     entry("x1", "t1", "user", result("A")), entry("x2", "t1", "user", result("A")), entry("r2", "t2", "user", result("B")), entry("a", "r2")];
   assert.deepEqual(durableCheckpointPrefix(competing, "a").prefix.map(e => e.uuid), ["u", "t1", "t2", "r2", "a"]);
 });
+
+test("sibling result UUIDs must identify one record, even with an unchanged parent", () => {
+  const use = id => ({ message: { content: [{ type: "tool_use", id }] } });
+  const result = text => entry("r1", "t1", "user", { message: { content: [{ type: "tool_result", tool_use_id: "A", content: text }] } });
+  const start = [entry("u", null, "user"), entry("t1", "u", "assistant", use("A")), entry("t2", "t1", "assistant", use("B"))];
+  const end = [entry("r2", "t2", "user", { message: { content: [{ type: "tool_result", tool_use_id: "B" }] } }), entry("a", "r2")];
+  const plain = entry("r1", "t1", "user", { message: { content: [{ type: "text", text: "synthetic unrelated text" }] } });
+  for (const duplicates of [
+    [plain, result("answer")], [result("answer"), plain],
+    [result("old answer"), result("new answer")],
+    [result("answer"), result("answer")],
+    [{ uuid: "r1", type: "user", message: plain.message }, result("answer")],
+  ]) {
+    const entries = [...start, ...duplicates, ...end];
+    const before = structuredClone(entries);
+    assert.deepEqual(durableCheckpointPrefix(entries, "a").prefix.map(e => e.uuid), ["u", "t1", "t2", "r2", "a"]);
+    assert.deepEqual(entries, before, "ambiguous candidates do not mutate durable history");
+  }
+  const selected = result("answer");
+  assert.deepEqual(durableCheckpointPrefix([
+    ...start, { ...selected, isSidechain: true }, selected, ...end, result("later"),
+  ], "a").prefix.map(e => e.uuid), ["u", "t1", "t2", "r1", "r2", "a"], "sidechain and post-checkpoint records do not invalidate a unique canonical candidate");
+});

@@ -11,7 +11,13 @@ export function durableCheckpointPrefix(entries, checkpointId) {
   const prefix = entries.slice(0, index + 1);
   const carriers = new Map();
   const conflicts = new Set();
+  const uuidCounts = new Map();
   for (const entry of prefix) {
+    // Count every non-sidechain record, including non-carriers: the final
+    // projection selects by UUID, so a sibling candidate must be unique.
+    if (entry && !entry.isSidechain && typeof entry.uuid === "string") {
+      uuidCounts.set(entry.uuid, (uuidCounts.get(entry.uuid) ?? 0) + 1);
+    }
     if (!entry || entry.isSidechain || !["user", "assistant", "system", "attachment"].includes(entry.type)
       || typeof entry.uuid !== "string" || !Object.hasOwn(entry, "parentUuid")) continue;
     if (carriers.has(entry.uuid) && carriers.get(entry.uuid).parentUuid !== entry.parentUuid) {
@@ -45,7 +51,7 @@ export function durableCheckpointPrefix(entries, checkpointId) {
   const candidates = new Map(), claims = new Map();
   for (const [uuid, entry] of carriers) {
     const content = entry.message?.content;
-    if (entry.type !== "user" || ancestry.has(uuid) || conflicts.has(uuid) || !ancestry.has(entry.parentUuid)
+    if (entry.type !== "user" || ancestry.has(uuid) || conflicts.has(uuid) || uuidCounts.get(uuid) !== 1 || !ancestry.has(entry.parentUuid)
       || carriers.get(entry.parentUuid).type !== "assistant" || !Array.isArray(content) || !content.length
       || !content.every(block => block?.type === "tool_result" && calls.has(block.tool_use_id) && !answered.has(block.tool_use_id))) continue;
     candidates.set(uuid, content.map(block => block.tool_use_id));
