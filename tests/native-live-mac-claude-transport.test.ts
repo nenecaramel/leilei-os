@@ -173,3 +173,30 @@ test("Agent SDK appends the exact silence-wake prompt with real paragraph breaks
   assert.match(murmurPrompt, /<murmur>\.\.\.<\/murmur>/u);
   assert.match(murmurPrompt, /It is not Mind and is not for recall\./u);
 });
+
+test("the real Mac transport factory auto-approves tools but still routes user questions", async () => {
+  const { runtime } = await createNativeLiveMacClaudeTransport({}, process.cwd());
+  let questions = 0;
+  const fixture = runtime as unknown as {
+    queryImpl: (input: { options: { canUseTool: (name: string, input: Record<string, unknown>) => Promise<{
+      behavior: string; updatedInput?: { answers: Record<string, string> };
+    }> } }) => unknown;
+  };
+  fixture.queryImpl = ({ options }) => ({
+    close() {},
+    async *[Symbol.asyncIterator]() {
+      assert.deepEqual(await options.canUseTool("Write", { file_path: "/synthetic", content: "fixture" }), { behavior: "allow" });
+      const answer = await options.canUseTool("AskUserQuestion", { questions: [{ question: "Synthetic choice?", options: [] }] });
+      assert.equal(answer.updatedInput?.answers["Synthetic choice?"], "Chosen");
+      yield { type: "system", subtype: "init", session_id: "factory-permission-fixture" };
+      yield { type: "result", subtype: "success", session_id: "factory-permission-fixture", result: "fixture" };
+    },
+  });
+  assert.ok(runtime.executeTurn);
+  await runtime.executeTurn("synthetic", {
+    mode: "new", parentProviderSessionId: null, streaming: true,
+    permissionHandler: async () => assert.fail("must not create a permission interaction"),
+    questionHandler: async () => { questions++; return { decision: "answer", answers: { "Synthetic choice?": "Chosen" } }; },
+  });
+  assert.equal(questions, 1);
+});

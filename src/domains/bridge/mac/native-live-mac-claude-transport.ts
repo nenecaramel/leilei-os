@@ -153,6 +153,7 @@ export async function createNativeLiveMacClaudeTransport(
       environment: NodeJS.ProcessEnv;
       cwd: string;
       sessionStore?: unknown;
+      toolPermissionPolicy: "auto_allow";
       mcpServerConfig?: NativeLiveMacMcpServerConfig;
     }) => NativeLiveMacClaudeTransport;
   };
@@ -162,6 +163,7 @@ export async function createNativeLiveMacClaudeTransport(
     runtime: new AgentSdkClaudeTransport({
       environment: sanitizeNativeLiveClaudeEnvironment(environment),
       cwd: normalizedWorkingDirectory,
+      toolPermissionPolicy: "auto_allow",
       ...(sessionStore ? { sessionStore } : {}),
       ...(mcpServerConfig ? { mcpServerConfig } : {}),
     }),

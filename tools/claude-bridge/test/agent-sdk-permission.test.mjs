@@ -519,3 +519,44 @@ test("explicit LeileiOS read allowlist contains only registered pure reads", asy
   }
   assert.equal(calls, 0);
 });
+
+test("owner auto-allow approves native and external tools without a permission interaction", async () => {
+  const events = new EventEmitter(), requests = [], decisions = [];
+  events.on("permission-request", request => requests.push(request));
+  events.on("permission-decision", decision => decisions.push(decision));
+  const callback = createAgentSdkPermissionCallback({
+    toolPermissionPolicy: "auto_allow", events,
+    permissionHandler: () => assert.fail("must not ask the owner for tool permission"),
+  });
+  for (const tool of ["Bash", "Write", "Edit", "Read", "Monitor", "WebFetch", "Artifact", "Skill", "ExitPlanMode", "mcp__external__write", "FutureTool"]) {
+    assert.deepEqual(await callback(tool, { synthetic: true }, { toolUseID: tool }), { behavior: "allow" });
+  }
+  assert.equal(requests.length, 0);
+  assert.equal(decisions.length, 11);
+  assert.ok(decisions.every(event => event.trustedPolicy === "owner_auto_allow"));
+});
+
+test("auto-allow without a question handler does not invent AskUserQuestion answers", async () => {
+  const callback = createAgentSdkPermissionCallback({ toolPermissionPolicy: "auto_allow" });
+  const decision = await callback("AskUserQuestion", { questions: [{ question: "Synthetic?", options: [] }] });
+  assert.equal(decision.behavior, "deny");
+  assert.match(decision.message, /question handler/i);
+});
+
+test("auto-allow rejects an already cancelled tool request", async () => {
+  const events = new EventEmitter(), requests = [];
+  events.on("permission-request", request => requests.push(request));
+  const callback = createAgentSdkPermissionCallback({
+    toolPermissionPolicy: "auto_allow", events,
+    permissionHandler: () => assert.fail("cancelled requests must not ask"),
+  });
+  const decision = await callback("Bash", { command: "synthetic" }, { signal: AbortSignal.abort() });
+  assert.equal(decision.behavior, "deny");
+  assert.equal(decision.interrupt, true);
+  assert.match(decision.message, /cancelled/i);
+  assert.equal(requests.length, 0);
+});
+
+test("an invalid tool permission policy cannot silently enable automatic approval", () => {
+  assert.throws(() => createAgentSdkPermissionCallback({ toolPermissionPolicy: "allow_everything_typo", permissionHandler() {} }), /permission policy/i);
+});

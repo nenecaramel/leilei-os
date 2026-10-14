@@ -234,12 +234,21 @@ export function isTrustedLeileiosTool(
   ) !== null;
 }
 
+export function normalizeAgentSdkToolPermissionPolicy(policy = "ask") {
+  if (policy !== "ask" && policy !== "auto_allow") {
+    throw new Error("Tool permission policy must be ask or auto_allow.");
+  }
+  return policy;
+}
+
 export function createAgentSdkPermissionCallback({
   permissionHandler,
+  toolPermissionPolicy = "ask",
   events = null,
   trustedReadPaths = [],
 } = {}) {
-  if (typeof permissionHandler !== "function") {
+  toolPermissionPolicy = normalizeAgentSdkToolPermissionPolicy(toolPermissionPolicy);
+  if (toolPermissionPolicy === "ask" && typeof permissionHandler !== "function") {
     throw runtimeError(
       "permissionHandler must be a function.",
       { runtimeCode: "RUNTIME_UNAVAILABLE" },
@@ -258,8 +267,18 @@ export function createAgentSdkPermissionCallback({
         context,
       );
 
-    const trustedPolicy =
-      trustedNativeLiveToolPolicy(
+    if (toolPermissionPolicy === "auto_allow" && context.signal?.aborted === true) {
+      return { behavior: "deny", message: "Tool permission request was cancelled.", interrupt: true };
+    }
+
+    // Questions require actual answers, even with automatic tool approval.
+    // Configured question callbacks are routed before this permission callback.
+    if (toolPermissionPolicy === "auto_allow" && toolName === "AskUserQuestion") {
+      return { behavior: "deny", message: "No question handler is configured for AskUserQuestion.", interrupt: false };
+    }
+    const trustedPolicy = toolPermissionPolicy === "auto_allow"
+      ? "owner_auto_allow"
+      : trustedNativeLiveToolPolicy(
         toolName,
         input,
         { trustedReadPaths },

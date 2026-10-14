@@ -7,6 +7,7 @@ import { listDesktopNativeSessions } from "./native-session-inspection.mjs";
 import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import { createAgentSdkTurnHandle } from "./agent-sdk-turn-handle.mjs";
+import { createAgentSdkPermissionCallback, normalizeAgentSdkToolPermissionPolicy } from "./agent-sdk-permission.mjs";
 import { LEILEIOS_MIND_SYSTEM_PROMPT } from "./leileios-mind-system-prompt.mjs";
 import { LEILEIOS_WAKE_SYSTEM_PROMPT } from "./leileios-wake-system-prompt.mjs";
 import { LEILEIOS_MURMUR_SYSTEM_PROMPT } from "./leileios-murmur-system-prompt.mjs";
@@ -414,6 +415,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     importSessionToStoreImpl = null,
     loadImportSessionToStore = loadDefaultImportSessionToStore,
     sessionStore = null,
+    toolPermissionPolicy = "ask",
     mcpServerConfig = null,
     createSendFileMcpServerImpl =
       createDefaultSendFileMcpServer,
@@ -448,6 +450,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.importSessionToStoreImpl = importSessionToStoreImpl;
     this.loadImportSessionToStore = loadImportSessionToStore;
     this.sessionStore = sessionStore;
+    this.toolPermissionPolicy = normalizeAgentSdkToolPermissionPolicy(toolPermissionPolicy);
     this.mcpServerConfig =
       normalizeLeileiosMcpServerConfig(mcpServerConfig);
     this.createSendFileMcpServerImpl =
@@ -679,6 +682,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       environment: this.environment,
       cwd: this.cwd,
       queryOptions: {
+        ...(this.toolPermissionPolicy === "auto_allow" ? { permissionMode: "default" } : {}),
         ...(this.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
         ...(this.chromeEnabled ? { extraArgs: { chrome: null } } : {}),
         verbatimPrompts: !nativeScheduleCommand,
@@ -709,6 +713,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       streaming,
       userMessageUuid,
       permissionHandler,
+      toolPermissionPolicy: this.toolPermissionPolicy,
       questionHandler,
       trustedReadPaths,
       midTurnInput:
@@ -1752,6 +1757,10 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     const options = {
       cwd: this.cwd,
       env: this.environment,
+      ...(this.toolPermissionPolicy === "auto_allow" ? {
+        permissionMode: "default",
+        canUseTool: createAgentSdkPermissionCallback({ toolPermissionPolicy: this.toolPermissionPolicy }),
+      } : {}),
       ...(this.chromeEnabled ? { extraArgs: { chrome: null } } : {}),
       settingSources: ["user", "project", "local"],
       ...(this.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
