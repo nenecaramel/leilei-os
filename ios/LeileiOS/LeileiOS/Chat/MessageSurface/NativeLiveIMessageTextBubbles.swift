@@ -114,8 +114,8 @@ struct NativeLiveIMessageTextBubble<Content: View>: View {
             .foregroundStyle(Color.white.opacity(0.98))
             .background(
                 side == .outgoing
-                    ? Color.blue.opacity(0.94)
-                    : Color(red: 0.24, green: 0.25, blue: 0.27).opacity(0.85),
+                    ? Color(red: 0.12, green: 0.54, blue: 1.00).opacity(0.94)
+                    : Color(red: 0.30, green: 0.31, blue: 0.33).opacity(0.85),
                 in: RoundedRectangle(
                     cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
                     style: .continuous
