@@ -7,15 +7,26 @@ import SwiftUI
     appModel: AppModel,
     isTurnInFlight: Bool,
     leadingClearance: CGFloat,
+    isIMessage: Bool,
     onCopyMessage: @escaping (String) -> Void,
     onEditMessage: @escaping (NativeLiveCurrentPathMessage) -> Void
 ) -> some View {
+    let messageView = NativeLiveUserMessagePresentationView(presentation:user,isVoiceTranscriptRevealed:Binding(
+        get:{ appModel.nativeLiveMessageUIState[row.id].voiceTranscriptExpansion },
+        set:{ appModel.nativeLiveMessageUIState[row.id].voiceTranscriptExpansion = $0 }),
+        onEdit:row.userBacking.map { message in { onEditMessage(message) } },onCopy:onCopyMessage,isDisabled:isTurnInFlight)
     HStack(alignment:.top,spacing:0) {
-        Spacer(minLength:leadingClearance)
-        NativeLiveUserMessagePresentationView(presentation:user,isVoiceTranscriptRevealed:Binding(
-            get:{ appModel.nativeLiveMessageUIState[row.id].voiceTranscriptExpansion },
-            set:{ appModel.nativeLiveMessageUIState[row.id].voiceTranscriptExpansion = $0 }),
-            onEdit:row.userBacking.map { message in { onEditMessage(message) } },onCopy:onCopyMessage,isDisabled:isTurnInFlight)
+        if isIMessage && !user.isVoiceInput {
+            // Reserve exactly 70pt on the left. A flexible Spacer can steal
+            // width from wrapped bubbles, leaving them narrower than the
+            // available area despite the fill-width fallback.
+            Color.clear.frame(width:leadingClearance)
+            messageView.frame(maxWidth:.infinity,alignment:.trailing)
+        } else {
+            // Original theme and voice row geometry stay unchanged.
+            Spacer(minLength:leadingClearance)
+            messageView
+        }
     }
 }
 
