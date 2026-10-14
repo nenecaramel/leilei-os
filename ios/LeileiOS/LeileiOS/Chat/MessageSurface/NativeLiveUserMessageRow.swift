@@ -6,11 +6,12 @@ import SwiftUI
     user: NativeLiveMessagePresentation,
     appModel: AppModel,
     isTurnInFlight: Bool,
+    leadingClearance: CGFloat,
     onCopyMessage: @escaping (String) -> Void,
     onEditMessage: @escaping (NativeLiveCurrentPathMessage) -> Void
 ) -> some View {
     HStack(alignment:.top,spacing:0) {
-        Spacer(minLength:ChatPresentationLayout.userLeadingClearance)
+        Spacer(minLength:leadingClearance)
         NativeLiveUserMessagePresentationView(presentation:user,isVoiceTranscriptRevealed:Binding(
             get:{ appModel.nativeLiveMessageUIState[row.id].voiceTranscriptExpansion },
             set:{ appModel.nativeLiveMessageUIState[row.id].voiceTranscriptExpansion = $0 }),
