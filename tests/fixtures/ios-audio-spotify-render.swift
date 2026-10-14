@@ -64,6 +64,17 @@ extension View {
         }
         return .init(entityID: "attachment", draftID: "attachment", filename: kind == "sticker" ? "meme_0003.webp" : "fixture.\(kind)", mimeType: mime, kind: "file", materialization: kind == "unavailable" ? "unavailable" : kind == "integrity" ? "integrity_failed" : kind == "failed" ? "failed" : kind == "uploading" ? "uploading" : "ready")
     }
+    // Independent fixture input contract. Both visual renderers consume the
+    // same playback owner, so its computed progress must never self-oracle.
+    static func expectedSnapshotProgress(_ name: String) -> Double {
+        switch name {
+        case "playing", "paused": return 15.0 / 62.0
+        case "near-end": return 61.0 / 62.0
+        case "finished": return 1
+        case "1s", "8s", "30s", "idle", "loading", "ready", "failed", "unavailable", "integrity", "short", "long", "uploading": return 0
+        default: preconditionFailure("Unknown audio progress fixture \(name)")
+        }
+    }
     static func state(_ name: String) -> NativeLiveAudioPlaybackState {
         let state = NativeLiveAudioPlaybackState()
         switch name {
@@ -115,11 +126,16 @@ struct Stage6Host: View {
                 let text = String(repeating: "语", count: name.contains("short") ? 1 : name.contains("medium") ? 15 : 240)
                 let message = NativeLiveCurrentPathMessage(id:"voice",conversationId:"fixture",parentMessageId:nil,role:"user",status:"completed",createdAt:"",completedAt:nil,blocks:[.init(id:"text",ordinal:0,kind:"text",rawType:"text",text:text,payload:["input_mode":.string("voice")],createdAt:"")])
                 HStack(spacing: 0) {
-                    Spacer(minLength: ChatPresentationLayout.userLeadingClearance)
-                    NativeLiveUserMessagePresentationView(presentation:NativeLiveMessagePresentationProjector.project(.canonical(message)),isVoiceTranscriptRevealed:.constant(name.hasSuffix("expanded")))
+                    Spacer(minLength: baseline ? ApprovedChatPresentationLayout.userLeadingClearance : ChatPresentationLayout.userLeadingClearance)
+                    if baseline {
+                        ApprovedNativeLiveUserMessagePresentationView(presentation:NativeLiveMessagePresentationProjector.project(.canonical(message)),isVoiceTranscriptRevealed:.constant(name.hasSuffix("expanded")))
+                    } else {
+                        NativeLiveUserMessagePresentationView(presentation:NativeLiveMessagePresentationProjector.project(.canonical(message)),isVoiceTranscriptRevealed:.constant(name.hasSuffix("expanded")))
+                    }
                 }
             } else if name.hasPrefix("audio-") {
-                NativeLiveAudioAttachmentBubble(stage6Input: Stage6Fixtures.input(String(name.dropFirst(6))), state: state)
+                if baseline { ApprovedNativeLiveAudioAttachmentBubble(stage6Input: Stage6Fixtures.input(String(name.dropFirst(6))), state: state) }
+                else { NativeLiveAudioAttachmentBubble(stage6Input: Stage6Fixtures.input(String(name.dropFirst(6))), state: state) }
             } else if name == "spotify-sdk-row" {
                 NativeLiveSpotifyResultSurface(items: NativeLiveSpotifyResultSurfaceProjector.project(tools: [Stage6Fixtures.sdkTool]))
             } else if name == "spotify-permission" {
@@ -162,7 +178,7 @@ struct Stage6Host: View {
         let tablet = UIDevice.current.userInterfaceIdiom == .pad, width = tablet ? 1024 : 390, height = 900
         if ProcessInfo.processInfo.environment["STAGE6_BEHAVIOR_ONLY"] == "1" { await behavior(scene,width,height); print("Stage6 render PASS: behavior-only device=\(tablet ? "iPad" : "iPhone")"); fflush(stdout); return }
         let focus=ProcessInfo.processInfo.environment["STAGE6_FOCUS"] ?? ""
-        var manifest: [String: Any] = [:], cases = 0, exact = 0
+        var manifest: [String: Any] = [:], cases = 0, exact = 0, approvedCases = 0
         let output = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Stage6Snapshots")
         try! FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         for dark in [false,true] {
@@ -175,6 +191,12 @@ struct Stage6Host: View {
             }
             for name in (Stage6Fixtures.voice.map({ "voice-"+$0 }) + Stage6Fixtures.audio.map({ "audio-"+$0 }) + Stage6Fixtures.spotify.map({ "spotify-"+$0 })).filter({ focus.isEmpty || $0 == focus || $0.hasPrefix(focus + "-") }) {
                 let result = await sample(name, false, scene, width, height, dark)
+                if name.hasPrefix("voice-") || name.hasPrefix("audio-") {
+                    let approved = await sample(name, true, scene, width, height, dark)
+                    precondition(result.frames == approved.frames, "Approved voice/audio geometry changed \(name): current=\(result.frames) approved=\(approved.frames)")
+                    precondition(result.pixels == approved.pixels, "Approved voice/audio static pixels changed \(name)")
+                    approvedCases += 1
+                }
                 let key = name + (dark ? "-dark" : "-light")
                 manifest[key] = ["frames": result.frames.mapValues { [$0.origin.x,$0.origin.y,$0.size.width,$0.size.height] }, "staticSHA256": SHA256.hash(data: result.pixels).map { String(format: "%02x", $0) }.joined()]
                 try! result.png.write(to: output.appendingPathComponent(key+".png")); cases += 1; print("snapshot \(key) frames=\(result.frames.count)"); fflush(stdout)
@@ -182,6 +204,7 @@ struct Stage6Host: View {
         }
         try! JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys, .prettyPrinted]).write(to: output.appendingPathComponent("manifest.json"))
         if focus.isEmpty { await behavior(scene, width, height) }
+        print("approved voice/audio: \(approvedCases) exact frames + static pixels against immutable approved renderers"); fflush(stdout)
         print("Stage6 render PASS: \(cases) Audio/Spotify snapshots; \(exact) exact-main non-target cases; device=\(tablet ? "iPad" : "iPhone")"); fflush(stdout)
     }
     static func voiceGeometry(_ scene: UIWindowScene, _ width: Int, _ height: Int, _ dark: Bool) async {
@@ -205,6 +228,11 @@ struct Stage6Host: View {
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
         Stage6Probe.image = UIGraphicsImageRenderer(size: CGSize(width: 80, height: 60), format: format).image { c in UIColor.systemBlue.setFill(); c.fill(CGRect(x: 0,y: 0,width: 80,height: 60)) }
         let store = Stage6FrameStore(), state = Stage6Fixtures.state(String(name.dropFirst(6)))
+        if name.hasPrefix("audio-") {
+            let expectedProgress = Stage6Fixtures.expectedSnapshotProgress(String(name.dropFirst(6)))
+            precondition(state.progress == expectedProgress,
+                "audio progress differs from independent fixture: \(name) actual=\(state.progress) expected=\(expectedProgress)")
+        }
         let host = UIHostingController(rootView: Stage6Host(name: name, baseline: baseline, state: state).environment(\.colorScheme, dark ? .dark : .light).onPreferenceChange(Stage6Frames.self) { store.values = $0 })
         let window = UIWindow(windowScene: scene); window.frame = CGRect(x: 0,y: 0,width: width,height: height); window.overrideUserInterfaceStyle = dark ? .dark : .light; window.rootViewController = host; window.makeKeyAndVisible(); host.view.frame = window.bounds
         host.view.layoutIfNeeded(); try? await Task.sleep(for: .milliseconds(350)); host.view.layoutIfNeeded()
@@ -223,8 +251,12 @@ struct Stage6Host: View {
         var frames=store.values
         if name.hasPrefix("audio-") {
             let input = Stage6Fixtures.input(String(name.dropFirst(6)))
-            let expected = NativeLiveVoiceBubbleGeometry.audioWidth(duration: state.duration, sizeBytes: input.sizeBytes)
-            precondition(abs(frames["content"]!.width - expected) < 1e-9, "rendered audio width differs from duration rule")
+            let duration = state.duration.isFinite && state.duration > 0 ? state.duration : input.durationSeconds
+            let label = duration.map { NativeLiveVoiceBubbleGeometry.durationLabel(seconds: $0) } ?? "—"
+            let labelWidth = NativeLiveVoiceBubbleMetrics.durationLabelWidth(label)
+            let expected = NativeLiveVoiceBubbleGeometry.audioWidth(duration: duration ?? 0, sizeBytes: input.sizeBytes, labelWidth: labelWidth)
+            print("Audio width witness \(name): rendered=\(frames["content"]!.width) expected=\(expected) duration=\(String(describing: duration)) label=\(label) labelWidth=\(labelWidth)"); fflush(stdout)
+            precondition(abs(frames["content"]!.width - expected) < 1e-9, "rendered audio width differs from duration rule: rendered=\(frames["content"]!.width) expected=\(expected) labelWidth=\(labelWidth)")
             precondition(frames["play"]!.maxX <= frames["open"]!.minX, "Play and Open overlap")
             precondition(Stage6Probe.loads == 0, "render must never preload bytes for width")
         }

@@ -6,6 +6,8 @@ import { and, eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   conversations,
+  conversationMessages,
+  conversationProviderSessionCheckpoints,
   nativeLiveRuntimeListenerLeases,
   runtimeContextManifests,
   runtimeSubjectStates,
@@ -36,6 +38,7 @@ import { createDefaultBackendMindRuntime } from "../src/domains/runtime/mind/def
 import { NativeLiveConversationService } from "../src/domains/conversation/native-live-conversation-service.js";
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
 import { createNativeLiveApiRouter } from "../src/web-api/native-live-router.js";
+import type { NativeLiveRuntimeCommand } from "../src/domains/bridge/protocol/native-live-runtime-protocol.js";
 import { createNativeLiveRelayInternalRouter } from "../src/web-api/native-live-relay-internal-router.js";
 
 const enabled = process.env.RUN_NATIVE_LIVE_HTTP_DATABASE_TEST === "1";
@@ -92,7 +95,7 @@ async function withServer(
 }
 
 test(
-  "HTTP relay closes prepare -> Mac callback -> visible assistant -> settled Breath recall loop",
+  "HTTP relay preserves Hook/MCP ownership through canonical callback, receipt replay and exact resume",
   { skip: !enabled },
   async (t) => {
     const databaseUrl = process.env.DATABASE_URL;
@@ -177,302 +180,120 @@ test(
       user.id,
       { coordinator, relayService, semanticService, turnReader: turnPort },
       async (baseUrl) => {
+        const post = (path: string, body: unknown) => fetch(`${baseUrl}${path}`, {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+        });
         const listenerId = crypto.randomUUID();
         const firstRequestId = crypto.randomUUID();
-
-        const prepared = await fetch(
-          `${baseUrl}/api/v1/native-live/prepare`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              dispatch_target: "claude_code",
-              request_id: firstRequestId,
-              operation: "send",
-              conversation_id: conversation.id,
-              expected_head_message_id: null,
-              text: "please remember the HTTP relay memory",
-            }),
-          },
-        );
+        const firstText = "please remember the HTTP relay memory";
+        const prepareRequest = {
+          dispatch_target: "claude_code", request_id: firstRequestId, operation: "send",
+          conversation_id: conversation.id, expected_head_message_id: null, text: firstText,
+        };
+        const prepared = await post("/api/v1/native-live/prepare", prepareRequest);
         assert.equal(prepared.status, 201);
-        const preparedPayload = await prepared.json() as {
-          data: {
-            prepareId: string;
-            userMessageId: string;
-          };
-        };
-
-        const lease = await fetch(
-          `${baseUrl}/internal/native-live-relay/lease/renew`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              listener_instance_id: listenerId,
-              dispatch_target: "claude_code",
-            }),
-          },
-        );
+        const preparedPayload = await prepared.json() as { data: { prepareId: string; userMessageId: string; semanticPending: boolean } };
+        assert.equal(preparedPayload.data.semanticPending, false, "Hook owns automatic recall; backend does not stage another semantic pass");
+        const replayedPrepare = await post("/api/v1/native-live/prepare", prepareRequest);
+        assert.equal(replayedPrepare.status, 200);
+        assert.equal((await replayedPrepare.json() as typeof preparedPayload).data.prepareId, preparedPayload.data.prepareId);
+        assert.equal((await post("/api/v1/native-live/prepare", { ...prepareRequest, text: "changed" })).status, 409);
+        const lease = await post("/internal/native-live-relay/lease/renew", { listener_instance_id: listenerId, dispatch_target: "claude_code" });
         assert.equal(lease.status, 200);
-
-        const reserved = await fetch(
-          `${baseUrl}/internal/native-live-relay/reserve`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              listener_instance_id: listenerId,
-              dispatch_target: "claude_code",
-            }),
-          },
-        );
+        const reserve = () => post("/internal/native-live-relay/reserve", { listener_instance_id: listenerId, dispatch_target: "claude_code" });
+        const reserved = await reserve();
         assert.equal(reserved.status, 200);
-        const reservedPayload = await reserved.json() as {
-          data: {
-            reservationId: string;
-            command: {
-              prompt: string;
-              request_id: string;
-              conversation_id: string;
-              prepare_id: string;
-            };
-          };
-        };
-        assert.equal(
-          reservedPayload.data.reservationId,
-          preparedPayload.data.prepareId,
-        );
-        assert.equal(
-          reservedPayload.data.command.prompt.includes(
-            '<leileios_context authority="data">',
-          ),
-          true,
-        );
-
-        const started = await fetch(
-          `${baseUrl}/internal/native-live-relay/reservations/${preparedPayload.data.prepareId}/execution-started`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              listener_instance_id: listenerId,
-            }),
-          },
-        );
+        const reservedPayload = await reserved.json() as { data: { reservationId: string; command: NativeLiveRuntimeCommand } };
+        const command = reservedPayload.data.command;
+        assert.equal(reservedPayload.data.reservationId, preparedPayload.data.prepareId);
+        assert.equal(command.prompt, firstText, "ordinary prompt reaches the installed Hook unchanged");
+        assert.equal(command.parent_provider_checkpoint_id, null);
+        assert.equal(command.runtime_mode, "new");
+        const started = await post(`/internal/native-live-relay/reservations/${command.prepare_id}/execution-started`, { listener_instance_id: listenerId });
         assert.equal(started.status, 200);
-
-        const callback = await fetch(
-          `${baseUrl}/internal/native-live-relay/reservations/${preparedPayload.data.prepareId}/result`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              listener_instance_id: listenerId,
-              result: {
-                protocol_version: 4,
-                prepare_id: preparedPayload.data.prepareId,
-                request_id: firstRequestId,
-                conversation_id: conversation.id,
-                status: "success",
-                provider_session_id: "http-e2e-provider-1",
-                normalized_events: [
-                  {
-                    type: "text",
-                    payload: {
-                      text: "VISIBLE <memory>HTTP relay memory</memory>",
-                    },
-                  },
-                  {
-                    type: "result",
-                    payload: {
-                      status: "success",
-                      final_text:
-                        "VISIBLE <memory>HTTP relay memory</memory>",
-                    },
-                  },
-                ],
-              },
-            }),
-          },
-        );
-        assert.equal(callback.status, 200);
-
-        const read = await fetch(
-          `${baseUrl}/api/v1/native-live/turns/${preparedPayload.data.prepareId}`,
-        );
-        assert.equal(read.status, 200);
-        const readPayload = await read.json() as {
-          data: {
-            canonicalStatus: string;
-            dispatchStatus: string;
-            assistantMessage: {
-              id: string;
-              blocks: Array<{ text: string | null }>;
-            } | null;
-          };
+        const visibleText = "VISIBLE <memory>HTTP relay memory</memory>";
+        const checkpointId = crypto.randomUUID();
+        const result = {
+          protocol_version: command.protocol_version, prepare_id: command.prepare_id, request_id: command.request_id,
+          conversation_id: command.conversation_id, status: "success", provider_session_id: crypto.randomUUID(),
+          provider_checkpoint_id: checkpointId,
+          normalized_events: [{ type: "text", payload: { text: visibleText } },
+            { type: "result", payload: { status: "success", final_text: visibleText } }],
         };
+        const submit = (body: unknown) => post(`/internal/native-live-relay/reservations/${command.prepare_id}/result`, body);
+        const body = { listener_instance_id: listenerId, result };
+        assert.equal((await submit({ ...body, listener_instance_id: crypto.randomUUID() })).status, 409,
+          "another listener cannot publish a canonical reply");
+        const { provider_checkpoint_id: _checkpoint, ...legacyResult } = result;
+        const expectFinalizeRejected = async (response: Response, finalizeCode: string) => {
+          assert.equal(response.status, 503);
+          const payload = await response.json() as { success: boolean; error: { code: string; finalizeCode: string } };
+          assert.equal(payload.success, false);
+          assert.equal(payload.error.code, "FINALIZE_REJECTED");
+          assert.equal(payload.error.finalizeCode, finalizeCode);
+        };
+        await expectFinalizeRejected(await submit({ ...body, result: legacyResult }), "RESULT_MISMATCH");
+        await expectFinalizeRejected(await submit({ ...body, result: { ...result, provider_checkpoint_id: "invalid" } }), "INVALID_RESULT");
+        assert.equal((await conversationService.getConversation({ userId: user.id, conversationId: conversation.id }))?.currentHeadMessageId, null);
+        const callback = await submit(body);
+        assert.equal(callback.status, 200);
+        assert.deepEqual(await callback.json(), { success: true, data: { accepted: true, canonicalOutcome: "completed" } });
+        const callbackReplay = await submit(body);
+        assert.equal(callbackReplay.status, 200);
+        assert.deepEqual(await callbackReplay.json(), { success: true, data: { accepted: true, canonicalOutcome: "idempotent" } });
+        const read = await fetch(`${baseUrl}/api/v1/native-live/turns/${command.prepare_id}`);
+        assert.equal(read.status, 200);
+        const readPayload = await read.json() as { data: { canonicalStatus: string; dispatchStatus: string; assistantMessage: { id: string; blocks: Array<{ text: string | null }> } } };
         assert.equal(readPayload.data.canonicalStatus, "finalized_success");
         assert.equal(readPayload.data.dispatchStatus, "completed");
-        assert.ok(readPayload.data.assistantMessage);
-        assert.equal(
-          readPayload.data.assistantMessage.blocks[0]?.text,
-          "VISIBLE",
-        );
-
-        const [provisional] = await database.db
-          .select({
-            id: runtimeSubjectStates.id,
-            text: runtimeSubjectStates.text,
-            settlementStatus: runtimeSubjectStates.settlementStatus,
-          })
-          .from(runtimeSubjectStates)
-          .where(
-            and(
-              eq(runtimeSubjectStates.userId, user.id),
-              eq(runtimeSubjectStates.kind, "memory"),
-            ),
-          )
-          .limit(1);
-        assert.ok(provisional);
-        assert.equal(provisional.text, "HTTP relay memory");
-        assert.equal(provisional.settlementStatus, "unsettled");
-
-        const secondRequestId = crypto.randomUUID();
-        const secondPrepared = await fetch(
-          `${baseUrl}/api/v1/native-live/prepare`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              dispatch_target: "claude_code",
-              request_id: secondRequestId,
-              operation: "send",
-              conversation_id: conversation.id,
-              expected_head_message_id:
-                readPayload.data.assistantMessage.id,
-              text: "what was that earlier experience about?",
-            }),
-          },
-        );
-        assert.equal(secondPrepared.status, 202);
-        const secondPreparedPayload = await secondPrepared.json() as {
-          data: {
-            prepareId: string;
-            semanticPending: boolean;
-          };
-        };
-        assert.equal(secondPreparedPayload.data.semanticPending, true);
-
-        const [settled] = await database.db
-          .select({
-            id: runtimeSubjectStates.id,
-            settlementStatus: runtimeSubjectStates.settlementStatus,
-            scopeApplicability: runtimeSubjectStates.scopeApplicability,
-          })
-          .from(runtimeSubjectStates)
-          .where(eq(runtimeSubjectStates.id, provisional.id))
-          .limit(1);
-        assert.deepEqual(settled, {
-          id: provisional.id,
-          settlementStatus: "settled",
-          scopeApplicability: "global",
-        });
-
-        const semanticReserved = await fetch(
-          `${baseUrl}/internal/native-live-relay/semantic/reserve`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              listener_instance_id: listenerId,
-              dispatch_target: "claude_code",
-            }),
-          },
-        );
-        assert.equal(semanticReserved.status, 200);
-        const semanticPayload = await semanticReserved.json() as {
-          data: {
-            reservationId: string;
-            candidates: Array<{
-              stateId: string;
-              kind: string;
-              text: string;
-            }>;
-          };
-        };
-        assert.equal(
-          semanticPayload.data.reservationId,
-          secondPreparedPayload.data.prepareId,
-        );
-        assert.equal(
-          semanticPayload.data.candidates.some(
-            (candidate) => candidate.stateId === provisional.id,
-          ),
-          true,
-        );
-
-        const scores = Object.fromEntries(
-          semanticPayload.data.candidates.map((candidate) => [
-            candidate.stateId,
-            candidate.stateId === provisional.id ? 0.93 : 0.2,
-          ]),
-        );
-        const scored = await fetch(
-          `${baseUrl}/internal/native-live-relay/semantic/reservations/${secondPreparedPayload.data.prepareId}/scores`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              listener_instance_id: listenerId,
-              scores,
-            }),
-          },
-        );
-        assert.equal(scored.status, 200);
-
-        const secondReserved = await fetch(
-          `${baseUrl}/internal/native-live-relay/reserve`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              listener_instance_id: listenerId,
-              dispatch_target: "claude_code",
-            }),
-          },
-        );
-        assert.equal(secondReserved.status, 200);
-        const secondReservedPayload = await secondReserved.json() as {
-          data: {
-            command: { prompt: string };
-          };
-        };
-        assert.equal(
-          secondReservedPayload.data.command.prompt.includes(
-            "HTTP relay memory",
-          ),
-          true,
-        );
-
-        const manifests = await database.db
-          .select({
-            items: runtimeContextManifests.items,
-          })
-          .from(runtimeContextManifests)
-          .where(eq(runtimeContextManifests.userId, user.id));
-        const selected = manifests
-          .flatMap((manifest) => manifest.items)
-          .find((item) => {
-            const selection = item.selection as
-              | { reason?: unknown }
-              | undefined;
-            return (
-              item.sourceId === provisional.id
-              && selection?.reason === "breath_semantic_match"
-            );
+        assert.equal(readPayload.data.assistantMessage.blocks[0]?.text, visibleText,
+          "tags are prose; only a successful MCP write can create Memory");
+        const checkpoints = await database.db.select().from(conversationProviderSessionCheckpoints)
+          .where(eq(conversationProviderSessionCheckpoints.conversationId, conversation.id));
+        assert.equal(checkpoints.length, 1);
+        assert.equal(checkpoints[0].canonicalMessageId, readPayload.data.assistantMessage.id);
+        assert.equal(checkpoints[0].providerSessionId, result.provider_session_id);
+        assert.equal(checkpoints[0].providerCheckpointId, checkpointId);
+        const messages = await database.db.select().from(conversationMessages).where(eq(conversationMessages.conversationId, conversation.id));
+        assert.equal(messages.filter(message => message.role === "assistant").length, 1, "receipt replay cannot duplicate a reply");
+        assert.deepEqual(await database.db.select().from(runtimeSubjectStates).where(and(eq(runtimeSubjectStates.userId, user.id), eq(runtimeSubjectStates.kind, "memory"))), [],
+          "relay does not forge a Memory write from output tags");
+        assert.deepEqual(await database.db.select().from(runtimeContextManifests).where(eq(runtimeContextManifests.userId, user.id)), [],
+          "backend does not forge Hook recall receipts");
+        await withServer(crypto.randomUUID(), { coordinator, relayService, semanticService, turnReader: turnPort }, async foreignUrl => {
+          assert.equal((await fetch(`${foreignUrl}/api/v1/native-live/turns/${command.prepare_id}`)).status, 404);
+          const foreignCallback = await fetch(`${foreignUrl}/internal/native-live-relay/reservations/${command.prepare_id}/result`, {
+            method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
           });
-        assert.ok(selected);
+          assert.equal(foreignCallback.status, 409, "foreign tenant cannot replay an owner's receipt");
+        });
+        const secondText = "what was that earlier experience about?";
+        const secondPrepared = await post("/api/v1/native-live/prepare", {
+          ...prepareRequest, request_id: crypto.randomUUID(), expected_head_message_id: readPayload.data.assistantMessage.id, text: secondText,
+        });
+        assert.equal(secondPrepared.status, 201);
+        assert.equal((await secondPrepared.json() as typeof preparedPayload).data.semanticPending, false);
+        const secondReserved = await reserve();
+        assert.equal(secondReserved.status, 200);
+        const secondCommand = (await secondReserved.json() as typeof reservedPayload).data.command;
+        assert.equal(secondCommand.prompt, secondText);
+        assert.equal(secondCommand.runtime_mode, "resume");
+        assert.equal(secondCommand.parent_provider_session_id, result.provider_session_id);
+        assert.equal(secondCommand.parent_provider_checkpoint_id, checkpointId);
+        assert.equal((await post(`/internal/native-live-relay/reservations/${secondCommand.prepare_id}/execution-started`, { listener_instance_id: listenerId })).status, 200);
+        const secondResult = { ...result, prepare_id: secondCommand.prepare_id, request_id: secondCommand.request_id,
+          provider_checkpoint_id: crypto.randomUUID(), normalized_events: [{ type: "text", payload: { text: "Next reply" } }] };
+        const secondPath = `/internal/native-live-relay/reservations/${secondCommand.prepare_id}/result`;
+        await expectFinalizeRejected(await post(secondPath, { listener_instance_id: listenerId,
+          result: { ...secondResult, provider_session_id: crypto.randomUUID() } }), "RESULT_MISMATCH");
+        assert.equal((await conversationService.getConversation({ userId: user.id, conversationId: conversation.id }))?.currentHeadMessageId,
+          readPayload.data.assistantMessage.id, "rejected resume cannot advance the canonical head");
+        const secondCallback = await post(secondPath, { listener_instance_id: listenerId, result: secondResult });
+        assert.equal(secondCallback.status, 200);
+        assert.deepEqual(await secondCallback.json(), { success: true, data: { accepted: true, canonicalOutcome: "completed" } });
+        const current = await conversationService.getConversation({ userId: user.id, conversationId: conversation.id });
+        assert.equal(current?.messages.length, 4);
+        assert.equal(current?.messages.at(-1)?.blocks[0]?.text, "Next reply");
       },
     );
   },

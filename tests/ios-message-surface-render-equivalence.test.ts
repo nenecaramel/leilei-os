@@ -78,6 +78,10 @@ test('MessageSurface renders match exact main and reject a wrong return-button p
     const pendingPath=path.join(root,'Chat/MessageSurface/NativeLivePendingOperation.swift');
     writeFileSync(pendingPath,readFileSync(pendingPath,'utf8')+`\nextension NativeLivePendingOperation { static func surfaceFixture(_ kind:Kind) -> NativeLivePendingOperation { .init(id:SurfaceRuntimeProbe.nextPendingID(),kind:kind,baselineSyncToken:"fixture",presentationAttachments:[],inputMode:.text) } }\n`);
     const original = files.map(f=>readFileSync('tests/fixtures/message-surface-main-52c957c1/'+f,'utf8'));
+    // Approved 3cabae39 changes only the inter-turn spacing: 21pt -> 25pt.
+    // Keep the pinned historical traversal, chrome and every other constant.
+    assert.equal((original[1].match(/static let turnSpacing: CGFloat = 21/g) ?? []).length, 1);
+    original[1] = original[1].replace('static let turnSpacing: CGFloat = 21', 'static let turnSpacing: CGFloat = 25');
     const names = new Set(original.flatMap(s=>[...s.matchAll(/\b(?:struct|class|enum|protocol)\s+(\w+)/g)].map(m=>m[1])));
     names.add('chatSoftFill');
     const renamed = (s:string)=>s.replace(new RegExp('\\b('+[...names].join('|')+')\\b','g'),n=>'Baseline'+n);

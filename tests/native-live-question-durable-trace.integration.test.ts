@@ -27,7 +27,7 @@ test("canonical question resolution survives removal of all operational turn his
     if (!prepared.ok) throw new Error("prepare failed");
     const command = prepared.command;
     await database.db.insert(nativeLiveRuntimeInteractions).values({ id: crypto.randomUUID(), userId: user.id, prepareId: command.prepare_id, listenerInstanceId: crypto.randomUUID(), kind: "question", request: { toolUseId: "q1" }, status: "resolved", response, resolvedAt: new Date() });
-    const result = { protocol_version: 4, prepare_id: command.prepare_id, request_id: requestId, conversation_id: conversation.id, status: "success", provider_session_id: `question-session-${requestId}`, normalized_events: [
+    const result = { protocol_version: 4, prepare_id: command.prepare_id, request_id: requestId, conversation_id: conversation.id, status: "success", provider_session_id: `question-session-${requestId}`, provider_checkpoint_id: crypto.randomUUID(), normalized_events: [
       { type: "tool_use", payload: { tool_use_id: "q1", tool_name: "AskUserQuestion", parent_tool_use_id: "task1", input: { questions: [{ question: "Theme?", header: "Theme", options: [{ label: "Dark" }] }] } } },
       { type: "tool_result", payload: { tool_use_id: "q1", output: "opaque provider text", is_error: response.decision === "cancel" } },
       { type: "text", payload: { text: "Done" } },

@@ -1,0 +1,52 @@
+{
+  "sources": [
+    {
+      "file": "ChatPresentationLayout.swift",
+      "commit": "05b979734c83157e2f79e4137ee0e1b14ffbaef8",
+      "source": "ios/LeileiOS/LeileiOS/Chat/ChatPresentationLayout.swift",
+      "sha256": "86e7752533147ec7168751eb86403823a7568dac5a786964cd4f8ec29ef94d8e"
+    },
+    {
+      "file": "LeileiUITokens.swift",
+      "commit": "05b979734c83157e2f79e4137ee0e1b14ffbaef8",
+      "source": "ios/LeileiOS/LeileiOS/DesignSystem/LeileiUITokens.swift",
+      "sha256": "e64f3807159cee30a532f2bcdc855bfab059b12edba93702f67ac8907d8186b2"
+    },
+    {
+      "file": "ComposerComponents.swift",
+      "commit": "05b979734c83157e2f79e4137ee0e1b14ffbaef8",
+      "source": "ios/LeileiOS/LeileiOS/Chat/ComposerComponents.swift",
+      "sha256": "a11d74fbdc5471fc4af9bbad7a9f98d7c4d68ec0b45053c0d5a7c2840e457027"
+    },
+    {
+      "file": "NativeLiveAudioAttachmentBubble.swift",
+      "commit": "72ee1e0733c68975a8181d3498724b4c8ee0a5bc",
+      "source": "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveAudioAttachmentBubble.swift",
+      "sha256": "ba19476f5eacd644519e92ac09d94fbeae5399bd8b29b18a291aa771e4735c59"
+    },
+    {
+      "file": "NativeLiveUserMessageRow.swift",
+      "commit": "647ea519483b819b05a1057e0c0b238a42f3d427",
+      "source": "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveUserMessageRow.swift",
+      "sha256": "62d48e16d52ef0979e8ddb12fe777486b0af02ff712000d7b3fd34a51cd1e75f"
+    },
+    {
+      "file": "NativeLiveVoiceBubbleGeometry.swift",
+      "commit": "05b979734c83157e2f79e4137ee0e1b14ffbaef8",
+      "source": "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveVoiceBubbleGeometry.swift",
+      "sha256": "83e08b4efe378013f5a2e14e712d1a71a38d65b113941ed1d561dfd90d7661e8"
+    }
+  ],
+  "sharedPlaintextCommit": "452bd750abb49a29025e093d46adce1ff7d29a18",
+  "sharedPlaintextSources": [
+    "NativeLiveMessageBlocks.swift",
+    "NativeLiveVisualRendererRegistry.swift",
+    "ChatMarkdown.swift",
+    "NativeLiveMarkdownModel.swift",
+    "NativeLiveRichTextProjection.swift",
+    "NativeLiveMessagePresentationProjection.swift",
+    "NativeLiveMessagePresentation.swift",
+    "NativeLiveVisualNode.swift",
+    "NativeLiveMediaPresentation.swift"
+  ]
+}

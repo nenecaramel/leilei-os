@@ -36,7 +36,8 @@ function instrument(source: string) {
       const b = buttons[index], at = b.index!, actionOpen = body.indexOf('{', at), actionEnd = closing(body, actionOpen);
       const action = body.slice(actionOpen + 1, actionEnd);
       const prefix = body.slice(at, actionOpen).trim();
-      const actionKey = `"${type}.button${index}-\\(${id})"`;
+      const actionName = action.includes("isShowingMurmur = true") ? "openMurmur" : `button${index}`;
+      const actionKey = `"${type}.${actionName}-\\(${id})"`;
       const captured = `ActivityProbe.capture(${actionKey}, {${action}})`;
       if (prefix === 'Button') {
         const labelOpen = body.indexOf('{', actionEnd + 1), labelEnd = closing(body, labelOpen);

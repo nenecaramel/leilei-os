@@ -272,7 +272,7 @@ test(
       assert.deepEqual(cWithGKey, { outcome: "idempotency_conflict" });
       assert.deepEqual(await repositories[0]!.readDay(userId, "2026-08-16"), {
         L: null,
-        G: { author: "G", date: "2026-08-16", revision: 1, entries },
+        G: { author: "G", date: "2026-08-16", revision: 1, entries: entries.map(entry => ({ ...entry, revision: 1 })) },
         C: null,
       });
 

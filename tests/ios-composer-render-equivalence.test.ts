@@ -28,6 +28,25 @@ function instrument(source: string, file: string) {
   return source.replace(/\.glassEffect\(/g, ".chatTestGlass(");
 }
 
+// 6d39a039 added Call Claude to the plus menu. The approved change keeps the
+// menu enabled while disabling only attachment entries during an active turn.
+// Adapt this historical boundary, retaining the original attachment callbacks.
+function approvedAttachmentMenu(source:string) {
+  const start=source.indexOf('                Menu {');
+  const end=source.indexOf('                Menu {',start+1);
+  assert.ok(start >= 0 && end > start, 'historical attachment menu boundary');
+  let menu=source.slice(start,end);
+  const disabled=/\.disabled\(\s*isRuntimeTurnActive\s*\|\| isSending\s*\|\| attachments.count >= 8\s*\)/g;
+  assert.equal([...menu.matchAll(disabled)].length,1,'historical menu must have one known disabled predicate');
+  menu=menu.replace(disabled,'');
+  for (const [title, symbol] of [['Photo', 'photo'], ['Camera', 'camera'], ['File', 'doc']]) {
+    const pinned = `Label("${title}", systemImage: "${symbol}")\n                    }`;
+    assert.equal(menu.split(pinned).length, 2, `Historical ${title} attachment entry changed`);
+    menu = menu.replace(pinned, pinned + '\n                    .disabled(isRuntimeTurnActive || isSending || attachments.count >= 8)');
+  }
+  return source.slice(0,start)+menu+source.slice(end);
+}
+
 test('Composer renders and selection rules match main f7a254cc and reject changed attachment geometry', {
   skip: process.platform !== 'darwin' || !process.env.UI_COMPOSER_SIMULATOR_ID ? 'Requires macOS and UI_COMPOSER_SIMULATOR_ID' : false,
 }, () => {
@@ -39,6 +58,7 @@ test('Composer renders and selection rules match main f7a254cc and reject change
     cpSync('ios/LeileiOS',path.join(dir,'ios'),{recursive:true,preserveTimestamps:true,filter:p=>!p.includes('xcuserdata')});
     const root = path.join(dir,'ios/LeileiOS');
     const original = files.map(f=>readFileSync('tests/fixtures/composer-main-f7a254cc/'+f,'utf8'));
+    original[0] = approvedAttachmentMenu(original[0]);
     const names = new Set(original.flatMap(s=>[...s.matchAll(/\b(?:struct|class|enum|protocol)\s+(\w+)/g)].map(m=>m[1])));
     names.add('chatSoftFill');
     const moved = ['ComposerPresentationComponents.swift','ComposerAttachmentStrip.swift','ComposerVoiceActionControl.swift'];

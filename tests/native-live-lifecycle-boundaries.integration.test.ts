@@ -51,7 +51,7 @@ test("real prepare exposes detached Send/Edit users and failure evidence survive
       {userId:user.id,prepareId:command.prepare_id,sequence:3,eventType:"tool_result",payload:{tool_use_id:"tool",output:"contents"}},
     ]);
     if (outcome === "success") {
-      const finalized = await coordinator.finalize(user.id,{protocol_version:command.protocol_version,prepare_id:command.prepare_id,request_id:command.request_id,conversation_id:command.conversation_id,status:"success",provider_session_id:`final-${conversation.id}`,normalized_events:[{type:"text",payload:{text:"Partial answer"}},{type:"result",payload:{status:"success",final_text:"Partial answer"}}]});
+      const finalized = await coordinator.finalize(user.id,{protocol_version:command.protocol_version,prepare_id:command.prepare_id,request_id:command.request_id,conversation_id:command.conversation_id,status:"success",provider_session_id:command.runtime_mode === "resume" ? command.parent_provider_session_id! : `final-${conversation.id}`,provider_checkpoint_id:crypto.randomUUID(),normalized_events:[{type:"text",payload:{text:"Partial answer"}},{type:"result",payload:{status:"success",final_text:"Partial answer"}}]});
       assert.ok(finalized.ok,JSON.stringify(finalized));
       const canonical = await reader.readCurrentPath({userId:user.id,conversationId:conversation.id,limit:100});
       fixtures.push({operation,before:current,active:nativeLiveTurnResponseData(active),canonical});

@@ -728,7 +728,12 @@ test('compact source display assets stay separate from execution root and cannot
   assert.equal(state.messages.length, 6);
   assert.equal(state.checkpoints.length, 2, 'no current-session checkpoint for old source-only assistant');
   // The retained copy exists in the actual root; the original source user does not.
-  assert.equal(state.checkpoints.at(-1).providerCheckpointId, f.entries[1].uuid);
+  const headCheckpoint = state.checkpoints.find((checkpoint: any) => checkpoint.canonicalMessageId === first.headMessageId);
+  assert.ok(headCheckpoint, 'canonical head has its own execution checkpoint');
+  assert.equal(headCheckpoint.providerCheckpointId, f.entries[1].uuid);
+  assert.deepEqual(state.checkpoints.map((checkpoint: any) => checkpoint.providerCheckpointId).sort(),
+    [copy, f.entries[1].uuid].sort(), 'only retained actual-root copy and current assistant are executable');
+  assert.ok(state.checkpoints.every((checkpoint: any) => checkpoint.providerSessionId === f.sessionId));
   const store = new DrizzleNativeLiveProviderSessionStoreRepository(f.database.db);
   assert.deepEqual(await store.load({userId:f.owner,key:{sessionId:f.sessionId}}), entries);
   assert.deepEqual(await store.load({userId:f.owner,key:{sessionId:f.sessionId,subpath:`native-history-assets/${assetRevision}`}}), assets);
