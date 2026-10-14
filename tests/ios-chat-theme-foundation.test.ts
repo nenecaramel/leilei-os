@@ -295,3 +295,43 @@ test('iMessage bubbles use subtle translucency without changing geometry or hit 
   assert.match(layout, /iMessageTextBubbleSpacing: CGFloat = 8/);
   assert.match(layout, /iMessageProcessSectionSpacing: CGFloat = 10/);
 });
+
+
+test('a single local wallpaper serves every iMessage conversation without changing Original or messages', () => {
+  const wallpaper = read('Chat/IMessageWallpaper.swift');
+  const chat = read('Chat/ChatView.swift');
+  const surface = read('Chat/NativeLiveMessageSurface.swift');
+  const settings = read('Navigation/Settings/SettingsHomeContent.swift');
+  const bubble = read('Chat/MessageSurface/NativeLiveIMessageTextBubbles.swift');
+
+  // One on-device file, not keyed to conversation ID or uploaded as an attachment.
+  assert.match(wallpaper, /static let revisionKey = "chat\.imessage\.wallpaperRevision"/);
+  assert.match(wallpaper, /applicationSupportDirectory/);
+  assert.match(wallpaper, /wallpaper\.jpg/);
+  assert.match(wallpaper, /maximumDimension: CGFloat = 2400/);
+  assert.match(wallpaper, /jpegData\(withCompressionQuality: 0\.86\)/);
+  assert.match(wallpaper, /\.write\(to: imageURL\(\), options: \.atomic\)/);
+  assert.match(wallpaper, /static func load\(\) -> UIImage\?/);
+  assert.match(wallpaper, /static func remove\(\) throws/);
+  assert.doesNotMatch(wallpaper, /conversationId|conversationID|uploadNativeLiveAttachment/);
+
+  // Wallpaper remains fixed behind chat content, covering navigation and
+  // composer safe areas; Original keeps its former opaque scroll background.
+  assert.match(chat, /@AppStorage\(IMessageWallpaper\.revisionKey\) private var wallpaperRevision/);
+  assert.match(chat, /\.task\(id: wallpaperRevision\)/);
+  assert.match(chat, /if selectedChatTheme == \.iMessage, let wallpaperImage/);
+  assert.match(chat, /Image\(uiImage: wallpaperImage\)/);
+  assert.match(chat, /\.scaledToFill\(\)/);
+  assert.match(chat, /\.ignoresSafeArea\(\)/);
+  assert.match(surface, /\.background\(chatTheme == \.iMessage \? Color\.clear : Color\(\.systemBackground\)\)/);
+
+  // Picker is separate from the composer image-attachment workflow; users
+  // can replace/reset without changing the message data or its rendering.
+  assert.match(settings, /if chatThemeRawValue == ChatTheme\.iMessage\.rawValue/);
+  assert.match(settings, /PhotosPicker\(selection: \$wallpaperSelection, matching: \.images\)/);
+  assert.match(settings, /try IMessageWallpaper\.save\(image\)/);
+  assert.match(settings, /try IMessageWallpaper\.remove\(\)/);
+  assert.match(settings, /wallpaperRevision = UUID\(\)\.uuidString/);
+  assert.match(settings, /Restore Default Background/);
+  assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
+});
