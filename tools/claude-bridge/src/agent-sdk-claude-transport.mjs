@@ -526,6 +526,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       questionHandler = null,
       trustedReadPaths = [],
       sendFileHandler = null,
+      toolImageHandler = null,
       controlPump = null,
       nativeSessionMirror = null,
     } = {},
@@ -715,6 +716,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       permissionHandler,
       toolPermissionPolicy: this.toolPermissionPolicy,
       questionHandler,
+      toolImageHandler,
       trustedReadPaths,
       midTurnInput:
         Boolean(controlPump) && !nativeScheduleCommand,

@@ -56,6 +56,7 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
         context: { signal: AbortSignal | null },
       ) => Promise<Record<string, unknown>>;
       trustedReadPaths?: readonly string[];
+      toolImageHandler?: (input: { data: string; mimeType: string }, context: { signal: AbortSignal }) => Promise<unknown>;
       sendFileHandler?: (input: {
         path: string;
         displayName: string | null;
@@ -129,7 +130,7 @@ export class NativeLiveMacRuntimeExecutor {
     private readonly attachmentMaterializer:
       NativeLiveMacAttachmentMaterializer | null = null,
     private readonly outputAttachmentSender:
-      Pick<NativeLiveMacOutputAttachmentSender, "sendFile"> | null = null,
+      Pick<NativeLiveMacOutputAttachmentSender, "sendFile"> & Partial<Pick<NativeLiveMacOutputAttachmentSender, "sendInlineImage">> | null = null,
     private readonly onRuntimeFailure:
       ((diagnostics: NativeLiveMacRuntimeFailureDiagnostics) => void) | null = null,
   ) {
@@ -179,11 +180,13 @@ export class NativeLiveMacRuntimeExecutor {
       send: () => Promise<T>,
       attachmentId: (result: T) => string,
       limitMessage: string,
+      signal?: AbortSignal,
     ): Promise<T> {
       if (outputAttachmentIds.length + pendingOutputAttachments >= 8) throw new Error(limitMessage);
       pendingOutputAttachments += 1;
       try {
         const result = await send();
+        signal?.throwIfAborted();
         outputAttachmentIds.push(attachmentId(result));
         return result;
       } finally {
@@ -258,6 +261,19 @@ export class NativeLiveMacRuntimeExecutor {
                       attachment.localPath,
                   ),
               }
+            : {}),
+          ...(this.outputAttachmentSender?.sendInlineImage
+            && command.output_attachments_enabled !== false
+            && command.protocol_version === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+            ? { toolImageHandler: async (input: { data: string; mimeType: string }, context: { signal: AbortSignal }) => {
+                context.signal.throwIfAborted();
+                return sendOutput(
+                  () => this.outputAttachmentSender!.sendInlineImage!({ ...input, signal: context.signal }),
+                  value => value.attachmentId,
+                  "Tool images and send_file may send at most 8 files in one turn.",
+                  context.signal,
+                );
+              } }
             : {}),
           ...(this.outputAttachmentSender
             && command.output_attachments_enabled !== false

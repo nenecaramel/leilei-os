@@ -2,6 +2,7 @@ import { isNativeSessionMirror } from "./native-session-mirror.mjs";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
+import { createToolImageForwarder } from "./tool-images.mjs";
 import {
   normalizeAgentSdkInterruptReceipt,
 } from "./agent-sdk-interrupt.mjs";
@@ -232,6 +233,7 @@ export async function createAgentSdkTurnHandle({
   permissionHandler = null,
   toolPermissionPolicy = "ask",
   questionHandler = null,
+  toolImageHandler = null,
   trustedReadPaths = [],
   streaming = false,
   midTurnInput = false,
@@ -524,6 +526,7 @@ export async function createAgentSdkTurnHandle({
 
   settleMcpReadiness?.(true);
   return new AgentSdkTurnHandle({
+    toolImageHandler,
     query,
     mode,
     parentProviderSessionId,
@@ -541,6 +544,7 @@ export async function createAgentSdkTurnHandle({
 
 export class AgentSdkTurnHandle {
   constructor({
+    toolImageHandler = null,
     query,
     mode,
     parentProviderSessionId,
@@ -554,6 +558,8 @@ export class AgentSdkTurnHandle {
     startupReceipt = null,
     initialUserMessageUuid = null,
   }) {
+    this.imageUploads = new AbortController();
+    this.forwardToolImages = createToolImageForwarder(toolImageHandler);
     this.settleNativeIdentity = settleNativeIdentity;
     this.nativeIdentityConfirmed = false;
     this.nativeStartupTimeoutMs = nativeStartupTimeoutMs;
@@ -677,6 +683,7 @@ export class AgentSdkTurnHandle {
       );
     }
     this.interruptRequested = true;
+    this.imageUploads.abort();
     const receipt = normalizeAgentSdkInterruptReceipt(
       await this.query.interrupt(),
     );
@@ -697,6 +704,7 @@ export class AgentSdkTurnHandle {
     if (this.closed) return;
     this.settleNativeIdentity?.(false);
     this.abortRequested = true;
+    this.imageUploads.abort();
     this.inputQueue?.end();
     this.query.close?.();
     if (!this.started) {
@@ -787,6 +795,12 @@ export class AgentSdkTurnHandle {
 
         this.events.emit("event", message);
         const next = normalizer.normalize(message);
+        if (!next.some(event => event.type === "error")) {
+          const diagnostics = await this.forwardToolImages(message, this.imageUploads.signal);
+          for (const diagnostic of diagnostics) next.push(...normalizer.normalize({
+            type: "system", subtype: "tool_image_delivery", ...diagnostic,
+          }));
+        }
         normalizedEvents.push(...next);
         for (const event of next) {
           this.events.emit("normalized-event", event);
