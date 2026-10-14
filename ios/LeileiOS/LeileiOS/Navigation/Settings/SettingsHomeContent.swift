@@ -10,6 +10,14 @@ struct SettingsHomeContent: View {
     @AppStorage(ChatTheme.storageKey) private var chatThemeRawValue =
         ChatTheme.original.rawValue
     @AppStorage(IMessageWallpaper.revisionKey) private var wallpaperRevision = ""
+    @AppStorage(IMessageBubbleAppearance.outgoingColorKey)
+    private var outgoingBubbleColor = IMessageBubbleAppearance.defaultOutgoingColorHex
+    @AppStorage(IMessageBubbleAppearance.incomingColorKey)
+    private var incomingBubbleColor = IMessageBubbleAppearance.defaultIncomingColorHex
+    @AppStorage(IMessageBubbleAppearance.outgoingOpacityKey)
+    private var outgoingBubbleOpacity = IMessageBubbleAppearance.defaultOutgoingOpacity
+    @AppStorage(IMessageBubbleAppearance.incomingOpacityKey)
+    private var incomingBubbleOpacity = IMessageBubbleAppearance.defaultIncomingOpacity
     @State private var wallpaperSelection: PhotosPickerItem?
     @State private var hasWallpaper = false
     @Environment(\.scenePhase) private var scenePhase
@@ -117,6 +125,55 @@ struct SettingsHomeContent: View {
                 .foregroundStyle(.primary)
             }
 
+            if chatThemeRawValue == ChatTheme.iMessage.rawValue {
+                Section("iMessage Bubble Colors") {
+                    ColorPicker(
+                        "User Bubble Color",
+                        selection: outgoingBubbleColorSelection,
+                        supportsOpacity: false
+                    )
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("User Color Opacity")
+                            Spacer()
+                            Text("\(Int((outgoingBubbleOpacity * 100).rounded()))%")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $outgoingBubbleOpacity, in: 0...1, step: 0.01)
+                    }
+
+                    ColorPicker(
+                        "Assistant Bubble Color",
+                        selection: incomingBubbleColorSelection,
+                        supportsOpacity: false
+                    )
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Assistant Color Opacity")
+                            Spacer()
+                            Text("\(Int((incomingBubbleOpacity * 100).rounded()))%")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $incomingBubbleOpacity, in: 0...1, step: 0.01)
+                    }
+
+                    Button("Restore Default Bubble Colors") {
+                        outgoingBubbleColor = IMessageBubbleAppearance.defaultOutgoingColorHex
+                        incomingBubbleColor = IMessageBubbleAppearance.defaultIncomingColorHex
+                        outgoingBubbleOpacity = IMessageBubbleAppearance.defaultOutgoingOpacity
+                        incomingBubbleOpacity = IMessageBubbleAppearance.defaultIncomingOpacity
+                    }
+
+                    Text("Opacity controls the color over native frosted glass.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Data") {
                 NavigationLink(value: SettingsDetailPage.summary) {
                     Label("Summary", systemImage: "chart.bar")
@@ -187,6 +244,20 @@ struct SettingsHomeContent: View {
                 get: { authErrorMessage != nil },
                 set: { if !$0 { authErrorMessage = nil } }
             )
+        )
+    }
+
+    private var outgoingBubbleColorSelection: Binding<Color> {
+        Binding(
+            get: { IMessageBubbleAppearance.color(hex: outgoingBubbleColor) },
+            set: { outgoingBubbleColor = IMessageBubbleAppearance.hex(from: $0) }
+        )
+    }
+
+    private var incomingBubbleColorSelection: Binding<Color> {
+        Binding(
+            get: { IMessageBubbleAppearance.color(hex: incomingBubbleColor) },
+            set: { incomingBubbleColor = IMessageBubbleAppearance.hex(from: $0) }
         )
     }
 
