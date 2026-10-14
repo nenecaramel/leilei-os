@@ -167,12 +167,15 @@ struct ChatView: View {
                     )
             }
         }
-        .toolbar {
+        // A chat text field needs the full proposed width. ToolbarItem
+        // compresses flexible input controls into a compact toolbar item.
+        // Apple's safe-area bar keeps a native bottom bar and scroll-edge
+        // treatment, while proposing the full available content width.
+        .safeAreaBar(edge: .bottom) {
             if selectedChatTheme == .iMessage {
-                ToolbarItem(placement: .bottomBar) {
-                    chatComposer
-                        .frame(maxWidth: .infinity)
-                }
+                chatComposer
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal)
             }
         }
         .sheet(isPresented: $isNativeCallPresented) {
