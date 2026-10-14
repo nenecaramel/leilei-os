@@ -3,6 +3,7 @@ import Foundation
 
 struct NativeLiveMessageRow: View {
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.chatTheme) private var chatTheme
     let row: NativeLiveConversationRowPresentation
     let isCurrentHead: Bool
     let isTurnInFlight: Bool
@@ -22,6 +23,7 @@ struct NativeLiveMessageRow: View {
                 onCopyMessage:onCopyMessage,onRetryMessage:onRetryMessage,onResolveInteraction:onResolveInteraction)
         } else if let user = row.user {
             nativeLiveUserMessageRow(row:row,user:user,appModel:appModel,isTurnInFlight:isTurnInFlight,
+                leadingClearance: chatTheme == .iMessage ? ChatPresentationLayout.iMessageUserLeadingClearance : ChatPresentationLayout.userLeadingClearance,
                 onCopyMessage:onCopyMessage,onEditMessage:onEditMessage)
         }
     }
