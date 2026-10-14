@@ -163,3 +163,51 @@ test("ordinary files enforce the configured size limit before creating any uploa
   }
   assert.equal(calls, 0);
 });
+
+test('tool image uploads original bytes through the existing private attachment relay', async () => {
+  const data='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII=';
+  let declared: Parameters<import('../src/domains/bridge/mac/native-live-mac-output-attachment-sender.js').NativeLiveMacOutputAttachmentRelay['createAttachmentUploadSlot']>[0] | undefined;
+  let uploaded: Buffer | undefined;
+  const sender=new NativeLiveMacOutputAttachmentSender({
+    async createAttachmentUploadSlot(input) { declared=input;return {attachment:{attachmentId:'a',...input},upload:{url:'https://synthetic.invalid',method:'PUT',headers:{}}}; },
+    async completeAttachmentUpload() { assert.ok(declared);return {attachmentId:'a',...declared}; },
+  },async(_url,init)=>{uploaded=Buffer.from(await new Response(init?.body).arrayBuffer());return new Response(null,{status:200});});
+  const result=await sender.sendInlineImage({data,mimeType:'image/png'});
+  assert.deepEqual(uploaded,Buffer.from(data,'base64'));
+  assert.equal(result.kind,'image');assert.equal(result.mimeType,'image/png');
+  assert.match(result.filename,/\.png$/);assert.equal(result.sizeBytes,Buffer.from(data,'base64').length);
+});
+
+test('invalid, oversized, non-image and cancelled tool data never creates upload slots',async()=>{
+  let slots=0;
+  const sender=new NativeLiveMacOutputAttachmentSender({
+    async createAttachmentUploadSlot(){slots++;throw new Error('not expected');},
+    async completeAttachmentUpload(){throw new Error('not expected');},
+  },fetch,16);
+  for(const input of [{data:'not base64!',mimeType:'image/png'},{data:Buffer.alloc(17).toString('base64'),mimeType:'image/png'},{data:'AAAA',mimeType:'text/html'},{data:'AAAA',mimeType:'image/svg+xml'},{data:'AAAA',mimeType:'image/png'}]) await assert.rejects(sender.sendInlineImage(input));
+  await assert.rejects(sender.sendInlineImage({data:'AAAA',mimeType:'image/png',signal:AbortSignal.abort()}));
+  assert.equal(slots,0);
+});
+
+test('large tool image base64 is validated without regex stack overflow',async()=>{
+  const bytes=Buffer.alloc(10*1024*1024);Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);
+  let metadata: Parameters<import('../src/domains/bridge/mac/native-live-mac-output-attachment-sender.js').NativeLiveMacOutputAttachmentRelay['createAttachmentUploadSlot']>[0] | undefined;
+  const sender=new NativeLiveMacOutputAttachmentSender({
+    async createAttachmentUploadSlot(input){metadata=input;return {attachment:{attachmentId:'large',...input},upload:{url:'https://synthetic.invalid',method:'PUT',headers:{}}};},
+    async completeAttachmentUpload(){assert.ok(metadata);return {attachmentId:'large',...metadata};},
+  },async()=>new Response(null,{status:200}));
+  assert.equal((await sender.sendInlineImage({data:bytes.toString('base64'),mimeType:'image/png'})).sizeBytes,bytes.length);
+});
+
+test('a late upload completion cannot succeed after cancellation',async()=>{
+ const data='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII=';
+ const controller=new AbortController();let release!:()=>void;let started!:()=>void;
+ const completeStarted=new Promise<void>(resolve=>{started=resolve;});const barrier=new Promise<void>(resolve=>{release=resolve;});
+ let metadata: Parameters<import('../src/domains/bridge/mac/native-live-mac-output-attachment-sender.js').NativeLiveMacOutputAttachmentRelay['createAttachmentUploadSlot']>[0] | undefined;
+ const sender=new NativeLiveMacOutputAttachmentSender({
+   async createAttachmentUploadSlot(input){metadata=input;return {attachment:{attachmentId:'late',...input},upload:{url:'https://synthetic.invalid',method:'PUT',headers:{}}};},
+   async completeAttachmentUpload(){started();await barrier;assert.ok(metadata);return {attachmentId:'late',...metadata};},
+ },async()=>new Response(null,{status:200}));
+ const pending=sender.sendInlineImage({data,mimeType:'image/png',signal:controller.signal});
+ const rejected=assert.rejects(pending);await completeStarted;controller.abort();release();await rejected;
+});

@@ -64,6 +64,32 @@ export class NativeLiveMacOutputAttachmentSender {
       NativeLiveAudioDurationProbe = probeAudioDurationWithAfinfo,
   ) {}
 
+  async sendInlineImage(input: {
+    data: string;
+    mimeType: string;
+    signal?: AbortSignal;
+  }): Promise<NativeLiveMacOutputAttachmentDescriptor> {
+    input.signal?.throwIfAborted();
+    const extensions: Record<string, string> = {
+      "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp",
+    };
+    const extension = extensions[input.mimeType];
+    if (!extension || !input.data || input.data.length > Math.ceil(this.maxFileBytes / 3) * 4
+      || input.data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(input.data)) {
+      throw new Error("Invalid tool image.");
+    }
+    const bytes = Buffer.from(input.data, "base64");
+    const validHeader = input.mimeType === "image/png" ? bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
+      : input.mimeType === "image/jpeg" ? bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255
+      : input.mimeType === "image/gif" ? ["GIF87a", "GIF89a"].includes(bytes.subarray(0, 6).toString("ascii"))
+      : bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP";
+    if (!validHeader || bytes.length === 0 || bytes.length > this.maxFileBytes || bytes.toString("base64") !== input.data) {
+      throw new Error("Invalid tool image.");
+    }
+    return this.uploadBytes({ bytes, filename: `tool-image.${extension}`, mimeType: input.mimeType,
+      sizeBytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), kind: "image", signal: input.signal });
+  }
+
   async sendFile(input: {
     path: string;
     displayName?: string | null;
@@ -134,6 +160,7 @@ export class NativeLiveMacOutputAttachmentSender {
   }
 
   private async uploadBytes(input: {
+    signal?: AbortSignal;
     bytes: Buffer;
     filename: string;
     mimeType: string;
@@ -149,12 +176,14 @@ export class NativeLiveMacOutputAttachmentSender {
       sha256,
       kind,
     });
+    input.signal?.throwIfAborted();
     const response = await this.fetchImpl(
       slot.upload.url,
       {
         method: slot.upload.method,
         headers: slot.upload.headers,
         body: new Uint8Array(bytes),
+        ...(input.signal ? { signal: input.signal } : {}),
       },
     );
     if (!response.ok) {
@@ -166,11 +195,13 @@ export class NativeLiveMacOutputAttachmentSender {
         { httpStatus: response.status },
       );
     }
+    input.signal?.throwIfAborted();
 
     const attachment =
       await this.relay.completeAttachmentUpload({
         attachmentId: slot.attachment.attachmentId,
       });
+    input.signal?.throwIfAborted();
     if (
       attachment.attachmentId
         !== slot.attachment.attachmentId
