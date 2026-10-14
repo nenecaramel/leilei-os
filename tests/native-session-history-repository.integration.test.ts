@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
-import { users, conversations, conversationMessages, conversationProviderSessionCheckpoints, nativeLiveTurnPreparations, nativeLiveManualCompactions, nativeLiveRuntimeListenerLeases } from "../src/database/schema.js";
+import { users, conversations, conversationMessages, conversationContentBlocks, conversationProviderSessionCheckpoints, nativeLiveTurnPreparations, nativeLiveManualCompactions, nativeLiveRuntimeListenerLeases } from "../src/database/schema.js";
 import { projectNativeHistory } from "../tools/claude-bridge/src/native-session-history.mjs";
 import { DrizzleNativeLiveCurrentPathReader } from "../src/domains/conversation/native-live-current-path-read-repository.js";
 import { NativeLiveBackendTurnCoordinator } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
@@ -898,6 +898,36 @@ test("handoff continues through sessions LeileiOS itself switched to, proven by 
   const other = local.entries.slice(0, 2).map((entry: any) => ({ ...entry, sessionId: stranger }));
   await assert.rejects(f.write({ ...continued, expectedRevision: revision(7), projection: projectNativeHistory({ sessionId: stranger, revision: revision(6), entries: other }, other[1].uuid),
     nativeSnapshot: { sessionId: stranger, revision: revision(6), entries: other } }), (e: any) => e.code === "EXPLICIT_BRANCH_SELECTION_REQUIRED");
+}));
+
+test("a Desktop turn started by a hidden prompt may extend the last synchronized reply, never change it", { skip: !enabled }, async () => fixture(async f => {
+  f.input.nativeSnapshot = { sessionId: f.sessionId, revision: revision(1), entries: f.entries };
+  const first = await f.write();
+  // After the handoff Desktop's scheduled wake ran (hidden prompt), then the owner rewound
+  // and continued, which forked a new session carrying the same records.
+  const R = randomUUID(), m = randomUUID(), w = randomUUID(), u2 = randomUUID(), a2 = randomUUID();
+  const entries = [...f.entries, { ...row(m, f.entries[1].uuid, "user", "hidden wake prompt"), isMeta: true },
+    row(w, m, "assistant", "wake reply"), row(u2, w, "user", "next user"), row(a2, u2, "assistant", "next reply")]
+    .map((entry: any) => ({ ...entry, sessionId: R }));
+  const projection = projectNativeHistory({ sessionId: R, revision: revision(2), entries }, a2);
+  assert.equal(projection.messages.length, 4, "the wake reply joins the synchronized reply");
+  const next = { ...f.input, expectedHeadMessageId: first.headMessageId, expectedRevision: revision(1), projection,
+    nativeSnapshot: { sessionId: R, revision: revision(2), entries } };
+  // Changing the synchronized part is still a rewrite.
+  const changed = structuredClone(entries); changed[1].message.content[0].text = "rewritten reply";
+  await assert.rejects(f.write({ ...next, projection: projectNativeHistory({ sessionId: R, revision: revision(3), entries: changed }, a2),
+    nativeSnapshot: { sessionId: R, revision: revision(3), entries: changed } }), { code: "NATIVE_HISTORY_REWRITTEN" });
+  const result = await f.write(next);
+  assert.equal(result.outcome, "restored");
+  const after = await f.state();
+  assert.equal(after.messages.length, 4);
+  assert.equal(after.messages[1].id, first.headMessageId, "the synchronized reply keeps its row");
+  assert.equal(after.messages[1].displayText, "synthetic reply\nwake reply");
+  const blocks = await f.database.db.select().from(conversationContentBlocks).where(eq(conversationContentBlocks.messageId, first.headMessageId)).orderBy(conversationContentBlocks.ordinal);
+  assert.deepEqual(blocks.map((b: any) => [b.ordinal, b.text]), [[0, "synthetic reply"], [1, "wake reply"]]);
+  const cp = after.checkpoints.find((c: any) => c.canonicalMessageId === first.headMessageId);
+  assert.deepEqual([cp.providerSessionId, cp.providerCheckpointId], [R, w], "Edit/Retry resumes after the extension");
+  assert.equal((await f.write(next)).outcome, "already_current");
 }));
 
 test("incremental sync sends only what follows the synchronized base, across a session change, and refuses a changed base", { skip: !enabled }, async () => fixture(async f => {

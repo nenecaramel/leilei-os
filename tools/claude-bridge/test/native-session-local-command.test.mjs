@@ -30,14 +30,14 @@ test('local switch lists without credentials and never prints credential acquisi
   const calls = [];
   runLocalSwitch(['list'], { execute(command, args) { calls.push(command); assert.equal(args[1], '--list'); return '[]'; }, print() {} });
   assert.deepEqual(calls, [process.execPath]);
-  assert.throws(() => runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { execute() { throw new Error('PRIVATE_TOKEN'); } }), error => error.message === 'RELAY_CREDENTIALS_UNAVAILABLE');
+  assert.throws(() => runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { desktopRunning: () => false, execute() { throw new Error('PRIVATE_TOKEN'); } }), error => error.message === 'RELAY_CREDENTIALS_UNAVAILABLE');
 });
 
 test('selected conversation is forwarded explicitly and invalid identity is rejected before any side effect', async () => {
   const { runLocalSwitch } = await import('../../../scripts/native-session-local.mjs');
   const conversationId = '00000000-0000-4000-8000-000000000099';
   let childArgs;
-  runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], {
+  runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { desktopRunning: () => false,
     conversationId, execute(command, args) {
       if (command === 'railway') return JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 'PRIVATE', MCP_SERVER_URL: 'https://fixture.example' });
       if (args[0].endsWith('native-session-switch.mjs')) childArgs = args;
@@ -58,7 +58,7 @@ test('local switch child budget covers the largest bounded request and reports i
   // leaving room for resumable attachment uploads after the restore commits.
   assert.ok(NATIVE_SWITCH_CHILD_TIMEOUT_MS >= 2 * (NATIVE_RESTORE_UPLOAD_TIMEOUT_MS + 2 * NATIVE_HISTORY_REQUEST_TIMEOUT_MS));
   let childTimeout;
-  assert.throws(() => runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], {
+  assert.throws(() => runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { desktopRunning: () => false,
     execute(command, _args, options) {
       if (command === 'railway') return JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 'PRIVATE', MCP_SERVER_URL: 'https://fixture.example' });
       childTimeout = options.timeout;
@@ -72,7 +72,7 @@ test('after a switch back to LeileiOS the archive is planned (not applied) and c
   const { runLocalSwitch, afterSwitchArchive } = await import('../../../scripts/native-session-local.mjs');
   const calls = [], output = [];
   const relay = JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 'PRIVATE', MCP_SERVER_URL: 'https://fixture.example' });
-  runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { print: v => output.push(v), execute(command, args, options) {
+  runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { desktopRunning: () => false, print: v => output.push(v), execute(command, args, options) {
     if (command === 'railway') return relay;
     calls.push(args);
     if (args[0].endsWith('native-transcript-archive.mjs')) {
@@ -94,4 +94,19 @@ test('after a switch back to LeileiOS the archive is planned (not applied) and c
   let applied;
   afterSwitchArchive({ autoApply: true, env: {}, execute(_c, args) { applied = args; return JSON.stringify({ mode: 'apply', results: [] }); } });
   assert.equal(applied.at(-1), '--apply', 'the owner-created flag enables applying');
+});
+
+test('switching to LeileiOS refuses while Desktop runs, before credentials or any write', async () => {
+  // Desktop can restart a window to run its scheduled wake, which appends to the
+  // session LeileiOS continues. Only a quit Desktop cannot.
+  const { runLocalSwitch, desktopAppRunning } = await import('../../../scripts/native-session-local.mjs');
+  assert.throws(() => runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], {
+    desktopRunning: () => true, execute() { assert.fail('must not execute'); } }), error => error.message === 'NATIVE_DESKTOP_STILL_RUNNING');
+  assert.equal(desktopAppRunning({ execute: (command, args) => { assert.deepEqual([command, args], ['/usr/bin/pgrep', ['-x', 'Claude']]); return '123\n'; } }), true);
+  assert.equal(desktopAppRunning({ execute: () => { throw Object.assign(new Error('exit 1'), { status: 1 }); } }), false);
+  assert.throws(() => desktopAppRunning({ execute: () => { throw Object.assign(new Error('boom'), { status: 2 }); } }), /DESKTOP_STATE_UNKNOWN/);
+  const calls = [];
+  runLocalSwitch(['desktop', '00000000-0000-4000-8000-000000000001'], { desktopRunning: () => true, print() {},
+    execute(command) { calls.push(command); return command === 'railway' ? JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 't', MCP_SERVER_URL: 'https://fixture.example' }) : '{}'; } });
+  assert.equal(calls.length, 2, 'the Desktop direction is unaffected');
 });

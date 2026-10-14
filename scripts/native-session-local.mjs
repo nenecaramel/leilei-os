@@ -26,6 +26,13 @@ export function afterSwitchArchive({ execute = execFileSync, env, autoApply = ex
   }
 }
 const modes = { list: '--list', desktop: '--desktop-manual', leileios: '--restore' };
+
+// Desktop can restart a window's session to run a scheduled wake after the switch,
+// appending to the session LeileiOS now continues. Only a quit Desktop cannot.
+export function desktopAppRunning({ execute = execFileSync } = {}) {
+  try { return /\d/.test(execute('/usr/bin/pgrep', ['-x', 'Claude'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 })); }
+  catch (error) { if (error?.status === 1) return false; throw new Error('DESKTOP_STATE_UNKNOWN'); }
+}
 // Hang guard only: every relay request and attachment upload inside the child
 // has its own bound. A first import on a slow link spends minutes on the restore
 // upload plus attachments; restore is idempotent and attachments resume on rerun.
@@ -33,12 +40,13 @@ export const NATIVE_SWITCH_CHILD_TIMEOUT_MS = 15 * 60_000;
 
 // Only the existing authenticated switch performs writes. This local wrapper
 // obtains credentials in memory; it does not start a daemon or model query.
-export function runLocalSwitch(args, { execute = execFileSync, environment = process.env, print = value => process.stdout.write(value), conversationId, archive = true } = {}) {
+export function runLocalSwitch(args, { execute = execFileSync, environment = process.env, print = value => process.stdout.write(value), conversationId, archive = true, desktopRunning = desktopAppRunning } = {}) {
   const [mode, id] = args;
   if (!Object.hasOwn(modes, mode) || (mode === 'list' ? args.length !== 1 : args.length !== 2 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) {
     throw new Error('Usage: native-session-local.mjs list | desktop SESSION_ID | leileios SESSION_ID');
   }
   if (conversationId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(conversationId)) throw new Error('INVALID_CONVERSATION_ID');
+  if (mode === 'leileios' && desktopRunning()) throw new Error('NATIVE_DESKTOP_STILL_RUNNING');
   const env = { ...environment };
   if (mode !== 'list') {
     let variables;
