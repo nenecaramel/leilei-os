@@ -131,11 +131,7 @@ struct ChatComposer: View {
                         .padding(.bottom, 3)
                 }
                 .frame(minHeight: 42)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
-                }
+                .glassEffect(.regular, in: Capsule())
             }
         }
     }
@@ -216,10 +212,7 @@ struct ChatComposer: View {
                 .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(.primary)
                 .frame(width: 42, height: 42)
-                .background(.regularMaterial, in: Circle())
-                .overlay {
-                    Circle().strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
-                }
+                .glassEffect(.regular, in: Circle())
                 .contentShape(Circle())
         }
         .accessibilityLabel("Attachments and model settings")
@@ -343,8 +336,58 @@ struct ChatComposer: View {
         actionPresentation.mode == .voice
     }
 
+    @ViewBuilder
     private var composerActionLabel: some View {
-        ComposerPrimaryActionLabel(presentation: actionPresentation)
+        if chatTheme == .iMessage {
+            iMessageActionLabel
+        } else {
+            ComposerPrimaryActionLabel(presentation: actionPresentation)
+        }
+    }
+
+    // Apple-native SF Symbols and dynamic accent tint; only the paint differs.
+    // Button dispatch, the voice gesture bridge and disabled guards are shared.
+    @ViewBuilder
+    private var iMessageActionLabel: some View {
+        switch actionPresentation.mode {
+        case .voice:
+            Image(systemName: "waveform")
+                .font(.system(size: 21, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(
+                    width: LeileiUI.ControlGeometry.compact,
+                    height: LeileiUI.ControlGeometry.compact
+                )
+
+        case .interruptPending:
+            ProgressView()
+                .controlSize(.small)
+                .tint(.primary)
+                .frame(
+                    width: LeileiUI.ControlGeometry.compact,
+                    height: LeileiUI.ControlGeometry.compact
+                )
+
+        case .interrupt:
+            Image(systemName: "stop.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(
+                    width: LeileiUI.ControlGeometry.compact,
+                    height: LeileiUI.ControlGeometry.compact
+                )
+
+        case .send, .midTurnSend, .disabledSend:
+            Image(systemName: "arrow.up")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(.tint, in: Circle())
+                .frame(
+                    width: LeileiUI.ControlGeometry.compact,
+                    height: LeileiUI.ControlGeometry.compact
+                )
+        }
     }
 
     private var voiceActionButton: some View {
