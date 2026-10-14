@@ -134,3 +134,25 @@ test('Both chat themes use native interactive dismissal, including empty scroll 
   assert.doesNotMatch(surface, /DragGesture|resignFirstResponder|endEditing/);
   assert.match(read('Chat/ChatView.swift'), /if isDraftConversation && pendingOperation == nil \{\s*NativeLiveMessageSurface\.scrollableState \{ Color\.clear \}/);
 });
+
+test('iMessage outgoing body typography does not affect Original or assistant messages', () => {
+  const bubble = read('Chat/MessageSurface/NativeLiveUserMessageRow.swift');
+  const markdown = read('Chat/MessageSurface/ChatMarkdown.swift');
+  const math = read('Chat/MessageSurface/NativeLiveMathRenderer.swift');
+
+  assert.match(bubble, /struct IMessageUserBubble<Content: View>/);
+  assert.match(bubble, /view\s*\.font\(\.body\)/);
+  assert.match(bubble, /chatTheme == \.iMessage && !presentation\.isVoiceInput/);
+
+  for (const source of [markdown, math]) {
+    assert.match(source, /@Environment\(\\\.chatTheme\) private var chatTheme/);
+    assert.match(source, /chatTheme == \.iMessage && role == "user"/);
+    assert.match(source, /\.font\(isIMessageUser \? \.body : \.system\(size: 17\)\)/);
+    assert.match(source, /\.lineSpacing\(isIMessageUser \? 0 : \(role == "user" \? 5 : 6\)\)/);
+  }
+  assert.match(markdown, /case \.paragraph:\s*inline\.font\(isIMessageUser \? \.body : \.system\(size: 17\)\)/);
+
+  // Non-iMessage text retains the existing explicit 5pt and 6pt leading.
+  assert.match(math, /verticalSpacing: 4/);
+  assert.doesNotMatch(bubble, /\.tracking\(/);
+});
