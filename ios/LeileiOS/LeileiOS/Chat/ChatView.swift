@@ -154,6 +154,9 @@ struct ChatView: View {
             // acceptance is observed, keep the typed text and unlock retry.
             pendingMidTurnDelivery = nil
         }
+        // Native safe-area placement without a toolbar's opaque bar backdrop.
+        // Original keeps its existing geometry; the iMessage presentation is
+        // independently padded using system spacing without hard-coded gutters.
         .safeAreaInset(edge: .bottom) {
             if selectedChatTheme == .original {
                 chatComposer
@@ -165,17 +168,11 @@ struct ChatView: View {
                             ? 0
                             : ChatPresentationLayout.composerHiddenKeyboardPaintOffset
                     )
-            }
-        }
-        // A chat text field needs the full proposed width. ToolbarItem
-        // compresses flexible input controls into a compact toolbar item.
-        // Apple's safe-area bar keeps a native bottom bar and scroll-edge
-        // treatment, while proposing the full available content width.
-        .safeAreaBar(edge: .bottom) {
-            if selectedChatTheme == .iMessage {
+            } else {
                 chatComposer
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal)
+                    .padding(.vertical, 8)
             }
         }
         .sheet(isPresented: $isNativeCallPresented) {
@@ -264,8 +261,8 @@ struct ChatView: View {
         .environment(\.chatTheme, selectedChatTheme)
     }
 
-    // Exactly one composer owner. Only the outer native placement changes
-    // between Original safe-area inset and iMessage system bottom toolbar.
+    // Exactly one composer owner. Original and iMessage both use the native
+    // safe-area mechanism, with separate visual layout and spacing.
     private var chatComposer: some View {
         ChatComposer(
             text: $messageText,
