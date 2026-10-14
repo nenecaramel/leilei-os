@@ -23,6 +23,7 @@ struct NativeLiveMessageSurface: View {
     let onEditMessage: (NativeLiveCurrentPathMessage) -> Void
 
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.chatTheme) private var chatTheme
     private let bottomAnchorID = "native-live-chat-bottom"
     @State private var scrollState = NativeLiveConversationScrollState()
     @State private var scrollPosition = ScrollPosition()
@@ -99,6 +100,7 @@ struct NativeLiveMessageSurface: View {
                     onRetryMessage: onRetryMessage,
                     onEditMessage: onEditMessage,
                     onResolveRuntimeInteraction: onResolveRuntimeInteraction,
+                    rowSpacing: chatTheme == .iMessage ? ChatPresentationLayout.iMessageTurnSpacing : ChatPresentationLayout.turnSpacing,
                     pagination: { loadOlderButton(snapshot) }
                 )
             }
