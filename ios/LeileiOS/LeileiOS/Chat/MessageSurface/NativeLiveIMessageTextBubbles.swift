@@ -109,14 +109,34 @@ struct NativeLiveIMessageTextBubble<Content: View>: View {
             .font(.body)
             .padding(.horizontal, ChatPresentationLayout.bubbleHorizontalInset)
             .padding(.vertical, ChatPresentationLayout.iMessageUserBubbleVerticalInset)
-            .foregroundStyle(side == .outgoing ? Color.white : Color.primary)
+            // Keep text near full contrast; the translucent effect belongs
+            // primarily to the bubble, not to a washed-out foreground.
+            .foregroundStyle(
+                side == .outgoing ? Color.white.opacity(0.98) : Color.primary.opacity(0.96)
+            )
             .background(
-                side == .outgoing ? Color.blue : Color.chatSoftFill,
+                LinearGradient(
+                    colors: side == .outgoing
+                        ? [Color.blue.opacity(0.95), Color.blue.opacity(0.91)]
+                        : [Color.chatSoftFill.opacity(0.92), Color.chatSoftFill.opacity(0.87)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
                 in: RoundedRectangle(
                     cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
                     style: .continuous
                 )
             )
+            .overlay {
+                // A restrained edge highlight, without glass blur or any
+                // hit-target/geometry changes to the existing text bubble.
+                RoundedRectangle(
+                    cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
+                    style: .continuous
+                )
+                .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                .allowsHitTesting(false)
+            }
     }
 }
 
