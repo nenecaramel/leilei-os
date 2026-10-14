@@ -50,9 +50,7 @@ struct NativeLiveUserMessagePresentationView: View {
     }
     @ViewBuilder private var userTextBubble: some View {
         if chatTheme == .iMessage && !presentation.isVoiceInput {
-            IMessageUserBubble {
-                textBubble
-            }
+            NativeLiveIMessageTextBubbleList(presentation: presentation, side: .outgoing)
         } else {
             // Original style and voice playback geometry are unchanged.
             textBubble
@@ -103,36 +101,3 @@ private struct NativeLiveVoiceMessageBubbleVisual: View {
     }
 }
 
-
-/// iMessage outgoing text only: short bubbles hug content and longer text
-/// wraps within the space remaining after the 70pt leading clearance.
-/// No arbitrary fixed maximum width; message data stays unchanged.
-struct IMessageUserBubble<Content: View>: View {
-    let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            bubble(content.fixedSize(horizontal: true, vertical: false))
-            bubble(content.fixedSize(horizontal: false, vertical: true))
-        }
-    }
-
-    private func bubble<BubbleContent: View>(_ view: BubbleContent) -> some View {
-        view
-            .font(.body)
-            .padding(.horizontal, ChatPresentationLayout.bubbleHorizontalInset)
-            .padding(.vertical, ChatPresentationLayout.iMessageUserBubbleVerticalInset)
-            .foregroundStyle(.white)
-            .background(
-                Color.blue,
-                in: RoundedRectangle(
-                    cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
-                    style: .continuous
-                )
-            )
-    }
-}
