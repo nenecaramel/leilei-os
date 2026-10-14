@@ -128,27 +128,34 @@ struct NativeLiveIMessageTextBubbleList: View {
 
     var body: some View {
         VStack(alignment: side == .outgoing ? .trailing : .leading, spacing: 10) {
-            ForEach(segments) { segment in
-                if segment.isTextBubble {
-                    if side == .incoming {
-                        HStack(spacing: 0) {
+            ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
+                Group {
+                    if segment.isTextBubble {
+                        if side == .incoming {
+                            HStack(spacing: 0) {
+                                NativeLiveIMessageTextBubble(side: side) {
+                                    NativeLiveVisualNodeView(node: segment.node, role: presentation.role)
+                                }
+                                Spacer(minLength: ChatPresentationLayout.iMessageUserLeadingClearance)
+                            }
+                        } else {
                             NativeLiveIMessageTextBubble(side: side) {
                                 NativeLiveVisualNodeView(node: segment.node, role: presentation.role)
                             }
-                            Spacer(minLength: ChatPresentationLayout.iMessageUserLeadingClearance)
                         }
                     } else {
-                        NativeLiveIMessageTextBubble(side: side) {
-                            NativeLiveVisualNodeView(node: segment.node, role: presentation.role)
-                        }
+                        // Rich non-text nodes retain their existing renderers.
+                        NativeLiveVisualNodeView(node: segment.node, role: presentation.role)
                     }
-                } else {
-                    // Rich non-text nodes retain their existing renderers.
-                    NativeLiveVisualNodeView(node: segment.node, role: presentation.role)
                 }
+                // Preserve the original assistant's 22pt separation around
+                // code, tables, media and other specialized surfaces.
+                .padding(.top, side == .incoming && index > 0 &&
+                    (!segment.isTextBubble || !segments[index - 1].isTextBubble) ? 12 : 0)
             }
-            if side == .incoming {
+            if side == .incoming && !presentation.citationSources.isEmpty {
                 NativeLiveCitationSourcesView(sources: presentation.citationSources)
+                    .padding(.top, 2)
             }
         }
     }
