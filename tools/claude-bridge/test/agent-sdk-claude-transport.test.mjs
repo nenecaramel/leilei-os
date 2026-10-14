@@ -3048,3 +3048,33 @@ test("local resume recovers a proven SDK interrupted failed turn without admitti
     });
   }
 });
+
+for (const interactive of [false, true]) {
+  test(`owner auto-allow reaches the actual ${interactive ? "interactive" : "ordinary"} SDK query`, async () => {
+    let questionCalls = 0, queryCalls = 0;
+    const transport = new AgentSdkClaudeTransport({ environment: {}, toolPermissionPolicy: "auto_allow",
+      queryImpl: ({ options }) => {
+        queryCalls++;
+        assert.equal(options.permissionMode, "default");
+        assert.equal(options.allowDangerouslySkipPermissions, undefined);
+        assert.deepEqual(options.settingSources, ["user", "project", "local"]);
+        return { close() {}, async *[Symbol.asyncIterator]() {
+          for (const name of ["Bash", "Monitor", "mcp__external__write"]) {
+            assert.deepEqual(await options.canUseTool(name, { synthetic: true }), { behavior: "allow" });
+          }
+          const decision = await options.canUseTool("AskUserQuestion", { questions: [{ question: "Synthetic choice?", options: [] }] });
+          if (interactive) assert.equal(decision.updatedInput.answers["Synthetic choice?"], "Chosen");
+          else assert.equal(decision.behavior, "deny");
+          yield* successFixture();
+        } };
+      },
+    });
+    if (interactive) await transport.executeTurn("synthetic", { mode: "new",
+      permissionHandler: () => assert.fail("must not create a permission card"),
+      questionHandler: async () => { questionCalls++; return { decision: "answer", answers: { "Synthetic choice?": "Chosen" } }; },
+    });
+    else await transport.sendNew("synthetic");
+    assert.equal(queryCalls, 1);
+    assert.equal(questionCalls, interactive ? 1 : 0);
+  });
+}

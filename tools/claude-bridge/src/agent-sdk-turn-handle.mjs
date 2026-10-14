@@ -8,6 +8,7 @@ import {
 import {
   assertInteractiveCallbackQueryOptions,
   createAgentSdkPermissionCallback,
+  normalizeAgentSdkToolPermissionPolicy,
 } from "./agent-sdk-permission.mjs";
 import {
   createAgentSdkQuestionCallback,
@@ -229,6 +230,7 @@ export async function createAgentSdkTurnHandle({
   cwd = process.cwd(),
   queryOptions = {},
   permissionHandler = null,
+  toolPermissionPolicy = "ask",
   questionHandler = null,
   trustedReadPaths = [],
   streaming = false,
@@ -321,11 +323,12 @@ export async function createAgentSdkTurnHandle({
   const resolvedQuery = queryImpl ?? await loadQuery();
   const events = new EventEmitter();
 
+  toolPermissionPolicy = normalizeAgentSdkToolPermissionPolicy(toolPermissionPolicy);
   let permissionCallback = null;
   let questionCallback = null;
 
   if (
-    permissionHandler !== null
+    permissionHandler !== null || toolPermissionPolicy === "auto_allow"
     || questionHandler !== null
   ) {
     assertInteractiveCallbackQueryOptions(
@@ -334,10 +337,11 @@ export async function createAgentSdkTurnHandle({
     );
   }
 
-  if (permissionHandler !== null) {
+  if (permissionHandler !== null || toolPermissionPolicy === "auto_allow") {
     permissionCallback =
       createAgentSdkPermissionCallback({
         permissionHandler,
+        toolPermissionPolicy,
         events,
         trustedReadPaths,
       });
