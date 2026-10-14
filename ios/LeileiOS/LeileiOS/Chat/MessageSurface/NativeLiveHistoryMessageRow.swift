@@ -1,7 +1,9 @@
 import SwiftUI
+import UIKit
 
 struct NativeLiveHistorySnapshotRow: View {
     @Environment(\.chatTheme) private var chatTheme
+    @Environment(\.nativeLiveCopyFeedback) private var copyFeedback
     let message: NativeLiveConversationHistoryMessage
     let timeZone: String
 
@@ -34,8 +36,19 @@ struct NativeLiveHistorySnapshotRow: View {
         } else {
             VStack(alignment: .leading, spacing: ChatPresentationLayout.assistantSpacing) {
                 if chatTheme == .iMessage {
-                    NativeLiveIMessageTextBubbleList(presentation: presentation, side: .incoming)
-                        .textSelection(.enabled)
+                    NativeLiveIMessageTextBubbleList(
+                        presentation: presentation,
+                        side: .incoming,
+                        timestamp: MessageTimestampFormatter.string(
+                            from: message.time,
+                            timeZoneIdentifier: timeZone
+                        ),
+                        onCopy: { text in
+                            UIPasteboard.general.string = text
+                            copyFeedback("Message copied")
+                        }
+                    )
+                    .textSelection(.enabled)
                 } else {
                     NativeLiveMessagePresentationView(presentation: presentation)
                         .textSelection(.enabled)
