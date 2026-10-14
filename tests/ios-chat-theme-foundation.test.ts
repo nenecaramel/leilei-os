@@ -208,3 +208,45 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   assert.match(math, /verticalSpacing: 4/);
   assert.doesNotMatch(user, /\.tracking\(/);
 });
+
+
+test('iMessage alone uses compact turn, bubble and process spacing with full-width wrapping', () => {
+  const layout = read('Chat/ChatPresentationLayout.swift');
+  const list = read('Chat/MessageSurface/NativeLiveMessageList.swift');
+  const surface = read('Chat/NativeLiveMessageSurface.swift');
+  const assistant = read('Chat/MessageSurface/NativeLiveAssistantTurnRow.swift');
+  const bubble = read('Chat/MessageSurface/NativeLiveIMessageTextBubbles.swift');
+
+  // Original retains its exact existing constants, including process
+  // boundaries, while the iMessage-only paths select the new sizes.
+  assert.match(layout, /turnSpacing: CGFloat = 25/);
+  assert.match(layout, /processSectionSpacing: CGFloat = 18/);
+  assert.match(layout, /assistantSpacing: CGFloat = 6/);
+  assert.match(layout, /iMessageTurnSpacing: CGFloat = 12/);
+  assert.match(layout, /iMessageTextBubbleSpacing: CGFloat = 8/);
+  assert.match(layout, /iMessageProcessSectionSpacing: CGFloat = 10/);
+  assert.match(list, /rowSpacing: CGFloat = ChatPresentationLayout\.turnSpacing/);
+  assert.match(list, /LazyVStack\(spacing: rowSpacing\)/);
+  assert.match(surface, /@Environment\(\\\.chatTheme\) private var chatTheme/);
+  assert.match(surface, /rowSpacing: chatTheme == \.iMessage \? ChatPresentationLayout\.iMessageTurnSpacing : ChatPresentationLayout\.turnSpacing/);
+
+  // In the same row's VStack, each of Thought→Worked, Worked→body, and
+  // Thought→body is 6pt base spacing + 4pt conditional bottom inset.
+  assert.match(assistant, /VStack\(alignment:\.leading,spacing:ChatPresentationLayout\.assistantSpacing\)/);
+  assert.match(assistant, /processSections\.showsThinking && \(processSections\.showsActivity \|\| !turn\.bodyPresentation\.nodes\.isEmpty\) \? processSectionExtraSpacing : 0/);
+  assert.match(assistant, /processSections\.showsActivity && !turn\.bodyPresentation\.nodes\.isEmpty \? processSectionExtraSpacing : 0/);
+  assert.match(assistant, /chatTheme == \.iMessage \? ChatPresentationLayout\.iMessageProcessSectionSpacing : ChatPresentationLayout\.processSectionSpacing/);
+  assert.match(assistant, /- ChatPresentationLayout\.assistantSpacing/);
+
+  // Fixed natural width for unwrapped text, available-row width for
+  // automatically wrapped text. No 300pt or other hard cap.
+  assert.match(bubble, /bubble\(content\.fixedSize\(horizontal: true, vertical: false\), fillAvailableWidth: false\)/);
+  assert.match(bubble, /bubble\(content\.fixedSize\(horizontal: false, vertical: true\), fillAvailableWidth: true\)/);
+  assert.match(bubble, /maxWidth: fillAvailableWidth \? \.infinity : nil/);
+  assert.match(bubble, /alignment: side == \.outgoing \? \.trailing : \.leading/);
+  assert.match(bubble, /spacing: ChatPresentationLayout\.iMessageTextBubbleSpacing/);
+  assert.match(bubble, /22 - ChatPresentationLayout\.iMessageTextBubbleSpacing/);
+  assert.match(bubble, /12 - ChatPresentationLayout\.iMessageTextBubbleSpacing/);
+  assert.match(bubble, /rawText\.split\(whereSeparator:/);
+  assert.doesNotMatch(bubble, /iMessageUserBubbleMaxWidth|300\s*pt|\.frame\(width:\s*300/);
+});
