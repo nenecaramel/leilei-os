@@ -272,8 +272,8 @@ test('iMessage bubbles use subtle translucency without changing geometry or hit 
   const layout = read('Chat/ChatPresentationLayout.swift');
 
   assert.doesNotMatch(bubble, /LinearGradient\(/);
-  assert.match(bubble, /Color\.blue\.opacity\(0\.94\)/);
-  assert.match(bubble, /Color\(red: 0\.24, green: 0\.25, blue: 0\.27\)\.opacity\(0\.85\)/);
+  assert.match(bubble, /Color\(red: 0\.12, green: 0\.54, blue: 1\.00\)\.opacity\(0\.94\)/);
+  assert.match(bubble, /Color\(red: 0\.30, green: 0\.31, blue: 0\.33\)\.opacity\(0\.85\)/);
   assert.match(bubble, /Color\.white\.opacity\(0\.98\)/);
   assert.doesNotMatch(bubble, /Color\.primary\.opacity\(/);
   assert.doesNotMatch(bubble, /\.strokeBorder\(/);
