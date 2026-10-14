@@ -80,3 +80,45 @@ test('iMessage Composer uses Apple-native controls while retaining existing acti
   assert.match(imessageBody, /\.disabled\(!canStartVoiceCall\)/);
   assert.match(imessageBody, /isFocused\.wrappedValue = false/);
 });
+
+test('iMessage placement uses the native bottom toolbar without manual screen gutters', () => {
+  const chat = read('Chat/ChatView.swift');
+
+  const original = chat.slice(
+    chat.indexOf('        .safeAreaInset(edge: .bottom) {'),
+    chat.indexOf('        .toolbar {', chat.indexOf('        .safeAreaInset(edge: .bottom) {'))
+  );
+  const nativeToolbar = chat.slice(
+    chat.indexOf('        .toolbar {', chat.indexOf('        .safeAreaInset(edge: .bottom) {')),
+    chat.indexOf('        .sheet(isPresented: $isNativeCallPresented)')
+  );
+  const shared = chat.slice(chat.indexOf('    private var chatComposer: some View {'));
+
+  assert.match(original, /if selectedChatTheme == \.original/);
+  assert.match(original, /\.safeAreaInset\(edge: \.bottom\)/);
+  assert.match(original, /ChatPresentationLayout\.composerOuterHorizontal/);
+  assert.match(original, /ChatPresentationLayout\.composerOuterTop/);
+  assert.match(original, /ChatPresentationLayout\.composerOuterBottom/);
+  assert.match(original, /ChatPresentationLayout\.composerHiddenKeyboardPaintOffset/);
+
+  assert.match(nativeToolbar, /if selectedChatTheme == \.iMessage/);
+  assert.match(nativeToolbar, /ToolbarItem\(placement: \.bottomBar\)/);
+  assert.match(nativeToolbar, /chatComposer/);
+  assert.doesNotMatch(nativeToolbar, /\.safeAreaInset|\.padding\(|\.offset\(|composerOuter|composerHiddenKeyboardPaintOffset/);
+
+  assert.equal((chat.match(/\bChatComposer\(/g) ?? []).length, 1, 'exactly one composer callback owner');
+  assert.match(shared, /text: \$messageText/);
+  assert.match(shared, /model: \$model/);
+  assert.match(shared, /thinking: \$thinking/);
+  assert.match(shared, /effort: \$effort/);
+  assert.match(shared, /attachments: composerAttachments/);
+  for (const route of [
+    'onCancelEdit: cancelEditing',
+    'onRetryAttachment: { id in',
+    'onInterrupt: {',
+    'onMidTurnInput: { text in',
+    'onVoicePress: {',
+    'onVoiceRelease: { voiceInput.release() }'
+  ]) assert.ok(shared.includes(route), route);
+  assert.match(shared, /sendMessage\(\)/);
+});
