@@ -155,88 +155,25 @@ struct ChatView: View {
             pendingMidTurnDelivery = nil
         }
         .safeAreaInset(edge: .bottom) {
-            ChatComposer(
-                text: $messageText,
-                model: $model,
-                thinking: $thinking,
-                effort: $effort,
-                voiceLanguage: $voiceLanguage,
-                isFocused: $isComposerFocused,
-                isSending:
-                    appModel.chatSendState == .sending
-                        || voiceInput.isActive
-                        || isDraftCommitInFlight
-                        || pendingOperation != nil
-                        || isRuntimeTurnActive,
-                isRuntimeTurnActive:
-                    isRuntimeTurnActive,
-                isRuntimeControlInFlight:
-                    isRuntimeControlInFlight
-                        || pendingMidTurnDelivery != nil,
-                interruptRequested:
-                    runtimeInterruptRequested,
-                isEditing: editDraft != nil,
-                attachments: composerAttachments,
-                onCancelEdit: cancelEditing,
-                onPickPhoto: {
-                    isPhotoPickerPresented = true
-                },
-                onTakePhoto: {
-                    isCameraPresented = true
-                },
-                onPickFile: {
-                    isFileImporterPresented = true
-                },
-                canStartVoiceCall:
-                    !isDraftConversation
-                        && appModel.isAuthenticated
-                        && appModel.activeNativeLiveConversationID != nil
-                        && appModel.chatSendState != .sending
-                        && !isRuntimeTurnActive
-                        && pendingOperation == nil
-                        && !voiceInput.isActive,
-                onStartVoiceCall: {
-                    voiceInput.cancel()
-                    isComposerFocused = false
-                    isNativeCallPresented = true
-                },
-                onRemoveAttachment: { id in
-                    composerAttachments.removeAll {
-                        $0.id == id
-                    }
-                },
-                onRetryAttachment: { id in
-                    retryAttachmentUpload(id)
-                },
-                onInterrupt: {
-                    interruptCurrentTurn()
-                },
-                onMidTurnInput: { text in
-                    sendMidTurnInput(text)
-                },
-                voiceEnabled: voiceEnabled,
-                voiceStatus: voiceInput.status,
-                onVoiceInteractionBegin: {
-                    voiceInput.dismissStatusMessage()
-                },
-                onVoicePress: {
-                    voiceInput.begin(
-                        language: voiceLanguage,
-                        onTranscript: sendVoiceMessage
+            if selectedChatTheme == .original {
+                chatComposer
+                    .padding(.horizontal, ChatPresentationLayout.composerOuterHorizontal)
+                    .padding(.top, ChatPresentationLayout.composerOuterTop)
+                    .padding(.bottom, ChatPresentationLayout.composerOuterBottom)
+                    .offset(
+                        y: isSystemKeyboardVisible
+                            ? 0
+                            : ChatPresentationLayout.composerHiddenKeyboardPaintOffset
                     )
-                },
-                onVoiceRelease: { voiceInput.release() }
-            ) {
-                sendMessage()
             }
-            .padding(.horizontal, ChatPresentationLayout.composerOuterHorizontal)
-            .padding(.top, ChatPresentationLayout.composerOuterTop)
-            .padding(.bottom, ChatPresentationLayout.composerOuterBottom)
-            .offset(
-                y: isSystemKeyboardVisible
-                    ? 0
-                    : ChatPresentationLayout.composerHiddenKeyboardPaintOffset
-            )
+        }
+        .toolbar {
+            if selectedChatTheme == .iMessage {
+                ToolbarItem(placement: .bottomBar) {
+                    chatComposer
+                        .frame(maxWidth: .infinity)
+                }
+            }
         }
         .sheet(isPresented: $isNativeCallPresented) {
             if let conversationID = appModel.activeNativeLiveConversationID {
@@ -322,6 +259,85 @@ struct ChatView: View {
             }
         }
         .environment(\.chatTheme, selectedChatTheme)
+    }
+
+    // Exactly one composer owner. Only the outer native placement changes
+    // between Original safe-area inset and iMessage system bottom toolbar.
+    private var chatComposer: some View {
+        ChatComposer(
+            text: $messageText,
+            model: $model,
+            thinking: $thinking,
+            effort: $effort,
+            voiceLanguage: $voiceLanguage,
+            isFocused: $isComposerFocused,
+            isSending:
+                appModel.chatSendState == .sending
+                    || voiceInput.isActive
+                    || isDraftCommitInFlight
+                    || pendingOperation != nil
+                    || isRuntimeTurnActive,
+            isRuntimeTurnActive:
+                isRuntimeTurnActive,
+            isRuntimeControlInFlight:
+                isRuntimeControlInFlight
+                    || pendingMidTurnDelivery != nil,
+            interruptRequested:
+                runtimeInterruptRequested,
+            isEditing: editDraft != nil,
+            attachments: composerAttachments,
+            onCancelEdit: cancelEditing,
+            onPickPhoto: {
+                isPhotoPickerPresented = true
+            },
+            onTakePhoto: {
+                isCameraPresented = true
+            },
+            onPickFile: {
+                isFileImporterPresented = true
+            },
+            canStartVoiceCall:
+                !isDraftConversation
+                    && appModel.isAuthenticated
+                    && appModel.activeNativeLiveConversationID != nil
+                    && appModel.chatSendState != .sending
+                    && !isRuntimeTurnActive
+                    && pendingOperation == nil
+                    && !voiceInput.isActive,
+            onStartVoiceCall: {
+                voiceInput.cancel()
+                isComposerFocused = false
+                isNativeCallPresented = true
+            },
+            onRemoveAttachment: { id in
+                composerAttachments.removeAll {
+                    $0.id == id
+                }
+            },
+            onRetryAttachment: { id in
+                retryAttachmentUpload(id)
+            },
+            onInterrupt: {
+                interruptCurrentTurn()
+            },
+            onMidTurnInput: { text in
+                sendMidTurnInput(text)
+            },
+            voiceEnabled: voiceEnabled,
+            voiceStatus: voiceInput.status,
+            onVoiceInteractionBegin: {
+                voiceInput.dismissStatusMessage()
+            },
+            onVoicePress: {
+                voiceInput.begin(
+                    language: voiceLanguage,
+                    onTranscript: sendVoiceMessage
+                )
+            },
+            onVoiceRelease: { voiceInput.release() }
+        ) {
+            sendMessage()
+        }
     }
 
 }
