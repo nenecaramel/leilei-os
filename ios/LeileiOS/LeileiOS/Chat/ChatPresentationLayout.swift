@@ -12,6 +12,8 @@ enum ChatPresentationLayout {
     // iMessage-only cap in points, including text padding. Apple's exact
     // Messages.app width is not a public system design constant.
     static let iMessageUserBubbleMaxWidth: CGFloat = 300
+    static let iMessageUserBubbleVerticalInset: CGFloat = 10
+    static let iMessageUserBubbleRadius: CGFloat = 20
     static let bubbleHorizontalInset: CGFloat = 14
     static let bubbleVerticalInset: CGFloat = 12
     static let bubbleRadius: CGFloat = 18
