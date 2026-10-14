@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PhotosUI
 import UserNotifications
 
 struct SettingsHomeContent: View {
@@ -8,6 +9,9 @@ struct SettingsHomeContent: View {
     @AppStorage("appearanceMode") private var appearanceModeRawValue = AppearanceMode.system.rawValue
     @AppStorage(ChatTheme.storageKey) private var chatThemeRawValue =
         ChatTheme.original.rawValue
+    @AppStorage(IMessageWallpaper.revisionKey) private var wallpaperRevision = ""
+    @State private var wallpaperSelection: PhotosPickerItem?
+    @State private var hasWallpaper = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var authorizationStatus: UNAuthorizationStatus = .notDetermined
     @State private var showingSignOutConfirmation = false
@@ -71,6 +75,33 @@ struct SettingsHomeContent: View {
                 }
                 .pickerStyle(.menu)
 
+                if chatThemeRawValue == ChatTheme.iMessage.rawValue {
+                    LabeledContent("Chat Background") {
+                        Text(hasWallpaper ? "Custom" : "Default")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    PhotosPicker(selection: $wallpaperSelection, matching: .images) {
+                        Label(
+                            hasWallpaper ? "Change Chat Background" : "Choose Chat Background",
+                            systemImage: "photo.on.rectangle.angled"
+                        )
+                    }
+
+                    if hasWallpaper {
+                        Button(role: .destructive) {
+                            do {
+                                try IMessageWallpaper.remove()
+                                wallpaperRevision = UUID().uuidString
+                            } catch {
+                                authErrorMessage = error.localizedDescription
+                            }
+                        } label: {
+                            Label("Restore Default Background", systemImage: "arrow.uturn.backward")
+                        }
+                    }
+                }
+
                 Button {
                     Task {
                         await handleNotificationsTap()
@@ -115,6 +146,25 @@ struct SettingsHomeContent: View {
         .background(Color.settingsBackground)
         .task {
             await refreshAuthorizationStatus()
+        }
+        .task(id: wallpaperRevision) {
+            hasWallpaper = IMessageWallpaper.load() != nil
+        }
+        .onChange(of: wallpaperSelection) { _, item in
+            guard let item else { return }
+            Task { @MainActor in
+                defer { wallpaperSelection = nil }
+                do {
+                    guard let data = try await item.loadTransferable(type: Data.self),
+                          let image = UIImage(data: data) else {
+                        throw IMessageWallpaper.WallpaperError.invalidImage
+                    }
+                    try IMessageWallpaper.save(image)
+                    wallpaperRevision = UUID().uuidString
+                } catch {
+                    authErrorMessage = error.localizedDescription
+                }
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
