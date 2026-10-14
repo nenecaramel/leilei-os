@@ -991,3 +991,31 @@ test("referenced native sessions cover checkpoints, sources and in-flight turns,
   const { sessionIds } = await listReferencedNativeSessions(f.database.db, { userId: f.owner });
   assert.deepEqual(sessionIds, [f.sessionId, W].sort());
 }));
+
+test("restore writes a long history in a bounded number of round trips (cross-region latency)", { skip: !enabled }, async () => {
+  const postgres = (await import("postgres")).default;
+  const { restoreNativeSessionHistory } = await import(modulePath.href);
+  let statements = 0;
+  const database = createDatabase(process.env.DATABASE_URL!, { ssl: false,
+    createClient: (url, max) => postgres(url, { max, prepare: false, ssl: false, debug: () => { statements++; } }) });
+  const [owner] = await database.db.insert(users).values({ email: `native-batch-${randomUUID()}@example.com`, displayName: "batch" }).returning();
+  try {
+    const sessionId = randomUUID(), entries: any[] = [];
+    let parent: string | null = null;
+    for (let i = 0; i < 300; i++) {
+      const uuid = randomUUID();
+      entries.push(row(uuid, parent, i % 2 ? "assistant" : "user", `message ${i}`));
+      parent = uuid;
+    }
+    const before = statements;
+    const result = await restoreNativeSessionHistory(database.db, { userId: owner!.id, conversationId: randomUUID(), expectedHeadMessageId: null, expectedRevision: null,
+      effectiveWorkingDirectory: "/synthetic/workspace", projection: projectNativeHistory({ sessionId, revision: revision(1), entries }, parent!),
+      nativeSnapshot: { sessionId, revision: revision(1), entries } });
+    assert.equal(result.inserted, 300);
+    assert.ok(statements - before < 100, `restore used ${statements - before} statements for 300 messages`);
+  } finally {
+    await database.db.delete(conversations).where(eq(conversations.userId, owner!.id));
+    await database.db.delete(users).where(eq(users.id, owner!.id));
+    await database.close();
+  }
+});
