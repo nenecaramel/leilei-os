@@ -52,7 +52,7 @@ struct NativeLiveInlineMathParagraphRenderer: View {
         case .list(let marker, let depth):
             HStack(alignment: .top, spacing: 8) {
                 Text(marker)
-                    .font(isIMessageUser ? .body : .system(size: 17))
+                    .font(isIMessageBubbleText ? .body : .system(size: 17))
                 flow
             }
             .padding(.leading, CGFloat(depth) * 12)
@@ -72,7 +72,7 @@ struct NativeLiveInlineMathParagraphRenderer: View {
         }
     }
 
-    private var isIMessageUser: Bool {
+    private var isIMessageBubbleText: Bool {
         chatTheme == .iMessage && (role == "user" || role == "assistant")
     }
 
@@ -86,9 +86,9 @@ struct NativeLiveInlineMathParagraphRenderer: View {
                     NativeLiveInlineMathVisualRenderer(model: math)
                 } else if let markdown = child.markdown {
                     Text(markdown.inline)
-                        .font(isIMessageUser ? .body : .system(size: 17))
+                        .font(isIMessageBubbleText ? .body : .system(size: 17))
                         .textSelection(.enabled)
-                        .lineSpacing(isIMessageUser ? 0 : (role == "user" ? 5 : 6))
+                        .lineSpacing(isIMessageBubbleText ? 0 : (role == "user" ? 5 : 6))
                         .environment(
                             \.openURL,
                             OpenURLAction { url in
@@ -101,7 +101,7 @@ struct NativeLiveInlineMathParagraphRenderer: View {
                         )
                 } else if let text = child.text {
                     Text(text)
-                        .font(isIMessageUser ? .body : .system(size: 17))
+                        .font(isIMessageBubbleText ? .body : .system(size: 17))
                         .textSelection(.enabled)
                 }
             }
