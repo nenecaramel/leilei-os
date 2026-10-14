@@ -23,6 +23,7 @@ struct NativeLiveMathRenderer: View {
 // paragraph wrapping natively, but render math runs with the visual math
 // surface instead of exposing raw LaTeX in the paragraph.
 struct NativeLiveInlineMathParagraphRenderer: View {
+    @Environment(\.chatTheme) private var chatTheme
     let node: NativeLiveVisualNode
     let model: NativeLiveMarkdownPresentation
     let role: String
@@ -71,19 +72,23 @@ struct NativeLiveInlineMathParagraphRenderer: View {
         }
     }
 
+    private var isIMessageUser: Bool {
+        chatTheme == .iMessage && role == "user"
+    }
+
     private var flow: some View {
         NativeLiveInlineMathFlowLayout(
             horizontalSpacing: 1,
-            verticalSpacing: 4
+            verticalSpacing: isIMessageUser ? 0 : 4
         ) {
             ForEach(node.children) { child in
                 if let math = child.math {
                     NativeLiveInlineMathVisualRenderer(model: math)
                 } else if let markdown = child.markdown {
                     Text(markdown.inline)
-                        .font(.system(size: 17))
+                        .font(isIMessageUser ? .body : .system(size: 17))
                         .textSelection(.enabled)
-                        .lineSpacing(role == "user" ? 5 : 6)
+                        .lineSpacing(isIMessageUser ? 0 : (role == "user" ? 5 : 6))
                         .environment(
                             \.openURL,
                             OpenURLAction { url in
@@ -96,7 +101,7 @@ struct NativeLiveInlineMathParagraphRenderer: View {
                         )
                 } else if let text = child.text {
                     Text(text)
-                        .font(.system(size: 17))
+                        .font(isIMessageUser ? .body : .system(size: 17))
                         .textSelection(.enabled)
                 }
             }
