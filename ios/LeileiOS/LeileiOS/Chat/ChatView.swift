@@ -49,7 +49,7 @@ struct ChatView: View {
                 .ignoresSafeArea()
 
             if isDraftConversation && pendingOperation == nil {
-                Color.clear
+                NativeLiveMessageSurface.scrollableState { Color.clear }
             } else {
                 NativeLiveMessageSurface(
                     snapshot:

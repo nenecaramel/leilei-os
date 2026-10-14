@@ -123,3 +123,14 @@ test('iMessage uses a native safe-area inset with no opaque system bottom bar', 
   assert.match(composer, /case \.original:\s*sharedComposerContent/);
   assert.match(composer, /case \.iMessage:\s*iMessageComposerContent/);
 });
+
+test('Both chat themes use native interactive dismissal, including empty scroll surfaces', () => {
+  const surface = read('Chat/NativeLiveMessageSurface.swift');
+  assert.equal((surface.match(/\.scrollDismissesKeyboard\(\.interactively\)/g) ?? []).length, 2);
+  assert.equal((surface.match(/\.scrollBounceBehavior\(\.always\)/g) ?? []).length, 2);
+  assert.match(surface, /static func scrollableState<Content: View>/);
+  assert.match(surface, /content\(\)\s*\.frame\(maxWidth: \.infinity, minHeight: geometry\.size\.height\)/);
+  assert.equal((surface.match(/scrollableState \{/g) ?? []).length, 5);
+  assert.doesNotMatch(surface, /DragGesture|resignFirstResponder|endEditing/);
+  assert.match(read('Chat/ChatView.swift'), /if isDraftConversation && pendingOperation == nil \{\s*NativeLiveMessageSurface\.scrollableState \{ Color\.clear \}/);
+});
