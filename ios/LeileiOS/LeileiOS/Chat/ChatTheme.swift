@@ -7,6 +7,7 @@ enum ChatTheme: String, CaseIterable, Identifiable, Sendable {
     case iMessage = "imessage"
 
     static let storageKey = "chat.theme"
+    static let defaultValue: ChatTheme = .original
 
     var id: String { rawValue }
 
@@ -19,7 +20,7 @@ enum ChatTheme: String, CaseIterable, Identifiable, Sendable {
 }
 
 private struct ChatThemeEnvironmentKey: EnvironmentKey {
-    static let defaultValue: ChatTheme = .original
+    static let defaultValue: ChatTheme = ChatTheme.defaultValue
 }
 
 extension EnvironmentValues {
