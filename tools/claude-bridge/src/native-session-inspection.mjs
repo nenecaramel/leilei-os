@@ -36,7 +36,7 @@ async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirec
   try { nativeDisplayChain(snapshot, identity.providerCheckpointId); }
   catch (error) {
     if (!['COMPACT_SOURCE_HISTORY_REQUIRED', 'NATIVE_HISTORY_GAP'].includes(error.code)) throw error;
-    sourceSnapshots = await readNativeHistorySources(projectDirectory, snapshot.sessionId);
+    sourceSnapshots = await readNativeHistorySources(projectDirectory, snapshot.sessionId, snapshot);
   }
   const options = { sourceSnapshots };
   if (followNativeContinuation) identity.providerCheckpointId = nativeContinuationCheckpoint(snapshot, identity.providerCheckpointId, options);
