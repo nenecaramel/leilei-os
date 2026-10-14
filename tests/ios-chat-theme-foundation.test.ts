@@ -81,15 +81,15 @@ test('iMessage Composer uses Apple-native controls while retaining existing acti
   assert.match(imessageBody, /isFocused\.wrappedValue = false/);
 });
 
-test('iMessage placement uses the native bottom toolbar without manual screen gutters', () => {
+test('iMessage placement uses a full-width native safe-area bar without compact ToolbarItem', () => {
   const chat = read('Chat/ChatView.swift');
 
   const original = chat.slice(
     chat.indexOf('        .safeAreaInset(edge: .bottom) {'),
-    chat.indexOf('        .toolbar {', chat.indexOf('        .safeAreaInset(edge: .bottom) {'))
+    chat.indexOf('        .safeAreaBar(edge: .bottom) {', chat.indexOf('        .safeAreaInset(edge: .bottom) {'))
   );
-  const nativeToolbar = chat.slice(
-    chat.indexOf('        .toolbar {', chat.indexOf('        .safeAreaInset(edge: .bottom) {')),
+  const nativeBar = chat.slice(
+    chat.indexOf('        .safeAreaBar(edge: .bottom) {', chat.indexOf('        .safeAreaInset(edge: .bottom) {')),
     chat.indexOf('        .sheet(isPresented: $isNativeCallPresented)')
   );
   const shared = chat.slice(chat.indexOf('    private var chatComposer: some View {'));
@@ -101,10 +101,13 @@ test('iMessage placement uses the native bottom toolbar without manual screen gu
   assert.match(original, /ChatPresentationLayout\.composerOuterBottom/);
   assert.match(original, /ChatPresentationLayout\.composerHiddenKeyboardPaintOffset/);
 
-  assert.match(nativeToolbar, /if selectedChatTheme == \.iMessage/);
-  assert.match(nativeToolbar, /ToolbarItem\(placement: \.bottomBar\)/);
-  assert.match(nativeToolbar, /chatComposer/);
-  assert.doesNotMatch(nativeToolbar, /\.safeAreaInset|\.padding\(|\.offset\(|composerOuter|composerHiddenKeyboardPaintOffset/);
+  assert.match(nativeBar, /if selectedChatTheme == \.iMessage/);
+  assert.match(nativeBar, /\.safeAreaBar\(edge: \.bottom\)/);
+  assert.match(nativeBar, /\.frame\(maxWidth: \.infinity\)/);
+  assert.match(nativeBar, /\.padding\(\.horizontal\)/);
+  assert.doesNotMatch(nativeBar, /ToolbarItem\(placement: \.bottomBar\)/);
+  assert.match(nativeBar, /chatComposer/);
+  assert.doesNotMatch(nativeBar, /\.safeAreaInset|\.offset\(|composerOuter|composerHiddenKeyboardPaintOffset/);
 
   assert.equal((chat.match(/\bChatComposer\(/g) ?? []).length, 1, 'exactly one composer callback owner');
   assert.match(shared, /text: \$messageText/);
