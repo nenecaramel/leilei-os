@@ -3,6 +3,7 @@ import SwiftUI
 // The row draws a single pre-reconciled turn. It never chooses runtime/canonical owners.
 struct NativeLiveAssistantTurnRow: View {
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.chatTheme) private var chatTheme
     let turn: NativeLiveAssistantTurnPresentation
     let isCurrentHead: Bool
     let isTurnInFlight: Bool
@@ -10,7 +11,23 @@ struct NativeLiveAssistantTurnRow: View {
     let onCopyMessage: (String) -> Void
     let onRetryMessage: (String) -> Void
     let onResolveInteraction: (NativeLiveRuntimeInteractionSnapshot,[String:NativeLiveJSONValue]) async throws -> Void
-    var body: some View {
+    @ViewBuilder var body: some View {
+        if chatTheme == .iMessage {
+            content.contextMenu {
+                if let text = turn.copyText {
+                    Button("Copy") { onCopyMessage(text) }
+                }
+                if turn.canRetry, let user = turn.parentUserMessageID {
+                    Button("Retry") { onRetryMessage(user) }
+                        .disabled(isTurnInFlight)
+                }
+            }
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         VStack(alignment:.leading,spacing:ChatPresentationLayout.assistantSpacing) {
             if processSections.showsLoading {
                 Text("Thinking...").font(.system(size: 14)).foregroundStyle(.secondary)
@@ -21,10 +38,17 @@ struct NativeLiveAssistantTurnRow: View {
                 .padding(.bottom, processSections.showsActivity && !turn.bodyPresentation.nodes.isEmpty ? processSectionExtraSpacing : 0)
             spotifyResultArea
             elevenLabsResultArea
-            NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)
+            if chatTheme == .iMessage {
+                NativeLiveIMessageTextBubbleList(presentation:turn.bodyPresentation,side:.incoming)
+                    .textSelection(.enabled)
+            } else {
+                NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)
+            }
             MindWriteIndicator(items:mindWrites)
-            nativeLiveAssistantActions(turn:turn,isTurnInFlight:isTurnInFlight,isCopied:isCopied,
-                onCopyMessage:onCopyMessage,onRetryMessage:onRetryMessage)
+            if chatTheme == .original {
+                nativeLiveAssistantActions(turn:turn,isTurnInFlight:isTurnInFlight,isCopied:isCopied,
+                    onCopyMessage:onCopyMessage,onRetryMessage:onRetryMessage)
+            }
         }
         .frame(maxWidth:.infinity,alignment:.leading)
         .task(id:turn.canonicalMessageID) {
