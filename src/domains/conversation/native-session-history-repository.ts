@@ -75,6 +75,21 @@ export function neutralFingerprint(message: NativeHistoryProjection["messages"][
 const storedFingerprint = (version: number | undefined, message: NativeHistoryProjection["messages"][number], sessionId: string) =>
   version === 3 ? neutralFingerprint(message) : version === 2 ? neutralFingerprintV2(message) : fingerprintForSession(message, sessionId);
 
+type ProjectedMessage = NativeHistoryProjection["messages"][number];
+/** The synchronized form of `fresh`, if `fresh` only appends records to it. Desktop may
+ * continue the last synchronized reply after the handoff with a turn started by a hidden
+ * prompt (a scheduled wake); projection joins that turn to the reply. The synchronized
+ * records and blocks must be an exact prefix, proven by the stored fingerprint. */
+function synchronizedPrefix(stored: string, fresh: ProjectedMessage, fingerprint: (m: ProjectedMessage) => string): ProjectedMessage | undefined {
+  const records = fresh.sourceEntryUuids.length, blocks = fresh.blocks.length;
+  if (fresh.role !== "assistant" || records * (blocks + 1) > 100_000) return undefined;
+  for (let k = records - 1; k >= 1; k--) for (let b = blocks - 1; b >= 0; b--) {
+    const prefix = { ...fresh, sourceEntryUuids: fresh.sourceEntryUuids.slice(0, k), providerCheckpointId: fresh.sourceEntryUuids[k - 1]!, blocks: fresh.blocks.slice(0, b) };
+    if (fingerprint(prefix) === stored) return prefix;
+  }
+  return undefined;
+}
+
 /** Digest of a synchronized prefix, as `[sourceMessageId, neutral fingerprint]` pairs. */
 export function nativeSyncDigest(messages: Array<{ sourceMessageId: string; fingerprint: string }>): string {
   return createHash("sha256").update(JSON.stringify(messages.map(m => [m.sourceMessageId, m.fingerprint]))).digest("hex");
@@ -265,8 +280,17 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     const total = offset + p.messages.length;
     const at = (i: number) => i < offset ? undefined : p.messages[i - offset];
     if (source && (source.messages.length > total || source.messages.some((old, i) => i >= offset && old.sourceMessageId !== at(i)?.sourceMessageId))) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
-    if (source?.messages.some((old, i) => i >= offset && old.fingerprint !== (source.fingerprintVersion === undefined && !continuation
-      ? at(i)!.fingerprint : storedFingerprint(source.fingerprintVersion, at(i)!, source.sessionId)))) throw fail("NATIVE_HISTORY_REWRITTEN");
+    // Only the last synchronized message may change, and only by appending (see synchronizedPrefix).
+    let extended: { index: number; synchronized: ProjectedMessage } | undefined;
+    for (const [i, old] of (source?.messages ?? []).entries()) {
+      if (i < offset) continue;
+      const legacy = source!.fingerprintVersion === undefined && !continuation;
+      const fingerprint = (m: ProjectedMessage) => legacy ? m.fingerprint : storedFingerprint(source!.fingerprintVersion, m, source!.sessionId);
+      if (old.fingerprint === fingerprint(at(i)!)) continue;
+      const synchronized = !legacy && i === source!.messages.length - 1 ? synchronizedPrefix(old.fingerprint, at(i)!, fingerprint) : undefined;
+      if (!synchronized) throw fail("NATIVE_HISTORY_REWRITTEN");
+      extended = { index: i, synchronized };
+    }
     const unchanged = !continuation && existing?.currentHeadMessageId === source?.headMessageId && source?.revision === p.revision && source.checkpointId === p.checkpointId && source.messages.length === total
       && source.displayAssetsRevision === snapshot?.displayAssets?.revision
       // A version-1 source is rewritten once with session-neutral fingerprints.
@@ -301,7 +325,9 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     ));
     const checkpointByMessage = new Map(checkpoints.map(cp => [cp.canonicalMessageId, cp]));
     // The anchored prefix was verified when it was synchronized; check the rest.
-    const assistants = rows.flatMap((row, i) => row.role === "assistant" && i >= offset ? [{ row, message: at(i)! }] : []);
+    // An extended reply's checkpoint must still match the reply as it was synchronized.
+    const assistants = rows.flatMap((row, i) => row.role === "assistant" && i >= offset
+      ? [{ row, message: i === extended?.index ? extended.synchronized : at(i)! }] : []);
     // LeileiOS may run unsynchronized turns in its own forks. Their checkpoint
     // session is acceptable when the restored session carries that exact record.
     const carried = new Set(entries?.flatMap(entry => typeof entry.uuid === "string" ? [entry.uuid] : []) ?? []);
@@ -352,6 +378,25 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     for (let index = indexedCount; index < rows.length; index++) {
       await tx.update(conversationMessages).set({ sourceMessageId: at(index)!.sourceMessageId,
         isCurrentPath: true, currentPathIndex: index }).where(eq(conversationMessages.id, rows[index]!.id));
+    }
+    if (extended) {
+      // Append the extension to the synchronized reply's row; earlier blocks stay as they are.
+      const row = rows[extended.index]!, message = at(extended.index)!;
+      const [first] = await tx.execute<{ next: number }>(sql`SELECT COALESCE(MAX(ordinal) + 1, 0)::int AS next
+        FROM conversation_content_blocks WHERE message_id = ${row.id}::uuid`);
+      await tx.insert(conversationContentBlocks).values(message.blocks.slice(extended.synchronized.blocks.length).map((block, i) => ({
+        userId: input.userId, messageId: row.id, ordinal: first!.next + i,
+        kind: storedContentKind(block.kind), rawType: block.rawType ?? block.kind,
+        text: block.text ?? null, payload: storedContentPayload(block.kind, block.payload ?? null),
+      })));
+      await tx.update(conversationMessages).set({ displayText: message.blocks.filter(b => b.kind === "text").map(b => b.text ?? "").join("\n") })
+        .where(eq(conversationMessages.id, row.id));
+      // Edit/Retry of this reply resumes after the extension, in the session that carries it.
+      if (!entries || entries.some(entry => entry.uuid === message.providerCheckpointId)) {
+        await tx.update(conversationProviderSessionCheckpoints).set({ providerSessionId: p.sessionId, providerCheckpointId: message.providerCheckpointId,
+          runtimeMetadata: { native_source_message_id: message.sourceMessageId, source_entry_uuids: message.sourceEntryUuids, parent_provider_checkpoint_id: message.parentProviderCheckpointId } })
+          .where(and(eq(conversationProviderSessionCheckpoints.canonicalMessageId, row.id), eq(conversationProviderSessionCheckpoints.userId, input.userId)));
+      }
     }
     // Batched: the app and database sit in different regions, so per-row
     // round trips made a long import take minutes and outlive the client.
