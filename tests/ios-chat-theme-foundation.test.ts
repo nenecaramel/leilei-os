@@ -135,28 +135,53 @@ test('Both chat themes use native interactive dismissal, including empty scroll 
   assert.match(read('Chat/ChatView.swift'), /if isDraftConversation && pendingOperation == nil \{\s*NativeLiveMessageSurface\.scrollableState \{ Color\.clear \}/);
 });
 
-test('iMessage outgoing body typography does not affect Original or assistant messages', () => {
-  const bubble = read('Chat/MessageSurface/NativeLiveUserMessageRow.swift');
+test('Only iMessage text adopts split, mirrored bubbles and native typography', () => {
+  const layout = read('Chat/ChatPresentationLayout.swift');
+  const user = read('Chat/MessageSurface/NativeLiveUserMessageRow.swift');
+  const assistant = read('Chat/MessageSurface/NativeLiveAssistantTurnRow.swift');
+  const history = read('Chat/MessageSurface/NativeLiveHistoryMessageRow.swift');
+  const bubble = read('Chat/MessageSurface/NativeLiveIMessageTextBubbles.swift');
   const markdown = read('Chat/MessageSurface/ChatMarkdown.swift');
   const math = read('Chat/MessageSurface/NativeLiveMathRenderer.swift');
 
-  assert.match(bubble, /struct IMessageUserBubble<Content: View>/);
+  assert.match(layout, /iMessageUserLeadingClearance: CGFloat = 70/);
+  assert.match(layout, /iMessageUserBubbleVerticalInset: CGFloat = 10/);
+  assert.match(layout, /iMessageUserBubbleRadius: CGFloat = 20/);
+  assert.doesNotMatch(layout, /iMessageUserBubbleMaxWidth/);
   assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
+  assert.match(bubble, /Spacer\(minLength: ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
+  assert.match(bubble, /side == \.outgoing \? Color\.blue : Color\.chatSoftFill/);
   assert.doesNotMatch(bubble, /iMessageUserBubbleMaxWidth/);
-  assert.doesNotMatch(read('Chat/ChatPresentationLayout.swift'), /iMessageUserBubbleMaxWidth/);
-  assert.match(read('Chat/ChatPresentationLayout.swift'), /iMessageUserLeadingClearance: CGFloat = 70/);
-  assert.match(bubble, /view\s*\.font\(\.body\)/);
-  assert.match(bubble, /chatTheme == \.iMessage && !presentation\.isVoiceInput/);
 
+  // Each nonempty explicit line yields a separate visual segment, not a
+  // rewritten canonical message or a flattened code/tool/attachment.
+  assert.match(bubble, /rawText\.split\(whereSeparator: \\\.isNewline\)/);
+  assert.match(bubble, /NativeLiveRichTextProjector\.project\(part\)/);
+  assert.match(bubble, /if node\.kind == \.markdown && !node\.rendersInlineChildren && !node\.children\.isEmpty/);
+  assert.match(bubble, /guard textNode, !isDivider else/);
+  assert.match(bubble, /NativeLiveVisualNodeView\(node: segment\.node, role: presentation\.role\)/);
+  assert.match(user, /NativeLiveIMessageTextBubbleList\(presentation: presentation, side: \.outgoing\)/);
+  assert.match(assistant, /NativeLiveIMessageTextBubbleList\(presentation:turn\.bodyPresentation,side:\.incoming\)/);
+  assert.match(history, /NativeLiveIMessageTextBubbleList\(presentation: presentation, side: \.outgoing\)/);
+  assert.match(history, /NativeLiveIMessageTextBubbleList\(presentation: presentation, side: \.incoming\)/);
+
+  // Original footer remains callable; iMessage hides its chrome but retains
+  // Copy and Retry in the message context menu, guarded by original eligibility.
+  assert.match(assistant, /if chatTheme == \.original \{\s*nativeLiveAssistantActions\(/);
+  assert.match(assistant, /Button\("Copy"\) \{ onCopyMessage\(text\) \}/);
+  assert.match(assistant, /Button\("Retry"\) \{ onRetryMessage\(user\) \}/);
+  assert.match(assistant, /if turn\.canRetry, let user = turn\.parentUserMessageID/);
+  assert.match(assistant, /\.disabled\(isTurnInFlight\)/);
+  assert.match(history, /if chatTheme == \.iMessage \{[\s\S]*?\} else \{[\s\S]*?MessageTimestampFormatter\.string/);
+
+  // Shared markdown renderers style only iMessage, leaving both roles'
+  // Original fonts and extra line spacing unchanged.
   for (const source of [markdown, math]) {
-    assert.match(source, /@Environment\(\\\.chatTheme\) private var chatTheme/);
-    assert.match(source, /chatTheme == \.iMessage && role == "user"/);
+    assert.match(source, /@Environment\(\\\\\.chatTheme\) private var chatTheme/);
+    assert.match(source, /chatTheme == \.iMessage && \(role == "user" \|\| role == "assistant"\)/);
     assert.match(source, /\.font\(isIMessageUser \? \.body : \.system\(size: 17\)\)/);
     assert.match(source, /\.lineSpacing\(isIMessageUser \? 0 : \(role == "user" \? 5 : 6\)\)/);
   }
-  assert.match(markdown, /case \.paragraph:\s*inline\.font\(isIMessageUser \? \.body : \.system\(size: 17\)\)/);
-
-  // Non-iMessage text retains the existing explicit 5pt and 6pt leading.
   assert.match(math, /verticalSpacing: 4/);
-  assert.doesNotMatch(bubble, /\.tracking\(/);
+  assert.doesNotMatch(user, /\.tracking\(/);
 });
