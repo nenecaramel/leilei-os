@@ -3,6 +3,7 @@ import SwiftUI
 struct NativeLiveVisibleThinkingSurface: View {
     let items: [NativeLiveVisibleThinkingItem]
 
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     @State private var isShowingThoughtProcess = false
 
     var body: some View {
@@ -21,7 +22,12 @@ struct NativeLiveVisibleThinkingSurface: View {
                         .frame(height: 22)
                     Spacer(minLength: 8)
                 }
-                .foregroundStyle(.secondary)
+                .foregroundStyle(iMessageWallpaperVisible ? Color.white : Color.secondary)
+                .shadow(
+                    color: iMessageWallpaperVisible ? Color.black.opacity(0.75) : .clear,
+                    radius: iMessageWallpaperVisible ? 2 : 0,
+                    y: iMessageWallpaperVisible ? 1 : 0
+                )
                 .contentShape(Rectangle())
             }
             .padding(.leading, 2)
