@@ -88,6 +88,22 @@ struct NativeLiveIMessageTextBubble<Content: View>: View {
     let side: NativeLiveIMessageBubbleSide
     let content: Content
 
+    @AppStorage(IMessageBubbleAppearance.outgoingColorKey)
+    private var outgoingColorHex = IMessageBubbleAppearance.defaultOutgoingColorHex
+    @AppStorage(IMessageBubbleAppearance.incomingColorKey)
+    private var incomingColorHex = IMessageBubbleAppearance.defaultIncomingColorHex
+    @AppStorage(IMessageBubbleAppearance.outgoingOpacityKey)
+    private var outgoingOpacity = IMessageBubbleAppearance.defaultOutgoingOpacity
+    @AppStorage(IMessageBubbleAppearance.incomingOpacityKey)
+    private var incomingOpacity = IMessageBubbleAppearance.defaultIncomingOpacity
+
+    private var tintColor: Color {
+        IMessageBubbleAppearance.color(
+            hex: side == .outgoing ? outgoingColorHex : incomingColorHex
+        )
+        .opacity(side == .outgoing ? outgoingOpacity : incomingOpacity)
+    }
+
     init(side: NativeLiveIMessageBubbleSide, @ViewBuilder content: () -> Content) {
         self.side = side
         self.content = content()
@@ -127,11 +143,7 @@ struct NativeLiveIMessageTextBubble<Content: View>: View {
                         cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
                         style: .continuous
                     )
-                    .fill(
-                        side == .outgoing
-                            ? Color(red: 0.00, green: 0.55, blue: 1.00).opacity(0.88)
-                            : Color(red: 0.22, green: 0.26, blue: 0.29).opacity(0.82)
-                    )
+                    .fill(tintColor)
                 }
                 .allowsHitTesting(false)
             }
