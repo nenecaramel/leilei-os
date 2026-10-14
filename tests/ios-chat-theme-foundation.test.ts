@@ -149,7 +149,7 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   assert.match(layout, /iMessageUserBubbleVerticalInset: CGFloat = 10/);
   assert.match(layout, /iMessageUserBubbleRadius: CGFloat = 20/);
   assert.doesNotMatch(layout, /iMessageUserBubbleMaxWidth/);
-  assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
+  assert.match(bubble, /IMessageTightBubbleLayout \{/);
   assert.match(bubble, /Color\.clear\.frame\(width:ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
   assert.match(bubble, /side == \.outgoing \? Color\.blue : Color\.chatSoftFill/);
   assert.doesNotMatch(bubble, /iMessageUserBubbleMaxWidth/);
@@ -210,7 +210,7 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
 });
 
 
-test('iMessage alone uses compact turn, bubble and process spacing with full-width wrapping', () => {
+test('iMessage alone uses compact spacing with tight native-line bubble wrapping', () => {
   const layout = read('Chat/ChatPresentationLayout.swift');
   const list = read('Chat/MessageSurface/NativeLiveMessageList.swift');
   const surface = read('Chat/NativeLiveMessageSurface.swift');
@@ -238,11 +238,17 @@ test('iMessage alone uses compact turn, bubble and process spacing with full-wid
   assert.match(assistant, /chatTheme == \.iMessage \? ChatPresentationLayout\.iMessageProcessSectionSpacing : ChatPresentationLayout\.processSectionSpacing/);
   assert.match(assistant, /- ChatPresentationLayout\.assistantSpacing/);
 
-  // Fixed natural width for unwrapped text, available-row width for
-  // automatically wrapped text. No 300pt or other hard cap.
-  assert.match(bubble, /bubble\(content\.fixedSize\(horizontal: true, vertical: false\), fillAvailableWidth: false\)/);
-  assert.match(bubble, /bubble\(content\.fixedSize\(horizontal: false, vertical: true\), fillAvailableWidth: true\)/);
-  assert.match(bubble, /maxWidth: fillAvailableWidth \? \.infinity : nil/);
+  // The real SwiftUI renderer is measured, not guessed via raw text
+  // lengths: short lines hug natural width, multiline bubbles only shrink
+  // as far as the same number of natively wrapped lines will fit.
+  assert.match(bubble, /private struct IMessageTightBubbleLayout: Layout/);
+  assert.match(bubble, /bubble\(content\.fixedSize\(horizontal: false, vertical: true\)\)/);
+  assert.match(bubble, /child\.sizeThatFits\(\.unspecified\)/);
+  assert.match(bubble, /if natural\.width <= available \{ return natural \}/);
+  assert.match(bubble, /widest\.height > natural\.height \+ 0\.5/);
+  assert.match(bubble, /measured\.height <= widest\.height \+ 0\.5/);
+  assert.match(bubble, /min\(available, ceil\(upper \* 2\) \/ 2\)/);
+  assert.doesNotMatch(bubble, /fillAvailableWidth|ViewThatFits|\.frame\(maxWidth: \.infinity[\s\S]*?\.background\(/);
   assert.match(bubble, /NativeLiveIMessageAssistantTextBubble\([\s\S]*?\.frame\(maxWidth:\.infinity,alignment:\.leading\)/);
   assert.match(bubble, /Color\.clear\.frame\(width:ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
   const user = read('Chat/MessageSurface/NativeLiveUserMessageRow.swift');
