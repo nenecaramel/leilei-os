@@ -106,7 +106,7 @@ private struct NativeLiveVoiceMessageBubbleVisual: View {
 /// iMessage outgoing text only: compact bubbles hug short text, and long
 /// text wraps at a single fixed cap. This never rewrites underlying nodes.
 struct IMessageUserBubble<Content: View>: View {
-    @ViewBuilder let content: Content
+    let content: Content
 
     init(@ViewBuilder content: () -> Content) {
         self.content = content()
