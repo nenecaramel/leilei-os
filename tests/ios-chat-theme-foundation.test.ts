@@ -149,7 +149,7 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   assert.match(layout, /iMessageUserBubbleVerticalInset: CGFloat = 10/);
   assert.match(layout, /iMessageUserBubbleRadius: CGFloat = 20/);
   assert.doesNotMatch(layout, /iMessageUserBubbleMaxWidth/);
-  assert.match(bubble, /IMessageTightBubbleLayout \{/);
+  assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
   assert.match(bubble, /Color\.clear\.frame\(width:ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
   assert.match(bubble, /side == \.outgoing \? Color\.blue : Color\.chatSoftFill/);
   assert.doesNotMatch(bubble, /iMessageUserBubbleMaxWidth/);
@@ -238,17 +238,12 @@ test('iMessage alone uses compact spacing with tight native-line bubble wrapping
   assert.match(assistant, /chatTheme == \.iMessage \? ChatPresentationLayout\.iMessageProcessSectionSpacing : ChatPresentationLayout\.processSectionSpacing/);
   assert.match(assistant, /- ChatPresentationLayout\.assistantSpacing/);
 
-  // The real SwiftUI renderer is measured, not guessed via raw text
-  // lengths: short lines hug natural width, multiline bubbles only shrink
-  // as far as the same number of natively wrapped lines will fit.
-  assert.match(bubble, /private struct IMessageTightBubbleLayout: Layout/);
+  // Only remove the forced full-row background. The native Text view
+  // still owns line breaking, and the same padding and max clearance apply.
+  assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
+  assert.match(bubble, /bubble\(content\.fixedSize\(horizontal: true, vertical: false\)\)/);
   assert.match(bubble, /bubble\(content\.fixedSize\(horizontal: false, vertical: true\)\)/);
-  assert.match(bubble, /child\.sizeThatFits\(\.unspecified\)/);
-  assert.match(bubble, /if natural\.width <= available \{ return natural \}/);
-  assert.match(bubble, /widest\.height > natural\.height \+ 0\.5/);
-  assert.match(bubble, /measured\.height <= widest\.height \+ 0\.5/);
-  assert.match(bubble, /min\(available, ceil\(upper \* 2\) \/ 2\)/);
-  assert.doesNotMatch(bubble, /fillAvailableWidth|ViewThatFits|\.frame\(maxWidth: \.infinity[\s\S]*?\.background\(/);
+  assert.doesNotMatch(bubble, /IMessageTightBubbleLayout|fillAvailableWidth|\.frame\(maxWidth: \.infinity[\s\S]*?\.background\(/);
   assert.match(bubble, /NativeLiveIMessageAssistantTextBubble\([\s\S]*?\.frame\(maxWidth:\.infinity,alignment:\.leading\)/);
   assert.match(bubble, /Color\.clear\.frame\(width:ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
   const user = read('Chat/MessageSurface/NativeLiveUserMessageRow.swift');
