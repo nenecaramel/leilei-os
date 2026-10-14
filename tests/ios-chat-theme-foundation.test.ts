@@ -177,7 +177,7 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   // Shared markdown renderers style only iMessage, leaving both roles'
   // Original fonts and extra line spacing unchanged.
   for (const source of [markdown, math]) {
-    assert.match(source, /@Environment\(\\\\\.chatTheme\) private var chatTheme/);
+    assert.match(source, /@Environment\(\\\.chatTheme\) private var chatTheme/);
     assert.match(source, /chatTheme == \.iMessage && \(role == "user" \|\| role == "assistant"\)/);
     assert.match(source, /\.font\(isIMessageUser \? \.body : \.system\(size: 17\)\)/);
     assert.match(source, /\.lineSpacing\(isIMessageUser \? 0 : \(role == "user" \? 5 : 6\)\)/);
