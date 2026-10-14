@@ -129,8 +129,8 @@ struct NativeLiveIMessageTextBubble<Content: View>: View {
                     )
                     .fill(
                         side == .outgoing
-                            ? Color(red: 0.12, green: 0.54, blue: 1.00).opacity(0.58)
-                            : Color(red: 0.30, green: 0.31, blue: 0.33).opacity(0.30)
+                            ? Color(red: 0.00, green: 0.55, blue: 1.00).opacity(0.88)
+                            : Color(red: 0.22, green: 0.26, blue: 0.29).opacity(0.82)
                     )
                 }
                 .allowsHitTesting(false)
