@@ -24,6 +24,7 @@ struct NativeLiveMessageRow: View {
         } else if let user = row.user {
             nativeLiveUserMessageRow(row:row,user:user,appModel:appModel,isTurnInFlight:isTurnInFlight,
                 leadingClearance: chatTheme == .iMessage ? ChatPresentationLayout.iMessageUserLeadingClearance : ChatPresentationLayout.userLeadingClearance,
+                isIMessage: chatTheme == .iMessage,
                 onCopyMessage:onCopyMessage,onEditMessage:onEditMessage)
         }
     }
