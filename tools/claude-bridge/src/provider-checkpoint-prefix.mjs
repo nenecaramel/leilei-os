@@ -31,20 +31,27 @@ export function durableCheckpointPrefix(entries, checkpointId) {
   }
   // Parallel tool calls are separate records; an earlier call's result hangs off
   // its own record, outside the ancestry. Keep exactly those results, or a fork
-  // drops the unanswered call and copies the turn changed.
-  const calls = new Set();
+  // drops the unanswered call and copies the turn changed. Only a call unanswered
+  // in the ancestry, with one candidate result whose UUID is not reused, qualifies.
+  const calls = new Set(), answered = new Set();
   for (const id of ancestry) {
-    const entry = carriers.get(id);
-    if (entry.type !== "assistant" || !Array.isArray(entry.message?.content)) continue;
-    for (const block of entry.message.content) if (block?.type === "tool_use" && typeof block.id === "string") calls.add(block.id);
+    const content = carriers.get(id).message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (carriers.get(id).type === "assistant" && block?.type === "tool_use" && typeof block.id === "string") calls.add(block.id);
+      if (block?.type === "tool_result") answered.add(block.tool_use_id);
+    }
   }
-  const results = new Set();
-  for (const entry of carriers.values()) {
+  const candidates = new Map(), claims = new Map();
+  for (const [uuid, entry] of carriers) {
     const content = entry.message?.content;
-    if (entry.type === "user" && !ancestry.has(entry.uuid) && ancestry.has(entry.parentUuid)
-      && carriers.get(entry.parentUuid).type === "assistant" && Array.isArray(content) && content.length
-      && content.every(block => block?.type === "tool_result" && calls.has(block.tool_use_id))) results.add(entry.uuid);
+    if (entry.type !== "user" || ancestry.has(uuid) || conflicts.has(uuid) || !ancestry.has(entry.parentUuid)
+      || carriers.get(entry.parentUuid).type !== "assistant" || !Array.isArray(content) || !content.length
+      || !content.every(block => block?.type === "tool_result" && calls.has(block.tool_use_id) && !answered.has(block.tool_use_id))) continue;
+    candidates.set(uuid, content.map(block => block.tool_use_id));
+    for (const call of new Set(content.map(block => block.tool_use_id))) claims.set(call, (claims.get(call) ?? 0) + 1);
   }
+  const results = new Set([...candidates].filter(([, ids]) => ids.every(call => claims.get(call) === 1)).map(([uuid]) => uuid));
   // Older failed branches can precede a later recovered checkpoint in storage.
   // Only its ancestry is conversation input; auxiliary records stay available.
   return {
