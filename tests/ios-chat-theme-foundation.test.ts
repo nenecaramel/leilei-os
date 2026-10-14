@@ -151,7 +151,7 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   assert.doesNotMatch(layout, /iMessageUserBubbleMaxWidth/);
   assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
   assert.match(bubble, /Color\.clear\.frame\(width:ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
-  assert.match(bubble, /side == \.outgoing\s*\? Color\(red: 0\.12, green: 0\.54, blue: 1\.00\)\.opacity\(0\.94\)/);
+  assert.match(bubble, /side == \.outgoing\s*\? Color\(red: 0\.12, green: 0\.54, blue: 1\.00\)\.opacity\(0\.58\)/);
   assert.doesNotMatch(bubble, /iMessageUserBubbleMaxWidth/);
 
   // Each nonempty explicit line yields a separate visual segment, not a
@@ -265,15 +265,15 @@ test('iMessage alone uses compact spacing with tight native-line bubble wrapping
 });
 
 
-test('iMessage bubbles use subtle translucency without changing geometry or hit targets', () => {
+test('iMessage bubbles use native frosted material with flat color tint and unchanged hit targets', () => {
   const bubble = read('Chat/MessageSurface/NativeLiveIMessageTextBubbles.swift');
   const user = read('Chat/MessageSurface/NativeLiveUserMessageRow.swift');
   const assistant = read('Chat/MessageSurface/NativeLiveAssistantTurnRow.swift');
   const layout = read('Chat/ChatPresentationLayout.swift');
 
   assert.doesNotMatch(bubble, /LinearGradient\(/);
-  assert.match(bubble, /Color\(red: 0\.12, green: 0\.54, blue: 1\.00\)\.opacity\(0\.94\)/);
-  assert.match(bubble, /Color\(red: 0\.30, green: 0\.31, blue: 0\.33\)\.opacity\(0\.85\)/);
+  assert.match(bubble, /Color\(red: 0\.12, green: 0\.54, blue: 1\.00\)\.opacity\(0\.58\)/);
+  assert.match(bubble, /Color\(red: 0\.30, green: 0\.31, blue: 0\.33\)\.opacity\(0\.30\)/);
   assert.match(bubble, /Color\.white\.opacity\(0\.98\)/);
   assert.doesNotMatch(bubble, /Color\.primary\.opacity\(/);
   assert.doesNotMatch(bubble, /\.strokeBorder\(/);
@@ -282,7 +282,10 @@ test('iMessage bubbles use subtle translucency without changing geometry or hit 
     bubble.indexOf('// Each assistant text segment owns')
   );
   assert.doesNotMatch(paintedBubble, /\.overlay \{/);
-  assert.doesNotMatch(bubble, /\.ultraThinMaterial|\.thinMaterial|\.glassEffect/);
+  assert.match(bubble, /\.fill\(\.ultraThinMaterial\)/);
+  assert.match(bubble, /\.environment\(\\\.colorScheme, \.dark\)/);
+  assert.match(bubble, /\.allowsHitTesting\(false\)/);
+  assert.doesNotMatch(bubble, /\.glassEffect\(|LinearGradient\(/);
 
   assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
   assert.match(bubble, /\.padding\(\.horizontal, ChatPresentationLayout\.bubbleHorizontalInset\)/);
