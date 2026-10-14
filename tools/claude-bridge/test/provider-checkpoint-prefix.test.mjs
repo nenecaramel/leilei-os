@@ -71,3 +71,56 @@ test("absent store or checkpoint leaves store identity unchanged", () => {
   assert.equal(checkpointForkSessionStore(store, null, "a"), store);
   assert.equal(checkpointForkSessionStore(store, "A", null), store);
 });
+
+test("parallel tool calls keep every result, so a fork copies the turn unchanged", () => {
+  // Claude writes each parallel tool_use as its own record; the first call's result
+  // hangs off the first record, outside the ancestry of the second.
+  const use = (id) => ({ message: { id: "msg", content: [{ type: "tool_use", id }] } });
+  const result = (id) => ({ message: { content: [{ type: "tool_result", tool_use_id: id }] } });
+  const entries = [entry("u", null, "user"), entry("t1", "u", "assistant", use("A")), entry("t2", "t1", "assistant", use("B")),
+    entry("r1", "t1", "user", result("A")), entry("r2", "t2", "user", result("B")), entry("a", "r2"),
+    entry("stray", "t1", "user", result("Z")), entry("failed", "u", "user", result("A"))];
+  assert.deepEqual(durableCheckpointPrefix(entries, "a").prefix.map(e => e.uuid), ["u", "t1", "t2", "r1", "r2", "a"]);
+  assert.deepEqual([...durableCheckpointPrefix(entries, "a").ancestry], ["a", "r2", "t2", "t1", "u"], "ancestry is unchanged");
+});
+
+test("only an unanswered call's single result is kept: never a reused UUID, a duplicate or a competing result", () => {
+  const use = (...ids) => ({ message: { id: "msg", content: ids.map(id => ({ type: "tool_use", id })) } });
+  const result = (id) => ({ message: { content: [{ type: "tool_result", tool_use_id: id }] } });
+  const text = { message: { content: [{ type: "text", text: "failed branch" }] } };
+  // A failed-branch message shares its UUID with a result record: neither copy is kept.
+  const reused = [entry("u", null, "user"), entry("t1", "u", "assistant", use("A")), entry("r1", "u", "user", text),
+    entry("t2", "t1", "assistant", use("B")), entry("r1", "t1", "user", result("A")), entry("r2", "t2", "user", result("B")), entry("a", "r2")];
+  assert.deepEqual(durableCheckpointPrefix(reused, "a").prefix.map(e => e.uuid), ["u", "t1", "t2", "r2", "a"]);
+  // A call already answered in the ancestry gets no second result.
+  const answered = [entry("u", null, "user"), entry("t1", "u", "assistant", use("A")), entry("r1", "t1", "user", result("A")),
+    entry("dup", "t1", "user", result("A")), entry("a", "r1")];
+  assert.deepEqual(durableCheckpointPrefix(answered, "a").prefix.map(e => e.uuid), ["u", "t1", "r1", "a"]);
+  // Two competing results for one unanswered call: keep neither.
+  const competing = [entry("u", null, "user"), entry("t1", "u", "assistant", use("A")), entry("t2", "t1", "assistant", use("B")),
+    entry("x1", "t1", "user", result("A")), entry("x2", "t1", "user", result("A")), entry("r2", "t2", "user", result("B")), entry("a", "r2")];
+  assert.deepEqual(durableCheckpointPrefix(competing, "a").prefix.map(e => e.uuid), ["u", "t1", "t2", "r2", "a"]);
+});
+
+test("sibling result UUIDs must identify one record, even with an unchanged parent", () => {
+  const use = id => ({ message: { content: [{ type: "tool_use", id }] } });
+  const result = text => entry("r1", "t1", "user", { message: { content: [{ type: "tool_result", tool_use_id: "A", content: text }] } });
+  const start = [entry("u", null, "user"), entry("t1", "u", "assistant", use("A")), entry("t2", "t1", "assistant", use("B"))];
+  const end = [entry("r2", "t2", "user", { message: { content: [{ type: "tool_result", tool_use_id: "B" }] } }), entry("a", "r2")];
+  const plain = entry("r1", "t1", "user", { message: { content: [{ type: "text", text: "synthetic unrelated text" }] } });
+  for (const duplicates of [
+    [plain, result("answer")], [result("answer"), plain],
+    [result("old answer"), result("new answer")],
+    [result("answer"), result("answer")],
+    [{ uuid: "r1", type: "user", message: plain.message }, result("answer")],
+  ]) {
+    const entries = [...start, ...duplicates, ...end];
+    const before = structuredClone(entries);
+    assert.deepEqual(durableCheckpointPrefix(entries, "a").prefix.map(e => e.uuid), ["u", "t1", "t2", "r2", "a"]);
+    assert.deepEqual(entries, before, "ambiguous candidates do not mutate durable history");
+  }
+  const selected = result("answer");
+  assert.deepEqual(durableCheckpointPrefix([
+    ...start, { ...selected, isSidechain: true }, selected, ...end, result("later"),
+  ], "a").prefix.map(e => e.uuid), ["u", "t1", "t2", "r1", "r2", "a"], "sidechain and post-checkpoint records do not invalidate a unique canonical candidate");
+});

@@ -11,7 +11,13 @@ export function durableCheckpointPrefix(entries, checkpointId) {
   const prefix = entries.slice(0, index + 1);
   const carriers = new Map();
   const conflicts = new Set();
+  const uuidCounts = new Map();
   for (const entry of prefix) {
+    // Count every non-sidechain record, including non-carriers: the final
+    // projection selects by UUID, so a sibling candidate must be unique.
+    if (entry && !entry.isSidechain && typeof entry.uuid === "string") {
+      uuidCounts.set(entry.uuid, (uuidCounts.get(entry.uuid) ?? 0) + 1);
+    }
     if (!entry || entry.isSidechain || !["user", "assistant", "system", "attachment"].includes(entry.type)
       || typeof entry.uuid !== "string" || !Object.hasOwn(entry, "parentUuid")) continue;
     if (carriers.has(entry.uuid) && carriers.get(entry.uuid).parentUuid !== entry.parentUuid) {
@@ -29,10 +35,33 @@ export function durableCheckpointPrefix(entries, checkpointId) {
     ancestry.add(id);
     id = entry.parentUuid;
   }
+  // Parallel tool calls are separate records; an earlier call's result hangs off
+  // its own record, outside the ancestry. Keep exactly those results, or a fork
+  // drops the unanswered call and copies the turn changed. Only a call unanswered
+  // in the ancestry, with one candidate result whose UUID is not reused, qualifies.
+  const calls = new Set(), answered = new Set();
+  for (const id of ancestry) {
+    const content = carriers.get(id).message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (carriers.get(id).type === "assistant" && block?.type === "tool_use" && typeof block.id === "string") calls.add(block.id);
+      if (block?.type === "tool_result") answered.add(block.tool_use_id);
+    }
+  }
+  const candidates = new Map(), claims = new Map();
+  for (const [uuid, entry] of carriers) {
+    const content = entry.message?.content;
+    if (entry.type !== "user" || ancestry.has(uuid) || conflicts.has(uuid) || uuidCounts.get(uuid) !== 1 || !ancestry.has(entry.parentUuid)
+      || carriers.get(entry.parentUuid).type !== "assistant" || !Array.isArray(content) || !content.length
+      || !content.every(block => block?.type === "tool_result" && calls.has(block.tool_use_id) && !answered.has(block.tool_use_id))) continue;
+    candidates.set(uuid, content.map(block => block.tool_use_id));
+    for (const call of new Set(content.map(block => block.tool_use_id))) claims.set(call, (claims.get(call) ?? 0) + 1);
+  }
+  const results = new Set([...candidates].filter(([, ids]) => ids.every(call => claims.get(call) === 1)).map(([uuid]) => uuid));
   // Older failed branches can precede a later recovered checkpoint in storage.
   // Only its ancestry is conversation input; auxiliary records stay available.
   return {
-    prefix: prefix.filter(entry => !entry.isSidechain && (!carriers.has(entry.uuid) || ancestry.has(entry.uuid))),
+    prefix: prefix.filter(entry => !entry.isSidechain && (!carriers.has(entry.uuid) || ancestry.has(entry.uuid) || results.has(entry.uuid))),
     ancestry,
   };
 }
