@@ -14,12 +14,13 @@ struct NativeLiveHistorySnapshotRow: View {
     var body: some View {
         if message.role == "user" {
             HStack(alignment: .top, spacing: 0) {
-                Spacer(minLength: chatTheme == .iMessage ? ChatPresentationLayout.iMessageUserLeadingClearance : ChatPresentationLayout.userLeadingClearance)
-
                 if chatTheme == .iMessage {
+                    Color.clear.frame(width: ChatPresentationLayout.iMessageUserLeadingClearance)
                     NativeLiveIMessageTextBubbleList(presentation: presentation, side: .outgoing)
                         .textSelection(.enabled)
+                        .frame(maxWidth:.infinity,alignment:.trailing)
                 } else {
+                    Spacer(minLength: ChatPresentationLayout.userLeadingClearance)
                     NativeLiveMessagePresentationView(presentation: presentation)
                     .textSelection(.enabled)
                     .padding(.horizontal, ChatPresentationLayout.bubbleHorizontalInset)
