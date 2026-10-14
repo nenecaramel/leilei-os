@@ -73,7 +73,7 @@ struct NativeLiveInlineMathParagraphRenderer: View {
     }
 
     private var isIMessageUser: Bool {
-        chatTheme == .iMessage && role == "user"
+        chatTheme == .iMessage && (role == "user" || role == "assistant")
     }
 
     private var flow: some View {
