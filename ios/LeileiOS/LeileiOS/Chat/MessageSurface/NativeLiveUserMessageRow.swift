@@ -41,7 +41,7 @@ struct NativeLiveUserMessagePresentationView: View {
                     .overlay {
                         if let onEdit {
                             LightweightContextMenuInteraction(title:"Edit",copyText:presentation.copyText,isDisabled:isDisabled,
-                                cornerRadius:ChatPresentationLayout.bubbleRadius,onCopy:onCopy,onTap:toggleVoice,action:onEdit)
+                                cornerRadius:chatTheme == .iMessage && !presentation.isVoiceInput ? ChatPresentationLayout.iMessageUserBubbleRadius : ChatPresentationLayout.bubbleRadius,onCopy:onCopy,onTap:toggleVoice,action:onEdit)
                         }
                     }
                     .onTapGesture { if onEdit == nil { toggleVoice() } }
@@ -124,12 +124,12 @@ struct IMessageUserBubble<Content: View>: View {
     private func bubble<BubbleContent: View>(_ view: BubbleContent) -> some View {
         view
             .padding(.horizontal, ChatPresentationLayout.bubbleHorizontalInset)
-            .padding(.vertical, ChatPresentationLayout.bubbleVerticalInset)
+            .padding(.vertical, ChatPresentationLayout.iMessageUserBubbleVerticalInset)
             .foregroundStyle(.white)
             .background(
                 Color.blue,
                 in: RoundedRectangle(
-                    cornerRadius: ChatPresentationLayout.bubbleRadius,
+                    cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
                     style: .continuous
                 )
             )
