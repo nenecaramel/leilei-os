@@ -15,10 +15,8 @@ struct NativeLiveHistorySnapshotRow: View {
                 Spacer(minLength: chatTheme == .iMessage ? ChatPresentationLayout.iMessageUserLeadingClearance : ChatPresentationLayout.userLeadingClearance)
 
                 if chatTheme == .iMessage {
-                    IMessageUserBubble {
-                        NativeLiveMessagePresentationView(presentation: presentation)
-                            .textSelection(.enabled)
-                    }
+                    NativeLiveIMessageTextBubbleList(presentation: presentation, side: .outgoing)
+                        .textSelection(.enabled)
                 } else {
                     NativeLiveMessagePresentationView(presentation: presentation)
                     .textSelection(.enabled)
@@ -35,19 +33,23 @@ struct NativeLiveHistorySnapshotRow: View {
             }
         } else {
             VStack(alignment: .leading, spacing: ChatPresentationLayout.assistantSpacing) {
-                NativeLiveMessagePresentationView(presentation: presentation)
-                .textSelection(.enabled)
-
-                Text(
-                    MessageTimestampFormatter.string(
-                        from: message.time,
-                        timeZoneIdentifier: timeZone
+                if chatTheme == .iMessage {
+                    NativeLiveIMessageTextBubbleList(presentation: presentation, side: .incoming)
+                        .textSelection(.enabled)
+                } else {
+                    NativeLiveMessagePresentationView(presentation: presentation)
+                        .textSelection(.enabled)
+                    Text(
+                        MessageTimestampFormatter.string(
+                            from: message.time,
+                            timeZoneIdentifier: timeZone
+                        )
                     )
-                )
-                .font(.system(size: 12))
-                .tracking(0.12)
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
+                    .font(.system(size: 12))
+                    .tracking(0.12)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
