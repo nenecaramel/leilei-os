@@ -1,0 +1,134 @@
+import SwiftUI
+
+// Presentation-only segments. The original block identities, source text,
+// streaming lifecycle and copy/retry targets are never split or rewritten.
+enum NativeLiveIMessageTextSegments {
+    struct Segment: Identifiable {
+        let node: NativeLiveVisualNode
+        let isTextBubble: Bool
+        var id: String { node.id }
+    }
+
+    static func project(_ nodes: [NativeLiveVisualNode]) -> [Segment] {
+        nodes.flatMap { project($0) }
+    }
+
+    private static func project(_ node: NativeLiveVisualNode) -> [Segment] {
+        if node.kind == .markdown && !node.rendersInlineChildren && !node.children.isEmpty {
+            return node.children.flatMap { project($0) }
+        }
+
+        let textNode = node.kind == .markdown || node.kind == .text
+        let isDivider: Bool
+        if let model = node.markdown, case .divider = model.style { isDivider = true }
+        else { isDivider = false }
+        guard textNode, !isDivider else {
+            return [.init(node: node, isTextBubble: false)]
+        }
+
+        // Split visual paragraphs on *every* explicit newline, including a
+        // single newline. Rich code fences, tables, math blocks, media and
+        // structured tools are already separate nodes and stay untouched.
+        guard let rawText = node.text, rawText.contains(where: \.isNewline) else {
+            return [.init(node: node, isTextBubble: true)]
+        }
+        let lines = rawText.split(whereSeparator: \.isNewline)
+        guard lines.count > 1 else {
+            return [.init(node: node, isTextBubble: true)]
+        }
+        return lines.enumerated().flatMap { index, line -> [Segment] in
+            var part = node
+            part.text = String(line)
+            part.presentationID = "\(node.id):bubble-line:\(index)"
+            part.sourceRangeUTF16 = nil
+            part.children = []
+            part.rendersInlineChildren = false
+            part.markdown = nil
+            // Reproject each visual line through the existing rich-text
+            // parser so links, emphasis and inline formulas keep working.
+            let children = NativeLiveRichTextProjector.project(part)
+            if children.isEmpty {
+                return [.init(node: part, isTextBubble: true)]
+            }
+            return children.flatMap { project($0) }
+        }
+    }
+}
+
+enum NativeLiveIMessageBubbleSide {
+    case outgoing
+    case incoming
+}
+
+// Identical width behavior, insets and corner shape, mirrored by side.
+// Width is constrained by the row's 70pt clearance, never an arbitrary cap.
+struct NativeLiveIMessageTextBubble<Content: View>: View {
+    let side: NativeLiveIMessageBubbleSide
+    let content: Content
+
+    init(side: NativeLiveIMessageBubbleSide, @ViewBuilder content: () -> Content) {
+        self.side = side
+        self.content = content()
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            bubble(content.fixedSize(horizontal: true, vertical: false))
+            bubble(content.fixedSize(horizontal: false, vertical: true))
+        }
+    }
+
+    private func bubble<BubbleContent: View>(_ view: BubbleContent) -> some View {
+        view
+            .font(.body)
+            .padding(.horizontal, ChatPresentationLayout.bubbleHorizontalInset)
+            .padding(.vertical, ChatPresentationLayout.iMessageUserBubbleVerticalInset)
+            .foregroundStyle(side == .outgoing ? Color.white : Color.primary)
+            .background(
+                side == .outgoing ? Color.blue : Color.chatSoftFill,
+                in: RoundedRectangle(
+                    cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
+                    style: .continuous
+                )
+            )
+    }
+}
+
+// Only text/markdown paragraphs become bubbles. Code, tables, sources, media
+// and all other specialized renderers retain their original surfaces.
+struct NativeLiveIMessageTextBubbleList: View {
+    let presentation: NativeLiveMessagePresentation
+    let side: NativeLiveIMessageBubbleSide
+
+    private var segments: [NativeLiveIMessageTextSegments.Segment] {
+        let nodes = side == .outgoing ? presentation.textNodes : presentation.renderNodes
+        return NativeLiveIMessageTextSegments.project(nodes)
+    }
+
+    var body: some View {
+        VStack(alignment: side == .outgoing ? .trailing : .leading, spacing: 10) {
+            ForEach(segments) { segment in
+                if segment.isTextBubble {
+                    if side == .incoming {
+                        HStack(spacing: 0) {
+                            NativeLiveIMessageTextBubble(side: side) {
+                                NativeLiveVisualNodeView(node: segment.node, role: presentation.role)
+                            }
+                            Spacer(minLength: ChatPresentationLayout.iMessageUserLeadingClearance)
+                        }
+                    } else {
+                        NativeLiveIMessageTextBubble(side: side) {
+                            NativeLiveVisualNodeView(node: segment.node, role: presentation.role)
+                        }
+                    }
+                } else {
+                    // Rich non-text nodes retain their existing renderers.
+                    NativeLiveVisualNodeView(node: segment.node, role: presentation.role)
+                }
+            }
+            if side == .incoming {
+                NativeLiveCitationSourcesView(sources: presentation.citationSources)
+            }
+        }
+    }
+}
