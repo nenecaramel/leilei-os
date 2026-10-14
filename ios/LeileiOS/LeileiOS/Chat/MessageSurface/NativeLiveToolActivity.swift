@@ -1,6 +1,14 @@
 import SwiftUI
 import Foundation
 
+// The wallpaper is visible beneath iMessage tool activity, independently
+// of the user/assistant text-bubble tint and its opacity slider.
+private enum NativeLiveToolWallpaperStyle {
+    static let background = Color(red: 0.21, green: 0.25, blue: 0.28).opacity(0.94)
+    static let secondary = Color.white.opacity(0.78)
+    static let tertiary = Color.white.opacity(0.65)
+}
+
 struct NativeLiveToolActivityRow: View {
     let tool: NativeLiveTurnActivityProjection.ToolActivity
     let permissionInteractions:
@@ -54,6 +62,7 @@ enum NativeLiveToolCallState: Equatable {
 }
 
 struct NativeLiveToolCallCard: View {
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     let toolName: String
     let detail: String?
     var resultDetail: String? = nil
@@ -71,37 +80,38 @@ struct NativeLiveToolCallCard: View {
                 case .running:
                     ProgressView()
                         .controlSize(.small)
+                        .tint(iMessageWallpaperVisible ? .white : .primary)
                 case .completed:
                     Image(systemName: "checkmark.circle")
                         .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.secondary : Color.secondary)
                 case .failed:
                     Image(systemName: "exclamationmark.circle")
                         .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.secondary : Color.secondary)
                 case .unknown:
                     Image(systemName: "circle")
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.secondary : Color.secondary)
                 }
 
                 Text(nativeLiveToolDisplayName(toolName))
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(iMessageWallpaperVisible ? Color.white : Color.primary)
                     .lineLimit(1)
 
                 Spacer(minLength: 8)
 
                 Text(stateLabel)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.secondary : Color.secondary)
 
                 Image(systemName: "chevron.right")
                     .font(.system(
                         size: 10.5,
                         weight: .semibold
                     ))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.tertiary : Color(.tertiaryLabel))
             }
             .contentShape(Rectangle())
         }
@@ -109,7 +119,9 @@ struct NativeLiveToolCallCard: View {
         .padding(.horizontal, 11)
         .padding(.vertical, 9)
         .background(
-            Color.primary.opacity(0.045),
+            iMessageWallpaperVisible
+                ? NativeLiveToolWallpaperStyle.background
+                : Color.primary.opacity(0.045),
             in: RoundedRectangle(
                 cornerRadius: 11,
                 style: .continuous
@@ -147,6 +159,7 @@ struct NativeLiveToolCallCard: View {
 }
 
 struct NativeLiveToolResultCard: View {
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     let isError: Bool
     let detail: String?
 
@@ -164,14 +177,14 @@ struct NativeLiveToolResultCard: View {
                         : "checkmark.circle"
                 )
                 .font(.system(size: 13))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.secondary : Color.secondary)
 
                 Text(isError ? "Tool failed" : "Tool result")
                     .font(.system(
                         size: 13.5,
                         weight: .medium
                     ))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.secondary : Color.secondary)
 
                 Spacer(minLength: 8)
 
@@ -180,13 +193,23 @@ struct NativeLiveToolResultCard: View {
                         size: 10.5,
                         weight: .semibold
                     ))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.tertiary : Color(.tertiaryLabel))
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .padding(.leading, 5)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            if iMessageWallpaperVisible {
+                // Result rows had no fill at all; paint behind the row
+                // without changing its size, vertical spacing, or actions.
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(NativeLiveToolWallpaperStyle.background)
+                    .padding(.vertical, -3)
+                    .allowsHitTesting(false)
+            }
+        }
         .sheet(isPresented: $isShowingDetails) {
             NativeLiveToolDetailSheet(
                 title: isError ? "Tool failed" : "Tool result",
