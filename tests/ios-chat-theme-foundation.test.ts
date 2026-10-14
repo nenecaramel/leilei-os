@@ -150,7 +150,7 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   assert.match(layout, /iMessageUserBubbleRadius: CGFloat = 20/);
   assert.doesNotMatch(layout, /iMessageUserBubbleMaxWidth/);
   assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
-  assert.match(bubble, /Spacer\(minLength: ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
+  assert.match(bubble, /Color\.clear\.frame\(width:ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
   assert.match(bubble, /side == \.outgoing \? Color\.blue : Color\.chatSoftFill/);
   assert.doesNotMatch(bubble, /iMessageUserBubbleMaxWidth/);
 
@@ -243,6 +243,18 @@ test('iMessage alone uses compact turn, bubble and process spacing with full-wid
   assert.match(bubble, /bubble\(content\.fixedSize\(horizontal: true, vertical: false\), fillAvailableWidth: false\)/);
   assert.match(bubble, /bubble\(content\.fixedSize\(horizontal: false, vertical: true\), fillAvailableWidth: true\)/);
   assert.match(bubble, /maxWidth: fillAvailableWidth \? \.infinity : nil/);
+  assert.match(bubble, /NativeLiveIMessageAssistantTextBubble\([\s\S]*?\.frame\(maxWidth:\.infinity,alignment:\.leading\)/);
+  assert.match(bubble, /Color\.clear\.frame\(width:ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
+  const user = read('Chat/MessageSurface/NativeLiveUserMessageRow.swift');
+  const rows = read('Chat/MessageSurface/NativeLiveMessageRows.swift');
+  const history = read('Chat/MessageSurface/NativeLiveHistoryMessageRow.swift');
+  assert.match(user, /if isIMessage && !user\.isVoiceInput/);
+  assert.match(user, /Color\.clear\.frame\(width:leadingClearance\)/);
+  assert.match(user, /messageView\.frame\(maxWidth:\.infinity,alignment:\.trailing\)/);
+  assert.match(user, /Spacer\(minLength:leadingClearance\)/);
+  assert.match(rows, /isIMessage: chatTheme == \.iMessage/);
+  assert.match(history, /Color\.clear\.frame\(width: ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
+  assert.match(history, /Spacer\(minLength: ChatPresentationLayout\.userLeadingClearance\)/);
   assert.match(bubble, /alignment: side == \.outgoing \? \.trailing : \.leading/);
   assert.match(bubble, /spacing: ChatPresentationLayout\.iMessageTextBubbleSpacing/);
   assert.match(bubble, /22 - ChatPresentationLayout\.iMessageTextBubbleSpacing/);
