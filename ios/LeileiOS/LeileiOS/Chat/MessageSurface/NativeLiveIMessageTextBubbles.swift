@@ -95,17 +95,25 @@ struct NativeLiveIMessageTextBubble<Content: View>: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            bubble(content.fixedSize(horizontal: true, vertical: false))
-            bubble(content.fixedSize(horizontal: false, vertical: true))
+            // One-line text: the bubble hugs its natural content width.
+            bubble(content.fixedSize(horizontal: true, vertical: false), fillAvailableWidth: false)
+            // Once the intrinsic content no longer fits and SwiftUI wraps it,
+            // the background occupies the *whole* available row width.
+            // A short final line cannot shrink the wrapping bubble.
+            bubble(content.fixedSize(horizontal: false, vertical: true), fillAvailableWidth: true)
         }
     }
 
-    private func bubble<BubbleContent: View>(_ view: BubbleContent) -> some View {
+    private func bubble<BubbleContent: View>(_ view: BubbleContent, fillAvailableWidth: Bool) -> some View {
         view
             .font(.body)
             .padding(.horizontal, ChatPresentationLayout.bubbleHorizontalInset)
             .padding(.vertical, ChatPresentationLayout.iMessageUserBubbleVerticalInset)
             .foregroundStyle(side == .outgoing ? Color.white : Color.primary)
+            .frame(
+                maxWidth: fillAvailableWidth ? .infinity : nil,
+                alignment: side == .outgoing ? .trailing : .leading
+            )
             .background(
                 side == .outgoing ? Color.blue : Color.chatSoftFill,
                 in: RoundedRectangle(
@@ -173,7 +181,7 @@ struct NativeLiveIMessageTextBubbleList: View {
     }
 
     var body: some View {
-        VStack(alignment: side == .outgoing ? .trailing : .leading, spacing: 10) {
+        VStack(alignment: side == .outgoing ? .trailing : .leading, spacing: ChatPresentationLayout.iMessageTextBubbleSpacing) {
             ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
                 Group {
                     if segment.isTextBubble {
@@ -198,14 +206,16 @@ struct NativeLiveIMessageTextBubbleList: View {
                         NativeLiveVisualNodeView(node: segment.node, role: presentation.role)
                     }
                 }
-                // Preserve the original assistant's 22pt separation around
-                // code, tables, media and other specialized surfaces.
+                // Special renderers keep their existing 22pt separation;
+                // only consecutive ordinary text bubbles change to 8pt.
                 .padding(.top, side == .incoming && index > 0 &&
-                    (!segment.isTextBubble || !segments[index - 1].isTextBubble) ? 12 : 0)
+                    (!segment.isTextBubble || !segments[index - 1].isTextBubble)
+                        ? 22 - ChatPresentationLayout.iMessageTextBubbleSpacing : 0)
             }
             if side == .incoming && !presentation.citationSources.isEmpty {
                 NativeLiveCitationSourcesView(sources: presentation.citationSources)
-                    .padding(.top, 2)
+                    // Preserve the previous 12pt source separation.
+                    .padding(.top, 12 - ChatPresentationLayout.iMessageTextBubbleSpacing)
             }
         }
     }
