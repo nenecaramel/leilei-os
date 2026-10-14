@@ -78,9 +78,14 @@ struct NativeLiveToolCallCard: View {
             HStack(spacing: 8) {
                 switch state {
                 case .running:
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(iMessageWallpaperVisible ? .white : .primary)
+                    if iMessageWallpaperVisible {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.white)
+                    } else {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
                 case .completed:
                     Image(systemName: "checkmark.circle")
                         .font(.system(size: 13))
@@ -111,7 +116,11 @@ struct NativeLiveToolCallCard: View {
                         size: 10.5,
                         weight: .semibold
                     ))
-                    .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.tertiary : Color(.tertiaryLabel))
+                    .foregroundStyle(
+                        iMessageWallpaperVisible
+                            ? AnyShapeStyle(NativeLiveToolWallpaperStyle.tertiary)
+                            : AnyShapeStyle(HierarchicalShapeStyle.tertiary)
+                    )
             }
             .contentShape(Rectangle())
         }
@@ -193,7 +202,11 @@ struct NativeLiveToolResultCard: View {
                         size: 10.5,
                         weight: .semibold
                     ))
-                    .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.tertiary : Color(.tertiaryLabel))
+                    .foregroundStyle(
+                        iMessageWallpaperVisible
+                            ? AnyShapeStyle(NativeLiveToolWallpaperStyle.tertiary)
+                            : AnyShapeStyle(HierarchicalShapeStyle.tertiary)
+                    )
             }
             .contentShape(Rectangle())
         }
