@@ -66,7 +66,9 @@ test('iMessage Composer uses Apple-native controls while retaining existing acti
   assert.match(imessageBody, /Text\("Message"\)/);
   assert.match(imessageBody, /TextField\(/);
   assert.match(imessageBody, /\.lineLimit\(1\.\.\.6\)/);
-  assert.match(imessageBody, /\.background\(\.regularMaterial, in: RoundedRectangle/);
+  assert.match(imessageBody, /\.glassEffect\(\.regular, in: Capsule\(\)\)/);
+  assert.match(imessageBody, /\.glassEffect\(\.regular, in: Circle\(\)\)/);
+  assert.doesNotMatch(imessageBody, /\.regularMaterial/);
   assert.match(imessageBody, /private var iMessagePlusMenu: some View \{\s*Menu \{/);
   assert.match(imessageBody, /Label\("Model Settings", systemImage:/);
   for (const label of ['Photo', 'Camera', 'File', 'Call Claude']) {
@@ -81,41 +83,31 @@ test('iMessage Composer uses Apple-native controls while retaining existing acti
   assert.match(imessageBody, /isFocused\.wrappedValue = false/);
 });
 
-test('iMessage placement uses a full-width native safe-area bar without compact ToolbarItem', () => {
+test('iMessage uses a native safe-area inset with no opaque system bottom bar', () => {
   const chat = read('Chat/ChatView.swift');
-
-  const original = chat.slice(
+  const composer = read('Chat/ChatComposer.swift');
+  const placement = chat.slice(
     chat.indexOf('        .safeAreaInset(edge: .bottom) {'),
-    chat.indexOf('        .safeAreaBar(edge: .bottom) {', chat.indexOf('        .safeAreaInset(edge: .bottom) {'))
-  );
-  const nativeBar = chat.slice(
-    chat.indexOf('        .safeAreaBar(edge: .bottom) {', chat.indexOf('        .safeAreaInset(edge: .bottom) {')),
     chat.indexOf('        .sheet(isPresented: $isNativeCallPresented)')
   );
   const shared = chat.slice(chat.indexOf('    private var chatComposer: some View {'));
 
-  assert.match(original, /if selectedChatTheme == \.original/);
-  assert.match(original, /\.safeAreaInset\(edge: \.bottom\)/);
-  assert.match(original, /ChatPresentationLayout\.composerOuterHorizontal/);
-  assert.match(original, /ChatPresentationLayout\.composerOuterTop/);
-  assert.match(original, /ChatPresentationLayout\.composerOuterBottom/);
-  assert.match(original, /ChatPresentationLayout\.composerHiddenKeyboardPaintOffset/);
-
-  assert.match(nativeBar, /if selectedChatTheme == \.iMessage/);
-  assert.match(nativeBar, /\.safeAreaBar\(edge: \.bottom\)/);
-  assert.match(nativeBar, /\.frame\(maxWidth: \.infinity\)/);
-  assert.match(nativeBar, /\.padding\(\.horizontal\)/);
-  assert.doesNotMatch(nativeBar, /ToolbarItem\(placement: \.bottomBar\)/);
-  assert.match(nativeBar, /chatComposer/);
-  assert.doesNotMatch(nativeBar, /\.safeAreaInset|\.offset\(|composerOuter|composerHiddenKeyboardPaintOffset/);
+  assert.match(placement, /if selectedChatTheme == \.original/);
+  assert.match(placement, /if selectedChatTheme == \.original[\s\S]*?\} else \{/);
+  assert.match(placement, /ChatPresentationLayout\.composerOuterHorizontal/);
+  assert.match(placement, /ChatPresentationLayout\.composerOuterTop/);
+  assert.match(placement, /ChatPresentationLayout\.composerOuterBottom/);
+  assert.match(placement, /ChatPresentationLayout\.composerHiddenKeyboardPaintOffset/);
+  assert.match(placement, /chatComposer\s*\.frame\(maxWidth: \.infinity\)\s*\.padding\(\.horizontal\)/);
+  assert.doesNotMatch(placement, /safeAreaBar|ToolbarItem|\.background\(|\.regularMaterial/);
 
   assert.equal((chat.match(/\bChatComposer\(/g) ?? []).length, 1, 'exactly one composer callback owner');
-  assert.match(shared, /text: \$messageText/);
-  assert.match(shared, /model: \$model/);
-  assert.match(shared, /thinking: \$thinking/);
-  assert.match(shared, /effort: \$effort/);
-  assert.match(shared, /attachments: composerAttachments/);
   for (const route of [
+    'text: $messageText',
+    'model: $model',
+    'thinking: $thinking',
+    'effort: $effort',
+    'attachments: composerAttachments',
     'onCancelEdit: cancelEditing',
     'onRetryAttachment: { id in',
     'onInterrupt: {',
@@ -124,4 +116,10 @@ test('iMessage placement uses a full-width native safe-area bar without compact 
     'onVoiceRelease: { voiceInput.release() }'
   ]) assert.ok(shared.includes(route), route);
   assert.match(shared, /sendMessage\(\)/);
+
+  assert.match(composer, /case \.voice:\s*Image\(systemName: "waveform"\)/);
+  assert.match(composer, /case \.send, \.midTurnSend, \.disabledSend:/);
+  assert.match(composer, /\.background\(\.tint, in: Circle\(\)\)/);
+  assert.match(composer, /case \.original:\s*sharedComposerContent/);
+  assert.match(composer, /case \.iMessage:\s*iMessageComposerContent/);
 });
