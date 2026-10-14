@@ -17,6 +17,8 @@ struct ChatView: View {
     @State var messageText = ""
     @AppStorage(ChatTheme.storageKey) private var chatThemeRawValue =
         ChatTheme.original.rawValue
+    @AppStorage(IMessageWallpaper.revisionKey) private var wallpaperRevision = ""
+    @State private var wallpaperImage: UIImage?
 
     private var selectedChatTheme: ChatTheme {
         ChatTheme(rawValue: chatThemeRawValue) ?? .original
@@ -45,8 +47,20 @@ struct ChatView: View {
 
     var body: some View {
         ZStack {
-            Color(.systemBackground)
+            if selectedChatTheme == .iMessage, let wallpaperImage {
+                GeometryReader { geometry in
+                    Image(uiImage: wallpaperImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped()
+                }
                 .ignoresSafeArea()
+                .accessibilityHidden(true)
+            } else {
+                Color(.systemBackground)
+                    .ignoresSafeArea()
+            }
 
             if isDraftConversation && pendingOperation == nil {
                 NativeLiveMessageSurface.scrollableState { Color.clear }
@@ -93,6 +107,9 @@ struct ChatView: View {
                     }
                 )
             }
+        }
+        .task(id: wallpaperRevision) {
+            wallpaperImage = IMessageWallpaper.load()
         }
         .task(id: appModel.activeNativeLiveConversationID) {
             guard !isDraftConversation else { return }
