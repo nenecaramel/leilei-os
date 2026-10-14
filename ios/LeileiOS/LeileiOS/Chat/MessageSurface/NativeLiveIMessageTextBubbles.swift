@@ -94,10 +94,12 @@ struct NativeLiveIMessageTextBubble<Content: View>: View {
     }
 
     var body: some View {
-        // Measure the *rendered* text, not the last line and not the row's
-        // entire available width. Short text hugs content; wrapped text uses
-        // the narrowest width that keeps its native line count unchanged.
-        IMessageTightBubbleLayout {
+        ViewThatFits(in: .horizontal) {
+            // Short text retains its natural width.
+            bubble(content.fixedSize(horizontal: true, vertical: false))
+            // Wrapped text is measured by SwiftUI at the available width.
+            // The background stays around the rendered content instead of
+            // filling the entire row and leaving a blank right-hand strip.
             bubble(content.fixedSize(horizontal: false, vertical: true))
         }
     }
@@ -115,72 +117,6 @@ struct NativeLiveIMessageTextBubble<Content: View>: View {
                     style: .continuous
                 )
             )
-    }
-}
-
-// Shrink-wrap the entire painted bubble (including padding) without
-// reimplementing Apple's line-break, font, markdown or selection layout.
-// The native renderer decides how many lines fit at the real row width.
-// We only remove leftover width that could be removed WITHOUT adding a line.
-private struct IMessageTightBubbleLayout: Layout {
-    func sizeThatFits(
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) -> CGSize {
-        guard let child = subviews.first else { return .zero }
-        let natural = child.sizeThatFits(.unspecified)
-        guard let proposed = proposal.width, proposed.isFinite else {
-            return natural
-        }
-        let available = max(1, proposed)
-        if natural.width <= available { return natural }
-
-        let widest = child.sizeThatFits(
-            ProposedViewSize(width: available, height: nil)
-        )
-        // If the child cannot wrap (or is a special inline layout), do
-        // not let the search collapse a one-line view to a tiny width.
-        guard widest.height > natural.height + 0.5 else {
-            return CGSize(width: available, height: widest.height)
-        }
-
-        var lower: CGFloat = 1
-        var upper = available
-        // Only find widths that retain the line count at available width.
-        // A lower width producing more lines is not a valid bubble size.
-        for _ in 0..<12 {
-            let candidate = (lower + upper) / 2
-            let measured = child.sizeThatFits(
-                ProposedViewSize(width: candidate, height: nil)
-            )
-            if measured.height <= widest.height + 0.5 {
-                upper = candidate
-            } else {
-                lower = candidate
-            }
-        }
-
-        // Round upwards to half a point to avoid borderline rewrapping.
-        let fittedWidth = min(available, ceil(upper * 2) / 2)
-        let fitted = child.sizeThatFits(
-            ProposedViewSize(width: fittedWidth, height: nil)
-        )
-        return CGSize(width: fittedWidth, height: fitted.height)
-    }
-
-    func placeSubviews(
-        in bounds: CGRect,
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) {
-        guard let child = subviews.first else { return }
-        child.place(
-            at: CGPoint(x: bounds.minX, y: bounds.minY),
-            anchor: .topLeading,
-            proposal: ProposedViewSize(width: bounds.width, height: bounds.height)
-        )
     }
 }
 
