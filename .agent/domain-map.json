@@ -542,6 +542,7 @@
         "src/domains/**",
         "tests/import-planner*.test.ts",
         "Dockerfile*",
+        "tests/docker-*.test.ts",
         "pnpm-lock.yaml",
         ".github/workflows/**",
         "tests/import-repository.integration.test.ts",

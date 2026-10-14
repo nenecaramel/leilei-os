@@ -11,6 +11,8 @@ COPY drizzle ./drizzle
 COPY tests ./tests
 COPY tools/claude-bridge ./tools/claude-bridge
 COPY scripts/build-mcp-browser.mjs ./scripts/build-mcp-browser.mjs
+# Read by tests/native-live-mac-wake-broker-fallback.test.ts in the runtime gate.
+COPY scripts/native-live-mac-daemon.ts ./scripts/native-live-mac-daemon.ts
 RUN pnpm build
 RUN pnpm test:production-runtime-gate
 
