@@ -12,7 +12,7 @@ struct NativeLiveHistorySnapshotRow: View {
     var body: some View {
         if message.role == "user" {
             HStack(alignment: .top, spacing: 0) {
-                Spacer(minLength: ChatPresentationLayout.userLeadingClearance)
+                Spacer(minLength: chatTheme == .iMessage ? ChatPresentationLayout.iMessageUserLeadingClearance : ChatPresentationLayout.userLeadingClearance)
 
                 if chatTheme == .iMessage {
                     IMessageUserBubble {
