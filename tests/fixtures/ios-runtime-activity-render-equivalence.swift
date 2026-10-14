@@ -190,10 +190,18 @@ private struct ActivityHost: View {
         host.view.layoutIfNeeded(); try? await Task.sleep(for: .milliseconds(100))
         let opaquePixels = raster()
         for (item, hidden) in zip(items, previousBacking) { item.hidesSharedBackground = hidden }
-        func click(_ key: String) async { ActivityProbe.invoke(key); try? await Task.sleep(for: .milliseconds(250)) }
+        func click(_ key: String) async { ActivityProbe.invoke(key); await Task.yield() }
+        func awaitOwner(_ description: String, _ ready: () -> Bool) async {
+            let deadline = Date().addingTimeInterval(5)
+            while !ready() && Date() < deadline {
+                host.view.layoutIfNeeded()
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            precondition(ready(), "Owner did not finish \(description): trace=\(ActivityProbe.trace)")
+        }
         switch name {
         case "expand", "collapse": await click("NativeLiveTurnActivityView.button0-"); precondition(ActivityProbe.expansion?() == (name == "expand"))
-        case "open-murmur": await click("NativeLiveTurnActivityView.button1-"); precondition(ActivityProbe.states["NativeLiveTurnActivityView-"]?() == true)
+        case "open-murmur": await click("NativeLiveTurnActivityView.openMurmur-"); precondition(ActivityProbe.states["NativeLiveTurnActivityView-"]?() == true)
         case "open-resources": await click("NativeLiveTaskResourceRow.button0-task"); precondition(ActivityProbe.states["NativeLiveTaskResourceRow-task"]?() == true)
         case "open-tool": await click("NativeLiveToolCallCard.button0-"); precondition(ActivityProbe.states["NativeLiveToolCallCard-"]?() == true)
         case "open-question": await click("NativeLiveQuestionActivityRow.button0-question"); precondition(ActivityProbe.states["NativeLiveQuestionActivityRow-question"]?() == true)
@@ -207,8 +215,13 @@ private struct ActivityHost: View {
             await click("NativeLiveQuestionInteractionCard.button2-question")
         default: break
         }
-        if name.hasPrefix("open-") { precondition(host.presentedViewController != nil, "Compiled sheet was not actually presented: \(name)") }
+        if name.hasPrefix("open-") { await awaitOwner("sheet \(name)") { host.presentedViewController != nil }; precondition(host.presentedViewController != nil, "Compiled sheet was not actually presented: \(name)") }
         if ["permission-allow", "permission-deny", "nested-allow", "question-cancel", "question-submit", "resolve-error"].contains(name) {
+            await awaitOwner("callback \(name)") {
+                ActivityProbe.trace.count == 2 && (name == "resolve-error"
+                    ? ActivityProbe.enabled["NativeLivePermissionInteractionCard.button1-permission"] == true
+                    : ActivityProbe.enabled.values.contains(false))
+            }
             let id = name == "nested-allow" ? "nested" : name.hasPrefix("question") ? "question" : "permission"
             let payload: [String: NativeLiveJSONValue] = name == "permission-deny" ? ["decision": .string("deny"), "message": .string("Denied by user in LeileiOS."), "interrupt": .bool(false)] : name == "question-cancel" ? ["decision": .string("cancel"), "message": .string("User dismissed the question.")] : name == "question-submit" ? ["decision": .string("answer"), "answers": .object(["Theme?": .string("Dark")])] : ["decision": .string("allow")]
             precondition(ActivityProbe.trace == ["start:\(id):\(nativeLiveJSONDetail(.object(payload))!)", "finish:\(id)"], "Wrong callback payload/count/order \(name): \(ActivityProbe.trace)")

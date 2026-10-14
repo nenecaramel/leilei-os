@@ -28,6 +28,19 @@ struct SidebarEquivalenceChecks {
     }
 
     static func run(in scene: UIWindowScene) {
+        let sentinelFormat = UIGraphicsImageRendererFormat(); sentinelFormat.scale = 1
+        let sentinel = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 2), format: sentinelFormat).image { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+            UIColor.blue.setFill(); context.fill(CGRect(x: 0, y: 1, width: 1, height: 1))
+        }
+        var sentinelBytes = [UInt8](repeating: 0, count: 8)
+        sentinelBytes.withUnsafeMutableBytes { bytes in
+            CGContext(data: bytes.baseAddress, width: 1, height: 2, bitsPerComponent: 8, bytesPerRow: 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+                .draw(sentinel.cgImage!, in: CGRect(x: 0, y: 0, width: 1, height: 2))
+        }
+        precondition(sentinelBytes == [255, 0, 0, 255, 0, 0, 255, 255], "Raster rows must follow UIKit top-to-bottom coordinates")
+        print("Sidebar raster coordinate sentinel: UIKit top-to-bottom rows verified"); fflush(stdout)
         let activeID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
         let conversations = [
             NativeLiveConversationSummary(id: activeID.uuidString, title: "Active conversation", currentHeadMessageId: nil, createdAt: "2026-10-05", updatedAt: "2026-10-05"),
@@ -126,14 +139,16 @@ struct SidebarEquivalenceChecks {
         // compositing/settling. Exclude only those control/shadow regions from
         // strict pixel equality; their actual UIButton frames compare exactly.
         let glass = lhs.frames.filter { $0.key.hasPrefix("floating.") }.map { $0.value.insetBy(dx: -12, dy: -12) }
-        var staticPixels = 0; var glassPixels = 0
+        var staticPixels = 0; var glassPixels = 0; var mismatch = CGRect.null
         for p in 0..<(lhs.width * 844) {
             let i = p * 4
             if lhs.pixels[i..<i + 4].elementsEqual(rhs.pixels[i..<i + 4]) { continue }
-            // CGContext raster rows run from the lower edge of UIKit's image.
-            let point = CGPoint(x: CGFloat(p % lhs.width) + 0.5, y: CGFloat(843 - p / lhs.width) + 0.5)
-            if glass.contains(where: { $0.contains(point) }) { glassPixels += 1 } else { staticPixels += 1 }
+            // The top-red/bottom-blue sentinel proves these CGImage raster rows
+            // already follow UIKit coordinates; flipping them misclassifies footer glass.
+            let point = CGPoint(x: CGFloat(p % lhs.width) + 0.5, y: CGFloat(p / lhs.width) + 0.5)
+            if glass.contains(where: { $0.contains(point) }) { glassPixels += 1 } else { staticPixels += 1; mismatch = mismatch.union(CGRect(origin: point, size: CGSize(width: 1, height: 1))) }
         }
+        if staticPixels > 0 { print("Sidebar mismatch bounds=\(mismatch) glass=\(glass)"); fflush(stdout) }
         return (staticPixels, glassPixels)
     }
 }

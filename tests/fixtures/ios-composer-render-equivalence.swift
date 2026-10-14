@@ -28,6 +28,8 @@ extension View {
     static var staticPass = false
     static var keyboardShown = false
     static var keyboardFrame: CGRect?
+    static var keyboardPresented = false
+    static var keyboardDismissed = true
     static func text(_ name:String)->String {
         switch name { case "text","active-text","edit","edit-voice","keyboard","model-label","sending": return "Hello Leilei"
         case "multiline": return "First line\nSecond line\nThird line\nFourth line"
@@ -104,7 +106,14 @@ extension View {
 @MainActor struct ChatRenderChecks {
     struct Sample { let frames:[String:CGRect];let pixels:[UInt8];let staticPixels:[UInt8];let width:Int;let height:Int }
     static func run(_ scene:UIWindowScene) async {
-        let observer = NotificationCenter.default.addObserver(forName:UIResponder.keyboardWillShowNotification,object:nil,queue:.main) { n in ChatRenderFixtures.keyboardFrame = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect }; defer { NotificationCenter.default.removeObserver(observer) }
+        let observer = NotificationCenter.default.addObserver(forName:UIResponder.keyboardDidShowNotification,object:nil,queue:.main) { n in
+            ChatRenderFixtures.keyboardFrame = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
+            ChatRenderFixtures.keyboardPresented = true; ChatRenderFixtures.keyboardDismissed = false
+        }
+        let dismissObserver = NotificationCenter.default.addObserver(forName:UIResponder.keyboardDidHideNotification,object:nil,queue:.main) { _ in
+            ChatRenderFixtures.keyboardPresented = false; ChatRenderFixtures.keyboardDismissed = true
+        }
+        defer { NotificationCenter.default.removeObserver(observer); NotificationCenter.default.removeObserver(dismissObserver) }
         let tablet=UIDevice.current.userInterfaceIdiom == .pad
         let width=tablet ? 1024:390, height=tablet ? 1100:844
         var cases=0, frameCount=0
@@ -173,24 +182,39 @@ extension View {
         let host=UIHostingController(rootView:root.environment(\.chatStaticBackdrop,ChatRenderFixtures.staticPass)), window=UIWindow(windowScene:scene)
         window.frame=CGRect(x:0,y:0,width:width,height:height);window.overrideUserInterfaceStyle=dark ? .dark:.light
         window.rootViewController=host;window.makeKeyAndVisible();host.view.frame=window.bounds
-        host.view.layoutIfNeeded();try? await Task.sleep(for:.seconds(0.5))
+        await waitForLayout("composer mount", host, store) { store.frames["composer"] != nil }
         if ChatRenderFixtures.keyboardShown {
             guard let input=findInput(host.view) else { preconditionFailure("Real UIKit text input not found") }
+            ChatRenderFixtures.keyboardFrame = nil; ChatRenderFixtures.keyboardPresented = false
             input.becomeFirstResponder()
-            // Wait for UIKit and SwiftUI keyboard avoidance presentation layers to settle.
-            try? await Task.sleep(for:.seconds(2))
+            await waitForLayout("keyboard presentation", host, store) { ChatRenderFixtures.keyboardPresented }
             host.view.layoutIfNeeded()
             precondition(hasFirstResponder(host.view),"Keyboard fixture must focus the real input")
             precondition(ChatRenderFixtures.keyboardFrame != nil,"Keyboard fixture must receive a real keyboard notification")
-            store.frames["keyboard"] = ChatRenderFixtures.keyboardFrame
+            store.frames["keyboard"] = window.convert(ChatRenderFixtures.keyboardFrame!, from: scene.screen.coordinateSpace)
+            print("Keyboard owner: screen=\(ChatRenderFixtures.keyboardFrame!) hosted=\(store.frames["keyboard"]!) bounds=\(window.bounds)"); fflush(stdout)
             if let textInput=input as? UITextInput, let range=textInput.selectedTextRange {
                 store.frames["system.caret"] = input.convert(textInput.caretRect(for:range.start),to:host.view)
             }
         }
         if scroll,let view=findScroll(host.view) { view.setContentOffset(.zero,animated:false);try? await Task.sleep(for:.seconds(0.2)) }
         let pixels=raster(host.view,window.bounds,width,height)
-        let frames=store.frames;window.endEditing(true);window.isHidden=true;try? await Task.sleep(for:.seconds(0.6))
+        let frames=store.frames;window.endEditing(true)
+        if ChatRenderFixtures.keyboardShown { await waitForLayout("keyboard dismissal", host, store) { ChatRenderFixtures.keyboardDismissed } }
+        window.isHidden=true
         return .init(frames:frames,pixels:pixels,staticPixels:pixels,width:width,height:height)
+    }
+    static func waitForLayout(_ name:String,_ host:UIHostingController<some View>,_ store:ChatFrameStore,_ ready:()->Bool) async {
+        let deadline=Date().addingTimeInterval(5)
+        var previous:[String:CGRect]?;var stable=0
+        while Date() < deadline {
+            host.view.layoutIfNeeded(); CATransaction.flush()
+            if ready() && previous == store.frames { stable += 1 } else { stable=0 }
+            if stable >= 3 { return }
+            previous=store.frames
+            try? await Task.sleep(for:.milliseconds(16))
+        }
+        preconditionFailure("Layout owner did not settle: \(name)")
     }
     static func raster(_ view:UIView,_ bounds:CGRect,_ width:Int,_ height:Int)->[UInt8] {
         let format=UIGraphicsImageRendererFormat();format.scale=1

@@ -38,7 +38,7 @@ test("canonical voice survives retry, keyboard edit becomes text, and idempotenc
   assert.deepEqual(original.message.blocks[0].payload,{input_mode:"voice"});
   assert.match(original.prompt,/<user_message input_mode="voice">\[voice\] /);
   async function finalize(command:typeof voice.command){
-    const result=await coordinator.finalize(user.id,{protocol_version:4,prepare_id:command.prepare_id,request_id:command.request_id,conversation_id:conversation.id,status:"success",provider_session_id:`voice-test-${crypto.randomUUID()}`,normalized_events:[{type:"text",payload:{text:"answer"}},{type:"result",payload:{status:"success",final_text:"answer"}}]});assert.ok(result.ok);
+    const result=await coordinator.finalize(user.id,{protocol_version:4,prepare_id:command.prepare_id,request_id:command.request_id,conversation_id:conversation.id,status:"success",provider_session_id:command.runtime_mode === "resume" ? command.parent_provider_session_id! : `voice-test-${crypto.randomUUID()}`,provider_checkpoint_id:crypto.randomUUID(),normalized_events:[{type:"text",payload:{text:"answer"}},{type:"result",payload:{status:"success",final_text:"answer"}}]});assert.ok(result.ok);
   }
   await finalize(voice.command);
   const retry=await coordinator.prepare(user.id,{dispatch_target:"claude_code",operation:"retry",request_id:crypto.randomUUID(),conversation_id:conversation.id,target_user_message_id:voice.command.canonical_user_message_id});

@@ -31,7 +31,7 @@ test("ordinary tools and suppressed descendants survive operational history remo
     const result = { tool_use_id: "read1", output: "file contents", is_error: false, provenance: { provider: "claude_code", raw_type: "tool_result", tool_use_id: "read1" } };
     const finalized = await coordinator.finalize(user.id, {
       protocol_version: 4, prepare_id: command.prepare_id, request_id: command.request_id,
-      conversation_id: conversation.id, status: "success", provider_session_id: `ledger-${crypto.randomUUID()}`,
+      conversation_id: conversation.id, status: "success", provider_session_id: `ledger-${crypto.randomUUID()}`, provider_checkpoint_id: crypto.randomUUID(),
       normalized_events: [
         ...(flag ? [{ type: "task" as const, payload: { tool_use_id: "parent", ...(flag === "hidden_from_transcript" ? { hidden_from_transcript: true } : { ambient: true }) } }] : []),
         { type: "tool_use", payload: { ...use, display_name: "Read file", server_display_name: "Server", icon_url: "icon" } },

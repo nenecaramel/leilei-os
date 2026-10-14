@@ -59,6 +59,7 @@ test("completed turns preserve only explicitly user-visible thinking in canonica
     conversation_id: conversation.id,
     status: "success",
     provider_session_id: providerSessionId,
+    provider_checkpoint_id: crypto.randomUUID(),
     normalized_events: [
       { type: "text", payload: { text: "Explanation" } },
       providerResult,

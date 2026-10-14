@@ -441,6 +441,9 @@
         "ios/**",
         "tests/ios-*.test.ts",
         "tests/fixtures/universe-import-parser.swift",
+        "tests/fixtures/ios-*.swift",
+        "tests/fixtures/voice-audio-approved-20261006/**",
+        "tests/fixtures/spotify-result-surface-main-c47b0975/**",
         "tests/helpers/ios-swift-declarations.ts"
       ],
       "verification": [
@@ -470,6 +473,7 @@
         "drizzle/**",
         "drizzle.config.*",
         "tests/*migration*.test.ts",
+        "tests/todo-repository.integration.test.ts",
         "scripts/*postgres*"
       ],
       "verification": [

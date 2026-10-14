@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { cpSync,mkdtempSync,readFileSync,writeFileSync,rmSync,mkdirSync,openSync,closeSync } from 'node:fs';
 import path from 'node:path';import os from 'node:os';import test from 'node:test';
@@ -6,6 +7,16 @@ const files=['NativeLiveMessageRows.swift','NativeLiveAssistantTurnRow.swift','N
 const moved=['NativeLiveUserMessageRow.swift','NativeLiveHistoryMessageRow.swift','NativeLiveHistoryDivider.swift','NativeLiveAssistantActions.swift'];
 // Keep historical fixtures immutable. Adapt only the explicitly approved
 // process/timestamp geometry; user bubbles, renderers and callbacks stay pinned.
+const historicalSourceSHA256: Record<string,string> = {
+  'NativeLiveMessageRows.swift': '0f63c154b556598ff7e5ebe1d1e81e424ca83da4d24d74d6c5b995292256949d',
+  'NativeLiveAssistantTurnRow.swift': 'd664ae648d82f72b1d41196219f4bd5df5cb9c706bfedf4805204b74b41d72f2',
+  'NativeLiveMessageBlocks.swift': '4c7d392d4b0e82556b07e7ed98f9fa0e746a948e330efc9705e1cbcb736d8da3',
+};
+function readPinnedRowFixture(file: string) {
+  const source=readFileSync('tests/fixtures/message-rows-main-72a67f44/'+file,'utf8');
+  assert.equal(createHash('sha256').update(source).digest('hex'),historicalSourceSHA256[file],`Immutable historical source changed: ${file}`);
+  return source;
+}
 function approvedProcessChrome(s:string, file:string) {
  if(file==='NativeLiveAssistantTurnRow.swift') {
   s=s.replaceAll('height:ChatPresentationLayout.actionDiameter)', 'height:ChatPresentationLayout.actionDiameter,alignment:.leading)');
@@ -13,13 +24,29 @@ function approvedProcessChrome(s:string, file:string) {
   s=s.replace('Image(systemName:isCopied ? "checkmark" : "square.on.square").frame', 'Image(systemName:isCopied ? "checkmark" : "square.on.square").rotationEffect(.degrees(isCopied ? 0 : 180)).frame');
   s=s.replace('timestampText:turn.timestamp.map { MessageTimestampFormatter.string(from:$0) },header:turn.header,','header:turn.header,');
   s=s.replace(/\} else if let timestamp = turn\.timestamp \{\n                Text\(MessageTimestampFormatter\.string\(from:timestamp\)\)\.font\(\.system\(size:13\.5\)\)\.foregroundStyle\(\.secondary\)\n            \}/, '}');
-  s=s.replace('            }\n            NativeLiveMessagePresentationView', '            }.padding(.bottom, turn.stepCount > 0 ? ChatPresentationLayout.processSectionSpacing - ChatPresentationLayout.assistantSpacing : 0)\n            NativeLiveMessagePresentationView');
+  // A result-builder if is not a View value; attach the approved gap to its Group.
+  assert.equal(s.split('            if !turn.header.isEmpty || turn.murmurText != nil {').length,2,'Pinned activity branch changed');
+  assert.equal(s.split('            }\n            NativeLiveMessagePresentationView').length,2,'Pinned activity/body boundary changed');
+  s=s.replace('            if !turn.header.isEmpty || turn.murmurText != nil {', '            Group {\n            if !turn.header.isEmpty || turn.murmurText != nil {');
+  s=s.replace('            }\n            NativeLiveMessagePresentationView', '            }\n            }.padding(.bottom, turn.stepCount > 0 ? 12 : 0)\n            NativeLiveMessagePresentationView');
   s=s.replace('            }.font(.system(size:14))', '                if let timestamp = turn.timestamp {\n                    Text(MessageTimestampFormatter.string(from:timestamp)).font(.system(size:12)).tracking(0.12).foregroundStyle(.secondary)\n                }\n            }.font(.system(size:14))');
  }
  if(file==='NativeLiveMessageRows.swift') {
-  const start=s.indexOf('                Text(',s.indexOf('struct NativeLiveHistorySnapshotRow:'));
-  const end=s.indexOf('                NativeLiveMessagePresentationView',start);
-  const stamp=s.slice(start,end).replace('.padding(.bottom, 4)','.padding(.top, 4)').replace('size: 13.5', 'size: 12').trimEnd();
+  const historicalTimestamp=`                Text(
+                    MessageTimestampFormatter.string(
+                        from: message.time,
+                        timeZoneIdentifier: timeZone
+                    )
+                )
+                .font(.system(size: 13.5))
+                .tracking(0.12)
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 4)
+
+`;
+  assert.equal(s.split(historicalTimestamp).length,2,'Pinned complete history timestamp block changed');
+  const start=s.indexOf(historicalTimestamp),end=start+historicalTimestamp.length;
+  const stamp=historicalTimestamp.replace('.padding(.bottom, 4)','.padding(.top, 4)').replace('size: 13.5','size: 12').trimEnd();
   s=s.slice(0,start)+s.slice(end);
   const position=s.indexOf('                .textSelection(.enabled)',start)+'                .textSelection(.enabled)'.length;
   s=s.slice(0,position)+'\n\n'+stamp+s.slice(position);
@@ -46,7 +73,7 @@ test('MessageRows render and callback equivalence against exact main, including 
   cpSync('ios/LeileiOS',path.join(dir,'ios'),{recursive:true,filter:p=>!p.includes('xcuserdata')});const root=path.join(dir,'ios/LeileiOS/Chat/MessageSurface');
   // The album badge and its network readback have been explicitly retired.
   // Compare every remaining row pixel/callback with the immutable historical baseline.
-  const originals=files.map(f=>readFileSync('tests/fixtures/message-rows-main-72a67f44/'+f,'utf8')
+  const originals=files.map(f=>readPinnedRowFixture(f)
     .replace('AlbumSaveIndicator(count:turn.parentUserMessageID.flatMap { appModel.albumSavesByUserMessageID[$0]?.total } ?? 0)', '')
     .replace('if let user = turn.parentUserMessageID { await appModel.refreshAlbumSaves(userMessageID:user,force:isCurrentHead) }', '')).map((source,i)=>approvedProcessChrome(source,files[i]));
   const names=new Set(originals.flatMap(s=>[...s.matchAll(/\b(?:struct|class|enum|protocol)\s+(\w+)/g)].map(m=>m[1])));

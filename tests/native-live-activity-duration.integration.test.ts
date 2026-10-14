@@ -33,7 +33,7 @@ test("current-path reuses durable checkpoint duration through refresh and operat
   ], { logicalConversationId: conversation.id, mode: "new" }).find((event: { type: string }) => event.type === "result");
   assert.ok(providerResult);
   const finalized = await coordinator.finalize(user.id, {
-    protocol_version: 4, prepare_id: command.prepare_id, request_id: requestId, conversation_id: conversation.id, status: "success", provider_session_id: `activity-${requestId}`,
+    protocol_version: 4, prepare_id: command.prepare_id, request_id: requestId, conversation_id: conversation.id, status: "success", provider_session_id: `activity-${requestId}`, provider_checkpoint_id: crypto.randomUUID(),
     normalized_events: [
       { type: "tool_use", payload: { tool_use_id: "edit1", tool_name: "Edit", input: {} } },
       { type: "tool_result", payload: { tool_use_id: "edit1", output: "ok" } },
@@ -96,7 +96,7 @@ test("provider timing evidence uses persisted event timestamps through successfu
       {userId:user.id,prepareId:c.prepare_id,sequence:2,eventType:"partial_text",payload:{delta:"Partial"},createdAt:new Date("2026-10-04T10:00:08Z")},
       {userId:user.id,prepareId:c.prepare_id,sequence:3,eventType:"runtime",payload:{kind:"provider_message_start"},createdAt:new Date("2026-10-04T10:00:11Z")},
     ]);
-    const finalized = await coordinator.finalize(user.id,{protocol_version:4,prepare_id:c.prepare_id,request_id:c.request_id,conversation_id:conversation.id,status,...(status === "success" ? {provider_session_id:`clock-${conversation.id}`,normalized_events:[{type:"text",payload:{text:"Partial"}},{type:"result",payload:{status:"success",duration_ms:17000}}]} : {error_code:"CLAUDE_PROCESS_FAILED"})});
+    const finalized = await coordinator.finalize(user.id,{protocol_version:4,prepare_id:c.prepare_id,request_id:c.request_id,conversation_id:conversation.id,status,...(status === "success" ? {provider_session_id:c.runtime_mode === "resume" ? c.parent_provider_session_id! : `clock-${conversation.id}`,provider_checkpoint_id:crypto.randomUUID(),normalized_events:[{type:"text",payload:{text:"Partial"}},{type:"result",payload:{status:"success",duration_ms:17000}}]} : {error_code:"CLAUDE_PROCESS_FAILED"})});
     assert.equal(finalized.ok,status === "success",JSON.stringify(finalized));
     const input = {userId:user.id,conversationId:conversation.id,limit:100};
     const before = await reader.readCurrentPath(input);

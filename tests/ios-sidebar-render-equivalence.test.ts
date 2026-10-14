@@ -53,7 +53,8 @@ test("Sidebar renders identically to pinned main; rejects the former unified gut
     ? "Requires macOS and UI_TOKEN_SIMULATOR_ID pointing to a booted simulator"
     : false,
 }, () => {
-  const temporary = mkdtempSync(path.join(os.tmpdir(), "leilei-sidebar-equivalence-"));
+  const temporary = process.env.UI_SIDEBAR_RENDER_CACHE ?? mkdtempSync(path.join(os.tmpdir(), "leilei-sidebar-equivalence-"));
+  mkdirSync(temporary, { recursive: true });
   const simulator = process.env.UI_TOKEN_SIMULATOR_ID;
   try {
     const sources: string[] = [];
@@ -87,7 +88,7 @@ test("Sidebar renders identically to pinned main; rejects the former unified gut
     writeFileSync(model, models.slice(0, models.indexOf("struct NativeLiveConversationPage:")));
     const sdk = spawnSync("xcrun", ["--sdk", "iphonesimulator", "--show-sdk-path"], { encoding: "utf8" });
     assert.equal(sdk.status, 0, sdk.stderr);
-    const app = path.join(temporary, "Checks.app"); mkdirSync(app);
+    const app = path.join(temporary, "Checks.app"); mkdirSync(app, { recursive: true });
     writeFileSync(path.join(app, "Info.plist"), `<?xml version="1.0"?><plist version="1.0"><dict>
       <key>CFBundleIdentifier</key><string>com.leileios.tests.sidebar-equivalence</string>
       <key>CFBundleExecutable</key><string>Checks</string><key>CFBundlePackageType</key><string>APPL</string>
@@ -107,12 +108,13 @@ test("Sidebar renders identically to pinned main; rejects the former unified gut
       const installed = spawnSync("xcrun", ["simctl", "install", simulator, app], { encoding: "utf8" });
       assert.equal(installed.status, 0, installed.stderr);
       const checked = spawnSync("xcrun", ["simctl", "launch", "--console", "--terminate-running-process", simulator, "com.leileios.tests.sidebar-equivalence"], { encoding: "utf8", timeout: 120_000 });
+      writeFileSync(path.join(temporary, "run.log"), checked.stdout + checked.stderr);
       assert.equal(checked.status, 0, checked.stdout + checked.stderr);
       assert.match(checked.stdout + checked.stderr, /Sidebar render equivalence PASS/);
       console.info(checked.stdout.trim());
     }
   } finally {
     if (simulator) spawnSync("xcrun", ["simctl", "uninstall", simulator, "com.leileios.tests.sidebar-equivalence"], { encoding: "utf8" });
-    rmSync(temporary, { recursive: true, force: true });
+    if (!process.env.UI_SIDEBAR_RENDER_CACHE) rmSync(temporary, { recursive: true, force: true });
   }
 });

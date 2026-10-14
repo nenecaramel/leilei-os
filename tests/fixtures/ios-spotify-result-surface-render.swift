@@ -22,6 +22,7 @@ extension View {
 }
 @MainActor final class SpotifyFrameStore {var values:[String:CGRect]=[:];var items:[String:NativeLiveSpotifyResultSurfaceItem]=[:]}
 @MainActor enum SpotifyRender {
+ enum Version: Equatable {case current,noSpotifyBaseline,historicalSpotify}
  static let date="2026-10-06T00:00:00Z"
  static let entity:NativeLiveJSONValue = .object(["name":.string("Song"),"uri":.string("spotify:track:song"),"creators":.array([.object(["name":.string("Artist")])]),"parent":.object(["name":.string("Album")])])
  static func turn(_ name:String)->NativeLiveAssistantTurnPresentation {
@@ -41,11 +42,16 @@ extension View {
   return .init(stableID:"assistant",canonicalMessageID:nil,prepareID:nil,requestID:nil,parentUserMessageID:"user",phase:.completed,timestamp:date,bodyPresentation:NativeLiveMessagePresentationProjector.project(.canonical(message)),activityProjection:.init(message:message),duration:94,header:"Worked for 94s · \(names.count+1) steps",failure:nil)
  }
  struct Sample {let frames:[String:CGRect];let png:Data;let pixels:Data;let items:[String:NativeLiveSpotifyResultSurfaceItem]}
- static func sample(_ scene:UIWindowScene,_ name:String,_ expanded:Bool,_ dark:Bool,_ baseline:Bool=false) async -> Sample {
-  print("SAMPLE \(name) expanded=\(expanded) dark=\(dark) baseline=\(baseline)");fflush(stdout)
+ static func sample(_ scene:UIWindowScene,_ name:String,_ expanded:Bool,_ dark:Bool,_ version:Version = .current) async -> Sample {
+  print("SAMPLE \(name) expanded=\(expanded) dark=\(dark) version=\(version)");fflush(stdout)
   let model=AppModel();model.nativeLiveMessageUIState["assistant"].activityExpansion=expanded ? .userExpanded:.userCollapsed
   let turn=turn(name),store=SpotifyFrameStore()
-  let content:AnyView = baseline ? AnyView(BaselineAssistantTurnRow(turn:turn,isCurrentHead:false,isTurnInFlight:false,isCopied:false,onCopyMessage:{_ in},onRetryMessage:{_ in},onResolveInteraction:{_,_ in})) : AnyView(NativeLiveAssistantTurnRow(turn:turn,isCurrentHead:false,isTurnInFlight:false,isCopied:false,onCopyMessage:{_ in},onRetryMessage:{_ in},onResolveInteraction:{_,_ in}))
+  let content:AnyView
+  switch version {
+  case .current: content=AnyView(NativeLiveAssistantTurnRow(turn:turn,isCurrentHead:false,isTurnInFlight:false,isCopied:false,onCopyMessage:{_ in},onRetryMessage:{_ in},onResolveInteraction:{_,_ in}))
+  case .noSpotifyBaseline: content=AnyView(BaselineAssistantTurnRow(turn:turn,isCurrentHead:false,isTurnInFlight:false,isCopied:false,onCopyMessage:{_ in},onRetryMessage:{_ in},onResolveInteraction:{_,_ in}))
+  case .historicalSpotify: content=AnyView(HistoricalSpotifyAssistantTurnRow(turn:turn,isCurrentHead:false,isTurnInFlight:false,isCopied:false,onCopyMessage:{_ in},onRetryMessage:{_ in},onResolveInteraction:{_,_ in}))
+  }
   let host=UIHostingController(rootView:VStack {content;Spacer()}.padding(16).environmentObject(model).environment(\.colorScheme,dark ? .dark:.light).onPreferenceChange(SpotifyFrames.self) {store.values=$0}.onPreferenceChange(SpotifyItems.self) {store.items=$0})
   let width=UIDevice.current.userInterfaceIdiom == .pad ? 768:390
   let window=UIWindow(windowScene:scene);window.frame=CGRect(x:0,y:0,width:width,height:1200);window.overrideUserInterfaceStyle=dark ? .dark:.light;window.rootViewController=host;window.makeKeyAndVisible();host.view.frame=window.bounds
@@ -54,7 +60,7 @@ extension View {
   let image=UIGraphicsImageRenderer(bounds:window.bounds,format:format).image {_ in host.view.drawHierarchy(in:window.bounds,afterScreenUpdates:true)}
   print("FRAMES \(store.values)");fflush(stdout)
   let capturedFrames=store.values
-  if !baseline && name=="search" && expanded {
+  if version == .current && name=="search" && expanded {
    for key in ["info","generic-"+turn.activityProjection.tools.first {$0.id=="search"}!.toolName] {
     SpotifyProbe.lastDetails=nil
     print("DETAILS \(key)");fflush(stdout)
@@ -75,9 +81,17 @@ extension View {
   for dark in [false,true] {
    for name in ["search","multiple","none"] {
     let collapsed=await sample(scene,name,false,dark),expanded=await sample(scene,name,true,dark)
+    // Compile the original c47 row with fixed approved chrome, never the current row.
+    // All shared visual dependencies are frozen by historical literal SHA guards.
+    for (value,isExpanded) in [(collapsed,false),(expanded,true)] {
+     let reference=await sample(scene,name,isExpanded,dark,.historicalSpotify)
+     precondition(value.frames==reference.frames,"Historical Spotify exact geometry changed: \(name)/\(isExpanded)/\(dark): current=\(value.frames) historical=\(reference.frames)")
+     precondition(value.pixels==reference.pixels,"Historical Spotify exact pixels changed: \(name)/\(isExpanded)/\(dark)")
+     try! reference.png.write(to:root.appendingPathComponent("\(name)-\(isExpanded ? "expanded":"collapsed")-\(dark ? "dark":"light")-historical.png"))
+    }
     if name=="none" {
      for (value,isExpanded) in [(collapsed,false),(expanded,true)] {
-      let base=await sample(scene,name,isExpanded,dark,true)
+      let base=await sample(scene,name,isExpanded,dark,.noSpotifyBaseline)
       precondition(value.frames==base.frames && value.pixels==base.pixels,"No-Spotify geometry/pixels changed")
      }
     } else {
@@ -98,7 +112,7 @@ extension View {
    }
   }
   try! JSONSerialization.data(withJSONObject:manifest,options:[.prettyPrinted,.sortedKeys]).write(to:root.appendingPathComponent("manifest.json"))
-  print("Spotify surface render PASS: 12 snapshots, collapsed/expanded cards, both details, no-Spotify exact pixels, device=\(UIDevice.current.userInterfaceIdiom)");fflush(stdout);exit(0)
+  print("Spotify surface render PASS: 12 snapshots + 12 historical exact frame/pixel pairs, collapsed/expanded cards, both details, no-Spotify exact pixels, device=\(UIDevice.current.userInterfaceIdiom)");fflush(stdout);exit(0)
  }
 }
 final class SpotifyAppDelegate:NSObject,UIApplicationDelegate {func application(_ application:UIApplication,configurationForConnecting session:UISceneSession,options:UIScene.ConnectionOptions)->UISceneConfiguration {let c=UISceneConfiguration(name:"Spotify tests",sessionRole:session.role);c.delegateClass=SpotifySceneDelegate.self;return c}}

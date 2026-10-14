@@ -144,6 +144,7 @@ extension View {
             if dynamic.contains(where:{$0.contains(point)}) || !ChatRenderFixtures.staticPass && composerGlass?.contains(point) == true {systemPixels+=1} else {staticPixels+=1;mismatch=mismatch.union(CGRect(x:point.x,y:point.y,width:1,height:1))}
         }
         var flatDifference=0
+        var flatBounds=CGRect.null
         for p in 0..<(lhs.width*lhs.height) {
             let i=p*4
             if lhs.staticPixels[i] == rhs.staticPixels[i] && lhs.staticPixels[i+1] == rhs.staticPixels[i+1] && lhs.staticPixels[i+2] == rhs.staticPixels[i+2] && lhs.staticPixels[i+3] == rhs.staticPixels[i+3] { continue }
@@ -151,11 +152,27 @@ extension View {
             // Only system caret/keyboard and indeterminate progress remain
             // dynamic with an opaque backdrop. Static glyphs stay protected.
             let transient=lhs.frames.filter { ["system.caret","keyboard"].contains($0.key) || name.contains("interrupt") && $0.key == "primary-action" || name.contains("load-older") && $0.key == "load-older" }.map{$0.value.insetBy(dx:-2,dy:-2)}
-            if ChatRenderFixtures.staticPass && !transient.contains(where:{$0.contains(point)}) { flatDifference+=1 }
+            if ChatRenderFixtures.staticPass && !transient.contains(where:{$0.contains(point)}) { flatDifference+=1;flatBounds=flatBounds.union(CGRect(x:point.x,y:point.y,width:1,height:1)) }
         }
-        precondition(flatDifference==0,"opaque-backdrop pixel mismatch \(name): \(flatDifference)")
+        if flatDifference > 0 {
+            diagnostic(lhs, name.replacingOccurrences(of:"/",with:"_")+"-baseline")
+            diagnostic(rhs, name.replacingOccurrences(of:"/",with:"_")+"-current")
+        }
+        precondition(flatDifference==0,"opaque-backdrop pixel mismatch \(name): \(flatDifference) bounds=\(flatBounds) frames=\(lhs.frames)")
         precondition(staticPixels==0,"static pixel mismatch \(name): \(staticPixels) bounds=\(mismatch) frames=\(lhs.frames)")
         print("opaque=\(ChatRenderFixtures.staticPass) \(name): \(lhs.frames.count) exact frames; static pixels=\(staticPixels); opaque-backdrop pixels=\(flatDifference); system pixels=\(systemPixels)");fflush(stdout)
+    }
+    // Failure artifacts identify the actual differing owner; comparisons remain strict.
+    static func diagnostic(_ sample:Sample,_ name:String) {
+        var pixels=sample.pixels
+        let image:CGImage = pixels.withUnsafeMutableBytes { bytes in
+            let context=CGContext(data:bytes.baseAddress,width:sample.width,height:sample.height,bitsPerComponent:8,bytesPerRow:sample.width*4,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue)!
+            return context.makeImage()!
+        }
+        let root=FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("ChatEquivalenceDiagnostics")
+        try! FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
+        try! UIImage(cgImage:image).pngData()!.write(to:root.appendingPathComponent(name+".png"))
+        print("DIAGNOSTIC \(root.path)/\(name).png");fflush(stdout)
     }
     static func sample(_ content:AnyView,_ scene:UIWindowScene,_ width:Int,_ height:Int,_ dark:Bool,_ model:AppModel,scroll:Bool=false) async ->Sample {
         let store=ChatFrameStore()
