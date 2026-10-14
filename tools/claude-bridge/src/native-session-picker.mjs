@@ -8,6 +8,9 @@ function windowAncestry(session, sessions) {
   for (let current = session; current && !seen.has(current.desktopSessionId); ) {
     seen.add(current.desktopSessionId);
     for (const id of [current.providerSessionId, ...(current.priorProviderSessionIds ?? []), ...(current.rewindEdges ?? []).map(edge => edge.parent)]) if (id) ids.add(id);
+    // A window id is local_<its first CLI session>, so the origin survives the
+    // forked-from window being closed or cleaned up.
+    if (current.forkedFromDesktopSessionId) ids.add(current.forkedFromDesktopSessionId.slice('local_'.length));
     current = current.forkedFromDesktopSessionId ? sessions.find(other => other.desktopSessionId === current.forkedFromDesktopSessionId) : null;
   }
   return ids;
