@@ -179,8 +179,8 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   for (const source of [markdown, math]) {
     assert.match(source, /@Environment\(\\\.chatTheme\) private var chatTheme/);
     assert.match(source, /chatTheme == \.iMessage && \(role == "user" \|\| role == "assistant"\)/);
-    assert.match(source, /\.font\(isIMessageUser \? \.body : \.system\(size: 17\)\)/);
-    assert.match(source, /\.lineSpacing\(isIMessageUser \? 0 : \(role == "user" \? 5 : 6\)\)/);
+    assert.match(source, /\.font\(isIMessageBubbleText \? \.body : \.system\(size: 17\)\)/);
+    assert.match(source, /\.lineSpacing\(isIMessageBubbleText \? 0 : \(role == "user" \? 5 : 6\)\)/);
   }
   assert.match(math, /verticalSpacing: 4/);
   assert.doesNotMatch(user, /\.tracking\(/);
