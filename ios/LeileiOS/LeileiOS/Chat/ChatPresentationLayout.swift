@@ -9,9 +9,6 @@ enum ChatPresentationLayout {
     static let messageVerticalInset: CGFloat = 8
     static let userLeadingClearance: CGFloat = 48
     static let iMessageUserLeadingClearance: CGFloat = 70
-    // iMessage-only cap in points, including text padding. Apple's exact
-    // Messages.app width is not a public system design constant.
-    static let iMessageUserBubbleMaxWidth: CGFloat = 300
     static let iMessageUserBubbleVerticalInset: CGFloat = 10
     static let iMessageUserBubbleRadius: CGFloat = 20
     static let bubbleHorizontalInset: CGFloat = 14
