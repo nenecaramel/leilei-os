@@ -52,7 +52,7 @@ struct NativeLiveInlineMathParagraphRenderer: View {
         case .list(let marker, let depth):
             HStack(alignment: .top, spacing: 8) {
                 Text(marker)
-                    .font(.system(size: 17))
+                    .font(isIMessageUser ? .body : .system(size: 17))
                 flow
             }
             .padding(.leading, CGFloat(depth) * 12)
@@ -79,7 +79,7 @@ struct NativeLiveInlineMathParagraphRenderer: View {
     private var flow: some View {
         NativeLiveInlineMathFlowLayout(
             horizontalSpacing: 1,
-            verticalSpacing: isIMessageUser ? 0 : 4
+            verticalSpacing: 4
         ) {
             ForEach(node.children) { child in
                 if let math = child.math {
