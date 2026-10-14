@@ -123,6 +123,7 @@ struct IMessageUserBubble<Content: View>: View {
 
     private func bubble<BubbleContent: View>(_ view: BubbleContent) -> some View {
         view
+            .font(.body)
             .padding(.horizontal, ChatPresentationLayout.bubbleHorizontalInset)
             .padding(.vertical, ChatPresentationLayout.iMessageUserBubbleVerticalInset)
             .foregroundStyle(.white)
