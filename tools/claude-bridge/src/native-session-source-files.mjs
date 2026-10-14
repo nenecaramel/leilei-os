@@ -26,9 +26,10 @@ function crossFileReferences(snapshot) {
 // Every transcript carrying a needed record is offered, as when all were read,
 // so conflicting copies are still detected. Unrelated Rewind copies are only
 // scanned as text and never count toward the source limits.
-export async function readNativeHistorySources(projectDirectory, sessionId, root) {
+/** Session id -> record UUIDs, from a text scan of every transcript in the folder. */
+export async function scanNativeSessionIndex(projectDirectory) {
   const files = (await readdir(projectDirectory, { withFileTypes: true })).filter(e =>
-    e.isFile() && /^[a-f0-9-]{36}\.jsonl$/i.test(e.name) && e.name !== `${sessionId}.jsonl`).sort((a, b) => a.name.localeCompare(b.name));
+    e.isFile() && /^[a-f0-9-]{36}\.jsonl$/i.test(e.name)).sort((a, b) => a.name.localeCompare(b.name));
   if (files.length > MAX_SCANNED_FILES) throw fail('NATIVE_SOURCE_SCAN_LIMIT');
   let scanned = 0;
   const index = new Map();
@@ -38,6 +39,13 @@ export async function readNativeHistorySources(projectDirectory, sessionId, root
     const text = await readFile(path.join(projectDirectory, file.name), 'utf8');
     index.set(file.name.slice(0, -6), new Set(Array.from(text.matchAll(uuidKey), match => match[1].toLowerCase())));
   }
+  return index;
+}
+
+// `allow` restricts candidates (archive planning: "would the kept files suffice?").
+export async function readNativeHistorySources(projectDirectory, sessionId, root, { index: scanned, allow } = {}) {
+  const index = new Map([...(scanned ?? await scanNativeSessionIndex(projectDirectory))]
+    .filter(([id]) => id !== sessionId && (!allow || allow.has(id))));
   const selected = new Map();
   let bytes = 0;
   const pending = [root ?? await readNativeSession(projectDirectory, sessionId)];
@@ -48,6 +56,7 @@ export async function readNativeHistorySources(projectDirectory, sessionId, root
         bytes += (await stat(path.join(projectDirectory, `${id}.jsonl`))).size;
         if (selected.size >= MAX_SOURCE_FILES || bytes > MAX_SOURCE_BYTES) throw fail('NATIVE_SOURCE_SCAN_LIMIT');
         const source = await readNativeSession(projectDirectory, id);
+        if (source.sessionId !== id) throw fail('NATIVE_INSPECTION_CHANGED');
         selected.set(id, source);
         pending.push(source);
       }
