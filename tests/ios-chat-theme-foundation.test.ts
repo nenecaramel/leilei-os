@@ -407,3 +407,46 @@ test('iMessage offers persisted, independent color and opacity controls for both
   assert.match(settings, /incomingBubbleOpacity = IMessageBubbleAppearance\.defaultIncomingOpacity/);
   assert.match(settings, /Opacity controls the color over native frosted glass/);
 });
+
+
+test('wallpaper-backed iMessage tool calls and results get independent readable surfaces', () => {
+  const tools = read('Chat/MessageSurface/NativeLiveToolActivity.swift');
+  const theme = read('Chat/ChatTheme.swift');
+  const chat = read('Chat/ChatView.swift');
+  const bubble = read('Chat/MessageSurface/NativeLiveIMessageTextBubbles.swift');
+  const settings = read('Navigation/Settings/SettingsHomeContent.swift');
+
+  // Match exactly the wallpaper-visible state; not the bubble opacity sliders.
+  assert.match(theme, /static let defaultValue = false/);
+  assert.match(chat, /selectedChatTheme == \.iMessage && wallpaperImage != nil/);
+  assert.match(tools, /@Environment\(\\\.iMessageWallpaperVisible\) private var iMessageWallpaperVisible/);
+  assert.match(tools, /static let background = Color\(red: 0\.21, green: 0\.25, blue: 0\.28\)\.opacity\(0\.94\)/);
+  assert.match(tools, /static let secondary = Color\.white\.opacity\(0\.78\)/);
+  assert.match(tools, /static let tertiary = Color\.white\.opacity\(0\.65\)/);
+
+  const call = tools.slice(
+    tools.indexOf('struct NativeLiveToolCallCard: View'),
+    tools.indexOf('struct NativeLiveToolResultCard: View')
+  );
+  const result = tools.slice(tools.indexOf('struct NativeLiveToolResultCard: View'));
+  assert.match(call, /iMessageWallpaperVisible\s*\? NativeLiveToolWallpaperStyle\.background\s*: Color\.primary\.opacity\(0\.045\)/);
+  assert.match(call, /HierarchicalShapeStyle\.primary/);
+  assert.match(call, /HierarchicalShapeStyle\.secondary/);
+  assert.match(call, /HierarchicalShapeStyle\.tertiary/);
+  assert.match(call, /case \.running:\s*if iMessageWallpaperVisible \{/);
+  assert.match(call, /\.sheet\(isPresented: \$isShowingDetails\)/);
+
+  assert.match(result, /if iMessageWallpaperVisible \{\s*\/\/ Result rows/);
+  assert.match(result, /\.fill\(NativeLiveToolWallpaperStyle\.background\)/);
+  assert.match(result, /\.allowsHitTesting\(false\)/);
+  assert.match(result, /\.sheet\(isPresented: \$isShowingDetails\)/);
+  assert.match(result, /HierarchicalShapeStyle\.secondary/);
+  assert.match(result, /HierarchicalShapeStyle\.tertiary/);
+
+  // The original result has no fill, and no row/action/message changes were made.
+  assert.doesNotMatch(result, /\.padding\(\.vertical, 9\)/);
+  assert.match(result, /\.padding\(\.leading, 5\)/);
+  assert.match(bubble, /\.fill\(tintColor\)/);
+  assert.match(settings, /Slider\(value: \$outgoingBubbleOpacity, in: 0\.\.\.1/);
+  assert.match(settings, /Slider\(value: \$incomingBubbleOpacity, in: 0\.\.\.1/);
+});
