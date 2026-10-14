@@ -15,6 +15,12 @@ struct ChatView: View {
     @State private var isNativeCallPresented = false
     @State private var voiceLanguage: VoiceInputLanguage = .english
     @State var messageText = ""
+    @AppStorage(ChatTheme.storageKey) private var chatThemeRawValue =
+        ChatTheme.original.rawValue
+
+    private var selectedChatTheme: ChatTheme {
+        ChatTheme(rawValue: chatThemeRawValue) ?? .original
+    }
     @State var sendFailureMessage: String?
     @AppStorage("nativeLive.model") var model: NativeLiveClaudeModel = .opus55
     @State var thinking: NativeLiveThinkingMode = .adaptive
@@ -315,6 +321,7 @@ struct ChatView: View {
                     .ignoresSafeArea()
             }
         }
+        .environment(\.chatTheme, selectedChatTheme)
     }
 
 }
