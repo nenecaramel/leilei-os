@@ -1,5 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+// homedir() is captured when the production module is imported. A separate
+// process isolates that import without changing HOME in the shared test runner.
+function withArchiveHome(autoApply, check) {
+  const home = mkdtempSync(path.join(tmpdir(), 'leileios-archive-test-'));
+  try {
+    if (autoApply) {
+      const archive = path.join(home, '.leileios', 'archive');
+      mkdirSync(archive, { recursive: true });
+      writeFileSync(path.join(archive, 'AUTO_APPLY'), '');
+    }
+    const moduleUrl = new URL('../../../scripts/native-session-local.mjs', import.meta.url).href;
+    execFileSync(process.execPath, ['--input-type=module', '--eval', `
+      import assert from 'node:assert/strict';
+      import * as command from ${JSON.stringify(moduleUrl)};
+      await (${check.toString()})(command);
+    `], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: 'utf8', timeout: 10_000 });
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}
 
 test('local switch command pins Railway project and passes only needed relay credentials to the manual CLI', async () => {
   const { runLocalSwitch } = await import('../../../scripts/native-session-local.mjs');
@@ -38,7 +63,7 @@ test('selected conversation is forwarded explicitly and invalid identity is reje
   const conversationId = '00000000-0000-4000-8000-000000000099';
   let childArgs;
   runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { desktopRunning: () => false,
-    conversationId, execute(command, args) {
+    conversationId, archive: false, execute(command, args) {
       if (command === 'railway') return JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 'PRIVATE', MCP_SERVER_URL: 'https://fixture.example' });
       if (args[0].endsWith('native-session-switch.mjs')) childArgs = args;
       return '{}';
@@ -68,32 +93,60 @@ test('local switch child budget covers the largest bounded request and reports i
   assert.equal(childTimeout, NATIVE_SWITCH_CHILD_TIMEOUT_MS);
 });
 
-test('after a switch back to LeileiOS the archive is planned (not applied) and can never fail the switch', async () => {
-  const { runLocalSwitch, afterSwitchArchive } = await import('../../../scripts/native-session-local.mjs');
-  const calls = [], output = [];
-  const relay = JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 'PRIVATE', MCP_SERVER_URL: 'https://fixture.example' });
-  runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { desktopRunning: () => false, print: v => output.push(v), execute(command, args, options) {
-    if (command === 'railway') return relay;
-    calls.push(args);
-    if (args[0].endsWith('native-transcript-archive.mjs')) {
-      assert.equal(options.env.LEILEI_NATIVE_LIVE_RELAY_TOKEN, 'PRIVATE');
-      return JSON.stringify({ mode: 'plan', results: [{ folder: '-fixture', keep: 22, archive: 40, keepMB: 103, archiveMB: 307, applied: null }] });
-    }
-    return '{"outcome":"restored"}';
-  } });
-  assert.equal(calls.length, 2);
-  assert.deepEqual(calls[1].slice(1), [], 'plan-only: no --apply');
-  assert.match(output.join(''), /归档预演 -fixture：可归档 40 个（307 MB），保留 22 个（103 MB）/);
-  // Desktop direction never archives (Desktop is about to open).
-  const desktopCalls = [];
-  runLocalSwitch(['desktop', '00000000-0000-4000-8000-000000000001'], { print() {}, execute(command, args) { if (command !== 'railway') desktopCalls.push(args); return command === 'railway' ? relay : '{}'; } });
-  assert.equal(desktopCalls.length, 1);
-  // A failing archive only reports its sanitized reason.
-  const failed = afterSwitchArchive({ autoApply: false, env: {}, execute() { throw Object.assign(new Error('PRIVATE_DETAIL'), { stderr: 'ARCHIVE_REFERENCES_UNAVAILABLE\n' }); } });
-  assert.equal(failed, '归档预演跳过：ARCHIVE_REFERENCES_UNAVAILABLE\n');
-  let applied;
-  afterSwitchArchive({ autoApply: true, env: {}, execute(_c, args) { applied = args; return JSON.stringify({ mode: 'apply', results: [] }); } });
-  assert.equal(applied.at(-1), '--apply', 'the owner-created flag enables applying');
+test('without AUTO_APPLY a switch plans the archive and archive failure cannot fail the switch', () => {
+  withArchiveHome(false, ({ runLocalSwitch, afterSwitchArchive }) => {
+    const calls = [], output = [];
+    const relay = JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 'PRIVATE', MCP_SERVER_URL: 'https://fixture.example' });
+    runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { desktopRunning: () => false, print: v => output.push(v), execute(command, args, options) {
+      if (command === 'railway') return relay;
+      calls.push(args);
+      if (args[0].endsWith('native-transcript-archive.mjs')) {
+        assert.equal(options.env.LEILEI_NATIVE_LIVE_RELAY_TOKEN, 'PRIVATE');
+        return JSON.stringify({ mode: 'plan', results: [{ folder: '-fixture', keep: 22, archive: 40, keepMB: 103, archiveMB: 307, applied: null }] });
+      }
+      return '{"outcome":"restored"}';
+    } });
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[1].slice(1), [], 'plan-only: no --apply');
+    assert.match(output.join(''), /归档预演 -fixture：可归档 40 个（307 MB），保留 22 个（103 MB）/);
+    // Desktop direction never archives (Desktop is about to open).
+    const desktopCalls = [];
+    runLocalSwitch(['desktop', '00000000-0000-4000-8000-000000000001'], { print() {}, execute(command, args) { if (command !== 'railway') desktopCalls.push(args); return command === 'railway' ? relay : '{}'; } });
+    assert.equal(desktopCalls.length, 1);
+    // A failing archive only reports its sanitized reason.
+    const failed = afterSwitchArchive({ autoApply: false, env: {}, execute() { throw Object.assign(new Error('PRIVATE_DETAIL'), { stderr: 'ARCHIVE_REFERENCES_UNAVAILABLE\n' }); } });
+    assert.equal(failed, '归档预演跳过：ARCHIVE_REFERENCES_UNAVAILABLE\n');
+    let applied;
+    afterSwitchArchive({ autoApply: true, env: {}, execute(_c, args) { applied = args; return JSON.stringify({ mode: 'apply', results: [] }); } });
+    assert.equal(applied.at(-1), '--apply', 'the owner-created flag enables applying');
+  });
+});
+
+test('with AUTO_APPLY a switch applies the archive and archive failure cannot fail the switch', () => {
+  withArchiveHome(true, ({ runLocalSwitch }) => {
+    const archiveCalls = [], output = [];
+    const execute = (command, args) => {
+      if (command === 'railway') return JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 'fixture', MCP_SERVER_URL: 'https://fixture.example' });
+      if (args[0].endsWith('native-transcript-archive.mjs')) {
+        archiveCalls.push(args.slice(1));
+        return JSON.stringify({ mode: 'apply', results: [{ archive: 40, archiveMB: 307, keep: 22, keepMB: 103, applied: '-fixture' }] });
+      }
+      return '{"outcome":"restored"}';
+    };
+    const options = { desktopRunning: () => false, execute, print: value => output.push(value) };
+    runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], options);
+    assert.deepEqual(archiveCalls, [['--apply']]);
+    assert.match(output.join(''), /已归档 40 个旧会话文件/);
+    runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], {
+      ...options, execute(command, args) {
+        if (args[0].endsWith('native-transcript-archive.mjs')) throw Object.assign(new Error('private fixture detail'), { stderr: 'ARCHIVE_REFERENCES_UNAVAILABLE\n' });
+        return execute(command, args);
+      },
+    });
+    assert.equal(output.filter(value => value === '{"outcome":"restored"}').length, 2);
+    assert.match(output.join(''), /归档跳过：ARCHIVE_REFERENCES_UNAVAILABLE/);
+    assert.doesNotMatch(output.join(''), /private fixture detail/);
+  });
 });
 
 test('switching to LeileiOS refuses while Desktop runs, before credentials or any write', async () => {
