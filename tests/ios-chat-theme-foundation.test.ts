@@ -151,7 +151,7 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   assert.doesNotMatch(layout, /iMessageUserBubbleMaxWidth/);
   assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
   assert.match(bubble, /Color\.clear\.frame\(width:ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
-  assert.match(bubble, /side == \.outgoing\s*\? Color\(red: 0\.00, green: 0\.55, blue: 1\.00\)\.opacity\(0\.88\)/);
+  assert.match(bubble, /hex: side == \.outgoing \? outgoingColorHex : incomingColorHex/);
   assert.doesNotMatch(bubble, /iMessageUserBubbleMaxWidth/);
 
   // Each nonempty explicit line yields a separate visual segment, not a
@@ -272,8 +272,9 @@ test('iMessage bubbles keep native blur while stronger flat tints restore vivid 
   const layout = read('Chat/ChatPresentationLayout.swift');
 
   assert.doesNotMatch(bubble, /LinearGradient\(/);
-  assert.match(bubble, /Color\(red: 0\.00, green: 0\.55, blue: 1\.00\)\.opacity\(0\.88\)/);
-  assert.match(bubble, /Color\(red: 0\.22, green: 0\.26, blue: 0\.29\)\.opacity\(0\.82\)/);
+  assert.match(bubble, /IMessageBubbleAppearance\.color\(/);
+  assert.match(bubble, /\.opacity\(side == \.outgoing \? outgoingOpacity : incomingOpacity\)/);
+  assert.match(bubble, /\.fill\(tintColor\)/);
   assert.match(bubble, /Color\.white\.opacity\(0\.98\)/);
   assert.doesNotMatch(bubble, /Color\.primary\.opacity\(/);
   assert.doesNotMatch(bubble, /\.strokeBorder\(/);
@@ -361,4 +362,48 @@ test('only wallpaper-backed iMessage process headers get contrasting white label
   assert.match(activity, /expansion.toggleActivity\(\)/);
   assert.match(bubble, /\.fill\(\.ultraThinMaterial\)/);
   assert.doesNotMatch(bubble, /LinearGradient\(|\.strokeBorder\(/);
+});
+
+
+test('iMessage offers persisted, independent color and opacity controls for both bubble sides', () => {
+  const appearance = read('Chat/IMessageBubbleAppearance.swift');
+  const bubble = read('Chat/MessageSurface/NativeLiveIMessageTextBubbles.swift');
+  const settings = read('Navigation/Settings/SettingsHomeContent.swift');
+
+  // Defaults correspond to the two colors just approved, and restore works.
+  assert.match(appearance, /defaultOutgoingColorHex = "#008CFF"/);
+  assert.match(appearance, /defaultIncomingColorHex = "#38424A"/);
+  assert.match(appearance, /defaultOutgoingOpacity = 0\.88/);
+  assert.match(appearance, /defaultIncomingOpacity = 0\.82/);
+  assert.match(appearance, /outgoingColorKey = "chat\.imessage\.bubble\.outgoing\.color"/);
+  assert.match(appearance, /incomingColorKey = "chat\.imessage\.bubble\.incoming\.color"/);
+  assert.match(appearance, /outgoingOpacityKey = "chat\.imessage\.bubble\.outgoing\.opacity"/);
+  assert.match(appearance, /incomingOpacityKey = "chat\.imessage\.bubble\.incoming\.opacity"/);
+  assert.match(appearance, /static func color\(hex: String\) -> Color/);
+  assert.match(appearance, /static func hex\(from color: Color\) -> String/);
+
+  // Both sides use the same shared AppStorage keys as the settings view.
+  for (const key of [
+    'outgoingColorKey', 'incomingColorKey',
+    'outgoingOpacityKey', 'incomingOpacityKey'
+  ]) {
+    assert.ok(bubble.includes('@AppStorage(IMessageBubbleAppearance.' + key + ')'), key);
+    assert.ok(settings.includes('@AppStorage(IMessageBubbleAppearance.' + key + ')'), key);
+  }
+  assert.match(bubble, /\.fill\(tintColor\)/);
+  assert.match(bubble, /\.fill\(\.ultraThinMaterial\)/);
+  assert.match(bubble, /\.foregroundStyle\(Color\.white\.opacity\(0\.98\)\)/);
+  assert.doesNotMatch(bubble, /LinearGradient\(|\.strokeBorder\(/);
+
+  assert.match(settings, /if chatThemeRawValue == ChatTheme\.iMessage\.rawValue \{\s*Section\("iMessage Bubble Colors"\)/);
+  assert.match(settings, /ColorPicker\(\s*"User Bubble Color",\s*selection: outgoingBubbleColorSelection,\s*supportsOpacity: false/);
+  assert.match(settings, /ColorPicker\(\s*"Assistant Bubble Color",\s*selection: incomingBubbleColorSelection,\s*supportsOpacity: false/);
+  assert.match(settings, /Slider\(value: \$outgoingBubbleOpacity, in: 0\.\.\.1, step: 0\.01\)/);
+  assert.match(settings, /Slider\(value: \$incomingBubbleOpacity, in: 0\.\.\.1, step: 0\.01\)/);
+  assert.match(settings, /outgoingBubbleColor = IMessageBubbleAppearance\.hex\(from: \$0\)/);
+  assert.match(settings, /incomingBubbleColor = IMessageBubbleAppearance\.hex\(from: \$0\)/);
+  assert.match(settings, /Button\("Restore Default Bubble Colors"\)/);
+  assert.match(settings, /outgoingBubbleOpacity = IMessageBubbleAppearance\.defaultOutgoingOpacity/);
+  assert.match(settings, /incomingBubbleOpacity = IMessageBubbleAppearance\.defaultIncomingOpacity/);
+  assert.match(settings, /Opacity controls the color over native frosted glass/);
 });
