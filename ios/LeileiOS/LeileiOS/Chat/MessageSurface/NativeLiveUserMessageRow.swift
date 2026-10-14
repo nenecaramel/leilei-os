@@ -104,8 +104,9 @@ private struct NativeLiveVoiceMessageBubbleVisual: View {
 }
 
 
-/// iMessage outgoing text only: compact bubbles hug short text, and long
-/// text wraps at a single fixed cap. This never rewrites underlying nodes.
+/// iMessage outgoing text only: short bubbles hug content and longer text
+/// wraps within the space remaining after the 70pt leading clearance.
+/// No arbitrary fixed maximum width; message data stays unchanged.
 struct IMessageUserBubble<Content: View>: View {
     let content: Content
 
@@ -118,7 +119,6 @@ struct IMessageUserBubble<Content: View>: View {
             bubble(content.fixedSize(horizontal: true, vertical: false))
             bubble(content.fixedSize(horizontal: false, vertical: true))
         }
-        .frame(maxWidth: ChatPresentationLayout.iMessageUserBubbleMaxWidth, alignment: .trailing)
     }
 
     private func bubble<BubbleContent: View>(_ view: BubbleContent) -> some View {
