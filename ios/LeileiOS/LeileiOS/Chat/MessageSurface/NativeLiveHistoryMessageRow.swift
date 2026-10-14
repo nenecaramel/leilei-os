@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct NativeLiveHistorySnapshotRow: View {
+    @Environment(\.chatTheme) private var chatTheme
     let message: NativeLiveConversationHistoryMessage
     let timeZone: String
 
@@ -13,17 +14,24 @@ struct NativeLiveHistorySnapshotRow: View {
             HStack(alignment: .top, spacing: 0) {
                 Spacer(minLength: ChatPresentationLayout.userLeadingClearance)
 
-                NativeLiveMessagePresentationView(presentation: presentation)
-                .textSelection(.enabled)
-                .padding(.horizontal, ChatPresentationLayout.bubbleHorizontalInset)
-                .padding(.vertical, ChatPresentationLayout.bubbleVerticalInset)
-                .background(
-                    Color.chatSoftFill,
-                    in: RoundedRectangle(
-                        cornerRadius: ChatPresentationLayout.bubbleRadius,
-                        style: .continuous
+                if chatTheme == .iMessage {
+                    IMessageUserBubble {
+                        NativeLiveMessagePresentationView(presentation: presentation)
+                            .textSelection(.enabled)
+                    }
+                } else {
+                    NativeLiveMessagePresentationView(presentation: presentation)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, ChatPresentationLayout.bubbleHorizontalInset)
+                    .padding(.vertical, ChatPresentationLayout.bubbleVerticalInset)
+                    .background(
+                        Color.chatSoftFill,
+                        in: RoundedRectangle(
+                            cornerRadius: ChatPresentationLayout.bubbleRadius,
+                            style: .continuous
+                        )
                     )
-                )
+                }
             }
         } else {
             VStack(alignment: .leading, spacing: ChatPresentationLayout.assistantSpacing) {
