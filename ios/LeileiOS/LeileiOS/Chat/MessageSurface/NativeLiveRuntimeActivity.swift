@@ -2,6 +2,7 @@ import SwiftUI
 import Foundation
 
 struct NativeLiveTurnActivityView: View {
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     let projection: NativeLiveTurnActivityProjection
     let timestampText: String?
     let onResolveInteraction:
@@ -53,7 +54,7 @@ struct NativeLiveTurnActivityView: View {
                             Text(timestampText)
                                 .font(.system(size: 12))
                                 .tracking(0.12)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(iMessageWallpaperVisible ? Color.white : Color.secondary)
                                 .fixedSize(
                                     horizontal: true,
                                     vertical: false
@@ -63,7 +64,7 @@ struct NativeLiveTurnActivityView: View {
                         if !header.isEmpty {
                             Text(header)
                                 .font(.system(size: 14))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(iMessageWallpaperVisible ? Color.white : Color.secondary)
                                 .lineLimit(1)
                         }
 
@@ -87,7 +88,7 @@ struct NativeLiveTurnActivityView: View {
                                     : "chevron.right"
                         )
                         .font(.system(size: 14, weight: .light))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(iMessageWallpaperVisible ? Color.white : Color.secondary)
                         .frame(height: 22)
                         .contentShape(Rectangle())
                     }
@@ -107,7 +108,7 @@ struct NativeLiveTurnActivityView: View {
                                 size: 12.5,
                                 weight: .medium
                             ))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(iMessageWallpaperVisible ? Color.white : Color.secondary)
                             .frame(width: 22, height: 22)
                             .contentShape(Rectangle())
                     }
@@ -117,6 +118,11 @@ struct NativeLiveTurnActivityView: View {
 
                 Spacer(minLength: 8)
             }
+            .shadow(
+                color: iMessageWallpaperVisible ? Color.black.opacity(0.75) : .clear,
+                radius: iMessageWallpaperVisible ? 2 : 0,
+                y: iMessageWallpaperVisible ? 1 : 0
+            )
 
             if effectiveExpanded {
                 VStack(alignment: .leading, spacing: 9) {
