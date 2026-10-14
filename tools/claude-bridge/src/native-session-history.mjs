@@ -8,8 +8,9 @@ const fingerprint = value => createHash("sha256").update(JSON.stringify(value)).
 const assetFingerprint = source => fingerprint(Object.fromEntries(Object.entries(source).sort(([a], [b]) => a.localeCompare(b))));
 // Session-independent message fingerprint (mirrors the server): image/document
 // blocks name the projecting session, so that id is blanked before hashing.
+// Also ignores the native parent pointer: compaction re-parents the preserved tail.
 export function neutralMessageFingerprint(message) {
-  const { fingerprint: _fingerprint, ...body } = message;
+  const { fingerprint: _fingerprint, parentProviderCheckpointId: _parent, ...body } = message;
   const blocks = body.blocks.map(block => block.payload && typeof block.payload === "object" && "source_session_id" in block.payload
     ? { ...block, payload: { ...block.payload, source_session_id: "" } } : block);
   return fingerprint({ ...body, blocks });

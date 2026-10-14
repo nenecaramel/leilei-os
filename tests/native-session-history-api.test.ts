@@ -110,3 +110,17 @@ test('native asset staging endpoint binds authenticated owner, refuses spoofed f
     assert.equal((await post(url, restore)).status, 400, 'staged form cannot also carry entries');
   });
 });
+
+test("referenced-sessions endpoint binds the authenticated owner and takes no input", async () => {
+  await withServer(app => {
+    app.use((request, _response, next) => { request.mcpUserId = userId; next(); });
+    app.use("/store", createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any,
+      listReferencedNativeSessions: async (input: any) => { assert.deepEqual(input, { userId }); return { sessionIds: [sid] }; } } as any));
+  }, async url => {
+    const send = (body: any) => fetch(url + "/store/native-history/referenced-sessions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const ok = await send({});
+    assert.equal(ok.status, 200);
+    assert.deepEqual((await ok.json()).data, { sessionIds: [sid] });
+    assert.equal((await send({ userId: sid })).status, 400);
+  });
+});

@@ -42,8 +42,9 @@ type SourceIndex = {
   effectiveWorkingDirectory: string;
   headMessageId: string;
   messages: Array<{ sourceMessageId: string; fingerprint: string; displayOnly?: boolean }>;
-  /** 2: fingerprints are session-neutral (image/document blocks' session id blanked). */
-  fingerprintVersion?: 2;
+  /** 2: session-neutral (image/document blocks' session id blanked).
+   *  3: also ignores the native parent pointer, which compaction rewrites for the preserved tail. */
+  fingerprintVersion?: 2 | 3;
   displayAssetsRevision?: string;
   owner?: "leileios" | "desktop";
   /** Earlier native sessions this conversation continued from, oldest first. */
@@ -62,8 +63,17 @@ export function nativeDisplayAssetRevision(entries: unknown): string {
 
 export const nativeDisplayAssetSubpath = (revision: string) => `native-history-assets/${revision}`;
 
-/** Session-independent message fingerprint; stored from fingerprint version 2 on. */
-export const neutralFingerprint = (message: NativeHistoryProjection["messages"][number]) => fingerprintForSession(message, "");
+/** Fingerprint version 2: session-independent. Kept to compare sources stored with it. */
+export const neutralFingerprintV2 = (message: NativeHistoryProjection["messages"][number]) => fingerprintForSession(message, "");
+
+/** Fingerprint version 3 (stored): content only. Native compaction re-parents the
+ * preserved tail under its summary, so the parent pointer is structure, not content. */
+export function neutralFingerprint(message: NativeHistoryProjection["messages"][number]): string {
+  const { parentProviderCheckpointId: _parent, ...rest } = message;
+  return fingerprintForSession(rest as NativeHistoryProjection["messages"][number], "");
+}
+const storedFingerprint = (version: number | undefined, message: NativeHistoryProjection["messages"][number], sessionId: string) =>
+  version === 3 ? neutralFingerprint(message) : version === 2 ? neutralFingerprintV2(message) : fingerprintForSession(message, sessionId);
 
 /** Digest of a synchronized prefix, as `[sourceMessageId, neutral fingerprint]` pairs. */
 export function nativeSyncDigest(messages: Array<{ sourceMessageId: string; fingerprint: string }>): string {
@@ -248,19 +258,19 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       if (!entries.some(entry => entry.uuid === p.checkpointId)) throw fail("INVALID_NATIVE_SNAPSHOT");
     }
     const offset = p.anchor?.count ?? 0;
-    if (p.anchor && (!source || source.fingerprintVersion !== 2 || offset > source.messages.length
+    if (p.anchor && (!source || source.fingerprintVersion !== 3 || offset > source.messages.length
       || nativeSyncDigest(source.messages.slice(0, offset)) !== p.anchor.digest
       || p.messages[0]!.parentSourceMessageId !== source.messages[offset - 1]!.sourceMessageId)) throw fail("NATIVE_SYNC_BASE_CHANGED");
     // Messages before `offset` are the anchored, already-verified synchronized prefix.
     const total = offset + p.messages.length;
     const at = (i: number) => i < offset ? undefined : p.messages[i - offset];
     if (source && (source.messages.length > total || source.messages.some((old, i) => i >= offset && old.sourceMessageId !== at(i)?.sourceMessageId))) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
-    if (source?.messages.some((old, i) => i >= offset && old.fingerprint !== (source.fingerprintVersion === 2 ? neutralFingerprint(at(i)!)
-      : continuation ? fingerprintForSession(at(i)!, source.sessionId) : at(i)!.fingerprint))) throw fail("NATIVE_HISTORY_REWRITTEN");
+    if (source?.messages.some((old, i) => i >= offset && old.fingerprint !== (source.fingerprintVersion === undefined && !continuation
+      ? at(i)!.fingerprint : storedFingerprint(source.fingerprintVersion, at(i)!, source.sessionId)))) throw fail("NATIVE_HISTORY_REWRITTEN");
     const unchanged = !continuation && existing?.currentHeadMessageId === source?.headMessageId && source?.revision === p.revision && source.checkpointId === p.checkpointId && source.messages.length === total
       && source.displayAssetsRevision === snapshot?.displayAssets?.revision
       // A version-1 source is rewritten once with session-neutral fingerprints.
-      && source.fingerprintVersion === 2;
+      && source.fingerprintVersion === 3;
 
     const allRows = await tx.select().from(conversationMessages).where(and(eq(conversationMessages.userId, input.userId), eq(conversationMessages.conversationId, input.conversationId)));
     const byId = new Map(allRows.map(row => [row.id, row]));
@@ -319,6 +329,14 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       if (snapshot.displayAssets?.entries) await store.synchronizeNativeSnapshot({ userId: input.userId,
         key: { sessionId: p.sessionId, subpath: nativeDisplayAssetSubpath(snapshot.displayAssets.revision) }, entries: snapshot.displayAssets.entries });
     }
+    // Point each checkpoint at the newest session that carries its exact record,
+    // so earlier transcripts stop being needed for Edit/Retry and can be archived.
+    const movable = rows.flatMap(row => {
+      const cp = checkpointByMessage.get(row.id);
+      return cp && cp.providerSessionId !== p.sessionId && cp.providerCheckpointId !== null && carried.has(cp.providerCheckpointId) ? [cp.id] : [];
+    });
+    if (movable.length) await tx.update(conversationProviderSessionCheckpoints).set({ providerSessionId: p.sessionId })
+      .where(inArray(conversationProviderSessionCheckpoints.id, movable));
     if (unchanged) {
       if (source!.owner === "desktop") await tx.update(conversations).set({ providerMetadata: {
         ...existing!.providerMetadata, nativeSessionSource: { ...source, owner: "leileios" },
@@ -365,7 +383,7 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       effectiveWorkingDirectory: input.effectiveWorkingDirectory, headMessageId: parent,
       ...(snapshot?.displayAssets ? { displayAssetsRevision: snapshot.displayAssets.revision } : {}),
       ...(continuation ? { lineage: [...(source.lineage ?? []), source.sessionId].slice(-1000) } : source?.lineage ? { lineage: source.lineage } : {}),
-      fingerprintVersion: 2,
+      fingerprintVersion: 3,
       messages: Array.from({ length: total }, (_, i) => {
         if (i < offset) return source!.messages[i]!;
         const m = at(i)!;
@@ -434,8 +452,21 @@ export async function readNativeSessionRestoreState(db: Database, input: { userI
   const stored = await new DrizzleNativeLiveProviderSessionStoreRepository(db).load({ userId: input.userId, key: { sessionId: input.sessionId } });
   return { expectedHeadMessageId: conversation.currentHeadMessageId, expectedRevision: source.revision,
     continuation: source.sessionId !== input.sessionId,
-    ...(source.fingerprintVersion === 2 ? { messageAnchor: { count: source.messages.length, digest: nativeSyncDigest(source.messages) } } : {}),
+    ...(source.fingerprintVersion === 3 ? { messageAnchor: { count: source.messages.length, digest: nativeSyncDigest(source.messages) } } : {}),
     ...(stored?.length ? { entriesAnchor: { count: stored.length, digest: nativeDisplayAssetRevision(stored) } } : {}) };
+}
+
+/** Native sessions LeileiOS still needs on the Mac: checkpoints (resume/fork
+ * targets), conversation sources and in-flight turns. Archival must keep them. */
+export async function listReferencedNativeSessions(db: Database, input: { userId: string }) {
+  if (!uuid.test(input.userId)) throw fail("INVALID_NATIVE_PROJECTION");
+  const rows = await db.execute<{ id: string }>(sql`
+    SELECT provider_session_id AS id FROM conversation_provider_session_checkpoints WHERE user_id = ${input.userId}::uuid AND provider = 'claude_code'
+    UNION SELECT provider_metadata->'nativeSessionSource'->>'sessionId' FROM conversations
+      WHERE user_id = ${input.userId}::uuid AND lifecycle_status = 'active' AND provider_metadata ? 'nativeSessionSource'
+    UNION SELECT parent_provider_session_id FROM native_live_turn_preparations WHERE user_id = ${input.userId}::uuid AND status = 'prepared'
+    UNION SELECT provider_session_id FROM native_live_turn_preparations WHERE user_id = ${input.userId}::uuid AND status = 'prepared'`);
+  return { sessionIds: rows.map(row => row.id).filter((id): id is string => typeof id === "string" && uuid.test(id)).sort() };
 }
 
 /** Owner-scoped selector metadata only: no messages, prompt, assets or write lease. */
