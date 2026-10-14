@@ -353,23 +353,29 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       await tx.update(conversationMessages).set({ sourceMessageId: at(index)!.sourceMessageId,
         isCurrentPath: true, currentPathIndex: index }).where(eq(conversationMessages.id, rows[index]!.id));
     }
+    // Batched: the app and database sit in different regions, so per-row
+    // round trips made a long import take minutes and outlive the client.
     let parent = rows.at(-1)?.id ?? null;
+    const messageRows: Array<typeof conversationMessages.$inferInsert> = [];
+    const blockRows: Array<typeof conversationContentBlocks.$inferInsert> = [];
+    const checkpointRows: Array<typeof conversationProviderSessionCheckpoints.$inferInsert> = [];
+    const carriedCheckpoints = new Set(entries?.flatMap(entry => typeof entry.uuid === "string" ? [entry.uuid] : []) ?? []);
     for (let index = rows.length; index < total; index++) {
       const message = at(index)!;
       const id = randomUUID();
       const sourceDate = message.createdAt === null ? null : new Date(message.createdAt);
-      await tx.insert(conversationMessages).values({
+      messageRows.push({
         id, userId: input.userId, conversationId: input.conversationId, parentMessageId: parent,
         sourceMessageId: message.sourceMessageId, role: message.role, status: "completed",
         sourceCreatedAt: sourceDate, createdAt: sourceDate ?? new Date(), isCurrentPath: true, currentPathIndex: index,
         completedAt: sourceDate ?? new Date(), displayText: message.blocks.filter(b => b.kind === "text").map(b => b.text ?? "").join("\n"),
       });
-      if (message.blocks.length) await tx.insert(conversationContentBlocks).values(message.blocks.map((block, ordinal) => ({
+      blockRows.push(...message.blocks.map((block, ordinal) => ({
         userId: input.userId, messageId: id, ordinal,
         kind: storedContentKind(block.kind), rawType: block.rawType ?? block.kind,
         text: block.text ?? null, payload: storedContentPayload(block.kind, block.payload ?? null),
       })));
-      if (message.role === "assistant" && (!entries || entries.some(entry => entry.uuid === message.providerCheckpointId))) await tx.insert(conversationProviderSessionCheckpoints).values({
+      if (message.role === "assistant" && (!entries || carriedCheckpoints.has(message.providerCheckpointId))) checkpointRows.push({
         userId: input.userId, conversationId: input.conversationId, canonicalMessageId: id, provider: "claude_code",
         providerSessionId: p.sessionId, providerCheckpointId: message.providerCheckpointId,
         effectiveWorkingDirectory: input.effectiveWorkingDirectory,
@@ -377,6 +383,11 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       });
       parent = id;
     }
+    // Parents precede children within and across chunks, so foreign keys hold per statement.
+    const chunks = <T,>(list: T[], size: number) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, (i + 1) * size));
+    for (const chunk of chunks(messageRows, 500)) await tx.insert(conversationMessages).values(chunk);
+    for (const chunk of chunks(blockRows, 1000)) await tx.insert(conversationContentBlocks).values(chunk);
+    for (const chunk of chunks(checkpointRows, 500)) await tx.insert(conversationProviderSessionCheckpoints).values(chunk);
     if (!parent) throw fail("INVALID_NATIVE_PROJECTION");
     const nextSource: SourceIndex = { schemaVersion: 1, sessionId: p.sessionId, revision: p.revision, checkpointId: p.checkpointId,
       owner: "leileios",
