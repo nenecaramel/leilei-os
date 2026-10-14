@@ -24,12 +24,13 @@ struct ChatMarkdownView: View {
 }
 
 struct NativeLiveMarkdownRenderer: View {
+    @Environment(\.chatTheme) private var chatTheme
     let model: NativeLiveMarkdownPresentation
     let role: String
     @ViewBuilder var body: some View {
         switch model.style {
         case .paragraph:
-            inline.font(.system(size: 17))
+            inline.font(isIMessageUser ? .body : .system(size: 17))
         case .heading(let level):
             inline.font(.system(size: level == 1 ? 20.5 : level == 2 ? 18.5 : 17.5, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
@@ -43,8 +44,12 @@ struct NativeLiveMarkdownRenderer: View {
         case .divider: Divider()
         }
     }
+    private var isIMessageUser: Bool {
+        chatTheme == .iMessage && role == "user"
+    }
+
     private var inline: some View {
-        Text(model.inline).textSelection(.enabled).lineSpacing(role == "user" ? 5 : 6)
+        Text(model.inline).textSelection(.enabled).lineSpacing(isIMessageUser ? 0 : (role == "user" ? 5 : 6))
             .environment(\.openURL, OpenURLAction { url in
                 NativeLiveLinkCapability.openableURL(url.absoluteString) == nil ? .discarded : .systemAction
             })
