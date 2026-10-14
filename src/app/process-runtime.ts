@@ -1,6 +1,6 @@
 import { nativeSessionAsset } from "../domains/conversation/native-session-asset-repository.js";
 import { stageNativeDisplayAssets } from "../domains/conversation/native-session-asset-staging.js";
-import { restoreNativeSessionHistory, readNativeSessionRestoreState, releaseNativeSessionToDesktop, listNativeSessionSwitchChoices } from "../domains/conversation/native-session-history-repository.js";
+import { restoreNativeSessionHistory, readNativeSessionRestoreState, releaseNativeSessionToDesktop, listNativeSessionSwitchChoices, listReferencedNativeSessions } from "../domains/conversation/native-session-history-repository.js";
 import { DrizzleClaudeCodeRecallReceipts } from "../domains/runtime/mind/claude-code-recall-receipts.js";
 import { requireActiveUser } from "../domains/require-active-user.js";
 import { ClaudeCodeMindRecallService } from "../domains/runtime/mind/claude-code-mind-recall.js";
@@ -826,6 +826,7 @@ export function createProcessRuntime(
           releaseNativeHistory: input => releaseNativeSessionToDesktop(database.db, input),
           nativeHistoryAsset: input => nativeSessionAsset(database.db, input),
           stageNativeHistoryAssets: input => stageNativeDisplayAssets(database.db, input),
+          listReferencedNativeSessions: input => listReferencedNativeSessions(database.db, input),
           listNativeHistoryChoices: input => listNativeSessionSwitchChoices(database.db, input),
           ...(nativeLiveAttachmentService
             ? {

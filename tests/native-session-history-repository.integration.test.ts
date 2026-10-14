@@ -834,7 +834,8 @@ test('a rotated or forked native session continues the conversation only when it
   assert.equal(source.sessionId, Y);
   assert.deepEqual(source.lineage, [X]);
   assert.equal(after.messages.length, 4);
-  assert.deepEqual(after.checkpoints.map((cp: any) => [cp.providerCheckpointId, cp.providerSessionId]).sort(), [[a, X], [a2, Y]].sort(), 'historical checkpoints stay on their own session');
+  assert.deepEqual(after.checkpoints.map((cp: any) => [cp.providerCheckpointId, cp.providerSessionId]).sort(), [[a, Y], [a2, Y]].sort(),
+    'checkpoints move to the newest session that carries their record, so older files are no longer needed');
   // The archived session can neither continue nor replace the conversation.
   await assert.rejects(f.write(restoreInput(X, revision(1), base, a, { headMessageId: second.headMessageId, revision: revision(2) })), (e: any) => e.code === 'EXPLICIT_BRANCH_SELECTION_REQUIRED');
   await assert.rejects(readNativeSessionRestoreState(f.database.db, { userId: f.owner, conversationId: f.input.conversationId, sessionId: X }), (e: any) => e.code === 'NATIVE_SOURCE_BINDING_REQUIRED');
@@ -880,6 +881,8 @@ test("handoff continues through sessions LeileiOS itself switched to, proven by 
   assert.equal(result.headMessageId, local.finalized.assistantMessageId, "adopts the local turn, inserts nothing");
   const source = (await f.state()).conversation.providerMetadata.nativeSessionSource;
   assert.deepEqual([source.sessionId, source.lineage], [Y, [f.sessionId]]);
+  const onY = (await f.state()).checkpoints;
+  assert.ok(onY.length >= 2 && onY.every((cp: any) => cp.providerSessionId === Y), "fork W's and X's checkpoints now name Y");
   // Desktop then rewinds: Z carries the same records under its own session id.
   const Z = randomUUID();
   const rewound = entries.map((entry: any) => ({ ...entry, sessionId: Z }));
@@ -888,6 +891,7 @@ test("handoff continues through sessions LeileiOS itself switched to, proven by 
     projection: projectNativeHistory({ sessionId: Z, revision: revision(7), entries: rewound }, rewound.at(-2).uuid),
     nativeSnapshot: { sessionId: Z, revision: revision(7), entries: rewound } });
   assert.equal(third.outcome, "restored", "fixed history keeps checkpoints of LeileiOS forks outside the lineage");
+  assert.ok((await f.state()).checkpoints.every((cp: any) => cp.providerSessionId === Z), "and they follow the rewind to Z");
   assert.deepEqual((await f.state()).conversation.providerMetadata.nativeSessionSource.lineage, [f.sessionId, Y]);
   // A session that does not carry the execution record cannot vouch for it.
   const stranger = randomUUID();
@@ -937,21 +941,53 @@ test("incremental sync sends only what follows the synchronized base, across a s
   assert.equal((await f.messages()).length, 6);
 }));
 
-test("a version-1 source is upgraded once to session-neutral fingerprints", { skip: !enabled }, async () => fixture(async f => {
+for (const legacyVersion of [undefined, 2] as const) test(`a version-${legacyVersion ?? 1} source is upgraded once to content-only fingerprints`, { skip: !enabled }, async () => fixture(async f => {
+  const { neutralFingerprintV2 } = await import(modulePath.href);
   const { readNativeSessionRestoreState, neutralFingerprint } = await import(modulePath.href);
   const first = await f.write();
   // Simulate data written before fingerprint version 2.
   const [conversation] = await f.database.db.select().from(conversations).where(eq(conversations.id, f.input.conversationId));
   const { fingerprintVersion: _v, ...legacy } = conversation!.providerMetadata.nativeSessionSource as any;
-  legacy.messages = f.input.projection.messages.map((m: any) => ({ sourceMessageId: m.sourceMessageId, fingerprint: m.fingerprint }));
+  legacy.messages = f.input.projection.messages.map((m: any) => ({ sourceMessageId: m.sourceMessageId, fingerprint: legacyVersion === 2 ? neutralFingerprintV2(m) : m.fingerprint }));
+  if (legacyVersion) legacy.fingerprintVersion = legacyVersion;
   await f.database.db.update(conversations).set({ providerMetadata: { ...conversation!.providerMetadata, nativeSessionSource: legacy } }).where(eq(conversations.id, f.input.conversationId));
   const state = () => readNativeSessionRestoreState(f.database.db, { userId: f.owner, conversationId: f.input.conversationId, sessionId: f.sessionId });
   assert.equal((await state()).messageAnchor, undefined, "no anchor until upgraded");
   const replay = await f.write({ ...f.input, expectedHeadMessageId: first.headMessageId, expectedRevision: f.input.projection.revision });
   assert.deepEqual([replay.outcome, replay.inserted], ["restored", 0]);
   const upgraded = (await f.state()).conversation.providerMetadata.nativeSessionSource;
-  assert.equal(upgraded.fingerprintVersion, 2);
+  assert.equal(upgraded.fingerprintVersion, 3);
   assert.deepEqual(upgraded.messages.map((m: any) => m.fingerprint), f.input.projection.messages.map((m: any) => neutralFingerprint(m)));
   assert.equal((await state()).messageAnchor.count, 2);
   assert.equal((await f.write({ ...f.input, expectedHeadMessageId: first.headMessageId, expectedRevision: f.input.projection.revision })).outcome, "already_current");
+}));
+
+test("after compaction only carried records move; earlier checkpoints stay on the session that still holds them", { skip: !enabled }, async () => fixture(async f => {
+  // Desktop compaction keeps the preserved tail under its original UUIDs (observed on real transcripts).
+  const [u1, a1, boundary, summary, u2, a2] = Array.from({ length: 6 }, () => randomUUID());
+  const X = f.sessionId, Y = randomUUID();
+  const base = [...f.entries, row(u1, f.entries[1].uuid, "user", "second"), row(a1, u1, "assistant", "second reply")];
+  const first = await f.write({ ...f.input, projection: projectNativeHistory({ sessionId: X, revision: revision(1), entries: base }, a1), nativeSnapshot: { sessionId: X, revision: revision(1), entries: base } });
+  const entries = [
+    { ...row(boundary, null, "system", ""), subtype: "compact_boundary", logicalParentUuid: a1, compactMetadata: { preservedMessages: { allUuids: [a1] } } },
+    { ...row(summary, boundary, "user", "summary"), isCompactSummary: true },
+    { ...row(a1, summary, "assistant", "second reply"), forkedFrom: { sessionId: X, messageUuid: a1 } },
+    row(u2, a1, "user", "after compaction"), row(a2, u2, "assistant", "reply after compaction")];
+  const result = await f.write({ ...f.input, expectedHeadMessageId: first.headMessageId, expectedRevision: revision(1),
+    projection: projectNativeHistory({ sessionId: Y, revision: revision(4), entries }, a2, { sourceSnapshots: [{ sessionId: X, revision: revision(1), entries: base }] }),
+    nativeSnapshot: { sessionId: Y, revision: revision(4), entries } });
+  assert.equal(result.outcome, "restored");
+  const sessionOf = async (checkpoint: string) => (await f.state()).checkpoints.find((cp: any) => cp.providerCheckpointId === checkpoint)?.providerSessionId;
+  assert.equal(await sessionOf(f.entries[1].uuid), X, "not carried by the compacted session: stays where it can still be forked");
+  assert.equal(await sessionOf(a1), Y, "the preserved tail is carried: it moves");
+  assert.equal(await sessionOf(a2), Y);
+}));
+
+test("referenced native sessions cover checkpoints, sources and in-flight turns, so archival never removes them", { skip: !enabled }, async () => fixture(async f => {
+  const { listReferencedNativeSessions } = await import(modulePath.href);
+  await f.write();
+  const W = randomUUID();
+  await f.database.db.execute(sql`UPDATE conversation_provider_session_checkpoints SET provider_session_id=${W} WHERE conversation_id=${f.input.conversationId}::uuid`);
+  const { sessionIds } = await listReferencedNativeSessions(f.database.db, { userId: f.owner });
+  assert.deepEqual(sessionIds, [f.sessionId, W].sort());
 }));

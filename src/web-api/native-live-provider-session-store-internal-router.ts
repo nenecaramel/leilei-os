@@ -1,4 +1,4 @@
-import { validateNativeHistoryRestoreInput, type restoreNativeSessionHistory, type readNativeSessionRestoreState, type releaseNativeSessionToDesktop, type listNativeSessionSwitchChoices } from "../domains/conversation/native-session-history-repository.js";
+import { validateNativeHistoryRestoreInput, type listReferencedNativeSessions, type restoreNativeSessionHistory, type readNativeSessionRestoreState, type releaseNativeSessionToDesktop, type listNativeSessionSwitchChoices } from "../domains/conversation/native-session-history-repository.js";
 import { Router, type RequestHandler, type Response } from "express";
 import type { nativeSessionAsset } from "../domains/conversation/native-session-asset-repository.js";
 import type { stageNativeDisplayAssets } from "../domains/conversation/native-session-asset-staging.js";
@@ -13,6 +13,7 @@ export type NativeLiveProviderSessionStoreInternalDependencies = {
   listNativeHistoryChoices?: (input: Parameters<typeof listNativeSessionSwitchChoices>[1]) => ReturnType<typeof listNativeSessionSwitchChoices>;
   nativeHistoryAsset?: (input: Parameters<typeof nativeSessionAsset>[1]) => ReturnType<typeof nativeSessionAsset>;
   stageNativeHistoryAssets?: (input: Parameters<typeof stageNativeDisplayAssets>[1]) => ReturnType<typeof stageNativeDisplayAssets>;
+  listReferencedNativeSessions?: (input: Parameters<typeof listReferencedNativeSessions>[1]) => ReturnType<typeof listReferencedNativeSessions>;
   restoreNativeHistory?: (input: Parameters<typeof restoreNativeSessionHistory>[1]) => ReturnType<typeof restoreNativeSessionHistory>;
   readNativeHistoryState?: (input: Parameters<typeof readNativeSessionRestoreState>[1]) => ReturnType<typeof readNativeSessionRestoreState>;
   releaseNativeHistory?: (input: Parameters<typeof releaseNativeSessionToDesktop>[1]) => ReturnType<typeof releaseNativeSessionToDesktop>;
@@ -37,6 +38,15 @@ export function createNativeLiveProviderSessionStoreInternalRouter(
   router.post("/native-history/release", nativeHistoryReleaseHandler(dependencies));
   router.post("/native-history/asset", nativeHistoryAssetHandler(dependencies));
   router.post("/native-history/asset-stage", nativeHistoryAssetStageHandler(dependencies));
+  router.post("/native-history/referenced-sessions", async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId) return;
+    const body = readRecord(request.body);
+    if (!body || Object.keys(body).length) { sendInvalid(response); return; }
+    if (!dependencies.listReferencedNativeSessions) { sendNativeHistoryError(response, null); return; }
+    try { response.json({ success: true, data: await dependencies.listReferencedNativeSessions({ userId }) }); }
+    catch (error) { sendNativeHistoryError(response, error); }
+  });
   router.post("/append", appendHandler(dependencies));
   router.post("/load", loadHandler(dependencies));
   router.post("/list-sessions", listSessionsHandler(dependencies));
