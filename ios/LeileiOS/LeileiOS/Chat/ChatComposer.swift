@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ChatComposer: View {
+    @Environment(\.chatTheme) private var chatTheme
     @Binding var text: String
     @Binding var model: NativeLiveClaudeModel
     @Binding var thinking: NativeLiveThinkingMode
@@ -31,7 +32,19 @@ struct ChatComposer: View {
     var onSend: (() -> Void)? = nil
 
 
+    // Both shells initially use exactly the original paint. Subsequent work
+    // replaces only the iMessage branch, keeping bindings and actions shared.
+    @ViewBuilder
     var body: some View {
+        switch chatTheme {
+        case .original:
+            sharedComposerContent
+        case .iMessage:
+            sharedComposerContent
+        }
+    }
+
+    private var sharedComposerContent: some View {
         VStack(alignment: .leading, spacing: ChatPresentationLayout.composerSectionSpacing) {
             ComposerStatusArea(
                 voiceStatus: voiceStatus,
