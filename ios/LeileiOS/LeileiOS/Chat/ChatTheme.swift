@@ -23,9 +23,20 @@ private struct ChatThemeEnvironmentKey: EnvironmentKey {
     static let defaultValue: ChatTheme = ChatTheme.defaultValue
 }
 
+private struct IMessageWallpaperVisibleKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
     var chatTheme: ChatTheme {
         get { self[ChatThemeEnvironmentKey.self] }
         set { self[ChatThemeEnvironmentKey.self] = newValue }
+    }
+
+    // View-only signal: use light, shadowed section labels only when the
+    // iMessage transcript actually has a photographic wallpaper behind it.
+    var iMessageWallpaperVisible: Bool {
+        get { self[IMessageWallpaperVisibleKey.self] }
+        set { self[IMessageWallpaperVisibleKey.self] = newValue }
     }
 }
