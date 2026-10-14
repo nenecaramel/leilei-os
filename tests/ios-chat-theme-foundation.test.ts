@@ -47,3 +47,36 @@ test('Theme foundation leaves navigation/menu and scroll ownership untouched', (
   assert.match(composer, /onInterrupt\?\(\)/);
   assert.match(composer, /onSend\?\(\)/);
 });
+
+test('iMessage Composer uses Apple-native controls while retaining existing action owner', () => {
+  const composer = read('Chat/ChatComposer.swift');
+  const originalBody = composer.slice(
+    composer.indexOf('    private var sharedComposerContent: some View {'),
+    composer.indexOf('    // iMessage shell:')
+  );
+  const imessageBody = composer.slice(
+    composer.indexOf('    // iMessage shell:'),
+    composer.indexOf('    private var controlRow: some View {')
+  );
+
+  assert.match(originalBody, /NativeLiveComposerTextInput\(/);
+  assert.match(originalBody, /controlRow/);
+  assert.match(originalBody, /\.glassEffect\(/);
+
+  assert.match(imessageBody, /Text\("Message"\)/);
+  assert.match(imessageBody, /TextField\(/);
+  assert.match(imessageBody, /\.lineLimit\(1\.\.\.6\)/);
+  assert.match(imessageBody, /\.background\(\.regularMaterial, in: RoundedRectangle/);
+  assert.match(imessageBody, /private var iMessagePlusMenu: some View \{\s*Menu \{/);
+  assert.match(imessageBody, /Label\("Model Settings", systemImage:/);
+  for (const label of ['Photo', 'Camera', 'File', 'Call Claude']) {
+    assert.ok(imessageBody.includes('Label("' + label + '"'), label);
+  }
+  for (const value of ['modelSelection', 'thinkingSelection', 'availableEffortLevels', '$effort']) {
+    assert.ok(imessageBody.includes(value), value);
+  }
+  assert.match(imessageBody, /primaryActionButton/);
+  assert.match(imessageBody, /\.disabled\(!canAttachFromIMessage\)/);
+  assert.match(imessageBody, /\.disabled\(!canStartVoiceCall\)/);
+  assert.match(imessageBody, /isFocused\.wrappedValue = false/);
+});
