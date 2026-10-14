@@ -11,20 +11,11 @@ struct NativeLiveAssistantTurnRow: View {
     let onCopyMessage: (String) -> Void
     let onRetryMessage: (String) -> Void
     let onResolveInteraction: (NativeLiveRuntimeInteractionSnapshot,[String:NativeLiveJSONValue]) async throws -> Void
-    @ViewBuilder var body: some View {
-        if chatTheme == .iMessage {
-            content.contextMenu {
-                if let text = turn.copyText {
-                    Button("Copy") { onCopyMessage(text) }
-                }
-                if turn.canRetry, let user = turn.parentUserMessageID {
-                    Button("Retry") { onRetryMessage(user) }
-                        .disabled(isTurnInFlight)
-                }
-            }
-        } else {
-            content
-        }
+    var body: some View { content }
+
+    private var retryAction: (() -> Void)? {
+        guard turn.canRetry, let userID = turn.parentUserMessageID else { return nil }
+        return { onRetryMessage(userID) }
     }
 
     private var content: some View {
@@ -39,8 +30,15 @@ struct NativeLiveAssistantTurnRow: View {
             spotifyResultArea
             elevenLabsResultArea
             if chatTheme == .iMessage {
-                NativeLiveIMessageTextBubbleList(presentation:turn.bodyPresentation,side:.incoming)
-                    .textSelection(.enabled)
+                NativeLiveIMessageTextBubbleList(
+                    presentation: turn.bodyPresentation,
+                    side: .incoming,
+                    timestamp: turn.visibleTimestamp.map { MessageTimestampFormatter.string(from: $0) },
+                    onCopy: onCopyMessage,
+                    onRetry: retryAction,
+                    isRetryDisabled: isTurnInFlight
+                )
+                .textSelection(.enabled)
             } else {
                 NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)
             }
