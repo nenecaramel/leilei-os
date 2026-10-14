@@ -151,7 +151,7 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   assert.doesNotMatch(layout, /iMessageUserBubbleMaxWidth/);
   assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
   assert.match(bubble, /Color\.clear\.frame\(width:ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
-  assert.match(bubble, /side == \.outgoing\s*\? Color\.blue\.opacity\(0\.94\)/);
+  assert.match(bubble, /side == \.outgoing\s*\? Color\(red: 0\.12, green: 0\.54, blue: 1\.00\)\.opacity\(0\.94\)/);
   assert.doesNotMatch(bubble, /iMessageUserBubbleMaxWidth/);
 
   // Each nonempty explicit line yields a separate visual segment, not a
