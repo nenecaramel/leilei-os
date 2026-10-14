@@ -265,15 +265,15 @@ test('iMessage alone uses compact spacing with tight native-line bubble wrapping
 });
 
 
-test('iMessage bubbles use native frosted material with flat color tint and unchanged hit targets', () => {
+test('iMessage bubbles keep native blur while stronger flat tints restore vivid contrast', () => {
   const bubble = read('Chat/MessageSurface/NativeLiveIMessageTextBubbles.swift');
   const user = read('Chat/MessageSurface/NativeLiveUserMessageRow.swift');
   const assistant = read('Chat/MessageSurface/NativeLiveAssistantTurnRow.swift');
   const layout = read('Chat/ChatPresentationLayout.swift');
 
   assert.doesNotMatch(bubble, /LinearGradient\(/);
-  assert.match(bubble, /Color\(red: 0\.12, green: 0\.54, blue: 1\.00\)\.opacity\(0\.58\)/);
-  assert.match(bubble, /Color\(red: 0\.30, green: 0\.31, blue: 0\.33\)\.opacity\(0\.30\)/);
+  assert.match(bubble, /Color\(red: 0\.00, green: 0\.55, blue: 1\.00\)\.opacity\(0\.88\)/);
+  assert.match(bubble, /Color\(red: 0\.22, green: 0\.26, blue: 0\.29\)\.opacity\(0\.82\)/);
   assert.match(bubble, /Color\.white\.opacity\(0\.98\)/);
   assert.doesNotMatch(bubble, /Color\.primary\.opacity\(/);
   assert.doesNotMatch(bubble, /\.strokeBorder\(/);
@@ -337,4 +337,28 @@ test('a single local wallpaper serves every iMessage conversation without changi
   assert.match(settings, /wallpaperRevision = UUID\(\)\.uuidString/);
   assert.match(settings, /Restore Default Background/);
   assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
+});
+
+test('only wallpaper-backed iMessage process headers get contrasting white labels', () => {
+  const theme = read('Chat/ChatTheme.swift');
+  const chat = read('Chat/ChatView.swift');
+  const thinking = read('Chat/MessageSurface/NativeLiveVisibleThinkingSurface.swift');
+  const activity = read('Chat/MessageSurface/NativeLiveRuntimeActivity.swift');
+  const bubble = read('Chat/MessageSurface/NativeLiveIMessageTextBubbles.swift');
+
+  assert.match(theme, /private struct IMessageWallpaperVisibleKey: EnvironmentKey/);
+  assert.match(theme, /static let defaultValue = false/);
+  assert.match(theme, /var iMessageWallpaperVisible: Bool/);
+  assert.match(chat, /\.iMessageWallpaperVisible,\s*selectedChatTheme == \.iMessage && wallpaperImage != nil/);
+
+  for (const file of [thinking, activity]) {
+    assert.match(file, /@Environment\(\\\.iMessageWallpaperVisible\) private var iMessageWallpaperVisible/);
+    assert.match(file, /iMessageWallpaperVisible \? Color.white : Color.secondary/);
+    assert.match(file, /iMessageWallpaperVisible \? Color.black.opacity\(0\.75\) : \.clear/);
+  }
+  assert.match(thinking, /Text\("Thought process"\)/);
+  assert.match(activity, /Text\(header\)/);
+  assert.match(activity, /expansion.toggleActivity\(\)/);
+  assert.match(bubble, /\.fill\(\.ultraThinMaterial\)/);
+  assert.doesNotMatch(bubble, /LinearGradient\(|\.strokeBorder\(/);
 });
