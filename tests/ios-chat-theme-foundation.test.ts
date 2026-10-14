@@ -141,6 +141,10 @@ test('iMessage outgoing body typography does not affect Original or assistant me
   const math = read('Chat/MessageSurface/NativeLiveMathRenderer.swift');
 
   assert.match(bubble, /struct IMessageUserBubble<Content: View>/);
+  assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
+  assert.doesNotMatch(bubble, /iMessageUserBubbleMaxWidth/);
+  assert.doesNotMatch(read('Chat/ChatPresentationLayout.swift'), /iMessageUserBubbleMaxWidth/);
+  assert.match(read('Chat/ChatPresentationLayout.swift'), /iMessageUserLeadingClearance: CGFloat = 70/);
   assert.match(bubble, /view\s*\.font\(\.body\)/);
   assert.match(bubble, /chatTheme == \.iMessage && !presentation\.isVoiceInput/);
 
