@@ -28,8 +28,10 @@ function fixture(t: test.TestContext, canonical = true) {
   for (const name of ['pkill', 'pnpm', 'sleep'])
     writeFileSync(join(bin, name), `#!/bin/sh\necho ${name} >> "$TEST_EFFECTS"\nexit 0\n`, { mode: 0o755 });
   writeFileSync(join(bin, 'pgrep'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
-  const run = (...args: string[]) => spawnSync('bash', [script, ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, HOME: home, PATH: bin + ':' + process.env.PATH, TEST_EFFECTS: marker } });
-  return { root, home, marker, run, temp, remote };
+  // Model the supported daemon runtime even when the test runner uses Node 24.
+  writeFileSync(join(bin, 'node'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo v22.23.3; exit 0; fi\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
+  const run = (...args: string[]) => spawnSync('bash', [script, ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, HOME: home, PATH: bin + ':' + process.env.PATH, TEST_EFFECTS: marker, TEST_PROCESSES: join(temp, "processes.txt") } });
+  return { root, home, marker, run, temp, remote, bin };
 }
 test('normal fresh refuses a feature branch before sync or restart and preserves edits', (t) => {
   const f = fixture(t);
@@ -128,5 +130,28 @@ test('a runtime-to-iOS rename does not bypass dirty-path protection', (t) => {
   git(f.root, 'mv', source, 'ios/renamed.swift');
   const result = f.run();
   assert.notEqual(result.status, 0);
+  assert.equal(existsSync(f.marker), false);
+});
+
+
+test('fresh stops the actual Node daemon as well as its launcher without matching lookalikes', (t) => {
+  const f = fixture(t);
+  const table = join(f.temp, 'processes.txt');
+  const unrelated = ['bash -c echo tsx scripts/native-live-mac-daemon.ts', 'node scripts/native-live-mac-daemon.ts.backup'];
+  writeFileSync(table, ['tsx scripts/native-live-mac-daemon.ts', '/opt/homebrew/bin/node --require loader scripts/native-live-mac-daemon.ts', ...unrelated].join('\n') + '\n');
+  writeFileSync(join(f.bin, 'pkill'), '#!/bin/sh\npattern="$2"\n[ "$1" = "-9" ] && pattern="$3"\ngrep -Ev "$pattern" "$TEST_PROCESSES" > "$TEST_PROCESSES.tmp" || true\nmv "$TEST_PROCESSES.tmp" "$TEST_PROCESSES"\necho pkill >> "$TEST_EFFECTS"\n', { mode: 0o755 });
+  writeFileSync(join(f.bin, 'pgrep'), '#!/bin/sh\ngrep -Eq "$2" "$TEST_PROCESSES"\n', { mode: 0o755 });
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(readFileSync(table, 'utf8').trim().split('\n'), unrelated);
+  assert.match(readFileSync(f.marker, 'utf8'), /pkill[\s\S]*pnpm/);
+});
+
+test('wrong Node major is rejected before stopping the owner daemon', (t) => {
+  const f = fixture(t);
+  writeFileSync(join(f.bin, 'node'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo v26.5.0; exit 0; fi\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
+  const result = f.run();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Node 22/);
   assert.equal(existsSync(f.marker), false);
 });
