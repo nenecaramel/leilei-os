@@ -89,27 +89,47 @@ struct NativeLiveToolCallCard: View {
                 case .completed:
                     Image(systemName: "checkmark.circle")
                         .font(.system(size: 13))
-                        .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.secondary : Color.secondary)
+                        .foregroundStyle(
+                        iMessageWallpaperVisible
+                            ? AnyShapeStyle(NativeLiveToolWallpaperStyle.secondary)
+                            : AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                    )
                 case .failed:
                     Image(systemName: "exclamationmark.circle")
                         .font(.system(size: 13))
-                        .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.secondary : Color.secondary)
+                        .foregroundStyle(
+                        iMessageWallpaperVisible
+                            ? AnyShapeStyle(NativeLiveToolWallpaperStyle.secondary)
+                            : AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                    )
                 case .unknown:
                     Image(systemName: "circle")
                         .font(.system(size: 11))
-                        .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.secondary : Color.secondary)
+                        .foregroundStyle(
+                        iMessageWallpaperVisible
+                            ? AnyShapeStyle(NativeLiveToolWallpaperStyle.secondary)
+                            : AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                    )
                 }
 
                 Text(nativeLiveToolDisplayName(toolName))
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(iMessageWallpaperVisible ? Color.white : Color.primary)
+                    .foregroundStyle(
+                        iMessageWallpaperVisible
+                            ? AnyShapeStyle(Color.white)
+                            : AnyShapeStyle(HierarchicalShapeStyle.primary)
+                    )
                     .lineLimit(1)
 
                 Spacer(minLength: 8)
 
                 Text(stateLabel)
                     .font(.caption)
-                    .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.secondary : Color.secondary)
+                    .foregroundStyle(
+                        iMessageWallpaperVisible
+                            ? AnyShapeStyle(NativeLiveToolWallpaperStyle.secondary)
+                            : AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                    )
 
                 Image(systemName: "chevron.right")
                     .font(.system(
@@ -186,14 +206,22 @@ struct NativeLiveToolResultCard: View {
                         : "checkmark.circle"
                 )
                 .font(.system(size: 13))
-                .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.secondary : Color.secondary)
+                .foregroundStyle(
+                        iMessageWallpaperVisible
+                            ? AnyShapeStyle(NativeLiveToolWallpaperStyle.secondary)
+                            : AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                    )
 
                 Text(isError ? "Tool failed" : "Tool result")
                     .font(.system(
                         size: 13.5,
                         weight: .medium
                     ))
-                    .foregroundStyle(iMessageWallpaperVisible ? NativeLiveToolWallpaperStyle.secondary : Color.secondary)
+                    .foregroundStyle(
+                        iMessageWallpaperVisible
+                            ? AnyShapeStyle(NativeLiveToolWallpaperStyle.secondary)
+                            : AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                    )
 
                 Spacer(minLength: 8)
 
