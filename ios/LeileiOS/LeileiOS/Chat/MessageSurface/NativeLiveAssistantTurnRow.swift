@@ -54,10 +54,11 @@ struct NativeLiveAssistantTurnRow: View {
             await appModel.refreshMindWrites(messageID:id)
         }
     }
-    // Add only the difference to the existing row spacing. Footer and body
-    // spacing stay unchanged; absent sections add no extra inset.
+    // iMessage targets 10pt between Thought/Worked, Worked/body, or
+    // Thought/body: the 6pt VStack gap plus 4pt conditional inset.
+    // Original retains the existing 18pt process gap and footer behavior.
     private var processSectionExtraSpacing: CGFloat {
-        ChatPresentationLayout.processSectionSpacing - ChatPresentationLayout.assistantSpacing
+        (chatTheme == .iMessage ? ChatPresentationLayout.iMessageProcessSectionSpacing : ChatPresentationLayout.processSectionSpacing) - ChatPresentationLayout.assistantSpacing
     }
     private var processSections: NativeLiveProcessSections {
         NativeLiveProcessSections(isActive: turn.activityProjection.turnIsActive,
