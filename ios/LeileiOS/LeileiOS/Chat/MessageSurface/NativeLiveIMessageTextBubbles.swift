@@ -1,4 +1,5 @@
 import SwiftUI
+import Translation
 
 // Presentation-only segments. The original block identities, source text,
 // streaming lifecycle and copy/retry targets are never split or rewritten.
@@ -115,11 +116,56 @@ struct NativeLiveIMessageTextBubble<Content: View>: View {
     }
 }
 
+// Each assistant text segment owns its context menu and translation state.
+// Keeping this on the bubble (not the turn row) avoids stealing long presses
+// from thinking, tools, citations, media or other nested controls.
+private struct NativeLiveIMessageAssistantTextBubble: View {
+    let node: NativeLiveVisualNode
+    let timestamp: String?
+    let onCopy: (String) -> Void
+    let onRetry: (() -> Void)?
+    let isRetryDisabled: Bool
+
+    @State private var showsTranslation = false
+
+    private var plainText: String {
+        if let markdown = node.markdown {
+            return String(markdown.inline.characters)
+        }
+        return node.text ?? ""
+    }
+
+    var body: some View {
+        NativeLiveIMessageTextBubble(side: .incoming) {
+            NativeLiveVisualNodeView(node: node, role: "assistant")
+        }
+        .overlay {
+            IMessageAssistantBubbleContextMenuInteraction(
+                text: plainText,
+                timestamp: timestamp,
+                isRetryDisabled: isRetryDisabled,
+                cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
+                onCopy: onCopy,
+                onRetry: onRetry,
+                onTranslate: { showsTranslation = true }
+            )
+        }
+        .translationPresentation(
+            isPresented: $showsTranslation,
+            text: plainText
+        )
+    }
+}
+
 // Only text/markdown paragraphs become bubbles. Code, tables, sources, media
 // and all other specialized renderers retain their original surfaces.
 struct NativeLiveIMessageTextBubbleList: View {
     let presentation: NativeLiveMessagePresentation
     let side: NativeLiveIMessageBubbleSide
+    var timestamp: String? = nil
+    var onCopy: ((String) -> Void)? = nil
+    var onRetry: (() -> Void)? = nil
+    var isRetryDisabled = false
 
     private var segments: [NativeLiveIMessageTextSegments.Segment] {
         let nodes = side == .outgoing ? presentation.textNodes : presentation.renderNodes
@@ -133,9 +179,13 @@ struct NativeLiveIMessageTextBubbleList: View {
                     if segment.isTextBubble {
                         if side == .incoming {
                             HStack(spacing: 0) {
-                                NativeLiveIMessageTextBubble(side: side) {
-                                    NativeLiveVisualNodeView(node: segment.node, role: presentation.role)
-                                }
+                                NativeLiveIMessageAssistantTextBubble(
+                                    node: segment.node,
+                                    timestamp: timestamp,
+                                    onCopy: onCopy ?? { _ in },
+                                    onRetry: onRetry,
+                                    isRetryDisabled: isRetryDisabled
+                                )
                                 Spacer(minLength: ChatPresentationLayout.iMessageUserLeadingClearance)
                             }
                         } else {
