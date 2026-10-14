@@ -60,7 +60,9 @@ struct NativeLiveMessageSurface: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
+        // The iMessage wallpaper is owned by ChatView behind this scroll
+        // surface; Original retains its opaque system background.
+        .background(chatTheme == .iMessage ? Color.clear : Color(.systemBackground))
         .environment(\.nativeLiveCopyFeedback) { text in
             showCopyFeedback(text)
         }
