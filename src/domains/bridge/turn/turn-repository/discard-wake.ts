@@ -65,7 +65,10 @@ export async function discardWakeLocked(
     throw new Error("Only silence wake preparations may be discarded.");
   }
 
-  if (providerSessionId) {
+  // Only an isolated fork belongs to this discarded wake. Same-session work
+  // may be quiet or stale without making its source session disposable.
+  if (providerSessionId && row.runtimeMode === "fork"
+    && row.parentProviderSessionId && providerSessionId !== row.parentProviderSessionId) {
     await transaction
       .insert(nativeLiveProviderSessionCleanups)
       .values({

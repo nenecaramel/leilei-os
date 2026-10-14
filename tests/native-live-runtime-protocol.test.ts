@@ -1083,3 +1083,13 @@ test('failed native input receipts are bounded exact UUIDs exclusive to checkpoi
   ]) assert.throws(() => parseNativeLiveRuntimeCommand({...base,...patch}), NativeLiveRuntimeProtocolError);
   assert.equal(Object.hasOwn(parseNativeLiveRuntimeCommand(base), 'failed_user_message_uuids'), false);
 });
+
+test('checkpoint-addressed wake can resume the same session without a fabricated user message',()=>{
+ const shape={protocol_version:4,dispatch_target:'claude_code',prepare_id:prepareId,request_id:requestId,operation:'wake',conversation_id:conversationId,canonical_user_message_id:null,runtime_mode:'resume',parent_provider_session_id:'wake-parent',parent_provider_checkpoint_id:requestId,prompt:'synthetic wake'};
+ const command=parseNativeLiveRuntimeCommand(shape);assert.equal(command.runtime_mode,'resume');assert.equal(command.canonical_user_message_id,null);
+ assert.throws(()=>parseNativeLiveRuntimeCommand({...shape,parent_provider_checkpoint_id:null}),/checkpoint/);
+ assert.throws(()=>parseNativeLiveRuntimeCommand({...shape,canonical_user_message_id:userMessageId}),/canonical user/);
+ const result=parseNativeLiveRuntimeExecutionResult({protocol_version:4,prepare_id:prepareId,request_id:requestId,conversation_id:conversationId,status:'success',provider_session_id:'wake-parent',provider_checkpoint_id:prepareId,normalized_events:[]});
+ assert.doesNotThrow(()=>assertRuntimeResultMatchesCommand(command,result));
+ assert.throws(()=>assertRuntimeResultMatchesCommand(command,{...result,provider_session_id:'foreign'}),/session identity/);
+});
