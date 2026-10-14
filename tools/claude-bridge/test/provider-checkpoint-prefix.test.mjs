@@ -71,3 +71,15 @@ test("absent store or checkpoint leaves store identity unchanged", () => {
   assert.equal(checkpointForkSessionStore(store, null, "a"), store);
   assert.equal(checkpointForkSessionStore(store, "A", null), store);
 });
+
+test("parallel tool calls keep every result, so a fork copies the turn unchanged", () => {
+  // Claude writes each parallel tool_use as its own record; the first call's result
+  // hangs off the first record, outside the ancestry of the second.
+  const use = (id) => ({ message: { id: "msg", content: [{ type: "tool_use", id }] } });
+  const result = (id) => ({ message: { content: [{ type: "tool_result", tool_use_id: id }] } });
+  const entries = [entry("u", null, "user"), entry("t1", "u", "assistant", use("A")), entry("t2", "t1", "assistant", use("B")),
+    entry("r1", "t1", "user", result("A")), entry("r2", "t2", "user", result("B")), entry("a", "r2"),
+    entry("stray", "t1", "user", result("Z")), entry("failed", "u", "user", result("A"))];
+  assert.deepEqual(durableCheckpointPrefix(entries, "a").prefix.map(e => e.uuid), ["u", "t1", "t2", "r1", "r2", "a"]);
+  assert.deepEqual([...durableCheckpointPrefix(entries, "a").ancestry], ["a", "r2", "t2", "t1", "u"], "ancestry is unchanged");
+});

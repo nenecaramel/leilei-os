@@ -29,10 +29,26 @@ export function durableCheckpointPrefix(entries, checkpointId) {
     ancestry.add(id);
     id = entry.parentUuid;
   }
+  // Parallel tool calls are separate records; an earlier call's result hangs off
+  // its own record, outside the ancestry. Keep exactly those results, or a fork
+  // drops the unanswered call and copies the turn changed.
+  const calls = new Set();
+  for (const id of ancestry) {
+    const entry = carriers.get(id);
+    if (entry.type !== "assistant" || !Array.isArray(entry.message?.content)) continue;
+    for (const block of entry.message.content) if (block?.type === "tool_use" && typeof block.id === "string") calls.add(block.id);
+  }
+  const results = new Set();
+  for (const entry of carriers.values()) {
+    const content = entry.message?.content;
+    if (entry.type === "user" && !ancestry.has(entry.uuid) && ancestry.has(entry.parentUuid)
+      && carriers.get(entry.parentUuid).type === "assistant" && Array.isArray(content) && content.length
+      && content.every(block => block?.type === "tool_result" && calls.has(block.tool_use_id))) results.add(entry.uuid);
+  }
   // Older failed branches can precede a later recovered checkpoint in storage.
   // Only its ancestry is conversation input; auxiliary records stay available.
   return {
-    prefix: prefix.filter(entry => !entry.isSidechain && (!carriers.has(entry.uuid) || ancestry.has(entry.uuid))),
+    prefix: prefix.filter(entry => !entry.isSidechain && (!carriers.has(entry.uuid) || ancestry.has(entry.uuid) || results.has(entry.uuid))),
     ancestry,
   };
 }
