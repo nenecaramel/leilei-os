@@ -117,3 +117,11 @@ test('LeileiOS branch without a Desktop window is handed back through its local 
   assert.deepEqual([choice.sessionId, choice.desktopSessionId, choice.opensNewWindow, choice.reason], [E, null, true, null]);
   assert.match(module.formatSwitchMenu([choice]), /将在官端新开窗口/);
 });
+
+test('a window forked from a window that no longer exists still continues the conversation of that window\'s first session', () => {
+  const E = '00000000-0000-4000-8000-000000000005';
+  // Desktop window ids are local_<first CLI session>; the forked-from window was removed.
+  const forked = { ...desktop(), desktopSessionId: `local_${E}`, providerSessionId: E, forkedFromDesktopSessionId: `local_${A}` };
+  const [choice] = module.buildSwitchChoices('leileios', [row(C)], [forked]);
+  assert.deepEqual([choice.conversationId, choice.branch, choice.reason], [C, 'current', null]);
+});
