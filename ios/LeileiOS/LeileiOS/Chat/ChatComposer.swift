@@ -40,7 +40,7 @@ struct ChatComposer: View {
         case .original:
             sharedComposerContent
         case .iMessage:
-            sharedComposerContent
+            iMessageComposerContent
         }
     }
 
@@ -88,6 +88,145 @@ struct ChatComposer: View {
             )
             .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
         }
+    }
+
+    // iMessage shell: same draft, focus, actions and runtime guards as Original.
+    // Only the native SwiftUI arrangement changes.
+    private var iMessageComposerContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ComposerStatusArea(
+                voiceStatus: voiceStatus,
+                isEditing: isEditing,
+                onCancelEdit: onCancelEdit
+            )
+
+            if !attachments.isEmpty {
+                ComposerAttachmentStrip(
+                    attachments: attachments,
+                    onRemoveAttachment: onRemoveAttachment,
+                    onRetryAttachment: onRetryAttachment
+                )
+            }
+
+            HStack(alignment: .bottom, spacing: 8) {
+                iMessagePlusMenu
+
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField(
+                        "",
+                        text: $text,
+                        prompt: Text("Message")
+                            .foregroundStyle(.secondary),
+                        axis: .vertical
+                    )
+                    .focused(isFocused)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1...6)
+                    .padding(.vertical, 9)
+                    .padding(.leading, 14)
+
+                    primaryActionButton
+                        .padding(.trailing, 4)
+                        .padding(.bottom, 3)
+                }
+                .frame(minHeight: 42)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
+                }
+            }
+        }
+    }
+
+    private var iMessagePlusMenu: some View {
+        Menu {
+            Button {
+                onPickPhoto?()
+            } label: {
+                Label("Photo", systemImage: "photo")
+            }
+            .disabled(!canAttachFromIMessage)
+
+            Button {
+                onTakePhoto?()
+            } label: {
+                Label("Camera", systemImage: "camera")
+            }
+            .disabled(!canAttachFromIMessage)
+
+            Button {
+                onPickFile?()
+            } label: {
+                Label("File", systemImage: "doc")
+            }
+            .disabled(!canAttachFromIMessage)
+
+            Divider()
+
+            Button {
+                onStartVoiceCall?()
+            } label: {
+                Label("Call Claude", systemImage: "phone.fill")
+            }
+            .disabled(!canStartVoiceCall)
+
+            Divider()
+
+            Menu {
+                Section("Model") {
+                    Picker("Model", selection: modelSelection) {
+                        ForEach(Array(NativeLiveClaudeModel.allCases.reversed())) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                }
+
+                Section("Effort") {
+                    Picker("Effort", selection: $effort) {
+                        ForEach(availableEffortLevels) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                }
+
+                Section("Thinking") {
+                    Picker("Thinking", selection: thinkingSelection) {
+                        ForEach(Array(model.supportedThinkingModes.reversed())) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                }
+            } label: {
+                Label("Model Settings", systemImage: "slider.horizontal.3")
+            }
+
+            if isFocused.wrappedValue {
+                Divider()
+
+                Button {
+                    isFocused.wrappedValue = false
+                } label: {
+                    Label("Dismiss Keyboard", systemImage: "keyboard.chevron.compact.down")
+                }
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 42, height: 42)
+                .background(.regularMaterial, in: Circle())
+                .overlay {
+                    Circle().strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
+                }
+                .contentShape(Circle())
+        }
+        .accessibilityLabel("Attachments and model settings")
+    }
+
+    private var canAttachFromIMessage: Bool {
+        !isRuntimeTurnActive && !isSending && attachments.count < 8
     }
 
     private var controlRow: some View {
