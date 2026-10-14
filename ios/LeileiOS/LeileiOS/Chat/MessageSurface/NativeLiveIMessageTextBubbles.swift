@@ -109,18 +109,32 @@ struct NativeLiveIMessageTextBubble<Content: View>: View {
             .font(.body)
             .padding(.horizontal, ChatPresentationLayout.bubbleHorizontalInset)
             .padding(.vertical, ChatPresentationLayout.iMessageUserBubbleVerticalInset)
-            // Match the reference: white text on flat, slightly translucent
-            // blue (outgoing) and charcoal (incoming) bubbles.
             .foregroundStyle(Color.white.opacity(0.98))
-            .background(
-                side == .outgoing
-                    ? Color(red: 0.12, green: 0.54, blue: 1.00).opacity(0.94)
-                    : Color(red: 0.30, green: 0.31, blue: 0.33).opacity(0.85),
-                in: RoundedRectangle(
-                    cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
-                    style: .continuous
-                )
-            )
+            .background {
+                // Real system backdrop blur, not a translucent solid fill.
+                // Restrict dark appearance to the material so the assistant
+                // keeps readable white text on photographic backgrounds.
+                ZStack {
+                    RoundedRectangle(
+                        cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
+                        style: .continuous
+                    )
+                    .fill(.ultraThinMaterial)
+                    .environment(\.colorScheme, .dark)
+
+                    // Flat color tint only: no gradient, border or highlight.
+                    RoundedRectangle(
+                        cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
+                        style: .continuous
+                    )
+                    .fill(
+                        side == .outgoing
+                            ? Color(red: 0.12, green: 0.54, blue: 1.00).opacity(0.58)
+                            : Color(red: 0.30, green: 0.31, blue: 0.33).opacity(0.30)
+                    )
+                }
+                .allowsHitTesting(false)
+            }
     }
 }
 
