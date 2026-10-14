@@ -6,6 +6,8 @@ struct SettingsHomeContent: View {
     @ObservedObject var appModel: AppModel
 
     @AppStorage("appearanceMode") private var appearanceModeRawValue = AppearanceMode.system.rawValue
+    @AppStorage(ChatTheme.storageKey) private var chatThemeRawValue =
+        ChatTheme.original.rawValue
     @Environment(\.scenePhase) private var scenePhase
     @State private var authorizationStatus: UNAuthorizationStatus = .notDetermined
     @State private var showingSignOutConfirmation = false
@@ -56,6 +58,16 @@ struct SettingsHomeContent: View {
                     }
                 } label: {
                     Label("Appearance", systemImage: "circle.lefthalf.filled")
+                }
+                .pickerStyle(.menu)
+
+                Picker(selection: $chatThemeRawValue) {
+                    ForEach(ChatTheme.allCases) { theme in
+                        Text(theme.title)
+                            .tag(theme.rawValue)
+                    }
+                } label: {
+                    Label("Chat Style", systemImage: "bubble.left.and.bubble.right")
                 }
                 .pickerStyle(.menu)
 

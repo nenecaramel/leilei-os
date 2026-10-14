@@ -16,6 +16,18 @@ function block(s:string,marker:string) {
   assert.equal(depth,0,marker);return compact(s.slice(open+1,end-1));
 }
 const blob=(s:Buffer)=>createHash('sha1').update(`blob ${s.length}\0`).update(s).digest('hex');
+// Only the intentional native scrolling wrapper around status content is new.
+// Its inner content and every existing observer/action remain exact comparisons.
+function withoutStatusScrollWrappers(source:string) {
+  let result=source;
+  for(let start=result.indexOf('Self.scrollableState {');start>=0;start=result.indexOf('Self.scrollableState {')) {
+    const open=result.indexOf('{',start);let end=open+1,depth=1;
+    for(;depth && end<result.length;end++) {if(result[end]==='{')depth++;else if(result[end]==='}')depth--;}
+    assert.equal(depth,0,'status scroll wrapper');
+    result=result.slice(0,start)+result.slice(open+1,end-1)+result.slice(end);
+  }
+  return result;
+}
 test('MessageSurface fixtures are exact blobs from main@52c957c1',()=>{
   const manifest=JSON.parse(readFileSync(fixture+'blobs.json','utf8'));
   for(const [file,sha] of Object.entries(manifest)) assert.equal(blob(readFileSync(fixture+file)),sha,file);
@@ -23,7 +35,7 @@ test('MessageSurface fixtures are exact blobs from main@52c957c1',()=>{
 test('MessageSurface conserves every observer, state owner, callback body and scroll command order',()=>{
   const current=readFileSync(root+'NativeLiveMessageSurface.swift','utf8');
   for(const marker of ['var body:','private var syncUnavailable:','private func captureReplacementAnchor(','private func captureAnchor(','private func copyMessage(','private func showCopyFeedback(','private func scrollToBottom(']) {
-    assert.equal(block(current,marker),block(baseline,marker),marker);
+    assert.equal(block(withoutStatusScrollWrappers(current),marker),block(baseline,marker),marker);
   }
   // Compare complete ordered modifier chain, including transform/action,
   // preference restoration and both lifecycle handlers, not isolated guards.

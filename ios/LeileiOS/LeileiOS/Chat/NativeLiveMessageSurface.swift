@@ -38,21 +38,23 @@ struct NativeLiveMessageSurface: View {
     var body: some View {
         Group {
             if !isAuthenticated {
-                AppStateSurface(title: "Sign in")
+                Self.scrollableState { AppStateSurface(title: "Sign in") }
             } else if pendingOperation != nil {
                 messageList(snapshot)
             } else if !hasActiveConversation {
-                AppStateSurface(title: "Nothing here")
+                Self.scrollableState { AppStateSurface(title: "Nothing here") }
             } else {
                 switch NativeLiveConversationLoadPresentation.project(
                     hasSnapshot:snapshot != nil || historySnapshot != nil,
                     hasRows:appModel.nativeLiveConversationRows.contains { !$0.isHistoryDivider },
                     ready:syncState == .ready,failed:syncUnavailable) {
                 case .content: messageList(snapshot)
-                case .quietLoading: Color.clear
-                case .empty: AppStateSurface(title:"Nothing here")
+                case .quietLoading: Self.scrollableState { Color.clear }
+                case .empty: Self.scrollableState { AppStateSurface(title:"Nothing here") }
                 case .unavailable:
-                    AppStateSurface(title:"Unavailable",actionTitle:"Retry") { Task { await onRefresh() } }
+                    Self.scrollableState {
+                        AppStateSurface(title:"Unavailable",actionTitle:"Retry") { Task { await onRefresh() } }
+                    }
                 }
             }
         }
@@ -66,6 +68,19 @@ struct NativeLiveMessageSurface: View {
     private var syncUnavailable: Bool {
         if case .unavailable = syncState { return true }
         return false
+    }
+
+    static func scrollableState<Content: View>(
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        GeometryReader { geometry in
+            ScrollView {
+                content()
+                    .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .scrollBounceBehavior(.always)
+        }
     }
 
     private func messageList(
@@ -88,6 +103,8 @@ struct NativeLiveMessageSurface: View {
                 )
             }
             // Scroll observation and lifecycle: order and owner intentionally unchanged.
+            .scrollDismissesKeyboard(.interactively)
+            .scrollBounceBehavior(.always)
             .scrollClipDisabled()
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .alignment)

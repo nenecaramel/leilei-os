@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ChatComposer: View {
+    @Environment(\.chatTheme) private var chatTheme
     @Binding var text: String
     @Binding var model: NativeLiveClaudeModel
     @Binding var thinking: NativeLiveThinkingMode
@@ -31,7 +32,19 @@ struct ChatComposer: View {
     var onSend: (() -> Void)? = nil
 
 
+    // Both shells initially use exactly the original paint. Subsequent work
+    // replaces only the iMessage branch, keeping bindings and actions shared.
+    @ViewBuilder
     var body: some View {
+        switch chatTheme {
+        case .original:
+            sharedComposerContent
+        case .iMessage:
+            iMessageComposerContent
+        }
+    }
+
+    private var sharedComposerContent: some View {
         VStack(alignment: .leading, spacing: ChatPresentationLayout.composerSectionSpacing) {
             ComposerStatusArea(
                 voiceStatus: voiceStatus,
@@ -75,6 +88,138 @@ struct ChatComposer: View {
             )
             .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
         }
+    }
+
+    // iMessage shell: same draft, focus, actions and runtime guards as Original.
+    // Only the native SwiftUI arrangement changes.
+    private var iMessageComposerContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ComposerStatusArea(
+                voiceStatus: voiceStatus,
+                isEditing: isEditing,
+                onCancelEdit: onCancelEdit
+            )
+
+            if !attachments.isEmpty {
+                ComposerAttachmentStrip(
+                    attachments: attachments,
+                    onRemoveAttachment: onRemoveAttachment,
+                    onRetryAttachment: onRetryAttachment
+                )
+            }
+
+            HStack(alignment: .bottom, spacing: 8) {
+                iMessagePlusMenu
+
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField(
+                        "",
+                        text: $text,
+                        prompt: Text("Message")
+                            .foregroundStyle(.secondary),
+                        axis: .vertical
+                    )
+                    .focused(isFocused)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1...6)
+                    .padding(.vertical, 9)
+                    .padding(.leading, 14)
+
+                    primaryActionButton
+                        .padding(.trailing, 4)
+                        .padding(.bottom, 3)
+                }
+                .frame(minHeight: 42)
+                .glassEffect(.regular, in: Capsule())
+            }
+        }
+    }
+
+    private var iMessagePlusMenu: some View {
+        Menu {
+            Button {
+                onPickPhoto?()
+            } label: {
+                Label("Photo", systemImage: "photo")
+            }
+            .disabled(!canAttachFromIMessage)
+
+            Button {
+                onTakePhoto?()
+            } label: {
+                Label("Camera", systemImage: "camera")
+            }
+            .disabled(!canAttachFromIMessage)
+
+            Button {
+                onPickFile?()
+            } label: {
+                Label("File", systemImage: "doc")
+            }
+            .disabled(!canAttachFromIMessage)
+
+            Divider()
+
+            Button {
+                onStartVoiceCall?()
+            } label: {
+                Label("Call Claude", systemImage: "phone.fill")
+            }
+            .disabled(!canStartVoiceCall)
+
+            Divider()
+
+            Menu {
+                Section("Model") {
+                    Picker("Model", selection: modelSelection) {
+                        ForEach(Array(NativeLiveClaudeModel.allCases.reversed())) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                }
+
+                Section("Effort") {
+                    Picker("Effort", selection: $effort) {
+                        ForEach(availableEffortLevels) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                }
+
+                Section("Thinking") {
+                    Picker("Thinking", selection: thinkingSelection) {
+                        ForEach(Array(model.supportedThinkingModes.reversed())) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                }
+            } label: {
+                Label("Model Settings", systemImage: "slider.horizontal.3")
+            }
+
+            if isFocused.wrappedValue {
+                Divider()
+
+                Button {
+                    isFocused.wrappedValue = false
+                } label: {
+                    Label("Dismiss Keyboard", systemImage: "keyboard.chevron.compact.down")
+                }
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 42, height: 42)
+                .glassEffect(.regular, in: Circle())
+                .contentShape(Circle())
+        }
+        .accessibilityLabel("Attachments and model settings")
+    }
+
+    private var canAttachFromIMessage: Bool {
+        !isRuntimeTurnActive && !isSending && attachments.count < 8
     }
 
     private var controlRow: some View {
@@ -191,8 +336,58 @@ struct ChatComposer: View {
         actionPresentation.mode == .voice
     }
 
+    @ViewBuilder
     private var composerActionLabel: some View {
-        ComposerPrimaryActionLabel(presentation: actionPresentation)
+        if chatTheme == .iMessage {
+            iMessageActionLabel
+        } else {
+            ComposerPrimaryActionLabel(presentation: actionPresentation)
+        }
+    }
+
+    // Apple-native SF Symbols and dynamic accent tint; only the paint differs.
+    // Button dispatch, the voice gesture bridge and disabled guards are shared.
+    @ViewBuilder
+    private var iMessageActionLabel: some View {
+        switch actionPresentation.mode {
+        case .voice:
+            Image(systemName: "waveform")
+                .font(.system(size: 21, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(
+                    width: LeileiUI.ControlGeometry.compact,
+                    height: LeileiUI.ControlGeometry.compact
+                )
+
+        case .interruptPending:
+            ProgressView()
+                .controlSize(.small)
+                .tint(.primary)
+                .frame(
+                    width: LeileiUI.ControlGeometry.compact,
+                    height: LeileiUI.ControlGeometry.compact
+                )
+
+        case .interrupt:
+            Image(systemName: "stop.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(
+                    width: LeileiUI.ControlGeometry.compact,
+                    height: LeileiUI.ControlGeometry.compact
+                )
+
+        case .send, .midTurnSend, .disabledSend:
+            Image(systemName: "arrow.up")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(.tint, in: Circle())
+                .frame(
+                    width: LeileiUI.ControlGeometry.compact,
+                    height: LeileiUI.ControlGeometry.compact
+                )
+        }
     }
 
     private var voiceActionButton: some View {
