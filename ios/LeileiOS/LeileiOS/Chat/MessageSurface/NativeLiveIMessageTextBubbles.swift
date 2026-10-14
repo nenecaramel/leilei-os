@@ -26,6 +26,27 @@ enum NativeLiveIMessageTextSegments {
             return [.init(node: node, isTextBubble: false)]
         }
 
+        // Split the already-rendered attributed text first. Slicing retains
+        // formatting/link runs that may span newlines (such as multiline bold).
+        if !node.rendersInlineChildren, let model = node.markdown {
+            let renderedLines = model.inline.characters.split(whereSeparator: \.isNewline)
+            if renderedLines.count > 1 {
+                return renderedLines.enumerated().map { index, line in
+                    var part = node
+                    part.presentationID = "\(node.id):bubble-line:\(index)"
+                    part.sourceRangeUTF16 = nil
+                    part.text = String(line)
+                    part.children = []
+                    part.markdown = .init(
+                        style: model.style,
+                        inline: AttributedString(model.inline[line.startIndex..<line.endIndex]),
+                        isPlainFallback: model.isPlainFallback
+                    )
+                    return .init(node: part, isTextBubble: true)
+                }
+            }
+        }
+
         // Split visual paragraphs on *every* explicit newline, including a
         // single newline. Rich code fences, tables, math blocks, media and
         // structured tools are already separate nodes and stay untouched.
