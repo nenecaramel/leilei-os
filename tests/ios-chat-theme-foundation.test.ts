@@ -151,7 +151,7 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   assert.doesNotMatch(layout, /iMessageUserBubbleMaxWidth/);
   assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
   assert.match(bubble, /Color\.clear\.frame\(width:ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
-  assert.match(bubble, /colors: side == \.outgoing/);
+  assert.match(bubble, /side == \.outgoing\s*\? Color\.blue\.opacity\(0\.94\)/);
   assert.doesNotMatch(bubble, /iMessageUserBubbleMaxWidth/);
 
   // Each nonempty explicit line yields a separate visual segment, not a
@@ -271,13 +271,13 @@ test('iMessage bubbles use subtle translucency without changing geometry or hit 
   const assistant = read('Chat/MessageSurface/NativeLiveAssistantTurnRow.swift');
   const layout = read('Chat/ChatPresentationLayout.swift');
 
-  assert.match(bubble, /LinearGradient\(/);
-  assert.match(bubble, /Color\.blue\.opacity\(0\.95\), Color\.blue\.opacity\(0\.91\)/);
-  assert.match(bubble, /Color\.chatSoftFill\.opacity\(0\.92\), Color\.chatSoftFill\.opacity\(0\.87\)/);
+  assert.doesNotMatch(bubble, /LinearGradient\(/);
+  assert.match(bubble, /Color\.blue\.opacity\(0\.94\)/);
+  assert.match(bubble, /Color\(red: 0\.24, green: 0\.25, blue: 0\.27\)\.opacity\(0\.85\)/);
   assert.match(bubble, /Color\.white\.opacity\(0\.98\)/);
-  assert.match(bubble, /Color\.primary\.opacity\(0\.96\)/);
-  assert.match(bubble, /\.strokeBorder\(Color\.white\.opacity\(0\.12\), lineWidth: 0\.5\)/);
-  assert.match(bubble, /\.allowsHitTesting\(false\)/);
+  assert.doesNotMatch(bubble, /Color\.primary\.opacity\(/);
+  assert.doesNotMatch(bubble, /\.strokeBorder\(/);
+  assert.doesNotMatch(bubble, /\.overlay \{/);
   assert.doesNotMatch(bubble, /\.ultraThinMaterial|\.thinMaterial|\.glassEffect/);
 
   assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
