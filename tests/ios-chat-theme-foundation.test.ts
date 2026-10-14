@@ -263,3 +263,31 @@ test('iMessage alone uses compact spacing with tight native-line bubble wrapping
   assert.match(bubble, /rawText\.split\(whereSeparator:/);
   assert.doesNotMatch(bubble, /iMessageUserBubbleMaxWidth|300\s*pt|\.frame\(width:\s*300/);
 });
+
+
+test('iMessage bubbles use subtle translucency without changing geometry or hit targets', () => {
+  const bubble = read('Chat/MessageSurface/NativeLiveIMessageTextBubbles.swift');
+  const user = read('Chat/MessageSurface/NativeLiveUserMessageRow.swift');
+  const assistant = read('Chat/MessageSurface/NativeLiveAssistantTurnRow.swift');
+  const layout = read('Chat/ChatPresentationLayout.swift');
+
+  assert.match(bubble, /LinearGradient\(/);
+  assert.match(bubble, /Color\.blue\.opacity\(0\.95\), Color\.blue\.opacity\(0\.91\)/);
+  assert.match(bubble, /Color\.chatSoftFill\.opacity\(0\.92\), Color\.chatSoftFill\.opacity\(0\.87\)/);
+  assert.match(bubble, /Color\.white\.opacity\(0\.98\)/);
+  assert.match(bubble, /Color\.primary\.opacity\(0\.96\)/);
+  assert.match(bubble, /\.strokeBorder\(Color\.white\.opacity\(0\.12\), lineWidth: 0\.5\)/);
+  assert.match(bubble, /\.allowsHitTesting\(false\)/);
+  assert.doesNotMatch(bubble, /\.ultraThinMaterial|\.thinMaterial|\.glassEffect/);
+
+  assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
+  assert.match(bubble, /\.padding\(\.horizontal, ChatPresentationLayout\.bubbleHorizontalInset\)/);
+  assert.match(bubble, /\.padding\(\.vertical, ChatPresentationLayout\.iMessageUserBubbleVerticalInset\)/);
+  assert.match(bubble, /IMessageAssistantBubbleContextMenuInteraction\(/);
+  assert.match(bubble, /\.translationPresentation\(/);
+  assert.match(user, /LightweightContextMenuInteraction\(/);
+  assert.match(assistant, /onRetry: retryAction/);
+  assert.match(layout, /iMessageTurnSpacing: CGFloat = 12/);
+  assert.match(layout, /iMessageTextBubbleSpacing: CGFloat = 8/);
+  assert.match(layout, /iMessageProcessSectionSpacing: CGFloat = 10/);
+});
