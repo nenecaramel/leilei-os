@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDesktopNativeSessions, nativeSessionLocations } from '../tools/claude-bridge/src/native-session-inspection.mjs';
 import { buildSwitchChoices, selectAndSwitch } from '../tools/claude-bridge/src/native-session-picker.mjs';
-import { runLocalSwitch } from './native-session-local.mjs';
+import { runLocalSwitch, desktopAppRunning } from './native-session-local.mjs';
 
 export async function readSwitchCatalog({ relayUrl, relayToken, fetchImpl = fetch }) {
   let url;
@@ -41,6 +41,8 @@ async function main() {
   if (!['desktop', 'leileios'].includes(mode) || extra.length) throw new Error('INVALID_SWITCH_MODE');
   if (Number(process.versions.node.split('.')[0]) !== 22) throw new Error('NODE_22_REQUIRED');
   if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error('INTERACTIVE_TERMINAL_REQUIRED');
+  // Refuse before the picker, so the owner quits Desktop (⌘Q) instead of choosing in vain.
+  if (mode === 'leileios' && desktopAppRunning()) throw new Error('NATIVE_DESKTOP_STILL_RUNNING');
   let variables;
   try {
     variables = JSON.parse(execFileSync('railway', ['variable', 'list', '--project', 'fb68460c-fda4-4969-836b-577eaa29d8b1', '--environment', 'production', '--service', 'leilei-os', '--json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 20_000, maxBuffer: 1024 * 1024 }));
