@@ -19,6 +19,7 @@ import SwiftUI
 }
 
 struct NativeLiveUserMessagePresentationView: View {
+    @Environment(\.chatTheme) private var chatTheme
     let presentation: NativeLiveMessagePresentation
     @Binding var isVoiceTranscriptRevealed: Bool
     var onEdit: (() -> Void)? = nil
@@ -35,11 +36,7 @@ struct NativeLiveUserMessagePresentationView: View {
                 NativeLiveVisualNodesView(nodes:presentation.nonTextBodyNodes,role:presentation.role)
             }
             if !presentation.textNodes.isEmpty {
-                textBubble
-                    .padding(.leading, usesCompactVoiceInsets ? NativeLiveVoiceBubbleGeometry.userLeadingInset : ChatPresentationLayout.bubbleHorizontalInset)
-                    .padding(.trailing, usesCompactVoiceInsets ? NativeLiveVoiceBubbleGeometry.userTrailingInset : ChatPresentationLayout.bubbleHorizontalInset)
-                    .padding(.vertical,ChatPresentationLayout.bubbleVerticalInset)
-                    .background(Color.chatSoftFill,in:RoundedRectangle(cornerRadius:ChatPresentationLayout.bubbleRadius,style:.continuous))
+                userTextBubble
                     .overlay {
                         if let onEdit {
                             LightweightContextMenuInteraction(title:"Edit",copyText:presentation.copyText,isDisabled:isDisabled,
@@ -50,6 +47,21 @@ struct NativeLiveUserMessagePresentationView: View {
             }
         }
     }
+    @ViewBuilder private var userTextBubble: some View {
+        if chatTheme == .iMessage && !presentation.isVoiceInput {
+            IMessageUserBubble {
+                textBubble
+            }
+        } else {
+            // Original style and voice playback geometry are unchanged.
+            textBubble
+                .padding(.leading, usesCompactVoiceInsets ? NativeLiveVoiceBubbleGeometry.userLeadingInset : ChatPresentationLayout.bubbleHorizontalInset)
+                .padding(.trailing, usesCompactVoiceInsets ? NativeLiveVoiceBubbleGeometry.userTrailingInset : ChatPresentationLayout.bubbleHorizontalInset)
+                .padding(.vertical,ChatPresentationLayout.bubbleVerticalInset)
+                .background(Color.chatSoftFill,in:RoundedRectangle(cornerRadius:ChatPresentationLayout.bubbleRadius,style:.continuous))
+        }
+    }
+
     private var usesCompactVoiceInsets: Bool {
         presentation.isVoiceInput && !isVoiceTranscriptRevealed
     }
@@ -87,5 +99,38 @@ private struct NativeLiveVoiceMessageBubbleVisual: View {
         .frame(height: NativeLiveVoiceBubbleGeometry.contentHeight, alignment: .leading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(isExpanded ? "Voice message, transcript shown" : "Voice message, tap to show transcript")
+    }
+}
+
+
+/// iMessage outgoing text only: compact bubbles hug short text, and long
+/// text wraps at a single fixed cap. This never rewrites underlying nodes.
+struct IMessageUserBubble<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            bubble(content.fixedSize(horizontal: true, vertical: false))
+            bubble(content.fixedSize(horizontal: false, vertical: true))
+        }
+        .frame(maxWidth: ChatPresentationLayout.iMessageUserBubbleMaxWidth, alignment: .trailing)
+    }
+
+    private func bubble<BubbleContent: View>(_ view: BubbleContent) -> some View {
+        view
+            .padding(.horizontal, ChatPresentationLayout.bubbleHorizontalInset)
+            .padding(.vertical, ChatPresentationLayout.bubbleVerticalInset)
+            .foregroundStyle(.white)
+            .background(
+                Color.blue,
+                in: RoundedRectangle(
+                    cornerRadius: ChatPresentationLayout.bubbleRadius,
+                    style: .continuous
+                )
+            )
     }
 }
