@@ -45,7 +45,8 @@ struct NativeLiveMarkdownRenderer: View {
         }
     }
     private var isIMessageUser: Bool {
-        chatTheme == .iMessage && role == "user"
+        // Both message sides share native body typography in iMessage mode.
+        chatTheme == .iMessage && (role == "user" || role == "assistant")
     }
 
     private var inline: some View {
