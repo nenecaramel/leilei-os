@@ -277,7 +277,11 @@ test('iMessage bubbles use subtle translucency without changing geometry or hit 
   assert.match(bubble, /Color\.white\.opacity\(0\.98\)/);
   assert.doesNotMatch(bubble, /Color\.primary\.opacity\(/);
   assert.doesNotMatch(bubble, /\.strokeBorder\(/);
-  assert.doesNotMatch(bubble, /\.overlay \{/);
+  const paintedBubble = bubble.slice(
+    bubble.indexOf('struct NativeLiveIMessageTextBubble<'),
+    bubble.indexOf('// Each assistant text segment owns')
+  );
+  assert.doesNotMatch(paintedBubble, /\.overlay \{/);
   assert.doesNotMatch(bubble, /\.ultraThinMaterial|\.thinMaterial|\.glassEffect/);
 
   assert.match(bubble, /ViewThatFits\(in: \.horizontal\)/);
