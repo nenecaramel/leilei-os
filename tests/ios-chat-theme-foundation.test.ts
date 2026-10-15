@@ -97,70 +97,32 @@ test('iMessage uses a native safe-area inset with no opaque system bottom bar', 
     chat.indexOf('        .safeAreaInset(edge: .bottom, spacing: selectedChatTheme == .iMessage ? 0 : nil) {'),
     chat.indexOf('        .sheet(isPresented: $isNativeCallPresented)')
   );
-  const wallpaperBackdrop = page.slice(
-    page.indexOf('            .background {'),
-    page.indexOf('            .navigationTitle(')
-  );
   const shared = chat.slice(chat.indexOf('    private var chatComposer: some View {'));
-
   assert.match(placement, /if selectedChatTheme == \.original/);
-  assert.match(placement, /if selectedChatTheme == \.original[\s\S]*?\} else \{/);
   assert.match(placement, /ChatPresentationLayout\.composerOuterHorizontal/);
   assert.match(placement, /ChatPresentationLayout\.composerOuterTop/);
   assert.match(placement, /ChatPresentationLayout\.composerOuterBottom/);
   assert.match(placement, /ChatPresentationLayout\.composerHiddenKeyboardPaintOffset/);
   assert.match(placement, /\.safeAreaInset\(edge: \.bottom, spacing: selectedChatTheme == \.iMessage \? 0 : nil\)/);
   assert.match(placement, /chatComposer\s*\.frame\(maxWidth: \.infinity\)\s*\.padding\(\.horizontal, 20\)\s*\.padding\(\.top, 8\)\s*\.padding\(\.bottom, isSystemKeyboardVisible \? 12 : 8\)\s*\.offset\(y: isSystemKeyboardVisible \? 0 : 10\)/);
-  assert.match(wallpaperBackdrop, /\.background \{\s*if selectedPage == \.chat,/);
-  assert.match(wallpaperBackdrop, /chatThemeRawValue == ChatTheme\.iMessage\.rawValue,/);
-  assert.match(wallpaperBackdrop, /let chatWallpaperImage/);
-  assert.match(wallpaperBackdrop, /\.ignoresSafeArea\(\.container\)/);
-  assert.match(wallpaperBackdrop, /\.ignoresSafeArea\(\.keyboard, edges: \.bottom\)/);
-  assert.match(page, /pageBackground\.ignoresSafeArea\(\)/);
-  const outerBackdrop = page.slice(
-    page.indexOf('        .toolbarBackground(.hidden, for: .navigationBar)'),
-    page.indexOf('        .task(id: wallpaperRevision)')
-  );
-  assert.match(outerBackdrop, /\.background \{\s*if selectedPage == \.chat,/);
-  assert.match(outerBackdrop, /chatThemeRawValue == ChatTheme\.iMessage\.rawValue,/);
-  assert.match(outerBackdrop, /Image\(uiImage: chatWallpaperImage\)/);
-  assert.match(outerBackdrop, /\.ignoresSafeArea\(\.all\)/);
-  assert.doesNotMatch(placement, /\.background \{|Image\(uiImage: wallpaperImage\)/);
-  assert.match(chat, /if selectedChatTheme == \.iMessage, let wallpaperImage/);
-  assert.match(chat, /Image\(uiImage: wallpaperImage\)/);
-  assert.ok(
-    page.indexOf('            .background {') >
-      page.indexOf('        NavigationStack {') &&
-    page.indexOf('            .background {') <
-      page.indexOf('            .navigationTitle('),
-    'supplementary wallpaper is within navigation content, not hidden outside NavigationStack'
-  );
   assert.doesNotMatch(placement, /safeAreaBar|ToolbarItem|\.background\(|\.regularMaterial/);
-
-  assert.equal((chat.match(/\bChatComposer\(/g) ?? []).length, 1, 'exactly one composer callback owner');
+  assert.match(page, /if !iMessageWallpaperVisible \{\s*pageBackground\.ignoresSafeArea\(\)/);
+  assert.equal((chat.match(/\bChatComposer\(/g) ?? []).length, 1);
   for (const route of [
-    'text: $messageText',
-    'model: $model',
-    'thinking: $thinking',
-    'effort: $effort',
-    'attachments: composerAttachments',
-    'onCancelEdit: cancelEditing',
-    'onRetryAttachment: { id in',
-    'onInterrupt: {',
-    'onMidTurnInput: { text in',
-    'onVoicePress: {',
-    'onVoiceRelease: { voiceInput.release() }'
+    'text: $messageText', 'model: $model', 'thinking: $thinking',
+    'effort: $effort', 'attachments: composerAttachments',
+    'onCancelEdit: cancelEditing', 'onRetryAttachment: { id in',
+    'onInterrupt: {', 'onMidTurnInput: { text in',
+    'onVoicePress: {', 'onVoiceRelease: { voiceInput.release() }'
   ]) assert.ok(shared.includes(route), route);
   assert.match(shared, /sendMessage\(\)/);
-
-  const iMessageAction = composer.slice(
+  const action = composer.slice(
     composer.indexOf('    private var iMessageActionLabel: some View {'),
     composer.indexOf('    private var voiceActionButton: some View {')
   );
-  assert.match(iMessageAction, /case \.voice:\s*Image\(systemName: "waveform"\)\s*\.font\(\.system\(size: 18, weight: \.medium\)\)/);
+  assert.match(action, /case \.voice:\s*Image\(systemName: "waveform"\)\s*\.font\(\.system\(size: 18, weight: \.medium\)\)/);
   assert.match(composer, /\.opacity\(voiceEnabled \? 1 : 0\.35\)/);
-  assert.match(iMessageAction, /width: LeileiUI\.ControlGeometry\.compact,\s*height: LeileiUI\.ControlGeometry\.compact/);
-  assert.match(composer, /case \.voice:\s*Image\(systemName: "waveform"\)/);
+  assert.match(action, /width: LeileiUI\.ControlGeometry\.compact,\s*height: LeileiUI\.ControlGeometry\.compact/);
   assert.match(composer, /case \.send, \.midTurnSend, \.disabledSend:/);
   assert.match(composer, /\.background\(\.tint, in: Circle\(\)\)/);
   assert.match(composer, /case \.original:\s*sharedComposerContent/);
@@ -346,12 +308,12 @@ test('iMessage bubbles keep native blur while stronger flat tints restore vivid 
 
 test('a single local wallpaper serves every iMessage conversation without changing Original or messages', () => {
   const wallpaper = read('Chat/IMessageWallpaper.swift');
+  const shell = read('Navigation/AppShell.swift');
+  const page = read('Navigation/PageContainer.swift');
   const chat = read('Chat/ChatView.swift');
   const surface = read('Chat/NativeLiveMessageSurface.swift');
   const settings = read('Navigation/Settings/SettingsHomeContent.swift');
   const bubble = read('Chat/MessageSurface/NativeLiveIMessageTextBubbles.swift');
-
-  // One on-device file, not keyed to conversation ID or uploaded as an attachment.
   assert.match(wallpaper, /static let revisionKey = "chat\.imessage\.wallpaperRevision"/);
   assert.match(wallpaper, /applicationSupportDirectory/);
   assert.match(wallpaper, /wallpaper\.jpg/);
@@ -361,27 +323,15 @@ test('a single local wallpaper serves every iMessage conversation without changi
   assert.match(wallpaper, /static func load\(\) -> UIImage\?/);
   assert.match(wallpaper, /static func remove\(\) throws/);
   assert.doesNotMatch(wallpaper, /conversationId|conversationID|uploadNativeLiveAttachment/);
-
-  // Wallpaper remains fixed behind chat content, covering navigation and
-  // composer safe areas; Original keeps its former opaque scroll background.
-  assert.match(chat, /@AppStorage\(IMessageWallpaper\.revisionKey\) private var wallpaperRevision/);
-  assert.match(chat, /\.task\(id: wallpaperRevision\)/);
-  const page = read('Navigation/PageContainer.swift');
-  assert.match(chat, /selectedChatTheme == \.iMessage && wallpaperImage != nil/);
-  assert.match(chat, /Image\(uiImage: wallpaperImage\)/);
-  assert.match(chat, /if selectedChatTheme == \.iMessage, let wallpaperImage/);
-  assert.match(chat, /wallpaperImage = IMessageWallpaper\.load\(\)/);
-  assert.match(page, /@AppStorage\(IMessageWallpaper\.revisionKey\) private var wallpaperRevision/);
-  assert.match(page, /\.task\(id: wallpaperRevision\)/);
-  assert.match(page, /chatWallpaperImage = IMessageWallpaper\.load\(\)/);
-  assert.match(page, /Image\(uiImage: chatWallpaperImage\)/);
-  assert.match(page, /\.scaledToFill\(\)/);
-  assert.match(page, /\.ignoresSafeArea\(\.container\)/);
-  assert.match(page, /\.ignoresSafeArea\(\.keyboard, edges: \.bottom\)/);
+  assert.match(shell, /@AppStorage\(IMessageWallpaper\.revisionKey\) private var wallpaperRevision/);
+  assert.match(shell, /\.task\(id: wallpaperRevision\) \{\s*shellWallpaperImage = IMessageWallpaper\.load\(\)/);
+  assert.equal((shell.match(/Image\(uiImage: shellWallpaperImage\)/g) ?? []).length, 1);
+  assert.match(shell, /\.ignoresSafeArea\(\.all\)/);
+  assert.match(shell, /\.environment\(\\\.iMessageWallpaperVisible, isWallpaperChatVisible\)/);
+  assert.doesNotMatch(page, /Image\(uiImage:|wallpaperRevision|chatWallpaperImage|IMessageWallpaper\.load/);
+  assert.doesNotMatch(chat, /Image\(uiImage:|wallpaperRevision|wallpaperImage|IMessageWallpaper\.load/);
+  assert.match(chat, /if !iMessageWallpaperVisible \{\s*Color\(\.systemBackground\)/);
   assert.match(surface, /\.background\(chatTheme == \.iMessage \? Color\.clear : Color\(\.systemBackground\)\)/);
-
-  // Picker is separate from the composer image-attachment workflow; users
-  // can replace/reset without changing the message data or its rendering.
   assert.match(settings, /if chatThemeRawValue == ChatTheme\.iMessage\.rawValue/);
   assert.match(settings, /PhotosPicker\(selection: \$wallpaperSelection, matching: \.images\)/);
   assert.match(settings, /try IMessageWallpaper\.save\(image\)/);
@@ -401,7 +351,8 @@ test('only wallpaper-backed iMessage process headers get contrasting white label
   assert.match(theme, /private struct IMessageWallpaperVisibleKey: EnvironmentKey/);
   assert.match(theme, /static let defaultValue = false/);
   assert.match(theme, /var iMessageWallpaperVisible: Bool/);
-  assert.match(chat, /\.iMessageWallpaperVisible,\s*selectedChatTheme == \.iMessage && wallpaperImage != nil/);
+  const shell = read('Navigation/AppShell.swift');
+  assert.match(shell, /\.environment\(\\\.iMessageWallpaperVisible, isWallpaperChatVisible\)/);
 
   for (const file of [thinking, activity]) {
     assert.match(file, /@Environment\(\\\.iMessageWallpaperVisible\) private var iMessageWallpaperVisible/);
@@ -472,7 +423,8 @@ test('wallpaper-backed Tool and Tool result use composer-like glass and dark lab
   // wallpaper is actually visible. No dark solid fill, gradient or glow.
   assert.match(composer, /\.glassEffect\(\.regular, in: Capsule\(\)\)/);
   assert.match(theme, /static let defaultValue = false/);
-  assert.match(chat, /selectedChatTheme == \.iMessage && wallpaperImage != nil/);
+  const shell = read('Navigation/AppShell.swift');
+  assert.match(shell, /\.environment\(\\\.iMessageWallpaperVisible, isWallpaperChatVisible\)/);
   assert.match(tools, /private struct NativeLiveToolWallpaperGlass: ViewModifier/);
   assert.match(tools, /if enabled \{\s*content\.glassEffect\(\s*\.regular,/);
   assert.match(tools, /else \{\s*content\s*\}/);
@@ -532,89 +484,48 @@ test('iMessage scroll-to-latest stays inside viewport above composer while Origi
 });
 
 
-test('custom wallpaper stays visibly inside navigation chat after keyboard focus or replacement', () => {
-  const chat = read('Chat/ChatView.swift');
+test('single fixed wallpaper is independent of keyboard/composer reflow', () => {
+  const shell = read('Navigation/AppShell.swift');
   const page = read('Navigation/PageContainer.swift');
+  const chat = read('Chat/ChatView.swift');
   const composer = read('Chat/ChatComposer.swift');
-
-  // The visible transcript renderer was accidentally deleted in an earlier
-  // keyboard-gap change, resulting in an entirely white chat.
-  const chatContent = chat.slice(
-    chat.indexOf('    var body: some View {'),
-    chat.indexOf('        .task(id: wallpaperRevision)')
-  );
-  assert.match(chatContent, /ZStack \{\s*\/\/ Keep the wallpaper in the actual visible chat content layer/);
-  assert.match(chatContent, /if selectedChatTheme == \.iMessage, let wallpaperImage/);
-  assert.match(chatContent, /Image\(uiImage: wallpaperImage\)/);
-  assert.match(chatContent, /\.ignoresSafeArea\(\.keyboard, edges: \.bottom\)/);
-  assert.match(chatContent, /Color\(\.systemBackground\)\s*\.ignoresSafeArea\(\)/);
-
-  // The supplementary keyboard-corner backdrop must paint *inside* the
-  // NavigationStack, and not just behind its potentially opaque canvas.
-  const nestedBackground = page.slice(
-    page.indexOf('        NavigationStack {'),
-    page.indexOf('            .navigationTitle(')
-  );
-  assert.match(nestedBackground, /pageContent\s*\/\/ Place the keyboard-safe wallpaper/);
-  assert.match(nestedBackground, /if selectedPage == \.chat,/);
-  assert.match(nestedBackground, /chatThemeRawValue == ChatTheme\.iMessage\.rawValue/);
-  assert.match(nestedBackground, /Image\(uiImage: chatWallpaperImage\)/);
-  assert.match(nestedBackground, /\.ignoresSafeArea\(\.keyboard, edges: \.bottom\)/);
-  assert.match(page, /pageBackground\.ignoresSafeArea\(\)/);
-  const outerBackdrop = page.slice(
-    page.indexOf('        .toolbarBackground(.hidden, for: .navigationBar)'),
-    page.indexOf('        .task(id: wallpaperRevision)')
-  );
-  assert.match(outerBackdrop, /\.background \{\s*if selectedPage == \.chat,/);
-  assert.match(outerBackdrop, /chatThemeRawValue == ChatTheme\.iMessage\.rawValue,/);
-  assert.match(outerBackdrop, /Image\(uiImage: chatWallpaperImage\)/);
-  assert.match(outerBackdrop, /\.ignoresSafeArea\(\.all\)/);
-  assert.match(page, /chatWallpaperImage = IMessageWallpaper\.load\(\)/);
-
-  // Keyboard gap and scroll-to-bottom adjustments are independent of image.
+  const root = shell.slice(shell.indexOf('    var body: some View {'), shell.indexOf('    private var isWallpaperChatVisible:'));
+  assert.match(root, /Group \{/);
+  assert.match(root, /\.background \{\s*if isWallpaperChatVisible, let shellWallpaperImage/);
+  assert.match(root, /Image\(uiImage: shellWallpaperImage\)/);
+  assert.match(root, /\.ignoresSafeArea\(\.all\)/);
+  assert.match(root, /\.environment\(\\\.iMessageWallpaperVisible, isWallpaperChatVisible\)/);
+  assert.match(root, /shellWallpaperImage = IMessageWallpaper\.load\(\)/);
+  assert.match(page, /if !iMessageWallpaperVisible \{\s*pageBackground\.ignoresSafeArea\(\)/);
+  assert.match(chat, /if !iMessageWallpaperVisible \{\s*Color\(\.systemBackground\)/);
+  assert.doesNotMatch(page, /Image\(uiImage:/);
+  assert.doesNotMatch(chat, /Image\(uiImage:/);
   assert.match(chat, /\.padding\(\.bottom, isSystemKeyboardVisible \? 12 : 8\)/);
   assert.match(composer, /HStack\(alignment: \.bottom, spacing: 10\) \{\s*iMessagePlusMenu/);
 });
 
-
-test('iPhone shell paints wallpaper beneath keyboard rounded corners without changing composer avoidance', () => {
+test('shell renders exactly one wallpaper while child pages stay transparent', () => {
   const shell = read('Navigation/AppShell.swift');
-  const chat = read('Chat/ChatView.swift');
   const page = read('Navigation/PageContainer.swift');
+  const chat = read('Chat/ChatView.swift');
   const composer = read('Chat/ChatComposer.swift');
-
-  // The keyboard's rounded corners expose AppShell beneath the clipped
-  // NavigationStack card. No near-white sidebar backdrop there in iMessage.
-  const iphone = shell.slice(
-    shell.indexOf('    private var iPhoneLayout: some View {'),
-    shell.indexOf('    private func sidebarDragGesture(')
-  );
+  const iphone = shell.slice(shell.indexOf('    private var iPhoneLayout: some View {'),shell.indexOf('    private func sidebarDragGesture('));
   assert.match(shell, /@AppStorage\(ChatTheme\.storageKey\) private var chatThemeRawValue/);
   assert.match(shell, /@AppStorage\(IMessageWallpaper\.revisionKey\) private var wallpaperRevision/);
   assert.match(shell, /\.task\(id: wallpaperRevision\) \{\s*shellWallpaperImage = IMessageWallpaper\.load\(\)/);
-  assert.match(iphone, /ZStack\(alignment: \.leading\) \{/);
-  assert.match(iphone, /if selectedPage == \.chat,\s*!menuOpen,\s*sidebarDragTranslation == 0,\s*chatThemeRawValue == ChatTheme\.iMessage\.rawValue,\s*let shellWallpaperImage/);
-  assert.match(iphone, /Image\(uiImage: shellWallpaperImage\)/);
-  assert.match(iphone, /\.scaledToFill\(\)/);
-  assert.match(iphone, /\.ignoresSafeArea\(\.all\)/);
-  assert.match(iphone, /else \{\s*Rectangle\(\)\s*\.fill\(sidebarBackground\)/);
+  assert.match(shell, /isWallpaperChatVisible: Bool \{/);
+  assert.match(shell, /chatThemeRawValue == ChatTheme\.iMessage\.rawValue/);
+  assert.match(shell, /shellWallpaperImage != nil/);
+  assert.match(iphone, /Rectangle\(\)\s*\.fill\(isWallpaperChatVisible \? Color\.clear : sidebarBackground\)/);
   assert.match(iphone, /PageContainer\(/);
   assert.match(iphone, /\.clipShape\(/);
-
-  // The background ignores keyboard; the foreground does not. Preserve the
-  // original chat layout, editing focus, and the already fixed arrow offset.
+  assert.equal((shell.match(/Image\(uiImage: shellWallpaperImage\)/g) ?? []).length, 1);
+  assert.doesNotMatch(page, /Image\(uiImage:|IMessageWallpaper\.load/);
+  assert.doesNotMatch(chat, /Image\(uiImage:|IMessageWallpaper\.load/);
+  assert.match(page, /if !iMessageWallpaperVisible \{\s*pageBackground\.ignoresSafeArea\(\)/);
+  assert.match(chat, /if !iMessageWallpaperVisible \{\s*Color\(\.systemBackground\)/);
   assert.match(chat, /\.padding\(\.bottom, isSystemKeyboardVisible \? 12 : 8\)/);
   assert.match(chat, /\.offset\(y: isSystemKeyboardVisible \? 0 : 10\)/);
-  assert.match(chat, /Image\(uiImage: wallpaperImage\)/);
-  assert.match(page, /pageBackground\.ignoresSafeArea\(\)/);
-  const outerBackdrop = page.slice(
-    page.indexOf('        .toolbarBackground(.hidden, for: .navigationBar)'),
-    page.indexOf('        .task(id: wallpaperRevision)')
-  );
-  assert.match(outerBackdrop, /\.background \{\s*if selectedPage == \.chat,/);
-  assert.match(outerBackdrop, /chatThemeRawValue == ChatTheme\.iMessage\.rawValue,/);
-  assert.match(outerBackdrop, /Image\(uiImage: chatWallpaperImage\)/);
-  assert.match(outerBackdrop, /\.ignoresSafeArea\(\.all\)/);
   assert.match(composer, /\.frame\(width: 42, height: 42\)/);
-  assert.doesNotMatch(iphone, /\.ignoresSafeArea\(\.keyboard\).*PageContainer/);
 });
+
