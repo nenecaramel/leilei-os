@@ -60,3 +60,53 @@ test('autonomous assistant content is not included in the submitted user result'
  const owned=await pending;assert.equal(JSON.stringify(owned.events).includes('background-only'),false);
  assert.equal(JSON.stringify(owned.events).includes('user-only'),true);
 });
+
+// Live output belongs to a turn only once the SDK stamps that turn's input UUID.
+const stamped=(id,text)=>({type:'stream_event',session_id:'s',parent_tool_use_id:null,user_message_uuid:id,user_message_uuids:[id],event:{type:'content_block_delta',index:0,delta:{type:'text_delta',text}}});
+const delta=(text)=>({type:'stream_event',session_id:'s',parent_tool_use_id:null,event:{type:'content_block_delta',index:0,delta:{type:'text_delta',text}}});
+const said=(text)=>({type:'assistant',session_id:'s',parent_tool_use_id:null,message:{content:[{type:'text',text}]}});
+const texts=events=>JSON.stringify(events);
+test('a stamped turn streams normalized events live and returns exactly what it streamed',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const live=[];
+ const pending=f.host.submit('user',{id:'owned',onNormalizedEvent:e=>{live.push(e);}});
+ await f.event(stamped('owned','hel'));await f.event(delta('lo'));await f.event(said('hello'));
+ assert.equal(f.host.ownedInputId(),'owned');
+ await f.event({...result(),user_message_uuid:'owned'});
+ const owned=await pending;
+ assert.ok(live.length>=3);assert.deepEqual(owned.normalizedEvents.map(e=>e.event_id),live.map(e=>e.event_id));
+ assert.ok(texts(live).includes('hel')&&texts(live).includes('hello'));assert.equal(f.host.ownedInputId(),null);
+});
+test('background work before the turn is neither streamed to it nor returned with it',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const live=[];const background=[];
+ f.host.events.on('background-result',frame=>background.push(frame));
+ const pending=f.host.submit('user',{id:'owned',onNormalizedEvent:e=>{live.push(e);}});
+ await f.event(delta('bg'));await f.event(said('background-only'));assert.equal(f.host.ownedInputId(),null);
+ await f.event({...result(),user_message_uuid:'other'});
+ assert.equal(live.length,0);assert.ok(texts(background[0].normalizedEvents).includes('background-only'));
+ await f.event(stamped('owned','mine'));await f.event({...result(),user_message_uuid:'owned'});
+ const owned=await pending;assert.ok(texts(live).includes('mine'));assert.equal(texts(owned.normalizedEvents).includes('background-only'),false);
+});
+test('a background turn that folds the queued input streams only from the fold onward',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const live=[];
+ const pending=f.host.submit('user',{id:'owned',onNormalizedEvent:e=>{live.push(e);}});
+ await f.event(said('before-fold'));await f.event(stamped('owned','after-fold'));
+ await f.event({...result(),user_message_uuid:'owned',user_message_uuids:['owned']});
+ const owned=await pending;assert.equal(texts(live).includes('before-fold'),false);assert.ok(texts(live).includes('after-fold'));
+ assert.equal(texts(owned.normalizedEvents).includes('before-fold'),false);
+});
+test('tool images are forwarded only for the owning turn',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const images=[];
+ const image=(id)=>({type:'user',session_id:'s',parent_tool_use_id:null,message:{content:[{type:'tool_result',tool_use_id:id,content:[{type:'image',source:{type:'base64',media_type:'image/png',data:'aGk='}}]}]}});
+ const pending=f.host.submit('user',{id:'owned',toolImageHandler:async input=>{images.push(input.mimeType);}});
+ await f.event(said('background'));await f.event(image('bg'));await f.event({...result(),user_message_uuid:'other'});
+ assert.equal(images.length,0);
+ await f.event(stamped('owned','x'));await f.event(image('mine'));await f.event({...result(),user_message_uuid:'owned'});
+ await pending;assert.deepEqual(images,['image/png']);
+});
+test('an unstamped frame that the result assigns to the turn is returned whole, not streamed early',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const live=[];
+ const pending=f.host.submit('user',{id:'owned',onNormalizedEvent:e=>{live.push(e);}});
+ await f.event(said('older-producer'));await f.event({...result(),user_message_uuid:'owned'});
+ const owned=await pending;assert.equal(live.length,0);assert.ok(texts(owned.normalizedEvents).includes('older-producer'));
+ assert.equal(owned.normalizedEvents.filter(e=>e.payload?.kind==='result'||e.type==='result').length<=1,true);
+});

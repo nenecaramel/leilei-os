@@ -139,7 +139,7 @@ test("stale server admission rejects the next input without executing it", async
 
 test("unsupported fork, attachments and wrong conversation cannot enter the persistent query", async t => {
   const f = await fixture(t);
-  for (const c of [{ ...command(2), runtime_mode: "fork" as const }, { ...command(1), output_attachments_enabled: true }]) await assert.rejects(f.run(c), /unsupported|not support/i);
+  for (const c of [{ ...command(2), runtime_mode: "fork" as const }, { ...command(1), attachments: [{ attachment_id: id(300), kind: "image", mime_type: "image/png", filename: "a.png", size_bytes: 1, sha256: "0".repeat(64) }] } as NativeLiveRuntimeCommand]) await assert.rejects(f.run(c), /unsupported|not support/i);
   assert.equal(f.launches, 0);
   const one = f.run(command(1)); f.finish((await f.inputs.next()).value!.uuid); await one;
   await assert.rejects(f.run({ ...command(2), conversation_id: id(999) }), /conversation/i);
@@ -231,4 +231,19 @@ test("missing committed checkpoint cannot release the next reservation", async t
   const f = await fixture(t), running = f.run(command(1), { async onResult() { return { status: "applied", providerCheckpointId: "invalid" }; } });
   const rejected = assert.rejects(running, /committed provider checkpoint/); f.finish((await f.inputs.next()).value!.uuid); await rejected;
   await assert.rejects(f.run(command(2)), /retired|closed/); assert.equal(f.closes, 1);
+});
+
+test("each turn streams its own live output and returns the normalized events it owns", async t => {
+  const f = await fixture(t);
+  const live: string[][] = [[], []];
+  for (const [index, n] of [1, 2].entries()) {
+    const running = f.run({ ...command(n), output_attachments_enabled: true }, { onNormalizedEvent: (event: { event_id: string }) => { live[index]!.push(event.event_id); } });
+    const input = (await f.inputs.next()).value!;
+    f.output.push({ type: "assistant", session_id: sid, uuid: id(110 + n), parent_tool_use_id: null, user_message_uuid: input.uuid, user_message_uuids: [input.uuid], message: { role: "assistant", content: [{ type: "text", text: `turn-${n}` }] } });
+    f.finish(input.uuid);
+    const result = await running;
+    assert.ok(live[index]!.length > 0);
+    assert.deepEqual(result.normalizedEvents.map(event => event.event_id), live[index]);
+  }
+  assert.equal(new Set([...live[0]!, ...live[1]!]).size, live[0]!.length + live[1]!.length, "no event is delivered to two turns");
 });

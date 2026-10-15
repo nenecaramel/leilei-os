@@ -19,6 +19,13 @@ export type NativeLiveMacSessionResult = {
   inputId: string;
   result: Record<string, unknown>;
   events: Record<string, unknown>[];
+  /** Normalized output this turn owns (SDK-stamped), as streamed live. */
+  normalizedEvents: NativeLiveNormalizedEvent[];
+};
+export type NativeLiveMacPersistentTurnOutput = {
+  onNormalizedEvent?: NativeLiveMacInteractiveTurnOptions["onNormalizedEvent"];
+  toolImageHandler?: NativeLiveMacInteractiveTurnOptions["toolImageHandler"];
+  sendFileHandler?: NativeLiveMacInteractiveTurnOptions["sendFileHandler"];
 };
 export type NativeLiveMacPersistentSession = {
   readonly state: string;
@@ -26,7 +33,7 @@ export type NativeLiveMacPersistentSession = {
   readonly tasks: ReadonlyMap<string, Record<string, unknown>>;
   events: Pick<EventEmitter, "on" | "off" | "once">;
   completion: Promise<void>;
-  submit(text: string, options?: { id?: string; source?: NativeLiveMacSessionSource }): Promise<NativeLiveMacSessionResult>;
+  submit(text: string, options?: { id?: string; source?: NativeLiveMacSessionSource } & NativeLiveMacPersistentTurnOutput): Promise<NativeLiveMacSessionResult>;
   interruptTurn(): Promise<{ still_queued: string[] } | null>;
   stopTask(id: string): Promise<void>;
   close(): Promise<void>;
@@ -40,7 +47,7 @@ export type NativeLiveMacSessionRestore = Readonly<{
 }>;
 export type NativeLiveMacPersistentSessionOptions = {
   authorize(context: { phase: "input" | "tool"; inputId: string | null; source: NativeLiveMacSessionSource | null; providerSessionId: string | null }): Promise<boolean>;
-  onBackgroundResult(frame: { result: Record<string, unknown>; events: Record<string, unknown>[] }): Promise<void>;
+  onBackgroundResult(frame: { result: Record<string, unknown>; events: Record<string, unknown>[]; normalizedEvents: NativeLiveNormalizedEvent[] }): Promise<void>;
   execution?: NativeLiveExecutionSelection | null;
   perTaskStopAffordance?: boolean;
   permissionHandler?: NativeLiveMacInteractiveTurnOptions["permissionHandler"];

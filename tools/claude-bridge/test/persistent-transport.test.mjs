@@ -157,3 +157,21 @@ test('retirement between nested authorization and outer tool continuation cannot
  const verdict=await f.options.canUseTool('Write',{},{});await closing;await rejected;
  assert.equal(verdict.behavior,'deny');
 });
+
+test('send_file reaches only the turn that owns the live reply, never background work',async t=>{
+ const output=queue();let options,serverHandler;
+ const queryImpl=({prompt,options:opts})=>{options=opts;(async()=>{let init=false;for await(const input of prompt){if(!init){init=true;output.push({type:'system',subtype:'init',session_id:'s'});}}})();return {close(){output.end();},async interrupt(){return {still_queued:[]};},async stopTask(){},async *[Symbol.asyncIterator](){yield* output;}};};
+ const transport=new AgentSdkClaudeTransport({environment:{},cwd:'/synthetic',toolPermissionPolicy:'auto_allow',queryImpl,createSendFileMcpServerImpl:async handler=>{serverHandler=handler;return {type:'sdk',name:'leileios_local'};}});
+ const host=await transport.openPersistentSession({authorize:async()=>true,onBackgroundResult:async()=>{}});t.after(()=>host.close());
+ assert.ok(options.mcpServers.leileios_local,'one session-level send_file server');
+ const sent=[];const pending=host.submit('user',{id:'owned',sendFileHandler:async input=>{sent.push(input.path);return {attachmentId:'a'};}});
+ await new Promise(r=>setTimeout(r,0));
+ const send=()=>serverHandler({path:'/synthetic/file.txt',displayName:null});
+ const step=value=>new Promise(resolve=>{host.events.once('event',resolve);output.push(value);});
+ await step({type:'assistant',session_id:'s',parent_tool_use_id:null,message:{content:[{type:'text',text:'background'}]}});
+ await assert.rejects(send(),/send_file/i);
+ await step({type:'assistant',session_id:'s',parent_tool_use_id:null,user_message_uuid:'owned',user_message_uuids:['owned'],message:{content:[{type:'text',text:'mine'}]}});
+ assert.deepEqual(await send(),{attachmentId:'a'});assert.deepEqual(sent,['/synthetic/file.txt']);
+ await step({type:'result',subtype:'success',session_id:'s',result:'done',user_message_uuid:'owned'});await pending;
+ await assert.rejects(send(),/send_file/i);
+});

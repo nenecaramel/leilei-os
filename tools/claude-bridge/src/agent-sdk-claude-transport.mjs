@@ -547,6 +547,17 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         permissionHandler: permissionHandler ?? (async () => ({ decision: "deny", message: "No permission handler is configured.", interrupt: false })),
       });
       const question = questionHandler ? createAgentSdkQuestionCallback({ questionHandler, events: this.events }) : null;
+      // One send_file server for the whole session; each call goes to the turn
+      // that owns the live reply (SDK-stamped), never to background work.
+      const sendFiles = new Map();
+      const sendFileServer = await this.createSendFileMcpServerImpl(async input => {
+        const id = host?.ownedInputId?.() ?? null;
+        const handler = id === null ? null : sendFiles.get(id);
+        if (!handler) throw new Error("send_file is only available to the turn that owns the current reply.");
+        assertLive("tool");
+        return handler(input);
+      });
+      if (this.activeSessionHost !== claim || claim.cancelled) throw runtimeError("Persistent session startup was aborted.", { runtimeCode: "ABORTED" });
       host = await createAgentSdkSessionHost({ queryImpl,
         expectedSessionId: restore?.sessionId ?? null,
         observeOutput: startup ? message => observeNativeSessionStartup(startup, message) : null,
@@ -563,7 +574,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           ...normalizeAgentSdkExecutionSelection(execution),
           ...(this.chromeEnabled ? { extraArgs: { chrome: null } } : {}),
           ...(this.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
-          ...leileiosMcpQueryOptions(this.mcpServerConfig),
+          ...leileiosMcpQueryOptions(this.mcpServerConfig, sendFileServer),
           ...(this.sessionStore ? { sessionStore: this.sessionStore } : {}),
           ...(restore ? { resume: restore.sessionId, resumeSessionAt: restore.checkpointId,
             settings: { ...(this.artifactEnabled ? { enableArtifact: true } : {}), hooks: { SessionStart: [{ hooks: [{
@@ -601,6 +612,15 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         },
       });
       this.activeSessionHost = host;
+      const submit = host.submit.bind(host);
+      host.submit = (text, { sendFileHandler = null, ...turn } = {}) => {
+        if (sendFileHandler !== null && typeof sendFileHandler !== "function") return Promise.reject(new Error("Invalid turn output handler."));
+        const id = turn.id ?? randomUUID();
+        if (sendFileHandler && !sendFiles.has(id)) sendFiles.set(id, sendFileHandler);
+        const completion = submit(text, { ...turn, id });
+        completion.then(() => sendFiles.delete(id), () => sendFiles.delete(id));
+        return completion;
+      };
       const release = () => { if (this.activeSessionHost === host && host.queryClosed) this.activeSessionHost = null; };
       const close = host.close.bind(host);
       host.close = async () => { rejectStartup?.(new Error("Native session startup was closed.")); await close(); release(); };
