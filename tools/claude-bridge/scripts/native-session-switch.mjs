@@ -22,7 +22,7 @@ else valid &&= flags.has('--session-id')
   : flags.has('--desktop-index') && flags.has('--project-dir') && !flags.has('--desktop-dir');
 const light = ['--light-desktop', '--light-leileios'].includes(args[0]);
 if (!valid || (['--desktop', '--desktop-manual'].includes(args[0]) && !flags.has('--session-id')) ||
-    (light && (!flags.has('--session-id') || !flags.has('--conversation-id')))) {
+    (light && (!flags.has('--session-id') || (args[0] === '--light-desktop' && !flags.has('--conversation-id'))))) {
   console.error('Usage: native-session-switch.mjs --list|--check|--restore|--desktop|--desktop-manual [--session-id UUID] [--config-dir DIRECTORY] [--desktop-dir DIRECTORY] [--conversation-id UUID]; explicit --desktop-index FILE --project-dir DIRECTORY remains supported for check/restore');
   process.exitCode = 1;
 } else {

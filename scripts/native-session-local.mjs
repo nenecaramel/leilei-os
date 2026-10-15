@@ -45,7 +45,7 @@ export function runLocalSwitch(args, { execute = execFileSync, environment = pro
   const [mode, id, explicitConversationId] = args;
   const light = mode === 'desktop-light' || mode === 'leileios-light';
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!Object.hasOwn(modes, mode) || (mode === 'list' ? args.length !== 1 : !uuid.test(id) || (light ? args.length !== 3 || !uuid.test(explicitConversationId) : args.length !== 2))) {
+  if (!Object.hasOwn(modes, mode) || (mode === 'list' ? args.length !== 1 : !uuid.test(id) || (light ? (mode === 'desktop-light' ? args.length !== 3 || !uuid.test(explicitConversationId) : !(args.length === 2 || args.length === 3 && uuid.test(explicitConversationId))) : args.length !== 2))) {
     throw new Error('Usage: native-session-local.mjs list | desktop|leileios SESSION_ID | desktop-light|leileios-light SESSION_ID CONVERSATION_ID');
   }
   if (conversationId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(conversationId)) throw new Error('INVALID_CONVERSATION_ID');
