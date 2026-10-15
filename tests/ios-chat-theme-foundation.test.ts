@@ -93,7 +93,7 @@ test('iMessage uses a native safe-area inset with no opaque system bottom bar', 
   const chat = read('Chat/ChatView.swift');
   const composer = read('Chat/ChatComposer.swift');
   const placement = chat.slice(
-    chat.indexOf('        .safeAreaInset(edge: .bottom, spacing: 0) {'),
+    chat.indexOf('        .safeAreaInset(edge: .bottom, spacing: selectedChatTheme == .iMessage ? 0 : nil) {'),
     chat.indexOf('        // The wallpaper belongs behind')
   );
   const wallpaperBackdrop = chat.slice(
@@ -108,7 +108,7 @@ test('iMessage uses a native safe-area inset with no opaque system bottom bar', 
   assert.match(placement, /ChatPresentationLayout\.composerOuterTop/);
   assert.match(placement, /ChatPresentationLayout\.composerOuterBottom/);
   assert.match(placement, /ChatPresentationLayout\.composerHiddenKeyboardPaintOffset/);
-  assert.match(placement, /\.safeAreaInset\(edge: \.bottom, spacing: 0\)/);
+  assert.match(placement, /\.safeAreaInset\(edge: \.bottom, spacing: selectedChatTheme == \.iMessage \? 0 : nil\)/);
   assert.match(placement, /chatComposer\s*\.frame\(maxWidth: \.infinity\)\s*\.padding\(\.horizontal, 20\)\s*\.padding\(\.top, 8\)\s*\.padding\(\.bottom, isSystemKeyboardVisible \? 12 : 8\)\s*\.offset\(y: isSystemKeyboardVisible \? 0 : 10\)/);
   assert.match(wallpaperBackdrop, /\.background \{\s*if selectedChatTheme == \.iMessage, let wallpaperImage/);
   assert.match(wallpaperBackdrop, /\.ignoresSafeArea\(\.container\)/);
@@ -116,7 +116,7 @@ test('iMessage uses a native safe-area inset with no opaque system bottom bar', 
   assert.match(wallpaperBackdrop, /Color\(\.systemBackground\)\s*\.ignoresSafeArea\(\)/);
   assert.ok(
     chat.indexOf('        .background {\n            if selectedChatTheme == .iMessage, let wallpaperImage') >
-    chat.indexOf('        .safeAreaInset(edge: .bottom, spacing: 0) {'),
+    chat.indexOf('        .safeAreaInset(edge: .bottom, spacing: selectedChatTheme == .iMessage ? 0 : nil) {'),
     'wallpaper belongs behind the entire composer inset'
   );
   assert.doesNotMatch(placement, /safeAreaBar|ToolbarItem|\.background\(|\.regularMaterial/);
