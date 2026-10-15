@@ -4,6 +4,9 @@ import { access, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile }
 import path from 'node:path';
 import { readNativeSession } from './native-session-catalog.mjs';
 import { readNativeHistorySources, scanNativeSessionIndex } from './native-session-source-files.mjs';
+// Planning is offline and must read every Rewind copy that carries a needed
+// record (each a full ~12 MB transcript), so it takes a larger explicit bound.
+const OFFLINE_SOURCE_LIMITS = { maxSourceFiles: 4096, maxSourceBytes: 2 * 1024 * 1024 * 1024 };
 import { nativeDisplayChain, projectNativeHistory } from './native-session-history.mjs';
 const fail = code => Object.assign(new Error(code), { code });
 const sessionPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -42,7 +45,7 @@ export async function planNativeTranscriptArchive({ projectDirectory, windows = 
     try { nativeDisplayChain(root, checkpoint); }
     catch (error) {
       if (!['COMPACT_SOURCE_HISTORY_REQUIRED', 'NATIVE_HISTORY_GAP'].includes(error.code)) return { error: error.code ?? 'UNKNOWN' };
-      sources = await readNativeHistorySources(projectDirectory, id, root, { index, allow });
+      sources = await readNativeHistorySources(projectDirectory, id, root, { index, allow, ...OFFLINE_SOURCE_LIMITS });
     }
     try {
       const options = { sourceSnapshots: sources };
@@ -61,7 +64,7 @@ export async function planNativeTranscriptArchive({ projectDirectory, windows = 
       targets.set(id, { full, kept });
       if (full.error) {
         // Cannot read it (e.g. a turn in progress): keep every possible source.
-        for (const source of full.error === 'NO_CHECKPOINT' ? [] : (await readNativeHistorySources(projectDirectory, id, await snapshot(id), { index })).map(s => s.sessionId)) {
+        for (const source of full.error === 'NO_CHECKPOINT' ? [] : (await readNativeHistorySources(projectDirectory, id, await snapshot(id), { index, ...OFFLINE_SOURCE_LIMITS })).map(s => s.sessionId)) {
           if (!keep.has(source)) { add(source, `source-of-unreadable:${id}`); changed = true; }
         }
         continue;
