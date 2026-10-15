@@ -237,3 +237,22 @@ export const nativeLiveProviderSessionCleanups = pgTable(
     ),
   ],
 );
+
+// Store large, immutable native-history image/document carriers once per user.
+// Session-specific ordering remains in native_live_provider_session_entries.
+export const nativeLiveDisplayAssetPayloads = pgTable(
+  "native_live_display_asset_payloads",
+  {
+    userId: uuid("user_id").notNull().references(() => users.id, {
+      onDelete: "cascade", onUpdate: "cascade",
+    }),
+    contentHash: varchar("content_hash", { length: 64 }).notNull(),
+    entry: jsonb("entry").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  table => [
+    primaryKey({ columns: [table.userId, table.contentHash], name: "native_live_display_asset_payloads_pk" }),
+    check("native_live_display_asset_payloads_hash_format", sql`${table.contentHash} ~ '^[0-9a-f]{64}$'`),
+    check("native_live_display_asset_payloads_entry_object", sql`jsonb_typeof(${table.entry}) = 'object'`),
+  ],
+);

@@ -9,6 +9,8 @@ type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 const MAX_SESSION_STORE_ENTRY_BYTES = 24_000_000;
 const MAX_SESSION_STORE_APPEND_BYTES = 28_000_000;
+const DISPLAY_ASSET_SUBPATH = /^native-history-assets\/[a-f0-9]{64}$/u;
+const DISPLAY_ASSET_REFERENCE_TYPE = "native_display_asset_ref_v1";
 
 export type NativeLiveProviderSessionStoreKey = {
   sessionId: string;
@@ -57,19 +59,50 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
     if (input.entries.length === 0) return;
     await this.db.transaction(async transaction => {
       await transaction.execute(sql`SELECT ${providerSessionOwnershipLock({ providerSessionId: input.key.sessionId, wait: true })}`);
+      if (DISPLAY_ASSET_SUBPATH.test(input.key.subpath ?? "")) {
+        // Source JSONB is content-addressed once per user. Each SDK session keeps
+        // its own ordered, idempotent receipts but no longer copies base64 bytes.
+        // The bytes and the reference rows commit atomically.
+        if (input.entries.some(entry => entry.type === DISPLAY_ASSET_REFERENCE_TYPE)) {
+          throw new NativeLiveProviderSessionStoreError("INVALID_ENTRY", "A native display asset reference cannot be appended as source.");
+        }
+        const contents = JSON.stringify(input.entries);
+        await transaction.execute(sql`
+          INSERT INTO native_live_display_asset_payloads (user_id, content_hash, entry)
+          SELECT ${input.userId}::uuid,
+            encode(sha256(convert_to(item.entry::text, 'UTF8')), 'hex'), item.entry
+          FROM jsonb_array_elements(${contents}::jsonb) AS item(entry)
+          ON CONFLICT (user_id, content_hash) DO NOTHING
+        `);
+        await transaction.execute(sql`
+          INSERT INTO native_live_provider_session_entries
+            (user_id, provider_session_id, subpath, append_batch_id, append_ordinal, entry)
+          SELECT ${input.userId}::uuid, ${input.key.sessionId},
+            ${input.key.subpath ?? ""}, ${input.appendBatchId}::uuid,
+            (item.position - 1)::int,
+            jsonb_build_object(
+              'type', ${DISPLAY_ASSET_REFERENCE_TYPE},
+              'hash', encode(sha256(convert_to(item.entry::text, 'UTF8')), 'hex')
+            )
+          FROM jsonb_array_elements(${contents}::jsonb)
+            WITH ORDINALITY AS item(entry, position)
+          ON CONFLICT DO NOTHING
+        `);
+        return;
+      }
       await transaction
-      .insert(nativeLiveProviderSessionEntries)
-      .values(
-        input.entries.map((entry, appendOrdinal) => ({
-          userId: input.userId,
-          providerSessionId: input.key.sessionId,
-          subpath: input.key.subpath ?? "",
-          appendBatchId: input.appendBatchId,
-          appendOrdinal,
-          entry,
-        })),
-      )
-      .onConflictDoNothing();
+        .insert(nativeLiveProviderSessionEntries)
+        .values(
+          input.entries.map((entry, appendOrdinal) => ({
+            userId: input.userId,
+            providerSessionId: input.key.sessionId,
+            subpath: input.key.subpath ?? "",
+            appendBatchId: input.appendBatchId,
+            appendOrdinal,
+            entry,
+          })),
+        )
+        .onConflictDoNothing();
     });
   }
 
@@ -125,9 +158,28 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
     userId: string;
     key: NativeLiveProviderSessionStoreKey;
   }): Promise<NativeLiveProviderSessionStoreEntry[] | null> {
-    const rows = await this.db.execute<{
-      entry: NativeLiveProviderSessionStoreEntry;
-    }>(sql`
+    if (DISPLAY_ASSET_SUBPATH.test(input.key.subpath ?? "")) {
+      const rows = await this.db.execute<{ entry: NativeLiveProviderSessionStoreEntry | null }>(sql`
+        SELECT CASE WHEN e.entry->>'type' = ${DISPLAY_ASSET_REFERENCE_TYPE}
+          THEN payload.entry ELSE e.entry END AS entry
+        FROM native_live_provider_session_entries AS e
+        LEFT JOIN native_live_display_asset_payloads AS payload
+          ON payload.user_id = e.user_id
+          AND payload.content_hash = e.entry->>'hash'
+          AND e.entry->>'type' = ${DISPLAY_ASSET_REFERENCE_TYPE}
+        WHERE e.user_id = ${input.userId}::uuid
+          AND e.provider_session_id = ${input.key.sessionId}
+          AND e.subpath = ${input.key.subpath ?? ""}
+        ORDER BY e.id ASC
+      `);
+      // A broken reference is never silently dropped or treated as a valid
+      // shorter snapshot. Preserve fail-closed restore semantics.
+      if (rows.some(row => row.entry === null)) {
+        throw new NativeLiveProviderSessionStoreError("NATIVE_SESSION_RECOVERY_REQUIRED", "Native display asset payload is missing.");
+      }
+      return rows.length > 0 ? rows.map(row => row.entry!) : null;
+    }
+    const rows = await this.db.execute<{ entry: NativeLiveProviderSessionStoreEntry }>(sql`
       SELECT entry
       FROM native_live_provider_session_entries
       WHERE user_id = ${input.userId}::uuid
@@ -135,9 +187,7 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
         AND subpath = ${input.key.subpath ?? ""}
       ORDER BY id ASC
     `);
-    return rows.length > 0
-      ? rows.map((row) => row.entry)
-      : null;
+    return rows.length > 0 ? rows.map(row => row.entry) : null;
   }
 
   async listSessions(input: {

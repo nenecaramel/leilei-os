@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   nativeLiveProviderSessionEntries,
@@ -301,4 +301,43 @@ test("Mac restart after committed append with lost response leaves the real remo
   await markerRestart.append(markerKey, marker);
   assert.deepEqual(await service.load({ userId: user.id, key: { sessionId: markerKey.sessionId } }), [...marker, ...marker]);
 
+});
+
+test("native display asset bytes are shared across sessions while session receipts retain their order", { skip: !enabled }, async (t) => {
+  const database = createDatabase(process.env.DATABASE_URL!, { ssl: false });
+  const [user] = await database.db.insert(users).values({
+    email: `asset-dedup-${crypto.randomUUID()}@example.com`,
+    displayName: "Asset Dedup",
+  }).returning({ id: users.id });
+  t.after(async () => {
+    await database.db.delete(nativeLiveProviderSessionEntries).where(eq(nativeLiveProviderSessionEntries.userId, user.id));
+    await database.db.execute(sql`DELETE FROM native_live_display_asset_payloads WHERE user_id = ${user.id}::uuid`);
+    await database.db.delete(users).where(eq(users.id, user.id));
+    await database.close();
+  });
+  const service = new NativeLiveProviderSessionStoreService(
+    new DrizzleNativeLiveProviderSessionStoreRepository(database.db),
+  );
+  const revision = "a".repeat(64);
+  const entry = { type: "user", uuid: crypto.randomUUID(), message: { content: [
+    { type: "image", source: { type: "base64", media_type: "image/png", data: Buffer.alloc(250_000, 7).toString("base64") } },
+  ] } };
+  const sessions = [crypto.randomUUID(), crypto.randomUUID()];
+  for (const sessionId of sessions) {
+    const key = { sessionId, subpath: `native-history-assets/${revision}` };
+    const appendBatchId = crypto.randomUUID();
+    await service.append({ userId: user.id, key, appendBatchId, entries: [entry] });
+    await service.append({ userId: user.id, key, appendBatchId, entries: [entry] });
+    assert.deepEqual(await service.load({ userId: user.id, key }), [entry]);
+  }
+  const [payload] = await database.db.execute<{ count: string }>(sql`
+    SELECT count(*)::text AS count FROM native_live_display_asset_payloads WHERE user_id = ${user.id}::uuid
+  `);
+  const [references] = await database.db.execute<{ count: string; small: boolean }>(sql`
+    SELECT count(*)::text AS count, bool_and(pg_column_size(entry) < 200) AS small
+    FROM native_live_provider_session_entries WHERE user_id = ${user.id}::uuid
+  `);
+  assert.equal(Number(payload?.count), 1, "the second session must reuse the payload bytes");
+  assert.equal(Number(references?.count), 2, "session receipts remain independent and idempotent");
+  assert.equal(references?.small, true, "per-session entries contain only small references");
 });
