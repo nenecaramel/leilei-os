@@ -255,7 +255,8 @@ struct ChatComposer: View {
             }
             .padding(.vertical, 8)
         }
-        .frame(width: 266, maxHeight: 510)
+        .frame(width: 266)
+        .frame(maxHeight: 510)
         .accessibilityIdentifier("imessage-model-options")
     }
 
