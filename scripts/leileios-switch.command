@@ -2,13 +2,19 @@
 set -eu
 mode="${1:-}"
 case "$mode" in
-  desktop|leileios|list) ;;
-  *) echo '用法：bash ~/Documents/Codex/leileios-switch.command desktop|leileios|list [session-id]' >&2; exit 1 ;;
+  desktop|leileios|list)
+    if [ "$#" -gt 2 ]; then echo '最多指定一个 session-id' >&2; exit 1; fi ;;
+  desktop-light)
+    if [ "$#" -ne 3 ]; then echo '用法：desktop-light SESSION_ID CONVERSATION_ID' >&2; exit 1; fi ;;
+  leileios-light)
+    if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then echo '用法：leileios-light SESSION_ID [CONVERSATION_ID]' >&2; exit 1; fi ;;
+  *) echo '用法：desktop|leileios|list|desktop-light|leileios-light' >&2; exit 1 ;;
 esac
-if [ "$#" -gt 2 ]; then echo '最多指定一个 session-id' >&2; exit 1; fi
 for repo in "$HOME/Developer/leilei-os-main"; do
   if [ -f "$repo/scripts/native-session-pick.mjs" ]; then
-    if [ "$mode" = list ]; then
+    if [ "$mode" = desktop-light ] || [ "$mode" = leileios-light ]; then
+      exec /opt/homebrew/opt/node@22/bin/node "$repo/scripts/native-session-local.mjs" "$@"
+    elif [ "$mode" = list ]; then
       exec /opt/homebrew/opt/node@22/bin/node "$repo/scripts/native-session-local.mjs" list
     elif [ "$#" -eq 2 ]; then
       exec /opt/homebrew/opt/node@22/bin/node "$repo/scripts/native-session-local.mjs" "$mode" "$2"
