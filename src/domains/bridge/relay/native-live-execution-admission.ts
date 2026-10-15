@@ -57,6 +57,13 @@ export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "exec
         AND (
           (p.runtime_mode = 'new' AND p.operation = 'send' AND u.parent_message_id IS NULL
             AND p.parent_provider_session_id IS NULL AND p.parent_provider_checkpoint_id IS NULL)
+          OR (p.runtime_mode = 'resume' AND p.operation = 'send'
+            AND u.parent_message_id IS NULL
+            AND p.parent_provider_session_id = c.provider_metadata->'nativeSessionSource'->>'sessionId'
+            AND p.parent_provider_checkpoint_id = c.provider_metadata->'nativeSessionSource'->>'checkpointId'
+            AND p.expected_working_directory = c.provider_metadata->'nativeSessionSource'->>'effectiveWorkingDirectory'
+            AND c.provider_metadata->'nativeSessionSource'->>'handoffMode' = 'native_checkpoint_only'
+            AND c.provider_metadata->'nativeSessionSource'->>'owner' = 'leileios')
           OR (p.runtime_mode = 'resume' AND p.parent_provider_checkpoint_id IS NOT NULL
             AND EXISTS (
               SELECT 1 FROM conversation_provider_session_checkpoints cp
