@@ -1,15 +1,28 @@
 import SwiftUI
 import UIKit
 
-// Keep the full-screen keyboard underlay intact when the sidebar is closed.
-// Only the revealed/sliding chat card needs matching rounded wallpaper edges.
-private struct ChatWallpaperRevealClip: ViewModifier {
-    let enabled: Bool
-    let cornerRadius: CGFloat
+// Wallpaper and navigation content form ONE sliding card. The clip follows
+// the animation's actual visual offset, not menuOpen (which flips before the
+// closing animation finishes and used to uncover wallpaper over the sidebar).
+// When at rest, leave wallpaper unmasked to cover the keyboard safe area.
+private struct ChatCardRevealClip: ViewModifier, Animatable {
+    var visualOffset: CGFloat
+    var cornerRadius: CGFloat
+    let preservesWallpaperAtRest: Bool
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(visualOffset, cornerRadius) }
+        set {
+            visualOffset = newValue.first
+            cornerRadius = newValue.second
+        }
+    }
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if enabled {
+        if preservesWallpaperAtRest && abs(visualOffset) < 0.5 {
+            content
+        } else {
             content.clipShape(
                 UnevenRoundedRectangle(
                     topLeadingRadius: cornerRadius,
@@ -19,8 +32,6 @@ private struct ChatWallpaperRevealClip: ViewModifier {
                     style: .continuous
                 )
             )
-        } else {
-            content
         }
     }
 }
@@ -202,20 +213,8 @@ struct AppShell: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .safeAreaPadding()
 
-                // The one fixed wallpaper stays between sidebar and chat.
-                // Move and clip it with the chat card when the sidebar opens;
-                // do not disable it or switch the card back to white.
-                if isWallpaperChatVisible {
-                    // At rest, leave the all-safe-area wallpaper unmasked.
-                    // Even a zero-radius clip can expose the sidebar's
-                    // light base near the keyboard's rounded top corners.
-                    rootWallpaperBackdrop
-                        .modifier(ChatWallpaperRevealClip(
-                            enabled: menuOpen || sidebarDragTranslation != 0,
-                            cornerRadius: cardCornerRadius
-                        ))
-                        .offset(x: pageHorizontalOffset)
-                }
+                // The wallpaper is attached to PageContainer below; it must
+                // never travel or clip as an independent sidebar sibling.
 
                 PageContainer(
                     selectedPage: selectedPage,
@@ -258,15 +257,19 @@ struct AppShell: View {
                     }
                 )
                 .frame(width: proxy.size.width, height: proxy.size.height)
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: cardCornerRadius,
-                        bottomLeadingRadius: cardCornerRadius,
-                        bottomTrailingRadius: cardCornerRadius,
-                        topTrailingRadius: cardCornerRadius,
-                        style: .continuous
-                    )
-                )
+                // Background and conversation share their frame, mask and
+                // horizontal movement as one composited card. No duplicate
+                // wallpaper; the image still reaches the keyboard safe area.
+                .background {
+                    if isWallpaperChatVisible {
+                        rootWallpaperBackdrop
+                    }
+                }
+                .modifier(ChatCardRevealClip(
+                    visualOffset: pageHorizontalOffset,
+                    cornerRadius: cardCornerRadius,
+                    preservesWallpaperAtRest: isWallpaperChatVisible
+                ))
                 .shadow(
                     color: .black.opacity(menuOpen ? 0.08 : 0),
                     radius: 12,

@@ -520,19 +520,19 @@ test('shell renders exactly one wallpaper while child pages stay transparent', (
   assert.match(shell, /shellWallpaperImage != nil/);
   assert.match(iphone, /ZStack\(alignment: \.leading\) \{\s*\/\/ The sidebar stays painted behind the chat/);
   assert.match(iphone, /Rectangle\(\)\s*\.fill\(sidebarBackground\)\s*\.ignoresSafeArea\(\)/);
-  assert.match(iphone, /if isWallpaperChatVisible \{\s*rootWallpaperBackdrop\s*\.modifier\(ChatWallpaperRevealClip\(/);
-  assert.match(iphone, /rootWallpaperBackdrop[\s\S]*?\.offset\(x: pageHorizontalOffset\)/);
+  assert.match(iphone, /\.frame\(width: proxy\.size\.width, height: proxy\.size\.height\)\s*\/\/ Background and conversation[\s\S]*?\.background \{\s*if isWallpaperChatVisible \{\s*rootWallpaperBackdrop\s*\}\s*\}\s*\.modifier\(ChatCardRevealClip\(/);
   const sidebarIndex = iphone.indexOf('                SidebarView(');
-  const wallpaperIndex = iphone.indexOf('                    rootWallpaperBackdrop', sidebarIndex);
-  const pageIndex = iphone.indexOf('                PageContainer(', wallpaperIndex);
+  const pageIndex = iphone.indexOf('                PageContainer(', sidebarIndex);
+  const backgroundIndex = iphone.indexOf('                .background {', pageIndex);
+  const maskIndex = iphone.indexOf('                .modifier(ChatCardRevealClip(', backgroundIndex);
   assert.ok(
-    sidebarIndex >= 0 && wallpaperIndex > sidebarIndex && pageIndex > wallpaperIndex,
-    'iPhone wallpaper must paint after sidebar text and before transparent chat'
+    sidebarIndex >= 0 && pageIndex > sidebarIndex && backgroundIndex > pageIndex && maskIndex > backgroundIndex,
+    'iPhone wallpaper must be the background of the same moving/clipped chat card'
   );
   assert.equal((iphone.match(/rootWallpaperBackdrop/g) ?? []).length, 1);
-  assert.doesNotMatch(iphone.slice(0, sidebarIndex), /rootWallpaperBackdrop/);
+  assert.doesNotMatch(iphone.slice(0, pageIndex), /rootWallpaperBackdrop\s*\.modifier/);
   assert.match(iphone, /PageContainer\(/);
-  assert.match(iphone, /\.clipShape\(/);
+  assert.match(shell, /private struct ChatCardRevealClip: ViewModifier, Animatable/);
   assert.equal((shell.match(/Image\(uiImage: shellWallpaperImage\)/g) ?? []).length, 1);
   assert.doesNotMatch(page, /Image\(uiImage: chatWallpaperImage\)|IMessageWallpaper\.load/);
   assert.doesNotMatch(chat, /Image\(uiImage:|IMessageWallpaper\.load/);
@@ -545,7 +545,7 @@ test('shell renders exactly one wallpaper while child pages stay transparent', (
 
 
 
-test('sidebar gestures slide the one wallpaper with the chat instead of hiding or recoloring it', () => {
+test('sidebar gestures slide and mask wallpaper and chat as one composite card', () => {
   const shell = read('Navigation/AppShell.swift');
   const iphone = shell.slice(
     shell.indexOf('    private var iPhoneLayout: some View {'),
@@ -560,10 +560,10 @@ test('sidebar gestures slide the one wallpaper with the chat instead of hiding o
   assert.match(visibility, /shellWallpaperImage != nil/);
   assert.doesNotMatch(visibility, /!menuOpen|sidebarDragTranslation/);
   assert.match(iphone, /let pageHorizontalOffset = \(menuOpen \? revealOffset : 0\)\s*\+ sidebarDragTranslation/);
-  assert.match(iphone, /rootWallpaperBackdrop\s*\.modifier\(ChatWallpaperRevealClip\(/);
-  assert.match(iphone, /rootWallpaperBackdrop[\s\S]*?\.offset\(x: pageHorizontalOffset\)/);
-  assert.equal((iphone.match(/\.offset\(x: pageHorizontalOffset\)/g) ?? []).length, 2,
-    'wallpaper and chat card share exactly the same horizontal offset');
+  assert.match(iphone, /\.background \{\s*if isWallpaperChatVisible \{\s*rootWallpaperBackdrop\s*\}\s*\}\s*\.modifier\(ChatCardRevealClip\(/);
+  assert.match(iphone, /visualOffset: pageHorizontalOffset,\s*cornerRadius: cardCornerRadius,\s*preservesWallpaperAtRest: isWallpaperChatVisible/);
+  assert.equal((iphone.match(/\.offset\(x: pageHorizontalOffset\)/g) ?? []).length, 1,
+    'single horizontal transform for wallpaper and navigation content');
   assert.equal((iphone.match(/rootWallpaperBackdrop/g) ?? []).length, 1);
   assert.match(iphone, /Rectangle\(\)\s*\.fill\(sidebarBackground\)/);
 });
@@ -765,22 +765,64 @@ test('closed iMessage wallpaper is not clipped into keyboard safe-area bounds', 
   const shell = read('Navigation/AppShell.swift');
   const chat = read('Chat/ChatView.swift');
   const iphone = shell.slice(shell.indexOf('    private var iPhoneLayout: some View {'), shell.indexOf('    private func sidebarDragGesture('));
-  const clip = shell.slice(shell.indexOf('private struct ChatWallpaperRevealClip:'), shell.indexOf('struct AppShell: View {'));
+  const clip = shell.slice(shell.indexOf('private struct ChatCardRevealClip:'), shell.indexOf('struct AppShell: View {'));
 
-  // The 13:28 sidebar revision masked the single wallpaper even at radius 0.
-  // Keyboard avoidance can shrink a zero-radius clip to the keyboard edge.
-  // Mask only while revealed/dragging; at rest preserve the unmasked image.
-  assert.match(iphone, /rootWallpaperBackdrop\s*\.modifier\(ChatWallpaperRevealClip\(\s*enabled: menuOpen \|\| sidebarDragTranslation != 0,\s*cornerRadius: cardCornerRadius/);
-  assert.match(clip, /if enabled \{\s*content\.clipShape\(\s*UnevenRoundedRectangle\(/);
-  assert.match(clip, /else \{\s*content\s*\}/);
-  assert.doesNotMatch(iphone, /rootWallpaperBackdrop\s*\.clipShape\(/);
+  // Both layers share a single card mask; the unmasked rest state keeps the
+  // keyboard underlay. Animating the visual offset prevents early unmasking
+  // during the last frames of a closing sidebar gesture.
+  assert.match(iphone, /\.background \{\s*if isWallpaperChatVisible \{\s*rootWallpaperBackdrop\s*\}\s*\}\s*\.modifier\(ChatCardRevealClip\(/);
+  assert.match(clip, /struct ChatCardRevealClip: ViewModifier, Animatable/);
+  assert.match(clip, /var animatableData: AnimatablePair<CGFloat, CGFloat>/);
+  assert.match(clip, /if preservesWallpaperAtRest && abs\(visualOffset\) < 0\.5 \{\s*content\s*\} else \{\s*content\.clipShape\(\s*UnevenRoundedRectangle\(/);
+  assert.doesNotMatch(clip, /menuOpen|sidebarDragTranslation/);
   assert.match(shell, /\.ignoresSafeArea\(\.all\)/);
   assert.equal((shell.match(/Image\(uiImage: shellWallpaperImage\)/g) ?? []).length, 1);
   assert.equal((iphone.match(/rootWallpaperBackdrop/g) ?? []).length, 1);
-  assert.equal((iphone.match(/\.offset\(x: pageHorizontalOffset\)/g) ?? []).length, 2);
+  assert.equal((iphone.match(/\.offset\(x: pageHorizontalOffset\)/g) ?? []).length, 1);
 
   // Do not alter composer keyboard avoidance and wallpaper transparency.
   assert.match(chat, /\.safeAreaInset\(edge: \.bottom, spacing: selectedChatTheme == \.iMessage \? 0 : nil\)/);
   assert.match(chat, /\.padding\(\.bottom, isSystemKeyboardVisible \? 12 : 8\)/);
   assert.match(chat, /\.offset\(y: isSystemKeyboardVisible \? 0 : 10\)/);
+});
+
+test('sidebar-closing animation cannot unmask wallpaper early or move it over sidebar content', () => {
+  const shell = read('Navigation/AppShell.swift');
+  const iphone = shell.slice(shell.indexOf('    private var iPhoneLayout: some View {'), shell.indexOf('    private func sidebarDragGesture('));
+  const mask = shell.slice(shell.indexOf('private struct ChatCardRevealClip:'), shell.indexOf('struct AppShell: View {'));
+
+  assert.match(mask, /var visualOffset: CGFloat/);
+  assert.match(mask, /var cornerRadius: CGFloat/);
+  assert.match(mask, /get \{ AnimatablePair\(visualOffset, cornerRadius\) \}/);
+  assert.match(mask, /visualOffset = newValue\.first/);
+  assert.match(mask, /cornerRadius = newValue\.second/);
+  assert.match(mask, /preservesWallpaperAtRest && abs\(visualOffset\) < 0\.5/);
+  assert.match(iphone, /\.frame\(width: proxy\.size\.width, height: proxy\.size\.height\)[\s\S]*?\.background \{\s*if isWallpaperChatVisible \{\s*rootWallpaperBackdrop\s*\}\s*\}\s*\.modifier\(ChatCardRevealClip\(/);
+  const frameIndex = iphone.indexOf('.frame(width: proxy.size.width, height: proxy.size.height)');
+  const bgIndex = iphone.indexOf('.background {', frameIndex);
+  const clipIndex = iphone.indexOf('.modifier(ChatCardRevealClip(', bgIndex);
+  const offsetIndex = iphone.indexOf('.offset(x: pageHorizontalOffset)', clipIndex);
+  assert.ok(frameIndex >= 0 && bgIndex > frameIndex && clipIndex > bgIndex && offsetIndex > clipIndex);
+  assert.equal((iphone.match(/rootWallpaperBackdrop/g) ?? []).length, 1);
+  assert.equal((iphone.match(/\.offset\(x: pageHorizontalOffset\)/g) ?? []).length, 1);
+  assert.doesNotMatch(iphone, /if isWallpaperChatVisible \{\s*rootWallpaperBackdrop\s*\}\s*PageContainer/);
+  // Original still passes through the same 50pt/0pt corner radius clip.
+  assert.match(mask, /else \{\s*content\.clipShape\(/);
+});
+
+test('iMessage text link and quote coloring follows ordinary bubble text without recoloring Original', () => {
+  const markdown = read('Chat/MessageSurface/ChatMarkdown.swift');
+  const math = read('Chat/MessageSurface/NativeLiveMathRenderer.swift');
+  const model = read('Chat/MessageSurface/NativeLiveMarkdownModel.swift');
+  assert.match(markdown, /static let body = Color\.white\.opacity\(0\.98\)/);
+  assert.match(markdown, /static let quote = Color\.white\.opacity\(0\.86\)/);
+  assert.match(markdown, /styled\[range\]\.foregroundColor = isQuote \? quote : body/);
+  assert.match(markdown, /Text\(\s*isIMessageBubbleText\s*\? NativeLiveIMessageMarkdownPalette\.inline\(model\.inline, isQuote: isQuote\)\s*: model\.inline/);
+  assert.match(math, /NativeLiveIMessageMarkdownPalette\.inline\(markdown\.inline, isQuote: isQuote\)/);
+  for (const source of [markdown, math]) {
+    assert.match(source, /if isIMessageBubbleText \{\s*(?:inline|flow)\.foregroundStyle\(NativeLiveIMessageMarkdownPalette\.quote\)/);
+    assert.match(source, /chatTheme == \.iMessage && \(role == "user" \|\| role == "assistant"\)/);
+  }
+  assert.match(model, /foregroundColor = \.accentColor/);
+  assert.match(model, /underlineStyle = \.single/);
 });
