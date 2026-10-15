@@ -420,7 +420,7 @@ test('wallpaper-backed iMessage tool calls and results get independent readable 
   assert.match(theme, /static let defaultValue = false/);
   assert.match(chat, /selectedChatTheme == \.iMessage && wallpaperImage != nil/);
   assert.match(tools, /@Environment\(\\\.iMessageWallpaperVisible\) private var iMessageWallpaperVisible/);
-  assert.match(tools, /static let background = Color\(red: 0\.21, green: 0\.25, blue: 0\.28\)\.opacity\(0\.94\)/);
+  assert.match(tools, /static let background = Color\(red: 0\.29, green: 0\.33, blue: 0\.36\)\.opacity\(0\.94\)/);
   assert.match(tools, /static let secondary = Color\.white\.opacity\(0\.78\)/);
   assert.match(tools, /static let tertiary = Color\.white\.opacity\(0\.65\)/);
 
