@@ -172,8 +172,8 @@ struct ChatView: View {
             pendingMidTurnDelivery = nil
         }
         // Native safe-area placement without a toolbar's opaque bar backdrop.
-        // Original keeps its existing geometry; the iMessage presentation is
-        // independently padded using system spacing without hard-coded gutters.
+        // Original keeps its existing geometry; only the iMessage
+        // presentation uses the requested visual placement and fixed gutters.
         .safeAreaInset(edge: .bottom) {
             if selectedChatTheme == .original {
                 chatComposer
@@ -188,8 +188,9 @@ struct ChatView: View {
             } else {
                 chatComposer
                     .frame(maxWidth: .infinity)
-                    .padding(.horizontal)
+                    .padding(.horizontal, 20)
                     .padding(.vertical, 8)
+                    .offset(y: 10)
             }
         }
         .sheet(isPresented: $isNativeCallPresented) {
