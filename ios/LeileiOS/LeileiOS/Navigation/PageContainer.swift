@@ -4,9 +4,9 @@ import UIKit
 struct PageContainer: View {
     @EnvironmentObject private var appModel: AppModel
 
-    // Own the wallpaper at the navigation-page root, which continues behind
-    // the keyboard's rounded corners and the chat's bottom safe-area inset.
-    // ChatView owns only message/composer layout and contrast signals.
+    // Supplemental wallpaper behind NavigationStack content fills exposed
+    // keyboard corners. ChatView still owns the primary visible wallpaper
+    // and the composer remains responsible for its own keyboard avoidance.
     @AppStorage(ChatTheme.storageKey) private var chatThemeRawValue =
         ChatTheme.original.rawValue
     @AppStorage(IMessageWallpaper.revisionKey) private var wallpaperRevision = ""
