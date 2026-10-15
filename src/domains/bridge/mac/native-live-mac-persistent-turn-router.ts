@@ -159,8 +159,8 @@ export class NativeLiveMacPersistentTurnRouter {
     });
     return {
       ...(slot.onNormalizedEvent ? { onNormalizedEvent: guard(slot.onNormalizedEvent) } : {}),
-      ...(slot.command.output_attachments_enabled !== false && slot.toolImageHandler ? { toolImageHandler: guard(slot.toolImageHandler) } : {}),
-      ...(slot.command.output_attachments_enabled !== false && slot.sendFileHandler ? { sendFileHandler: guard(slot.sendFileHandler) } : {}),
+      ...(slot.command.output_attachments_enabled === true && slot.toolImageHandler ? { toolImageHandler: guard(slot.toolImageHandler) } : {}),
+      ...(slot.command.output_attachments_enabled === true && slot.sendFileHandler ? { sendFileHandler: guard(slot.sendFileHandler) } : {}),
     };
   }
 

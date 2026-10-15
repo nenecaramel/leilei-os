@@ -247,3 +247,19 @@ test("each turn streams its own live output and returns the normalized events it
   }
   assert.equal(new Set([...live[0]!, ...live[1]!]).size, live[0]!.length + live[1]!.length, "no event is delivered to two turns");
 });
+
+test("output attachment handlers require explicit capability opt-in", async t => {
+ for (const enabled of [undefined, false, true]) await t.test(String(enabled), async t => {
+  const f = await fixture(t), forwarded: string[] = [];
+  const commandWithOutput = { ...command(1), ...(enabled === undefined ? {} : { output_attachments_enabled: enabled }) };
+  const running = f.run(commandWithOutput, { toolImageHandler: async (image: { mimeType: string }) => { forwarded.push(image.mimeType); } });
+  const input = (await f.inputs.next()).value!;
+  f.output.push({ type: "assistant", session_id: sid, user_message_uuid: input.uuid, user_message_uuids: [input.uuid],
+    message: { role: "assistant", content: [{ type: "text", text: "owned" }] } });
+  f.output.push({ type: "user", session_id: sid, parent_tool_use_id: null, message: { content: [{ type: "tool_result", tool_use_id: id(310),
+    content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "aGk=" } }] }] } });
+  f.finish(input.uuid);
+  await running;
+  assert.deepEqual(forwarded, enabled === true ? ["image/png"] : []);
+ });
+});

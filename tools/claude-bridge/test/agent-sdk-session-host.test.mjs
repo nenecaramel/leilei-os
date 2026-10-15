@@ -110,3 +110,68 @@ test('an unstamped frame that the result assigns to the turn is returned whole, 
  const owned=await pending;assert.equal(live.length,0);assert.ok(texts(owned.normalizedEvents).includes('older-producer'));
  assert.equal(owned.normalizedEvents.filter(e=>e.payload?.kind==='result'||e.type==='result').length<=1,true);
 });
+
+test('foreign result cannot steal stamped foreground output or its durable normalized events',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const live=[],background=[];
+ f.host.events.on('background-result',frame=>background.push(frame));
+ const pending=f.host.submit('user',{id:'owned',onNormalizedEvent:e=>{live.push(e);}});
+ await f.event(stamped('owned','foreground-before'));
+ await f.event({...result(),user_message_uuid:'other'});
+ assert.equal(background.length,1);
+ assert.equal(texts(background[0].normalizedEvents).includes('foreground-before'),false);
+ assert.equal(texts(background[0].events).includes('foreground-before'),false);
+ await f.event(delta('foreground-after'));
+ await f.event({...result(),user_message_uuid:'owned'});
+ const owned=await pending;
+ assert.deepEqual(owned.normalizedEvents.map(e=>e.event_id),live.map(e=>e.event_id));
+ assert.ok(texts(owned.normalizedEvents).includes('foreground-before'));
+ assert.ok(texts(owned.normalizedEvents).includes('foreground-after'));
+ assert.equal(texts(owned.events).includes('foreground-before'),true);
+ assert.equal(texts(owned.events).includes('foreground-after'),true);
+});
+test('an unrelated stamped reply and result cannot be streamed to the active user turn',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const live=[],background=[];
+ f.host.events.on('background-result',frame=>background.push(frame));
+ const pending=f.host.submit('user',{id:'owned',onNormalizedEvent:e=>{live.push(e);}});
+ await f.event(stamped('owned','my-first'));
+ await f.event(stamped('another','their-output'));
+ await f.event({...result(),user_message_uuid:'another'});
+ await f.event(stamped('owned','my-second'));
+ await f.event({...result(),user_message_uuid:'owned'});
+ const owned=await pending;
+ assert.ok(texts(owned.normalizedEvents).includes('my-first'));
+ assert.ok(texts(owned.normalizedEvents).includes('my-second'));
+ assert.equal(texts(owned.normalizedEvents).includes('their-output'),false);
+ assert.equal(texts(live).includes('their-output'),false);
+ assert.ok(texts(background[0].normalizedEvents).includes('their-output'));
+ assert.deepEqual(owned.normalizedEvents.map(e=>e.event_id),live.map(e=>e.event_id));
+});
+test('normalized task and compaction system events retain explicit background/foreground ownership',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const live=[],background=[];
+ f.host.events.on('background-result',frame=>background.push(frame));
+ const pending=f.host.submit('user',{id:'owned',onNormalizedEvent:e=>{live.push(e);}});
+ await f.event({type:'system',subtype:'task_progress',session_id:'s',task_id:'background-task',summary:'before-stamp'});
+ await f.event({...result(),user_message_uuid:'other'});
+ await f.event(stamped('owned','answer'));
+ await f.event({type:'system',subtype:'task_progress',session_id:'s',task_id:'owned-task',summary:'after-stamp'});
+ await f.event({type:'system',subtype:'compact_boundary',session_id:'s',compact_metadata:{trigger:'auto'}});
+ await f.event({...result(),user_message_uuid:'owned'});
+ const owned=await pending;
+ assert.ok(texts(background[0].normalizedEvents).includes('before-stamp'));
+ assert.equal(texts(owned.normalizedEvents).includes('before-stamp'),false);
+ assert.ok(texts(owned.normalizedEvents).includes('after-stamp'));
+ assert.ok(owned.normalizedEvents.some(e=>e.type==='compaction'));
+ assert.deepEqual(owned.normalizedEvents.map(e=>e.event_id),live.map(e=>e.event_id));
+});
+test('user echoes and ping stamps do not authorize an unstamped assistant reply to stream early',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const live=[];
+ const pending=f.host.submit('user',{id:'owned',onNormalizedEvent:e=>{live.push(e);}});
+ await f.event({type:'user',session_id:'s',user_message_uuid:'owned',message:{role:'user',content:[{type:'text',text:'echo'}]}});
+ await f.event({type:'stream_event',session_id:'s',user_message_uuid:'owned',event:{type:'ping'}});
+ await f.event(said('older-producer'));
+ assert.equal(f.host.ownedInputId(),null);
+ await f.event({...result(),user_message_uuid:'owned'});
+ const owned=await pending;
+ assert.equal(live.length,0);
+ assert.ok(texts(owned.normalizedEvents).includes('older-producer'));
+});

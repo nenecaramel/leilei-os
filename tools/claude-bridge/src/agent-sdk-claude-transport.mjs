@@ -616,9 +616,18 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       host.submit = (text, { sendFileHandler = null, ...turn } = {}) => {
         if (sendFileHandler !== null && typeof sendFileHandler !== "function") return Promise.reject(new Error("Invalid turn output handler."));
         const id = turn.id ?? randomUUID();
-        if (sendFileHandler && !sendFiles.has(id)) sendFiles.set(id, sendFileHandler);
-        const completion = submit(text, { ...turn, id });
-        completion.then(() => sendFiles.delete(id), () => sendFiles.delete(id));
+        if (sendFileHandler && sendFiles.has(id)) return Promise.reject(new Error('Duplicate session input id.'));
+        if (sendFileHandler) sendFiles.set(id, sendFileHandler);
+        let completion;
+        try { completion = submit(text, { ...turn, id }); }
+        catch (error) {
+          if (sendFileHandler && sendFiles.get(id) === sendFileHandler) sendFiles.delete(id);
+          throw error;
+        }
+        const release = () => {
+          if (sendFileHandler && sendFiles.get(id) === sendFileHandler) sendFiles.delete(id);
+        };
+        completion.then(release, release);
         return completion;
       };
       const release = () => { if (this.activeSessionHost === host && host.queryClosed) this.activeSessionHost = null; };

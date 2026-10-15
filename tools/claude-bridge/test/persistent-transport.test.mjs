@@ -171,6 +171,8 @@ test('send_file reaches only the turn that owns the live reply, never background
  await step({type:'assistant',session_id:'s',parent_tool_use_id:null,message:{content:[{type:'text',text:'background'}]}});
  await assert.rejects(send(),/send_file/i);
  await step({type:'assistant',session_id:'s',parent_tool_use_id:null,user_message_uuid:'owned',user_message_uuids:['owned'],message:{content:[{type:'text',text:'mine'}]}});
+ // Rejected duplicate reservations may not remove the active turn's handler.
+ await assert.rejects(host.submit('duplicate',{id:'owned',sendFileHandler:async()=>({attachmentId:'wrong'})}),/duplicate/i);
  assert.deepEqual(await send(),{attachmentId:'a'});assert.deepEqual(sent,['/synthetic/file.txt']);
  await step({type:'result',subtype:'success',session_id:'s',result:'done',user_message_uuid:'owned'});await pending;
  await assert.rejects(send(),/send_file/i);
