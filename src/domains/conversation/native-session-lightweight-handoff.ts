@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import type { createDatabase } from "../../database/client.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
@@ -159,6 +160,70 @@ export async function switchNativeSessionOwnerLight(db: Database, input: {
       owner, conversationId: input.conversationId, providerSessionId: input.sessionId,
       providerCheckpointId: input.selectedCheckpointId, headMessageId: input.expectedHeadMessageId,
       nativeRevision: input.nativeRevision,
+    };
+  });
+}
+
+
+/** First handoff: bind an existing Desktop Session without a fork or old history.
+ * The caller verifies the exact stable native checkpoint on the owner's Mac.
+ * No synthetic old messages or remote source snapshot is created.
+ */
+export async function attachNativeSessionLight(db: Database, input: {
+  userId: string;
+  sessionId: string;
+  selectedCheckpointId: string;
+  effectiveWorkingDirectory: string;
+  nativeRevision: string;
+}) {
+  if (![input.userId, input.sessionId, input.selectedCheckpointId].every(v => uuid.test(v))
+    || !revisionPattern.test(input.nativeRevision)
+    || typeof input.effectiveWorkingDirectory !== "string"
+    || !input.effectiveWorkingDirectory.startsWith("/")
+    || input.effectiveWorkingDirectory.length > 4096) throw fail("INVALID_NATIVE_PROJECTION");
+
+  return db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('leileios-native-session:' || ${input.sessionId}, 0))`);
+    const owner = await tx.execute(sql`
+      SELECT 1 FROM conversations c
+      WHERE c.user_id = ${input.userId}::uuid AND c.origin = 'native_live' AND c.lifecycle_status = 'active'
+        AND (c.provider_metadata->'nativeSessionSource'->>'sessionId' = ${input.sessionId}
+          OR EXISTS (SELECT 1 FROM native_live_conversation_provider_bootstraps b
+            WHERE b.user_id = c.user_id AND b.conversation_id = c.id
+              AND b.source_provider_session_id = ${input.sessionId})
+          OR EXISTS (SELECT 1 FROM conversation_provider_session_checkpoints cp
+            WHERE cp.user_id = c.user_id AND cp.conversation_id = c.id
+              AND cp.provider_session_id = ${input.sessionId}))
+      LIMIT 1
+    `);
+    if (owner.length) throw fail("NATIVE_SESSION_ALREADY_ATTACHED");
+
+    const id = randomUUID();
+    const nativeSessionSource = {
+      schemaVersion: 2, handoffMode: "native_checkpoint_only",
+      sessionId: input.sessionId,
+      checkpointId: input.selectedCheckpointId,
+      revision: input.nativeRevision,
+      effectiveWorkingDirectory: input.effectiveWorkingDirectory,
+      headMessageId: null, owner: "leileios",
+    };
+    await tx.execute(sql`
+      INSERT INTO conversations (id, user_id, origin, lifecycle_status, provider_metadata)
+      VALUES (${id}::uuid, ${input.userId}::uuid, 'native_live', 'active',
+        ${JSON.stringify({ nativeSessionSource })}::jsonb)
+    `);
+    // Keep the existing session-reference safety fence until first commit.
+    await tx.execute(sql`
+      INSERT INTO native_live_conversation_provider_bootstraps
+        (conversation_id, user_id, provider, source_provider_session_id, effective_working_directory)
+      VALUES (${id}::uuid, ${input.userId}::uuid, 'claude_code',
+        ${input.sessionId}, ${input.effectiveWorkingDirectory})
+    `);
+    return {
+      conversationId: id, providerSessionId: input.sessionId,
+      providerCheckpointId: input.selectedCheckpointId,
+      owner: "leileios" as const,
+      historyImported: false,
     };
   });
 }
