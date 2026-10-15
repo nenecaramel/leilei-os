@@ -98,11 +98,6 @@ struct SettingsHomeContent: View {
                 .pickerStyle(.menu)
 
                 if chatThemeRawValue == ChatTheme.iMessage.rawValue {
-                    LabeledContent("Chat Background") {
-                        Text(hasWallpaper ? "Custom" : "Default")
-                            .foregroundStyle(.secondary)
-                    }
-
                     PhotosPicker(selection: $wallpaperSelection, matching: .images) {
                         Label(
                             hasWallpaper ? "Change Chat Background" : "Choose Chat Background",
