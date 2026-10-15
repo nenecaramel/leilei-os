@@ -25,7 +25,8 @@ export function afterSwitchArchive({ execute = execFileSync, env, autoApply = ex
     return `归档${autoApply ? '' : '预演'}跳过：${/^[A-Z][A-Z_]+$/.test(reason) ? reason : 'ARCHIVE_FAILED'}\n`;
   }
 }
-const modes = { list: '--list', desktop: '--desktop-manual', leileios: '--restore' };
+const modes = { list: '--list', desktop: '--desktop-manual', leileios: '--restore',
+  'desktop-light': '--light-desktop', 'leileios-light': '--light-leileios' };
 
 // Desktop can restart a window's session to run a scheduled wake after the switch,
 // appending to the session LeileiOS now continues. Only a quit Desktop cannot.
@@ -41,12 +42,14 @@ export const NATIVE_SWITCH_CHILD_TIMEOUT_MS = 15 * 60_000;
 // Only the existing authenticated switch performs writes. This local wrapper
 // obtains credentials in memory; it does not start a daemon or model query.
 export function runLocalSwitch(args, { execute = execFileSync, environment = process.env, print = value => process.stdout.write(value), conversationId, archive = true, desktopRunning = desktopAppRunning } = {}) {
-  const [mode, id] = args;
-  if (!Object.hasOwn(modes, mode) || (mode === 'list' ? args.length !== 1 : args.length !== 2 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) {
-    throw new Error('Usage: native-session-local.mjs list | desktop SESSION_ID | leileios SESSION_ID');
+  const [mode, id, explicitConversationId] = args;
+  const light = mode === 'desktop-light' || mode === 'leileios-light';
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!Object.hasOwn(modes, mode) || (mode === 'list' ? args.length !== 1 : !uuid.test(id) || (light ? args.length !== 3 || !uuid.test(explicitConversationId) : args.length !== 2))) {
+    throw new Error('Usage: native-session-local.mjs list | desktop|leileios SESSION_ID | desktop-light|leileios-light SESSION_ID CONVERSATION_ID');
   }
   if (conversationId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(conversationId)) throw new Error('INVALID_CONVERSATION_ID');
-  if (mode === 'leileios' && desktopRunning()) throw new Error('NATIVE_DESKTOP_STILL_RUNNING');
+  if ((mode === 'leileios' || mode === 'leileios-light') && desktopRunning()) throw new Error('NATIVE_DESKTOP_STILL_RUNNING');
   const env = { ...environment };
   if (mode !== 'list') {
     let variables;
@@ -59,7 +62,7 @@ export function runLocalSwitch(args, { execute = execFileSync, environment = pro
     env.LEILEI_NATIVE_LIVE_RELAY_URL = variables.MCP_SERVER_URL;
   }
   const flags = mode === 'list' ? [] : ['--session-id', id];
-  if (mode !== 'list' && conversationId) flags.push('--conversation-id', conversationId);
+  if (mode !== 'list' && (conversationId ?? explicitConversationId)) flags.push('--conversation-id', conversationId ?? explicitConversationId);
   try {
     print(execute(process.execPath, [script, modes[mode], ...flags], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: NATIVE_SWITCH_CHILD_TIMEOUT_MS, maxBuffer: 128 * 1024 }));
     if (mode === 'leileios' && archive) print(afterSwitchArchive({ execute, env }));
