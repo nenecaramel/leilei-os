@@ -643,3 +643,23 @@ test('iMessage rich structured content shares native Tool-list glass across rend
   assert.doesNotMatch(visualNode, /\.glassEffect\(|\.modifier\(NativeLiveIMessageContentPanel/);
   assert.match(tool, /private struct NativeLiveToolWallpaperGlass: ViewModifier/);
 });
+
+
+test('ordinary file and Spotify cards reuse wallpaper-only iMessage glass without changing Original or media actions', () => {
+  const media = read('Chat/MessageSurface/NativeLiveMediaRenderer.swift');
+  const spotify = read('Chat/MessageSurface/NativeLiveSpotifyCard.swift');
+  const shared = read('Chat/MessageSurface/NativeLiveCodeRenderer.swift');
+
+  assert.match(media, /if input\.mediaKind == \.file \{/);
+  assert.match(media, /fileLabelContent\s*\.modifier\(NativeLiveIMessageContentPanel\(\s*originalOpacity: 0\.045,\s*originalCornerRadius: 12/);
+  assert.match(media, /else \{\s*fileLabelContent\s*\.background\(\s*Color\.primary\.opacity\(0\.045\)/);
+  assert.match(media, /Button \{ open\(\) \} label: \{ fileLabel \}/);
+  assert.match(media, /NativeLiveAudioAttachmentBubble\(input: input\)/);
+  assert.match(media, /\.fullScreenCover\(item:\$ownGallery\)/);
+
+  assert.match(spotify, /\.modifier\(NativeLiveIMessageContentPanel\(\s*originalOpacity: 0\.045,\s*originalCornerRadius: 11/);
+  assert.match(spotify, /if let url = entity\.url \{ openURL\(url\) \}/);
+  assert.match(spotify, /NativeLiveToolDetailSheet\(/);
+  assert.match(shared, /if iMessageWallpaperVisible \{/);
+  assert.match(shared, /else if originalOpacity > 0 \{\s*content\.background\(/);
+});
