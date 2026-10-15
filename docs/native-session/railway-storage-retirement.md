@@ -1,33 +1,41 @@
-# Railway native history storage reduction (after #1109)
+# Railway old full-history replica retirement
 
-Observed production SQL before the new architecture: 182 MB
-`native_live_provider_session_entries`, with 167 MB of its size in TOAST.
-Approximately 136 MB of the recent 169 MB stored JSONB was under
-`native-history-assets/*`, which copied old images/documents for display.
+Scope: legacy root JSONL copies (subpath = '') and
+native-history-assets/* records in native_live_provider_session_entries,
+plus the specifically identified 813-message record from
+native_live_conversation_history_snapshots. All deletes must use an
+explicit audited user_id + session_id + subpath allowlist; no table TRUNCATE.
 
-**Already deployed**: the new #1109 continuation-only daily switch does
-not stage/transmit full old history or these assets. The old explicit
-full-history route remains for compatibility.
+Protected: conversations, conversation_messages,
+conversation_content_blocks (including 768 old local messages), canonical
+checkpoints and owner/lease/turn state, ordinary attachments and bucket,
+unfinished jobs and recovery/outbox evidence, native status preservation
+markers, Mac JSONL / Desktop indexes / archives / backups.
+Keep the separately reported 51 attachment 404s untouched.
 
-This change enforces the separation **on the server**:
-- New requests to append or stage `native-history-assets/*` for a Session
-  currently bound to a continuation-only conversation fail with HTTP 409.
-- Ordinary new LeileiOS messages, active turn checkpoints, Memory, tasks,
-  attachments and old explicit legacy sessions are unaffected.
-- No automatic deletions. No automatic migration. No new storage tables.
+The runtime's default persistent Mac session registry has no remote
+SessionStore configured, but an explicit old full-history restore can
+still use old stored snapshots. A production cleanup therefore requires
+source-level retirement of those endpoints and dependent readers before
+deleting any rows.
 
-Run `scripts/db/native-history-assets-audit.sql` for a read-only per-Session
-breakdown of cached bytes and legacy dependencies.
+Run scripts/db/native-history-assets-audit.sql read-only to obtain exact
+identity and dependency facts. The SQL shows checkpoint and bootstrap
+references, which must not be confused with proof that the old JSONB
+replica is needed; distinguish native Session identity from copy bytes.
 
-`scripts/db/native-history-assets-reclaim.sql` is intentionally guarded
-and **cannot run by accident**. Do not run it on production without an
-independently verified backup, explicit authorization to remove old
-display-only copies, confirmation that a Session is not in active use,
-and testing on a restored database. It only processes a small, bounded
-batch for continuation-only sessions with no active legacy references.
-Old legacy sessions are excluded. Keep snapshots/archives untouched.
+The existing scripts/db/backup_postgres.sh creates encrypted full
+PostgreSQL dumps; scripts/db/restore_verify_postgres.sh verifies the
+restore in a local temporary/test database. This precondition has NOT
+been performed from this change. Do not place credentials or backup
+material in Git.
 
-PostgreSQL DELETE frees reusable space inside the DB, and WAL can grow
-temporarily. The on-disk Volume is not promised to shrink without
-additional table compaction or migration. Do not run VACUUM FULL during
-normal production operation.
+scripts/db/native-history-assets-reclaim.sql refuses execution until
+a per-session allowlist from the owner's audit is vetted. Do not
+autogenerate a delete from totals or current continuation mode alone.
+When root replica records are removed, keep preserve_external_session
+and change any false 'complete' status to 'incomplete' atomically.
+
+SQL DELETE normally frees reusable database pages, not guaranteed
+immediate ext4 disk reduction; VACUUM FULL requires separate approval.
+51 attachment 404s are an independent incident.
