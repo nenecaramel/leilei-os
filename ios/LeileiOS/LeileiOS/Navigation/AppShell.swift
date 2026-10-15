@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct AppShell: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
