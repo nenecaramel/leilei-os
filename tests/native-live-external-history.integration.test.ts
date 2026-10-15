@@ -103,11 +103,12 @@ test(
       ],
     };
 
+    await assert.rejects(
+      service.createConversationFromSession({ userId: userA, requestId, sourceSessionId, historySnapshot: history }),
+      (error: unknown) => (error as { code?: string }).code === "INVALID_HISTORY_SNAPSHOT",
+    );
     const conversation = await service.createConversationFromSession({
-      userId: userA,
-      requestId,
-      sourceSessionId,
-      historySnapshot: history,
+      userId: userA, requestId, sourceSessionId,
     });
     assert.equal(conversation.currentHeadMessageId, null);
 
@@ -125,23 +126,7 @@ test(
       userId: userA,
       conversationId: conversation.id,
     });
-    assert.ok(snapshot);
-    assert.equal(snapshot.sourceProviderSessionId, sourceSessionId);
-    assert.equal(snapshot.sourceLabel, history.sourceLabel);
-    assert.equal(snapshot.timeZone, "Asia/Shanghai");
-    assert.equal(snapshot.messageCount, 3);
-    assert.deepEqual(
-      snapshot.messages.map(({ ordinal, role, time, content }) => ({
-        ordinal,
-        role,
-        time,
-        content,
-      })),
-      history.messages.map((message, ordinal) => ({
-        ordinal,
-        ...message,
-      })),
-    );
+    assert.equal(snapshot, null, "legacy display history must no longer be persisted");
 
     assert.equal(
       await service.readConversationHistorySnapshot({

@@ -28,7 +28,8 @@ export type NativeLiveProviderSessionStoreInternalDependencies = {
   >;
 };
 
-const retiredNativeHistoryHandler: RequestHandler = (_request, response) => {
+const retiredNativeHistoryHandler: RequestHandler = (request, response) => {
+  if (!requireInternalUser(response, request.mcpUserId)) return;
   response.status(410).json({ success: false, error: {
     code: "NATIVE_FULL_HISTORY_RETIRED",
     message: "Legacy full-history copy/restore is retired; use native continuation.",
@@ -345,6 +346,14 @@ function sendInvalid(response: Response): void {
 }
 
 function sendStoreError(response: Response, error: unknown): void {
+  if (typeof error === "object" && error !== null && "code" in error
+    && error.code === "LEGACY_ASSET_WRITE_DISABLED") {
+    response.status(409).json({ success: false, error: {
+      code: "LEGACY_ASSET_WRITE_DISABLED",
+      message: "Legacy historical asset writes are retired.",
+    } });
+    return;
+  }
   if (error instanceof NativeLiveProviderSessionStoreError) {
     response.status(400).json({
       success: false,

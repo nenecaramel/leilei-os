@@ -107,112 +107,31 @@ async function withServer(
   }
 }
 
-test("fork creation accepts a read-only Claude history snapshot without canonical fields", async () => {
+test("legacy history uploads are refused without creating a conversation", async () => {
   const bridge = new FakeExternalSessionBridge();
-  await withServer(bridge, async (baseUrl) => {
-    const response = await fetch(
-      `${baseUrl}/api/v1/native-live/conversations/from-claude-session`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          request_id: requestId,
-          source_session_id: sourceSessionId,
-          history_snapshot: {
-            source_label: "claude-main-branch.jsonl",
-            time_zone: "Asia/Shanghai",
-            messages: [
-              {
-                role: "user",
-                time: "2026-09-24T14:30:03.856+08:00",
-                content: "Claude.",
-              },
-              {
-                role: "assistant",
-                time: "2026-09-24T14:30:09.069+08:00",
-                content: "Hello!",
-              },
-            ],
-          },
-        }),
-      },
-    );
-
-    assert.equal(response.status, 201);
-    assert.equal(bridge.createCalls.length, 1);
-    assert.deepEqual(bridge.createCalls[0], {
-      userId,
-      requestId,
-      sourceSessionId,
-      historySnapshot: {
-        sourceLabel: "claude-main-branch.jsonl",
-        timeZone: "Asia/Shanghai",
-        messages: [
-          {
-            role: "user",
-            time: "2026-09-24T14:30:03.856+08:00",
-            content: "Claude.",
-          },
-          {
-            role: "assistant",
-            time: "2026-09-24T14:30:09.069+08:00",
-            content: "Hello!",
-          },
-        ],
-      },
+  await withServer(bridge, async baseUrl => {
+    const route = baseUrl + "/api/v1/native-live/conversations/from-claude-session";
+    const response = await fetch(route, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ request_id: requestId, source_session_id: sourceSessionId,
+        history_snapshot: { messages: [{ role: "user", time: "2026-09-24T14:30:03Z", content: "OLD_HISTORY" }] } }),
     });
-  });
-});
-
-test("fork creation rejects malformed history before touching the bridge", async () => {
-  const bridge = new FakeExternalSessionBridge();
-  await withServer(bridge, async (baseUrl) => {
-    const response = await fetch(
-      `${baseUrl}/api/v1/native-live/conversations/from-claude-session`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          request_id: requestId,
-          source_session_id: sourceSessionId,
-          history_snapshot: {
-            messages: [{
-              role: "tool",
-              time: "not-a-time",
-              content: "",
-            }],
-          },
-        }),
-      },
-    );
-
-    assert.equal(response.status, 400);
-    const payload = await response.json() as {
-      error: { code: string };
-    };
-    assert.equal(payload.error.code, "INVALID_HISTORY_SNAPSHOT");
+    assert.equal(response.status, 410);
+    assert.equal((await response.json()).error.code, "HISTORY_SNAPSHOT_RETIRED");
     assert.equal(bridge.createCalls.length, 0);
+
+    const fresh = await fetch(route, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ request_id: requestId, source_session_id: sourceSessionId }) });
+    assert.equal(fresh.status, 201);
+    assert.deepEqual(bridge.createCalls, [{ userId, requestId, sourceSessionId }]);
   });
 });
 
-test("history snapshot read is owner-scoped through the bridge and returns 404 when absent", async () => {
+test("legacy history display reads are retired without querying snapshots", async () => {
   const bridge = new FakeExternalSessionBridge();
-  await withServer(bridge, async (baseUrl) => {
-    const response = await fetch(
-      `${baseUrl}/api/v1/native-live/conversations/${conversationId}/history-snapshot`,
-    );
-    assert.equal(response.status, 200);
-    const payload = await response.json() as {
-      data: { messageCount: number; sourceProviderSessionId: string };
-    };
-    assert.equal(payload.data.messageCount, 2);
-    assert.equal(payload.data.sourceProviderSessionId, sourceSessionId);
-    assert.deepEqual(bridge.readCalls, [{ userId, conversationId }]);
-
-    bridge.snapshot = null;
-    const missing = await fetch(
-      `${baseUrl}/api/v1/native-live/conversations/${conversationId}/history-snapshot`,
-    );
-    assert.equal(missing.status, 404);
+  await withServer(bridge, async baseUrl => {
+    const response = await fetch(baseUrl + "/api/v1/native-live/conversations/" + conversationId + "/history-snapshot");
+    assert.equal(response.status, 410);
+    assert.equal((await response.json()).error.code, "HISTORY_SNAPSHOT_RETIRED");
+    assert.equal(bridge.readCalls.length, 0);
   });
 });
