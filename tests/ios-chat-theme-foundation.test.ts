@@ -78,6 +78,12 @@ test('iMessage Composer uses Apple-native controls while retaining existing acti
     assert.ok(imessageBody.includes(value), value);
   }
   assert.match(imessageBody, /primaryActionButton/);
+  // Move only the plus-to-input gap; keep its 42pt control and the
+  // separate 8pt text-field-to-action gap unchanged.
+  assert.match(imessageBody, /HStack\(alignment: \.bottom, spacing: 10\) \{\s*iMessagePlusMenu\s*HStack\(alignment: \.bottom, spacing: 8\)/);
+  assert.match(imessageBody, /\.frame\(width: 42, height: 42\)/);
+  assert.match(imessageBody, /\.frame\(minHeight: 42\)/);
+  assert.match(imessageBody, /\.padding\(\.leading, 14\)/);
   assert.match(imessageBody, /\.disabled\(!canAttachFromIMessage\)/);
   assert.match(imessageBody, /\.disabled\(!canStartVoiceCall\)/);
   assert.match(imessageBody, /isFocused\.wrappedValue = false/);
@@ -98,7 +104,7 @@ test('iMessage uses a native safe-area inset with no opaque system bottom bar', 
   assert.match(placement, /ChatPresentationLayout\.composerOuterTop/);
   assert.match(placement, /ChatPresentationLayout\.composerOuterBottom/);
   assert.match(placement, /ChatPresentationLayout\.composerHiddenKeyboardPaintOffset/);
-  assert.match(placement, /chatComposer\s*\.frame\(maxWidth: \.infinity\)\s*\.padding\(\.horizontal\)/);
+  assert.match(placement, /chatComposer\s*\.frame\(maxWidth: \.infinity\)\s*\.padding\(\.horizontal, 20\)\s*\.padding\(\.vertical, 8\)\s*\.offset\(y: 10\)/);
   assert.doesNotMatch(placement, /safeAreaBar|ToolbarItem|\.background\(|\.regularMaterial/);
 
   assert.equal((chat.match(/\bChatComposer\(/g) ?? []).length, 1, 'exactly one composer callback owner');
