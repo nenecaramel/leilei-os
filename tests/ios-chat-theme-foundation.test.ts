@@ -706,3 +706,43 @@ test('iMessage voice-to-text uses the identical outgoing text bubble paint, padd
   assert.match(user, /onTap:toggleVoice/);
   assert.match(user, /isVoiceTranscriptRevealed\.toggle\(\)/);
 });
+
+
+test('iMessage assistant audio attachment and ElevenLabs use the exact incoming bubble tint, insets and text colors', () => {
+  const bubble = read('Chat/MessageSurface/NativeLiveIMessageTextBubbles.swift');
+  const audio = read('Chat/MessageSurface/NativeLiveAudioAttachmentBubble.swift');
+  const eleven = read('Chat/MessageSurface/NativeLiveElevenLabsResultSurface.swift');
+  const layout = read('Chat/ChatPresentationLayout.swift');
+
+  // Text and audio reuse one visual backdrop and the same stored assistant
+  // color/opacity; there are no hardcoded audio-specific background colors.
+  assert.match(bubble, /struct NativeLiveIMessageBubbleBackdrop: View/);
+  assert.match(bubble, /@AppStorage\(IMessageBubbleAppearance\.incomingColorKey\)/);
+  assert.match(bubble, /@AppStorage\(IMessageBubbleAppearance\.incomingOpacityKey\)/);
+  assert.match(bubble, /NativeLiveIMessageBubbleBackdrop\(side: side\)/);
+  assert.match(bubble, /NativeLiveIMessageBubbleBackdrop\(side: \.incoming\)/);
+  assert.match(bubble, /\.fill\(\.ultraThinMaterial\)/);
+  assert.match(bubble, /\.fill\(tintColor\)/);
+  assert.match(bubble, /cornerRadius: ChatPresentationLayout\.iMessageUserBubbleRadius/);
+
+  for (const surface of [audio, eleven]) {
+    assert.match(surface, /@Environment\(\\\.chatTheme\) private var chatTheme/);
+    assert.match(surface, /\.modifier\(NativeLiveAssistantAudioBubbleBackground\(\)\)/);
+    assert.match(surface, /chatTheme == \.iMessage\s*\? ChatPresentationLayout\.iMessageUserBubbleVerticalInset/);
+    assert.match(surface, /chatTheme == \.iMessage \? ChatPresentationLayout\.iMessageUserLeadingClearance : 0/);
+    assert.match(surface, /\.foregroundStyle\(\s*chatTheme == \.iMessage\s*\? AnyShapeStyle\(Color\.white\.opacity\(0\.98\)\)/);
+    assert.match(surface, /Color\.white\.opacity\(NativeLiveVoiceBubbleGeometry\.isFilled\(/);
+    assert.match(surface, /Color\.primary\.opacity\(NativeLiveVoiceBubbleGeometry\.isFilled\(/);
+    assert.match(surface, /\.onDisappear \{ playback\.deactivate\(\) \}/);
+    assert.match(surface, /Button \{ playOrPause\(\) \}/);
+    assert.match(surface, /Button \{ open\(\) \}/);
+    assert.match(surface, /Button\("Retry"\) \{ retry\(\) \}/);
+  }
+  assert.match(layout, /iMessageUserLeadingClearance: CGFloat = 70/);
+  assert.match(layout, /iMessageUserBubbleVerticalInset: CGFloat = 10/);
+  assert.match(layout, /iMessageUserBubbleRadius: CGFloat = 20/);
+  // The Original branch keeps its 12pt vertical inset and the old gray fill.
+  assert.match(bubble, /else \{\s*content\.background\(\s*Color\.chatSoftFill/);
+  assert.match(audio, /NativeLiveVoiceBubbleGeometry\.verticalInset/);
+  assert.match(eleven, /NativeLiveVoiceBubbleGeometry\.verticalInset/);
+});
