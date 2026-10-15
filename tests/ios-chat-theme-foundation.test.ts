@@ -520,7 +520,8 @@ test('shell renders exactly one wallpaper while child pages stay transparent', (
   assert.match(shell, /shellWallpaperImage != nil/);
   assert.match(iphone, /ZStack\(alignment: \.leading\) \{\s*\/\/ The sidebar stays painted behind the chat/);
   assert.match(iphone, /Rectangle\(\)\s*\.fill\(sidebarBackground\)\s*\.ignoresSafeArea\(\)/);
-  assert.match(iphone, /if isWallpaperChatVisible \{\s*rootWallpaperBackdrop\s*\}/);
+  assert.match(iphone, /if isWallpaperChatVisible \{\s*rootWallpaperBackdrop\s*\.clipShape\(/);
+  assert.match(iphone, /rootWallpaperBackdrop[\s\S]*?\.offset\(x: pageHorizontalOffset\)/);
   const sidebarIndex = iphone.indexOf('                SidebarView(');
   const wallpaperIndex = iphone.indexOf('                    rootWallpaperBackdrop', sidebarIndex);
   const pageIndex = iphone.indexOf('                PageContainer(', wallpaperIndex);
@@ -542,3 +543,27 @@ test('shell renders exactly one wallpaper while child pages stay transparent', (
   assert.match(composer, /\.frame\(width: 42, height: 42\)/);
 });
 
+
+
+test('sidebar gestures slide the one wallpaper with the chat instead of hiding or recoloring it', () => {
+  const shell = read('Navigation/AppShell.swift');
+  const iphone = shell.slice(
+    shell.indexOf('    private var iPhoneLayout: some View {'),
+    shell.indexOf('    private func sidebarDragGesture(')
+  );
+  const visibility = shell.slice(
+    shell.indexOf('    private var isWallpaperChatVisible: Bool {'),
+    shell.indexOf('    private var isUniverseTheme:')
+  );
+  assert.match(visibility, /selectedPage == \.chat/);
+  assert.match(visibility, /chatThemeRawValue == ChatTheme\.iMessage\.rawValue/);
+  assert.match(visibility, /shellWallpaperImage != nil/);
+  assert.doesNotMatch(visibility, /!menuOpen|sidebarDragTranslation/);
+  assert.match(iphone, /let pageHorizontalOffset = \(menuOpen \? revealOffset : 0\)\s*\+ sidebarDragTranslation/);
+  assert.match(iphone, /rootWallpaperBackdrop\s*\.clipShape\(\s*UnevenRoundedRectangle\(/);
+  assert.match(iphone, /rootWallpaperBackdrop[\s\S]*?\.offset\(x: pageHorizontalOffset\)/);
+  assert.equal((iphone.match(/\.offset\(x: pageHorizontalOffset\)/g) ?? []).length, 2,
+    'wallpaper and chat card share exactly the same horizontal offset');
+  assert.equal((iphone.match(/rootWallpaperBackdrop/g) ?? []).length, 1);
+  assert.match(iphone, /Rectangle\(\)\s*\.fill\(sidebarBackground\)/);
+});
