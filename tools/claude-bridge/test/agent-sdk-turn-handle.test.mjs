@@ -1233,6 +1233,8 @@ test("installed Agent SDK cannot write a native command before MCP readiness", a
     queryOptions: {
       verbatimPrompts: false,
       mcpServers: { leileios: { type: "http", url: "https://example.invalid/mcp" } },
+      // The process is fully simulated; do not require a downloaded native CLI.
+      pathToClaudeCodeExecutable: process.execPath,
       spawnClaudeCodeProcess: () => { spawns += 1; return child; },
     },
   });
@@ -1443,6 +1445,8 @@ async function fixture(t, { startIdentity = original, initIdentity = original, a
     queryImpl: query, queryOptions: {
       mcpServers: { leileios: { type: 'http', url: 'https://example.invalid/mcp' } },
       hooks: { SessionStart: additionalHooks },
+      // Only exercise the installed SDK protocol against the fake child.
+      pathToClaudeCodeExecutable: process.execPath,
       spawnClaudeCodeProcess: ({ args }) => {
         spawns++;
         if (startupBeforeInitialize) {
