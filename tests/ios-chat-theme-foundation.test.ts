@@ -746,3 +746,17 @@ test('iMessage assistant audio attachment and ElevenLabs use the exact incoming 
   assert.match(audio, /NativeLiveVoiceBubbleGeometry\.verticalInset/);
   assert.match(eleven, /NativeLiveVoiceBubbleGeometry\.verticalInset/);
 });
+
+test('the iMessage generating-state header matches the existing Thought/Worked contrast without changing Original', () => {
+  const row = read('Chat/MessageSurface/NativeLiveAssistantTurnRow.swift');
+  const thinking = read('Chat/MessageSurface/NativeLiveVisibleThinkingSurface.swift');
+  const activity = read('Chat/MessageSurface/NativeLiveRuntimeActivity.swift');
+  assert.match(row, /if chatTheme == \.iMessage \{\s*\/\/ A waiting state is a status/);
+  assert.match(row, /NativeLiveProcessStatusHeadline\(/);
+  assert.match(row, /else \{\s*Text\("Thinking\.\.\."\)/);
+  assert.match(thinking, /struct NativeLiveProcessStatusHeadline: View/);
+  assert.match(thinking, /NativeLiveThoughtProcessIcon\(\)/);
+  assert.match(thinking, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
+  assert.match(activity, /if chatTheme == \.iMessage && !header\.isEmpty \{/);
+  assert.match(activity, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
+});

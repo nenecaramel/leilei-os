@@ -40,8 +40,38 @@ struct NativeLiveVisibleThinkingSurface: View {
     }
 }
 
+// Passive generation labels deliberately have no chevron: only the actual
+// Thought process sheet and Worked for details are interactive.
+struct NativeLiveProcessStatusHeadline: View {
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            NativeLiveThoughtProcessIcon()
+                .frame(width: 14, height: 14)
+                .scaleEffect(1.1)
+                .padding(.trailing, 1)
+                .accessibilityHidden(true)
+
+            Text(title)
+                .font(.system(size: 14))
+
+            Spacer(minLength: 8)
+        }
+        .foregroundStyle(iMessageWallpaperVisible ? Color.white : Color.secondary)
+        .shadow(
+            color: iMessageWallpaperVisible ? Color.black.opacity(0.75) : .clear,
+            radius: iMessageWallpaperVisible ? 2 : 0,
+            y: iMessageWallpaperVisible ? 1 : 0
+        )
+        .padding(.leading, 2)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 // A small dotted clock, matching the Thought process reference glyph.
-private struct NativeLiveThoughtProcessIcon: View {
+struct NativeLiveThoughtProcessIcon: View {
     var body: some View {
         Canvas { context, size in
             let center = CGPoint(x: size.width / 2, y: size.height / 2)

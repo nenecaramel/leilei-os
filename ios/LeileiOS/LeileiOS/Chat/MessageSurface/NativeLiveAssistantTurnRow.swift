@@ -21,7 +21,15 @@ struct NativeLiveAssistantTurnRow: View {
     private var content: some View {
         VStack(alignment:.leading,spacing:ChatPresentationLayout.assistantSpacing) {
             if processSections.showsLoading {
-                Text("Thinking...").font(.system(size: 14)).foregroundStyle(.secondary)
+                if chatTheme == .iMessage {
+                    // A waiting state is a status, not a tappable detail row.
+                    // Follow the existing Thought process / Worked for paint.
+                    NativeLiveProcessStatusHeadline(
+                        title: turn.header.isEmpty ? "Thinking…" : turn.header
+                    )
+                } else {
+                    Text("Thinking...").font(.system(size: 14)).foregroundStyle(.secondary)
+                }
             }
             NativeLiveVisibleThinkingSurface(items: turn.visibleThinking)
                 .padding(.bottom, processSections.showsThinking && (processSections.showsActivity || !turn.bodyPresentation.nodes.isEmpty) ? processSectionExtraSpacing : 0)
