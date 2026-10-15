@@ -450,3 +450,12 @@ test("advisory wake failure cannot undo durable completion or enqueue", async ()
     { userId, kind: "foreground" }, { userId, kind: "turn_terminal", prepareId },
   ]);
 });
+test("execution admission is separate from late-result ownership and never mutates relay state", async () => {
+  const { port, service, coordinator, wake } = setup();
+  const input = { userId, listenerInstanceId, reservationId: prepareId, requestId, conversationId, runtimeMode: "new" as const, canonicalUserMessageId: userMessageId, parentProviderSessionId: null, parentProviderCheckpointId: null };
+  assert.equal(await service.checkExecutionAdmission(input), false, "old repository without the capability must deny");
+  (port as FakePort & { checkExecutionAdmission: (input: unknown) => Promise<boolean> }).checkExecutionAdmission = async actual => { port.calls.push({ name: "checkExecutionAdmission", input: actual }); return false; };
+  assert.equal(await service.checkExecutionAdmission(input), false);
+  assert.deepEqual(port.calls.map(c => c.name), ["checkExecutionAdmission"]);
+  assert.deepEqual(port.calls[0]!.input, input); assert.equal(coordinator.calls.length, 0); assert.equal(wake.calls.length, 0);
+});

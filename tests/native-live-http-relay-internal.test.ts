@@ -1079,3 +1079,23 @@ test("internal relay output attachment upload endpoints stay user scoped", async
     },
   ]);
 });
+test("execution admission is authenticated, metadata-only, strict and non-cacheable", async () => {
+  const calls: unknown[] = [];
+  const relayService = Object.assign(new FakeRelayService(), { async checkExecutionAdmission(input: unknown) { calls.push(input); return true; } });
+  await withServer(app => {
+    app.use((request, _response, next) => { if (request.headers.authorization === "Bearer synthetic") request.mcpUserId = userId; next(); });
+    app.use("/internal/native-live-relay", createNativeLiveRelayInternalRouter({ relayService }));
+  }, async baseUrl => {
+    const url = `${baseUrl}/internal/native-live-relay/reservations/${prepareId}/execution-admission`;
+    const body = { listener_instance_id: listenerId, request_id: requestId, conversation_id: conversationId, runtime_mode: "new", canonical_user_message_id: "66666666-6666-4666-8666-666666666666", parent_provider_session_id: null, parent_provider_checkpoint_id: null };
+    const send = (payload: unknown, authorized = true) => fetch(url, { method: "POST", headers: { "content-type": "application/json", ...(authorized ? { authorization: "Bearer synthetic" } : {}) }, body: JSON.stringify(payload) });
+    assert.equal((await send(body, false)).status, 401);
+    const accepted = await send(body); assert.equal(accepted.status, 200); assert.equal(accepted.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await accepted.json(), { success: true, data: { admitted: true } });
+    for (const invalid of [{ ...body, prompt: "not permitted" }, { ...body, listener_instance_id: "invalid" }, { ...body, runtime_mode: "fork" }, { ...body, runtime_mode: "resume" }, { ...body, parent_provider_checkpoint_id: "unexpected" }]) assert.equal((await send(invalid)).status, 400);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0], { userId, listenerInstanceId: listenerId, reservationId: prepareId, requestId, conversationId,
+      runtimeMode: "new", canonicalUserMessageId: "66666666-6666-4666-8666-666666666666", parentProviderSessionId: null, parentProviderCheckpointId: null });
+    assert.deepEqual(relayService.calls, [], "must not reserve, renew, mark started or submit anything");
+  });
+});
