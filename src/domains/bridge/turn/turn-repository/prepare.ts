@@ -563,6 +563,31 @@ export async function resolveRuntimeParent(
       }
   > {
     if (!parentMessageId) {
+      // Exact first-time native continuation: no imported Desktop display
+      // history, no fork. The Mac still validates Session/checkpoint durability.
+      const [light] = await executor.execute<{
+        session_id: string | null; checkpoint_id: string | null; cwd: string | null;
+      }>(sql`
+        SELECT provider_metadata->'nativeSessionSource'->>'sessionId' AS session_id,
+          provider_metadata->'nativeSessionSource'->>'checkpointId' AS checkpoint_id,
+          provider_metadata->'nativeSessionSource'->>'effectiveWorkingDirectory' AS cwd
+        FROM conversations
+        WHERE user_id = ${userId}::uuid AND id = ${conversationId}::uuid
+          AND origin = 'native_live' AND lifecycle_status = 'active'
+          AND provider_metadata->'nativeSessionSource'->>'handoffMode' = 'native_checkpoint_only'
+          AND provider_metadata->'nativeSessionSource'->>'owner' = 'leileios'
+        LIMIT 1
+      `);
+      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (light && uuid.test(light.session_id ?? "") && uuid.test(light.checkpoint_id ?? "")
+        && typeof light.cwd === "string" && light.cwd.startsWith("/")) {
+        return {
+          ok: true, runtimeMode: "resume",
+          parentProviderSessionId: light.session_id,
+          parentProviderCheckpointId: light.checkpoint_id,
+          expectedWorkingDirectory: light.cwd,
+        };
+      }
       const bootstrapRows = await executor.execute<{
         source_provider_session_id: string;
         effective_working_directory: string;
