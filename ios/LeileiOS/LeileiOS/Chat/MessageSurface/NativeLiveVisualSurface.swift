@@ -132,10 +132,10 @@ struct NativeLiveVisualSurface: View {
             }
         }
         .padding(12)
-        .background(
-            Color.primary.opacity(0.045),
-            in: RoundedRectangle(cornerRadius: 10)
-        )
+        .modifier(NativeLiveIMessageContentPanel(
+            originalOpacity: 0.045,
+            originalCornerRadius: 10
+        ))
     }
 
     @ViewBuilder
