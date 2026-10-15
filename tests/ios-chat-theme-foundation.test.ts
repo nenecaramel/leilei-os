@@ -503,7 +503,7 @@ test('iMessage scroll-to-latest stays inside viewport above composer while Origi
   const chat = read('Chat/ChatView.swift');
   const viewport = surface.slice(
     surface.indexOf('    private func messageList('),
-    surface.indexOf('    @ViewBuilder\\n    private func loadOlderButton(')
+    surface.indexOf('    private func loadOlderButton(')
   );
   assert.match(viewport, /\.scrollClipDisabled\(chatTheme != \.iMessage\)/);
   assert.match(viewport, /\.overlay\(alignment: \.bottom\)/);
