@@ -1,0 +1,124 @@
+import { isDeepStrictEqual } from "node:util";
+import { sql } from "drizzle-orm";
+import type { createDatabase } from "../../../database/client.js";
+import { nativeResumeCheckpointSql } from "../turn/native-live-resume-checkpoint.js";
+import { hashJson } from "../turn/turn-repository/records.js";
+import { backgroundIdentity, backgroundResult, NativeLiveBackgroundResultError, type NativeLiveBackgroundIdentity, type NativeLiveBackgroundPrepare,
+  type NativeLiveBackgroundSubmit, type NativeLiveBackgroundPrepared, type NativeLiveBackgroundAck } from "../protocol/native-live-background-result.js";
+import { requireUuid } from "../protocol/runtime-protocol/parsing.js";
+
+type Database = ReturnType<typeof createDatabase>["db"];
+type Transaction = Parameters<Database["transaction"]>[0] extends (tx: infer T) => unknown ? T : never;
+type Source = { id: string; requestId: string; conversationId: string; sessionId: string | null; assistantId: string | null; listenerId: string | null; status: string; dispatch: string };
+type Snapshot = { id: string; canonicalMessageId: string; providerSessionId: string; baseCheckpointId: string; parentProviderCheckpointId: string; cwd: string | null; presentationOwnerId: string | null; sourceRevision: string | null };
+type Receipt = Record<string, unknown> & { kind: "persistent_background_receipt_v1"; phase: "prepared" | NativeLiveBackgroundAck["outcome"];
+  identity: NativeLiveBackgroundIdentity; prepareHash: string; resultHash: string | null; context: Snapshot; expiresAt: string; providerCheckpointId: string | null };
+const conflict = () => new NativeLiveBackgroundResultError("BACKGROUND_CONFLICT");
+
+// Reuse the runtime-event owner/FK/retention instead of inventing visible turns.
+// Only metadata receipts live here; canonical finalization/Mind effects are never called.
+async function transaction<T>(db: Database, work: (tx: Transaction) => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try { return await db.transaction(async tx => {
+      await tx.execute(sql`SET LOCAL statement_timeout = '5s'`); await tx.execute(sql`SET LOCAL lock_timeout = '2s'`);
+      return work(tx as Transaction);
+    }, { isolationLevel: "serializable" }); }
+    catch (error) {
+      const cause = error as { code?: string; cause?: { code?: string } }; const code = cause.code ?? cause.cause?.code;
+      if (attempt === 0 && ["40001", "40P01", "23505"].includes(code ?? "")) continue;
+      if (code === "23505") throw conflict();
+      throw error;
+    }
+  }
+}
+async function source(tx: Transaction, userId: string, id: string): Promise<Source> {
+  const [row] = await tx.execute<Source>(sql`SELECT id, request_id AS "requestId", conversation_id AS "conversationId", provider_session_id AS "sessionId",
+    assistant_message_id AS "assistantId", reserved_by AS "listenerId", status, dispatch_status AS dispatch
+    FROM native_live_turn_preparations WHERE user_id=${userId}::uuid AND id=${id}::uuid FOR UPDATE`);
+  if (!row) throw new NativeLiveBackgroundResultError("BACKGROUND_NOT_FOUND"); return row;
+}
+async function receipt(tx: Transaction, userId: string, identity: NativeLiveBackgroundIdentity): Promise<Receipt | null> {
+  const [row] = await tx.execute<{ payload: Receipt | null }>(sql`SELECT payload FROM native_live_runtime_events
+    WHERE id=${identity.receiptId}::uuid AND user_id=${userId}::uuid AND prepare_id=${identity.sourcePrepareId}::uuid AND event_type='runtime' FOR UPDATE`);
+  if (!row?.payload) return null;
+  if (row.payload.kind !== "persistent_background_receipt_v1" || !isDeepStrictEqual(row.payload.identity, identity)) throw conflict();
+  return row.payload;
+}
+async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBackgroundIdentity, origin: Source): Promise<Snapshot | null> {
+  if (origin.status !== "finalized_success" || origin.dispatch !== "completed" || origin.listenerId !== identity.listenerInstanceId || !origin.assistantId) return null;
+  await tx.execute(sql`SELECT id FROM conversations WHERE user_id=${userId}::uuid AND id=${origin.conversationId}::uuid FOR UPDATE`);
+  // Lease takeover cannot commit between this check and the cursor transaction.
+  const [lease] = await tx.execute(sql`SELECT user_id FROM native_live_runtime_listener_leases WHERE user_id=${userId}::uuid
+    AND dispatch_target='claude_code' AND listener_instance_id=${identity.listenerInstanceId}::uuid AND lease_expires_at>clock_timestamp() FOR SHARE`);
+  if (!lease) return null;
+  const gen = sql`cp.runtime_metadata->'native_live_generation'`;
+  const [row] = await tx.execute<Snapshot>(sql`SELECT cp.id, cp.canonical_message_id::text AS "canonicalMessageId", cp.provider_session_id AS "providerSessionId",
+    cp.provider_checkpoint_id AS "baseCheckpointId", ${nativeResumeCheckpointSql("cp", "c")} AS "parentProviderCheckpointId", cp.effective_working_directory AS cwd,
+    c.provider_metadata->'native_live_presentation_owner'->>'prepareId' AS "presentationOwnerId", c.provider_metadata->'nativeSessionSource'->>'revision' AS "sourceRevision"
+    FROM conversation_provider_session_checkpoints cp JOIN conversations c ON c.id=cp.conversation_id AND c.user_id=cp.user_id
+    WHERE cp.user_id=${userId}::uuid AND cp.conversation_id=${origin.conversationId}::uuid AND cp.canonical_message_id=${origin.assistantId}::uuid
+      AND cp.provider='claude_code' AND cp.provider_session_id=${origin.sessionId} AND cp.provider_checkpoint_id IS NOT NULL
+      AND c.current_head_message_id=cp.canonical_message_id AND c.origin='native_live' AND c.lifecycle_status='active'
+      AND coalesce(c.provider_metadata->'nativeSessionSource'->>'owner','leileios')='leileios'
+      AND jsonb_typeof(${gen})='object' AND ${gen} ? 'presentation_owner_id' AND ${gen} ? 'source_revision'
+      AND (${gen}->>'presentation_owner_id') IS NOT DISTINCT FROM (c.provider_metadata->'native_live_presentation_owner'->>'prepareId')
+      AND (${gen}->>'source_revision') IS NOT DISTINCT FROM (c.provider_metadata->'nativeSessionSource'->>'revision')
+      AND NOT EXISTS (SELECT 1 FROM native_live_turn_preparations busy WHERE busy.user_id=${userId}::uuid AND busy.conversation_id=c.id
+        AND busy.status='prepared' AND busy.operation<>'wake' AND busy.dispatch_status IN ('staged','pending','reserved','executing','delivery_unknown'))
+    LIMIT 1`);
+  return row ?? null;
+}
+function prepared(identity: NativeLiveBackgroundIdentity, value: Receipt): NativeLiveBackgroundPrepared {
+  return { receiptId: identity.receiptId, providerSessionId: value.context.providerSessionId, parentProviderCheckpointId: value.context.parentProviderCheckpointId, expiresAt: value.expiresAt };
+}
+
+export async function prepareNativeLiveBackgroundResult(db: Database, input: NativeLiveBackgroundPrepare & { userId: string }): Promise<NativeLiveBackgroundPrepared> {
+  const identity = backgroundIdentity(input), userId = requireUuid(input.userId, "userId"), parent = requireUuid(input.parentProviderCheckpointId, "parentProviderCheckpointId");
+  const prepareHash = hashJson("background-prepare-v1", { ...identity, parentProviderCheckpointId: parent });
+  return transaction(db, async tx => {
+    const origin = await source(tx, userId, identity.sourcePrepareId);
+    const existing = await receipt(tx, userId, identity);
+    if (existing) { if (existing.prepareHash !== prepareHash) throw conflict(); return prepared(identity, existing); }
+    const context = await snapshot(tx, userId, identity, origin);
+    if (!context || context.parentProviderCheckpointId !== parent) throw conflict();
+    const value: Receipt = { kind: "persistent_background_receipt_v1", phase: "prepared", identity, prepareHash, resultHash: null, context,
+      expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(), providerCheckpointId: null };
+    await tx.execute(sql`INSERT INTO native_live_runtime_events(id,user_id,prepare_id,sequence,event_type,provider_session_id,payload)
+      SELECT ${identity.receiptId}::uuid,${userId}::uuid,${identity.sourcePrepareId}::uuid,coalesce(max(sequence),0)+1,'runtime',${context.providerSessionId},${JSON.stringify(value)}::jsonb
+      FROM native_live_runtime_events WHERE user_id=${userId}::uuid AND prepare_id=${identity.sourcePrepareId}::uuid`);
+    return prepared(identity, value);
+  });
+}
+
+export async function submitNativeLiveBackgroundResult(db: Database, input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck> {
+  const identity = backgroundIdentity(input), userId = requireUuid(input.userId, "userId"), result = backgroundResult(input.result);
+  const resultHash = hashJson("background-result-v1", result);
+  return transaction(db, async tx => {
+    const origin = await source(tx, userId, identity.sourcePrepareId), stored = await receipt(tx, userId, identity);
+    if (!stored) throw new NativeLiveBackgroundResultError("BACKGROUND_NOT_FOUND");
+    if (result.prepare_id !== origin.id || result.request_id !== origin.requestId || result.conversation_id !== origin.conversationId) throw conflict();
+    if (stored.phase !== "prepared") {
+      if (stored.resultHash !== resultHash) throw conflict();
+      return { outcome: stored.phase, duplicate: true, providerCheckpointId: stored.providerCheckpointId };
+    }
+    if (result.status === "success" && (result.provider_session_id !== stored.context.providerSessionId || result.effective_working_directory !== stored.context.cwd
+      || result.provider_checkpoint_id === stored.context.parentProviderCheckpointId)) throw conflict();
+    const current = await snapshot(tx, userId, identity, origin);
+    const live = current && new Date(stored.expiresAt).getTime() > Date.now()
+      && isDeepStrictEqual(current, stored.context);
+    const outcome = !live ? "stale" : result.status === "success" ? "committed" : "failed";
+    const checkpoint = outcome === "committed" && result.status === "success" ? result.provider_checkpoint_id! : null;
+    if (checkpoint) {
+      const c = stored.context;
+      const tail = { canonical_message_id: c.canonicalMessageId, provider_session_id: c.providerSessionId, base_checkpoint_id: c.baseCheckpointId,
+        checkpoint_id: checkpoint, cwd: c.cwd, presentation_owner_id: c.presentationOwnerId, source_revision: c.sourceRevision };
+      const rows = await tx.execute(sql`UPDATE conversation_provider_session_checkpoints SET runtime_metadata=jsonb_set(coalesce(runtime_metadata,'{}'::jsonb),'{native_live_resume_tail}',${JSON.stringify(tail)}::jsonb)
+        WHERE id=${c.id}::uuid AND user_id=${userId}::uuid RETURNING id`);
+      if (rows.length !== 1) throw conflict();
+    }
+    const rows = await tx.execute(sql`UPDATE native_live_runtime_events SET payload=${JSON.stringify({ ...stored, phase: outcome, resultHash, providerCheckpointId: checkpoint, ...(outcome === "stale" ? {} : { result }) })}::jsonb
+      WHERE id=${identity.receiptId}::uuid AND user_id=${userId}::uuid AND prepare_id=${identity.sourcePrepareId}::uuid AND payload->>'phase'='prepared' RETURNING id`);
+    if (rows.length !== 1) throw conflict();
+    return { outcome, duplicate: false, providerCheckpointId: checkpoint };
+  });
+}

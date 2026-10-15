@@ -261,6 +261,14 @@ test("Native Live internal route methods and registration order remain stable", 
   ],
   [
     "post",
+    "/reservations/:reservationId/background-results/prepare"
+  ],
+  [
+    "post",
+    "/reservations/:reservationId/background-results/:receiptId/result"
+  ],
+  [
+    "post",
     "/reservations/:reservationId/result"
   ],
   [

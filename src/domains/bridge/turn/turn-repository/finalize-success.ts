@@ -324,6 +324,10 @@ export async function finalizeSuccess(
             });
             timingEvents.push({ sequence, event: { type: "result" }, createdAt: finalizedAt.toISOString() });
           }
+          const [sessionGeneration] = await transaction.execute(sql`SELECT
+            provider_metadata->'native_live_presentation_owner'->>'prepareId' AS presentation_owner_id,
+            provider_metadata->'nativeSessionSource'->>'revision' AS source_revision
+            FROM conversations WHERE id=${row.conversationId}::uuid AND user_id=${input.userId}::uuid FOR UPDATE`);
           canonicalWritePhase = "provider_checkpoint";
           const checkpoint = await conversations.bindProviderCheckpoint({
             userId: input.userId,
@@ -335,7 +339,7 @@ export async function finalizeSuccess(
               effectiveWorkingDirectory: input.effectiveWorkingDirectory,
               providerCheckpointId: input.providerCheckpointId ?? null,
               runtimeMetadata:
-                { ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}), ...(input.providerCheckpointId ? { provider_checkpoint_version: 1 } : {}), turn_started_at: row.createdAt.toISOString(), ...(timingEvents.length ? { native_live_turn_timing_events: timingEvents } : {}) },
+                { ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}), native_live_generation: { presentation_owner_id: sessionGeneration?.presentation_owner_id ?? null, source_revision: sessionGeneration?.source_revision ?? null }, ...(input.providerCheckpointId ? { provider_checkpoint_version: 1 } : {}), turn_started_at: row.createdAt.toISOString(), ...(timingEvents.length ? { native_live_turn_timing_events: timingEvents } : {}) },
             },
           });
 
