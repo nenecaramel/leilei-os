@@ -42,6 +42,26 @@ struct PageContainer: View {
         // Universe extends its map beneath the transparent navigation bar.
         NavigationStack {
             pageContent
+            // Place the keyboard-safe wallpaper immediately behind the
+            // navigation content, not outside NavigationStack, whose own
+            // system background can otherwise hide the custom image.
+            .background {
+                if selectedPage == .chat,
+                   chatThemeRawValue == ChatTheme.iMessage.rawValue,
+                   let chatWallpaperImage {
+                    GeometryReader { geometry in
+                        Image(uiImage: chatWallpaperImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .clipped()
+                    }
+                    .ignoresSafeArea(.container)
+                    .ignoresSafeArea(.keyboard, edges: .bottom)
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(false)
+                }
+            }
             .navigationTitle(selectedPage == .chat || selectedPage == .universe ? "" : pageTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -71,27 +91,7 @@ struct PageContainer: View {
             }
             .toolbarBackground(.hidden, for: .navigationBar)
         }
-        .background {
-            if selectedPage == .chat,
-               chatThemeRawValue == ChatTheme.iMessage.rawValue,
-               let chatWallpaperImage {
-                GeometryReader { geometry in
-                    Image(uiImage: chatWallpaperImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .clipped()
-                }
-                // Background only: the navigation stack and composer still
-                // respond normally to keyboard avoidance and focus.
-                .ignoresSafeArea(.container)
-                .ignoresSafeArea(.keyboard, edges: .bottom)
-                .accessibilityHidden(true)
-                .allowsHitTesting(false)
-            } else {
-                pageBackground.ignoresSafeArea()
-            }
-        }
+        .background(pageBackground.ignoresSafeArea())
         .task(id: wallpaperRevision) {
             chatWallpaperImage = IMessageWallpaper.load()
         }
