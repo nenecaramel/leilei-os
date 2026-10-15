@@ -7,6 +7,7 @@ This implementation is **opt-in and not production-validated**. Native JSONL sta
 ## Implemented
 
 - Selected native Session inspection: session UUID, checkpoint, cwd, native source revision. No old display-history reconstruction.
+- First-time Desktop-only Session attachment creates an empty LeileiOS conversation bound to the exact original Session/checkpoint; its first send resumes (does not fork) and does not import old Desktop messages.
 - Authenticated internal light-state and light-switch operations with compare-and-swap on current conversation head/checkpoint, writer ownership and outstanding-work checks.
 - Desktop handoff drains Mac runtime before releasing LeileiOS ownership. Return from Desktop advances ordinary Send to its descendant checkpoint while keeping prior LeileiOS checkpoint for Edit/Retry.
 - No native-history restore call, asset-stage upload, full JSONL submission, or automatic transcript archive in the light path.
@@ -15,13 +16,13 @@ This implementation is **opt-in and not production-validated**. Native JSONL sta
 Test-only local invocation with an updated local checkout and server (not ready for production):
 
     node scripts/native-session-local.mjs desktop-light SESSION_ID CONVERSATION_ID
-    node scripts/native-session-local.mjs leileios-light SESSION_ID CONVERSATION_ID
+    node scripts/native-session-local.mjs leileios-light SESSION_ID [CONVERSATION_ID]
 
-These modes require a linked LeileiOS conversation with a committed Claude checkpoint. Session ID and conversation ID are different identities. The owner must exit official Desktop before re-entry into LeileiOS; unknown/active native owners are refused. The light path does not start Desktop, query Claude, or edit its transcript.
+For the first Desktop → LeileiOS switch, omit CONVERSATION_ID; the returned new conversation ID is used on later switches. Other light switches require a linked LeileiOS conversation with a committed Claude checkpoint. Session ID and conversation ID are different identities. The owner must exit official Desktop before re-entry into LeileiOS; unknown/active native owners are refused. The light path does not start Desktop, query Claude, or edit its transcript.
 
 ## Limitations before replacing the old default
 
-1. The first Desktop-only Session still uses the existing external-session bootstrap. It currently forks when LeileiOS first sends, so strict same-UUID initial continuation is a separate migration step.
+1. The new initial attach stays behind the opt-in command until its exact same-UUID first-send resume is tested against the actual Claude SDK and Desktop app. The old UI external-session bootstrap still forks; do not confuse it with the new light-attach flow.
 2. Compactions that erase proof of the previous checkpoint, or official Edit/Retry switching to another native Session, currently fail closed. A compact-aware branch proof and explicit rebind flow are still required.
 3. The fixed interactive picker still uses the legacy catalog. It must move to lightweight selection after acceptance.
 4. SessionStore, asset staging and old PostgreSQL tables remain to preserve existing sessions and recovery paths. Retire them only after tested replacement, verified backups and a separate retention/migration plan.
