@@ -47,6 +47,26 @@ struct ChatView: View {
 
     var body: some View {
         ZStack {
+            // Keep the wallpaper in the actual visible chat content layer.
+            // A NavigationStack background outside its content can be hidden
+            // by the stack's own opaque system background.
+            if selectedChatTheme == .iMessage, let wallpaperImage {
+                GeometryReader { geometry in
+                    Image(uiImage: wallpaperImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped()
+                }
+                .ignoresSafeArea(.container)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+            } else {
+                Color(.systemBackground)
+                    .ignoresSafeArea()
+            }
+
             if isDraftConversation && pendingOperation == nil {
                 NativeLiveMessageSurface.scrollableState { Color.clear }
             } else {
