@@ -107,6 +107,7 @@ test('iMessage uses a native safe-area inset with no opaque system bottom bar', 
   assert.match(placement, /chatComposer\s*\.frame\(maxWidth: \.infinity\)\s*\.padding\(\.horizontal, 20\)\s*\.padding\(\.top, 8\)\s*\.padding\(\.bottom, isSystemKeyboardVisible \? 12 : 8\)\s*\.offset\(y: isSystemKeyboardVisible \? 0 : 10\)/);
   assert.doesNotMatch(placement, /safeAreaBar|ToolbarItem|\.background\(|\.regularMaterial/);
   assert.match(page, /if !iMessageWallpaperVisible \{\s*pageBackground\.ignoresSafeArea\(\)/);
+  assert.match(page, /\.containerBackground\(\s*iMessageWallpaperVisible \? Color\.clear : pageBackground,\s*for: \.navigation\s*\)/);
   assert.equal((chat.match(/\bChatComposer\(/g) ?? []).length, 1);
   for (const route of [
     'text: $messageText', 'model: $model', 'thinking: $thinking',
