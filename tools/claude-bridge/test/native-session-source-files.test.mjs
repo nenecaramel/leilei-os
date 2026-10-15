@@ -43,3 +43,16 @@ test('a copy that carries a needed record is still offered, so conflicting copie
     assert.deepEqual(sources.map(s => s.sessionId).sort(), [A, B, copy].sort());
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('the source limit holds by default and can be raised explicitly by an offline caller', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'native-sources-'));
+  try {
+    const { ROOT } = await chain(dir);
+    // Desktop Rewind copies all carry the needed record.
+    for (let n = 0; n < 260; n++) await write(dir, id(2000 + n), [{ type: 'assistant', uuid: id(23), parentUuid: id(22), message: { content: 'a' } }]);
+    const root = await readNativeSession(dir, ROOT);
+    await assert.rejects(readNativeHistorySources(dir, ROOT, root), { code: 'NATIVE_SOURCE_SCAN_LIMIT' });
+    const sources = await readNativeHistorySources(dir, ROOT, root, { maxSourceFiles: 1024, maxSourceBytes: 1024 * 1024 * 1024 });
+    assert.equal(sources.length, 262);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

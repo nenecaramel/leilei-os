@@ -43,7 +43,10 @@ export async function scanNativeSessionIndex(projectDirectory) {
 }
 
 // `allow` restricts candidates (archive planning: "would the kept files suffice?").
-export async function readNativeHistorySources(projectDirectory, sessionId, root, { index: scanned, allow } = {}) {
+// Interactive readers keep the default bound; an offline caller (archive planning,
+// which must read every Rewind copy carrying a record) may raise it explicitly.
+export async function readNativeHistorySources(projectDirectory, sessionId, root, { index: scanned, allow,
+  maxSourceFiles = MAX_SOURCE_FILES, maxSourceBytes = MAX_SOURCE_BYTES } = {}) {
   const index = new Map([...(scanned ?? await scanNativeSessionIndex(projectDirectory))]
     .filter(([id]) => id !== sessionId && (!allow || allow.has(id))));
   const selected = new Map();
@@ -54,7 +57,7 @@ export async function readNativeHistorySources(projectDirectory, sessionId, root
       for (const [id, uuids] of index) {
         if (selected.has(id) || !uuids.has(ref)) continue;
         bytes += (await stat(path.join(projectDirectory, `${id}.jsonl`))).size;
-        if (selected.size >= MAX_SOURCE_FILES || bytes > MAX_SOURCE_BYTES) throw fail('NATIVE_SOURCE_SCAN_LIMIT');
+        if (selected.size >= maxSourceFiles || bytes > maxSourceBytes) throw fail('NATIVE_SOURCE_SCAN_LIMIT');
         const source = await readNativeSession(projectDirectory, id);
         if (source.sessionId !== id) throw fail('NATIVE_INSPECTION_CHANGED');
         selected.set(id, source);
