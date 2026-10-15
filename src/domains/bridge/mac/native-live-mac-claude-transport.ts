@@ -36,6 +36,8 @@ export type NativeLiveMacPersistentSession = {
   submit(text: string, options?: { id?: string; source?: NativeLiveMacSessionSource } & NativeLiveMacPersistentTurnOutput): Promise<NativeLiveMacSessionResult>;
   interruptTurn(): Promise<{ still_queued: string[] } | null>;
   stopTask(id: string): Promise<void>;
+  /** The frame's last top-level assistant record, once durable and descended from the parent. */
+  verifyCheckpoint(input: { events: Record<string, unknown>[]; parentCheckpointId: string | null; timeoutMs?: number }): Promise<string>;
   close(): Promise<void>;
 };
 export type NativeLiveMacSessionRestore = Readonly<{

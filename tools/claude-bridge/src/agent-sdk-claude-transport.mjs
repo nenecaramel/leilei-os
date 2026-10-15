@@ -630,6 +630,46 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         completion.then(release, release);
         return completion;
       };
+      // A turn's checkpoint is its last top-level assistant record, accepted only
+      // once durably in the local transcript and descended from the previously
+      // committed checkpoint. The live CLI may still be writing; wait briefly.
+      host.verifyCheckpoint = async ({ events, parentCheckpointId = null, timeoutMs = 3_000, pollMs = 100 } = {}) => {
+        const id = [...(Array.isArray(events) ? events : [])].reverse().find(event => event?.type === "assistant"
+          && !event.parent_tool_use_id && !event.parent_agent_id && !event.isSidechain
+          && typeof event.uuid === "string" && event.uuid.trim())?.uuid ?? null;
+        if (!id || id === parentCheckpointId) throw runtimeError("Claude turn has no new persisted provider checkpoint.", { runtimeCode: "NO_PROVIDER_SESSION" });
+        const deadline = Date.now() + timeoutMs;
+        for (;;) {
+          assertLive("input");
+          let entries;
+          try { entries = await this.#checkpointEntries(host.sessionId, true); }
+          catch (cause) {
+            if (Date.now() >= deadline) throw runtimeError("Claude turn checkpoint is not durably present.", { runtimeCode: "NO_PROVIDER_SESSION", cause });
+            await new Promise(resolve => setTimeout(resolve, pollMs));
+            continue;
+          }
+          // A matching UUID alone does not prove the streamed assistant record
+          // is the durable one: reject user/system and sidechain collisions.
+          const matches = entries.filter(entry => entry?.uuid === id);
+          if (matches.length > 0) {
+            if (matches.length !== 1 || matches[0].type !== "assistant" || matches[0].isSidechain
+              || (matches[0].sessionId && matches[0].sessionId !== host.sessionId)) {
+              throw runtimeError("Claude checkpoint does not identify a unique top-level assistant in this session.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
+            }
+            let verified;
+            try { verified = durableCheckpointPrefix(entries, id); }
+            catch (cause) {
+              throw runtimeError("Claude checkpoint has invalid durable ancestry.", { runtimeCode: "NO_PROVIDER_SESSION", cause });
+            }
+            if (parentCheckpointId !== null && !verified.ancestry.has(parentCheckpointId)) {
+              throw runtimeError("Claude turn checkpoint does not continue the committed checkpoint.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
+            }
+            return id;
+          }
+          if (Date.now() >= deadline) throw runtimeError("Claude turn checkpoint is not durably present.", { runtimeCode: "NO_PROVIDER_SESSION" });
+          await new Promise(resolve => setTimeout(resolve, pollMs));
+        }
+      };
       const release = () => { if (this.activeSessionHost === host && host.queryClosed) this.activeSessionHost = null; };
       const close = host.close.bind(host);
       host.close = async () => { rejectStartup?.(new Error("Native session startup was closed.")); await close(); release(); };
