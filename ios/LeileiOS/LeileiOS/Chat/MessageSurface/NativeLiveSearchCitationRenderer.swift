@@ -11,7 +11,11 @@ struct NativeLiveSearchResultView: View {
             if let source=result.source, source != result.url { Text(source).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
             if let snippet=result.snippet,!snippet.isEmpty { Text(snippet).font(.subheadline).textSelection(.enabled) }
             NativeLiveCitationSourcesView(sources:sources ?? NativeLiveCitationSource.aggregate(result.citations))
-        }.padding(10).background(Color.primary.opacity(0.045),in:RoundedRectangle(cornerRadius:11))
+        }.padding(10)
+        .modifier(NativeLiveIMessageContentPanel(
+            originalOpacity: 0.045,
+            originalCornerRadius: 11
+        ))
     }
 }
 struct NativeLiveSourceLink: View {
