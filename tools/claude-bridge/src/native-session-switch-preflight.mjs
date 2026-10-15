@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
-import { readDesktopNativeHistory } from './native-session-inspection.mjs';
+import { readDesktopNativeHistory, readNativeContinuationEvidence } from './native-session-inspection.mjs';
 import { readNativeSessionRelease } from './native-session-activity.mjs';
 import { readNativeSession } from './native-session-catalog.mjs';
 import { readOnlyFileSnapshot } from './read-only-file-snapshot.mjs';
@@ -22,7 +22,7 @@ export async function preflightNativeSessionSwitch(input) {
     throw fail('NATIVE_CONFIG_LOCATION_MISMATCH');
   }
   const index = indexFile === null ? null : await readOnlyFileSnapshot(indexFile, 4 * 1024 * 1024);
-  const result = await readDesktopNativeHistory(input);
+  const result = await (input.historyMode === "continuation" ? readNativeContinuationEvidence(input) : readDesktopNativeHistory(input));
   const release = await readNativeSessionRelease(peers, input.expectedSessionId, { probeProcessStart: input.probeProcessStart });
   const [currentSource, currentIndex] = await Promise.all([
     readNativeSession(project, input.expectedSessionId),
@@ -39,7 +39,7 @@ export async function preflightNativeSessionSwitch(input) {
     nativeRevision: result.inspection.nativeRevision,
     historyRevision: result.inspection.historyRevision,
     workingDirectory: result.inspection.workingDirectory,
-    messageCount: result.projection.messages.length,
+    messageCount: input.historyMode === "continuation" ? 0 : result.projection.messages.length,
     release,
   };
 }

@@ -1,3 +1,4 @@
+import { nativeContinuationBinding } from "./native-session-continuation-repository.js";
 import { createHash, randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -238,6 +239,7 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('leileios-native-history:' || ${input.conversationId}, 0))`);
     const [existing] = await tx.select().from(conversations).where(eq(conversations.id, input.conversationId)).for("update");
     if (existing && (existing.userId !== input.userId || existing.origin !== "native_live" || existing.lifecycleStatus !== "active")) throw fail("NATIVE_CONVERSATION_NOT_FOUND");
+    if (existing && nativeContinuationBinding(existing.providerMetadata)) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
     const source = existing?.providerMetadata.nativeSessionSource as SourceIndex | undefined;
     if (existing && !source) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
     if (source && (source.schemaVersion !== 1 || source.effectiveWorkingDirectory !== input.effectiveWorkingDirectory)) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
@@ -462,6 +464,7 @@ export async function releaseNativeSessionToDesktop(db: Database, input: {
     const [conversation] = await tx.select().from(conversations).where(and(
       eq(conversations.id, input.conversationId), eq(conversations.userId, input.userId),
     )).for("update");
+    if (conversation && nativeContinuationBinding(conversation.providerMetadata)) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
     const source = conversation?.providerMetadata.nativeSessionSource as SourceIndex | undefined;
     if (!conversation || conversation.origin !== "native_live" || conversation.lifecycleStatus !== "active" || !source
       || source.sessionId !== input.sessionId) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
@@ -500,6 +503,7 @@ export async function readNativeSessionRestoreState(db: Database, input: { userI
   if (![input.userId, input.conversationId, input.sessionId].every(value => uuid.test(value))) throw fail("INVALID_NATIVE_PROJECTION");
   const [conversation] = await db.select().from(conversations).where(and(eq(conversations.id, input.conversationId), eq(conversations.userId, input.userId)));
   if (!conversation) return { expectedHeadMessageId: null, expectedRevision: null };
+  if (nativeContinuationBinding(conversation.providerMetadata)) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
   const source = conversation.providerMetadata.nativeSessionSource as SourceIndex | undefined;
   if (conversation.origin !== "native_live" || conversation.lifecycleStatus !== "active" || !source
     || source.lineage?.includes(input.sessionId)) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
@@ -530,8 +534,13 @@ export async function listNativeSessionSwitchChoices(db: Database, input: { user
   if (!uuid.test(input.userId)) throw fail("INVALID_NATIVE_PROJECTION");
   const rows = await db.execute(sql`
     SELECT c.id AS "conversationId", c.title, c.updated_at AS "updatedAt",
-      c.current_head_message_id AS "headMessageId", cp.provider_session_id AS "providerSessionId",
-      cp.provider_checkpoint_id AS "providerCheckpointId",
+      c.current_head_message_id AS "headMessageId",
+      CASE WHEN c.provider_metadata->'nativeSessionSource'->>'mode' = 'continuation'
+        AND c.current_head_message_id::text IS NOT DISTINCT FROM (c.provider_metadata->'nativeSessionSource'->>'headMessageId')
+        THEN c.provider_metadata->'nativeSessionSource'->>'sessionId' ELSE cp.provider_session_id END AS "providerSessionId",
+      CASE WHEN c.provider_metadata->'nativeSessionSource'->>'mode' = 'continuation'
+        AND c.current_head_message_id::text IS NOT DISTINCT FROM (c.provider_metadata->'nativeSessionSource'->>'headMessageId')
+        THEN c.provider_metadata->'nativeSessionSource'->>'checkpointId' ELSE cp.provider_checkpoint_id END AS "providerCheckpointId",
       c.provider_metadata->'nativeSessionSource'->>'sessionId' AS "sourceSessionId",
       COALESCE(c.provider_metadata->'nativeSessionSource'->'lineage', '[]'::jsonb) AS "sourceLineage",
       EXISTS (SELECT 1 FROM native_live_turn_preparations t WHERE

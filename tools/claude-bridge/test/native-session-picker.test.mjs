@@ -125,3 +125,17 @@ test('a window forked from a window that no longer exists still continues the co
   const [choice] = module.buildSwitchChoices('leileios', [row(C)], [forked]);
   assert.deepEqual([choice.conversationId, choice.branch, choice.reason], [C, 'current', null]);
 });
+
+test('continuation picker reuses only the current exact Session; a fork creates an empty new entry', () => {
+  const s = { ...desktop(), history: { state: 'not_requested' }, continuationReady: true };
+  const options = { historyMode: 'continuation' };
+  assert.equal(module.buildSwitchChoices('leileios', [row()], [s], options)[0].conversationId, C);
+  const fork = { ...s, providerSessionId: B, forkedFromDesktopSessionId: `local_${A}` };
+  const next = module.buildSwitchChoices('leileios', [row()], [fork], options)[0];
+  assert.equal(next.conversationId, B);
+  assert.equal(next.branch, 'new');
+  assert.equal(next.reason, null);
+  const obsoleteSource = { ...row(), providerSessionId: B };
+  assert.equal(module.buildSwitchChoices('leileios', [obsoleteSource], [s], options)[0].conversationId, A);
+  assert.equal(module.buildSwitchChoices('desktop', [row()], [s], options)[0].reason, null);
+});

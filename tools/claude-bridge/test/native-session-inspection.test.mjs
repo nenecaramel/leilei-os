@@ -332,3 +332,33 @@ test('inspection resolves compact fork sources, pins their revisions, and ships 
     await assert.rejects(readDesktopNativeHistory(pinned), e=>e.code==='STALE_NATIVE_SELECTION');
   });
 });
+
+test('continuation inspection needs only the compacted execution root, not archived display history', async () => {
+  const { inspectDesktopNativeSession } = await import(moduleUrl);
+  await fixture(async ({ root, indexFile, transcriptFile }) => {
+    const boundary = '00000000-0000-4000-8000-000000000009';
+    await writeFile(transcriptFile, [
+      { type: 'system', subtype: 'compact_boundary', uuid: boundary, parentUuid: null, logicalParentUuid: C },
+      { ...entries[0], parentUuid: boundary, isCompactSummary: true }, entries[1],
+    ].map(JSON.stringify).join('\n'));
+    const input = { indexFile, projectDirectory: root, peerDirectory: root, probeProcessStart: async () => started,
+      historyMode: 'continuation', followNativeContinuation: true };
+    const result = await inspectDesktopNativeSession(input);
+    assert.equal(result.providerCheckpointId, CP);
+    assert.equal(result.continuationReady, true);
+    assert.equal(result.history.state, 'not_requested');
+    assert.equal(result.historyRevision, null);
+    assert.doesNotMatch(JSON.stringify(result), /PRIVATE_PROMPT|PRIVATE_REPLY/);
+    await writeFile(transcriptFile, (await readFile(transcriptFile, 'utf8')) + '\n' + JSON.stringify({ type: 'user', uuid: D, parentUuid: CP, message: { content: 'unfinished' } }));
+    await assert.rejects(inspectDesktopNativeSession(input), e => e.code === 'NATIVE_TURN_UNFINISHED');
+  });
+});
+
+test('continuation inspection rejects conflicting UUID content rather than silently choosing the latest copy', async () => {
+  const { inspectDesktopNativeSession } = await import(moduleUrl);
+  await fixture(async ({ root, indexFile, transcriptFile }) => {
+    await writeFile(transcriptFile, [...entries, { ...entries[1], message: { content: 'conflicting synthetic reply' } }].map(JSON.stringify).join('\n'));
+    await assert.rejects(inspectDesktopNativeSession({ indexFile, projectDirectory: root, peerDirectory: root,
+      historyMode: 'continuation', followNativeContinuation: true }), e => e.code === 'CONFLICTING_NATIVE_UUID');
+  });
+});

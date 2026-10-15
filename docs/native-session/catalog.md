@@ -1,5 +1,9 @@
 # Native session switching: current operator guide
 
+> New continuation-only implementation: see [continuation mode](continuation.md).
+> The acceptance record and full-history workflow below describe the older path;
+> they do not constitute live acceptance of continuation mode.
+
 As of the controlled **2026-10-11** acceptance, one **manual, linear** Desktop → LeileiOS → Desktop → LeileiOS round trip succeeded with the **same native session**. This is not acceptance for arbitrary branches, old imported-message Edit/Retry/Fork, concurrent clients, or every Desktop/SDK version. The **automatic Desktop launcher failed** and is not the accepted route.
 
 For the original stage 1/2/3 investigations, source-projection invariants, offline fixtures, migration/attachment proofs and detailed acceptance history, use the [immutable engineering record](https://github.com/nenecaramel/leilei-os/blob/0cd06cbb81d5a29f03f1bf36f476280dc5abb3b7/docs/native-session/catalog.md). Historical `not enabled` / `pending` notes there describe their stages, not necessarily current state.

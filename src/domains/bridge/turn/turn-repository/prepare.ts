@@ -1,3 +1,4 @@
+import { nativeContinuationBinding } from "../../../conversation/native-session-continuation-repository.js";
 import { readNativeResumeCheckpoint } from "../native-live-resume-checkpoint.js";
 import {
   and,
@@ -562,6 +563,32 @@ export async function resolveRuntimeParent(
         result: NativeLivePreparePortResult;
       }
   > {
+    const [nativeSourceRow] = await executor.execute<{ metadata: Record<string, unknown> }>(sql`
+      SELECT provider_metadata AS metadata FROM conversations
+      WHERE id = ${conversationId}::uuid AND user_id = ${userId}::uuid`);
+    const binding = nativeSourceRow ? nativeContinuationBinding(nativeSourceRow.metadata) : null;
+    if (binding) {
+      // Replacement may only touch turns created after the latest handoff. The
+      // anchor itself is an execution cursor, never a synthetic UI message.
+      if (continuation === "replacement" && binding.headMessageId !== parentMessageId) {
+        const [floor] = await executor.execute<{ allowed: boolean }>(sql`
+          WITH RECURSIVE ancestors AS (
+            SELECT id, parent_message_id FROM conversation_messages WHERE user_id = ${userId}::uuid
+              AND conversation_id = ${conversationId}::uuid AND id = ${parentMessageId}::uuid
+            UNION
+            SELECT m.id, m.parent_message_id FROM conversation_messages m JOIN ancestors a ON a.parent_message_id = m.id
+              WHERE m.user_id = ${userId}::uuid AND m.conversation_id = ${conversationId}::uuid
+          ) SELECT EXISTS (SELECT 1 FROM ancestors WHERE
+              ${binding.headMessageId}::uuid IS NULL OR id = ${binding.headMessageId}::uuid) AS allowed`);
+        if (!floor?.allowed) return { ok: false, result: { ok: false, code: "BRANCH_POINT_INVALID" } };
+      }
+      if (binding.headMessageId === parentMessageId) {
+        if (binding.owner !== "leileios") return { ok: false, result: { ok: false, code: "SESSION_OWNED_BY_DESKTOP" } };
+        return { ok: true, runtimeMode: continuation === "send" ? "resume" : "fork",
+          parentProviderSessionId: binding.sessionId, parentProviderCheckpointId: binding.checkpointId,
+          expectedWorkingDirectory: binding.effectiveWorkingDirectory };
+      }
+    }
     if (!parentMessageId) {
       const bootstrapRows = await executor.execute<{
         source_provider_session_id: string;

@@ -1,3 +1,4 @@
+import { validateNativeContinuationInput, type attachNativeContinuation, type releaseNativeContinuation, type readNativeContinuationState } from "../domains/conversation/native-session-continuation-repository.js";
 import { validateNativeHistoryRestoreInput, type listReferencedNativeSessions, type restoreNativeSessionHistory, type readNativeSessionRestoreState, type releaseNativeSessionToDesktop, type listNativeSessionSwitchChoices } from "../domains/conversation/native-session-history-repository.js";
 import { Router, type RequestHandler, type Response } from "express";
 import type { nativeSessionAsset } from "../domains/conversation/native-session-asset-repository.js";
@@ -10,6 +11,9 @@ import {
 } from "../domains/bridge/provider-session/native-live-provider-session-store.js";
 
 export type NativeLiveProviderSessionStoreInternalDependencies = {
+  attachNativeContinuation?: (input: Parameters<typeof attachNativeContinuation>[1]) => ReturnType<typeof attachNativeContinuation>;
+  releaseNativeContinuation?: (input: Parameters<typeof releaseNativeContinuation>[1]) => ReturnType<typeof releaseNativeContinuation>;
+  readNativeContinuationState?: (input: Parameters<typeof readNativeContinuationState>[1]) => ReturnType<typeof readNativeContinuationState>;
   listNativeHistoryChoices?: (input: Parameters<typeof listNativeSessionSwitchChoices>[1]) => ReturnType<typeof listNativeSessionSwitchChoices>;
   nativeHistoryAsset?: (input: Parameters<typeof nativeSessionAsset>[1]) => ReturnType<typeof nativeSessionAsset>;
   stageNativeHistoryAssets?: (input: Parameters<typeof stageNativeDisplayAssets>[1]) => ReturnType<typeof stageNativeDisplayAssets>;
@@ -32,6 +36,9 @@ export function createNativeLiveProviderSessionStoreInternalRouter(
     response.setHeader("Cache-Control", "private, no-store");
     next();
   });
+  router.post("/native-history/continuation-state", nativeContinuationHandler(dependencies, "state"));
+  router.post("/native-history/continuation-attach", nativeContinuationHandler(dependencies, "attach"));
+  router.post("/native-history/continuation-release", nativeContinuationHandler(dependencies, "release"));
   router.post("/native-history/restore", nativeHistoryRestoreHandler(dependencies));
   router.post("/native-history/state", nativeHistoryStateHandler(dependencies));
   router.post("/native-history/choices", nativeHistoryChoicesHandler(dependencies));
@@ -440,4 +447,29 @@ function sendNativeHistoryError(response: Response, error: unknown) {
     code: conflicts.has(code) || invalid.has(code) ? code : "NATIVE_HISTORY_UNAVAILABLE",
     message: "Native history restore could not be completed.",
   } });
+}
+
+function nativeContinuationHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies, operation: 'state' | 'attach' | 'release'): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId) return;
+    const body = readRecord(request.body);
+    const keys = operation === 'state' ? ['conversationId', 'sessionId'] : ['conversationId', 'sessionId', 'checkpointId', 'revision',
+      'effectiveWorkingDirectory', 'expectedHeadMessageId', 'expectedRevision', 'checkpointIds', 'completedTurnCheckpointIds'];
+    if (!body || Object.keys(body).some(key => !keys.includes(key))) { sendInvalid(response); return; }
+    try {
+      if (operation === 'state') {
+        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (typeof body.conversationId !== 'string' || !uuid.test(body.conversationId) || typeof body.sessionId !== 'string' || !uuid.test(body.sessionId)) { sendInvalid(response); return; }
+        if (!dependencies.readNativeContinuationState) { sendNativeHistoryError(response, null); return; }
+        response.json({ success: true, data: await dependencies.readNativeContinuationState({ userId, conversationId: body.conversationId, sessionId: body.sessionId }) });
+      } else {
+        const input = { ...body, userId } as Parameters<typeof attachNativeContinuation>[1];
+        try { validateNativeContinuationInput(input); } catch { sendInvalid(response); return; }
+        const change = operation === 'attach' ? dependencies.attachNativeContinuation : dependencies.releaseNativeContinuation;
+        if (!change) { sendNativeHistoryError(response, null); return; }
+        response.json({ success: true, data: await change(input) });
+      }
+    } catch (error) { sendNativeHistoryError(response, error); }
+  };
 }

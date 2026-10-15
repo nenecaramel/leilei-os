@@ -97,7 +97,7 @@ test('without AUTO_APPLY a switch plans the archive and archive failure cannot f
   withArchiveHome(false, ({ runLocalSwitch, afterSwitchArchive }) => {
     const calls = [], output = [];
     const relay = JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 'PRIVATE', MCP_SERVER_URL: 'https://fixture.example' });
-    runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { desktopRunning: () => false, print: v => output.push(v), execute(command, args, options) {
+    runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { historyMode: 'complete', desktopRunning: () => false, print: v => output.push(v), execute(command, args, options) {
       if (command === 'railway') return relay;
       calls.push(args);
       if (args[0].endsWith('native-transcript-archive.mjs')) {
@@ -133,7 +133,7 @@ test('with AUTO_APPLY a switch applies the archive and archive failure cannot fa
       }
       return '{"outcome":"restored"}';
     };
-    const options = { desktopRunning: () => false, execute, print: value => output.push(value) };
+    const options = { historyMode: 'complete', desktopRunning: () => false, execute, print: value => output.push(value) };
     runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], options);
     assert.deepEqual(archiveCalls, [['--apply']]);
     assert.match(output.join(''), /已归档 40 个旧会话文件/);
@@ -162,4 +162,17 @@ test('switching to LeileiOS refuses while Desktop runs, before credentials or an
   runLocalSwitch(['desktop', '00000000-0000-4000-8000-000000000001'], { desktopRunning: () => true, print() {},
     execute(command) { calls.push(command); return command === 'railway' ? JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 't', MCP_SERVER_URL: 'https://fixture.example' }) : '{}'; } });
   assert.equal(calls.length, 2, 'the Desktop direction is unaffected');
+});
+
+test('daily switching selects continuation mode and does not run archive even with AUTO_APPLY', () => {
+  withArchiveHome(true, ({ runLocalSwitch }) => {
+    const calls = [];
+    runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { desktopRunning: () => false, print() {}, execute(command, args) {
+      if (command === 'railway') return JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 'fixture', MCP_SERVER_URL: 'https://fixture.example' });
+      calls.push(args); return '{}';
+    } });
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].slice(2, 4), ['--history-mode', 'continuation']);
+    assert.ok(calls[0][0].endsWith('native-session-switch.mjs'));
+  });
 });

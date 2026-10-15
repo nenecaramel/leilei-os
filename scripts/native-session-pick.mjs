@@ -52,10 +52,10 @@ async function main() {
   const load = async direction => {
     const [conversations, desktop, locations] = await Promise.all([
       readSwitchCatalog({ relayUrl: variables.MCP_SERVER_URL, relayToken: variables.NATIVE_LIVE_RELAY_AUTH_TOKEN }),
-      listDesktopNativeSessions({ desktopSessionsDirectory: path.join(homedir(), 'Library', 'Application Support', 'Claude', 'claude-code-sessions'), projectsDirectory: path.join(config, 'projects'), peerDirectory: path.join(config, 'sessions') }),
+      listDesktopNativeSessions({ historyMode: "continuation", desktopSessionsDirectory: path.join(homedir(), 'Library', 'Application Support', 'Claude', 'claude-code-sessions'), projectsDirectory: path.join(config, 'projects'), peerDirectory: path.join(config, 'sessions') }),
       nativeSessionLocations(path.join(config, 'projects')),
     ]);
-    return buildSwitchChoices(direction, conversations, desktop.sessions, { localSessionIds: new Set(locations.keys()) });
+    return buildSwitchChoices(direction, conversations, desktop.sessions, { localSessionIds: new Set(locations.keys()), historyMode: "continuation" });
   };
   const terminal = createInterface({ input: process.stdin, output: process.stdout });
   try {

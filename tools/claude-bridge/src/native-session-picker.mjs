@@ -16,7 +16,7 @@ function windowAncestry(session, sessions) {
   return ids;
 }
 
-export function buildSwitchChoices(mode, conversations, sessions, { localSessionIds = new Set() } = {}) {
+export function buildSwitchChoices(mode, conversations, sessions, { localSessionIds = new Set(), historyMode = "complete" } = {}) {
   if (!['desktop', 'leileios'].includes(mode)) throw fail('INVALID_SWITCH_MODE');
   if (mode === 'desktop') return conversations.map(c => {
     // Hand back the branch LeileiOS is actually on (its head checkpoint session).
@@ -28,24 +28,24 @@ export function buildSwitchChoices(mode, conversations, sessions, { localSession
       : matches.length > 1 ? 'AMBIGUOUS_NATIVE_SELECTION'
       : localOnly ? null
       : matches.length === 0 ? 'NATIVE_SESSION_FILE_REQUIRED'
-      : s.error ?? (s.history?.state !== 'complete' ? s.history?.reason ?? 'NATIVE_HISTORY_UNAVAILABLE' : null);
+      : s.error ?? (!(historyMode === 'continuation' ? s.continuationReady === true : s.history?.state === 'complete') ? s.history?.reason ?? 'NATIVE_HISTORY_UNAVAILABLE' : null);
     return { ...c, sessionId: c.providerSessionId, desktopSessionId: s?.desktopSessionId ?? null, nativeRevision: s?.nativeRevision, historyRevision: s?.historyRevision,
       branch: 'current', opensNewWindow: localOnly, reason };
   });
   return sessions.map(s => {
     // Existing attachment wins over a newly generated conversation identity.
     // Multiple bindings require an explicit branch operation, not a guess.
-    const exact = conversations.filter(c => c.sourceSessionId === s.providerSessionId || c.providerSessionId === s.providerSessionId);
-    const archived = conversations.filter(c => (c.sourceLineage ?? []).includes(s.providerSessionId));
+    const exact = conversations.filter(c => (historyMode !== "continuation" && c.sourceSessionId === s.providerSessionId) || c.providerSessionId === s.providerSessionId);
+    const archived = historyMode === "continuation" ? [] : conversations.filter(c => (c.sourceLineage ?? []).includes(s.providerSessionId));
     const ancestry = windowAncestry(s, sessions);
     // A rotated window may continue its conversation; the server accepts it only
     // if every synchronized message is carried unchanged.
-    const continued = exact.length || archived.length ? [] : conversations.filter(c => c.sourceSessionId && ancestry.has(c.sourceSessionId));
+    const continued = historyMode === "continuation" || exact.length || archived.length ? [] : conversations.filter(c => c.sourceSessionId && ancestry.has(c.sourceSessionId));
     const matches = exact.length ? exact : archived.length ? archived : continued;
     const c = matches[0];
     const duplicates = sessions.filter(other => other.providerSessionId === s.providerSessionId);
     const branch = archived.length && !exact.length ? 'archive' : c ? 'current' : 'new';
-    const reason = s.error ?? (s.history?.state !== 'complete' ? s.history?.reason ?? 'NATIVE_HISTORY_UNAVAILABLE'
+    const reason = s.error ?? (!(historyMode === 'continuation' ? s.continuationReady === true : s.history?.state === 'complete') ? s.history?.reason ?? 'NATIVE_HISTORY_UNAVAILABLE'
       : !s.providerSessionId ? 'NATIVE_SELECTION_NOT_FOUND'
       : branch === 'archive' ? 'ARCHIVED_NATIVE_SESSION'
       : matches.length > 1 || duplicates.length > 1 ? 'AMBIGUOUS_NATIVE_SELECTION'
