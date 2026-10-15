@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+import type { EventEmitter } from "node:events";
 import type {
   NativeLiveClaudeRuntime,
   NativeLiveNormalizedEvent,
@@ -11,6 +12,33 @@ import type {
 } from "../protocol/native-live-runtime-protocol.js";
 
 export type NativeLiveMacClaudeTransportKind = "agent_sdk";
+
+export type NativeLiveMacSessionSource = "human" | "task-notification" | "unclassified";
+export type NativeLiveMacSessionResult = {
+  providerSessionId: string;
+  inputId: string;
+  result: Record<string, unknown>;
+  events: Record<string, unknown>[];
+};
+export type NativeLiveMacPersistentSession = {
+  readonly state: string;
+  readonly sessionId: string | null;
+  readonly tasks: ReadonlyMap<string, Record<string, unknown>>;
+  events: Pick<EventEmitter, "on" | "off" | "once">;
+  completion: Promise<void>;
+  submit(text: string, options?: { id?: string; source?: NativeLiveMacSessionSource }): Promise<NativeLiveMacSessionResult>;
+  interruptTurn(): Promise<{ still_queued: string[] } | null>;
+  stopTask(id: string): Promise<void>;
+  close(): Promise<void>;
+};
+export type NativeLiveMacPersistentSessionOptions = {
+  authorize(context: { phase: "input" | "tool"; inputId: string | null; source: NativeLiveMacSessionSource | null; providerSessionId: string | null }): Promise<boolean>;
+  onBackgroundResult(frame: { result: Record<string, unknown>; events: Record<string, unknown>[] }): Promise<void>;
+  execution?: NativeLiveExecutionSelection | null;
+  perTaskStopAffordance?: boolean;
+  permissionHandler?: NativeLiveMacInteractiveTurnOptions["permissionHandler"];
+  questionHandler?: NativeLiveMacInteractiveTurnOptions["questionHandler"];
+};
 
 export type NativeLiveMacMcpServerConfig = {
   type: "http";
@@ -67,6 +95,7 @@ export type NativeLiveMacInteractiveTurnOptions = {
 
 export type NativeLiveMacClaudeTransport =
   NativeLiveClaudeRuntime & {
+    openPersistentSession?(options: NativeLiveMacPersistentSessionOptions): Promise<NativeLiveMacPersistentSession>;
     abort(): void;
     deleteSession(sessionId: string): Promise<void>;
     listSessions?(input?: {

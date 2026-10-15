@@ -200,3 +200,13 @@ test("the real Mac transport factory auto-approves tools but still routes user q
   });
   assert.equal(questions, 1);
 });
+
+test('real Mac factory exposes an explicitly admitted persistent session without forking',async()=>{
+ const {runtime}=await createNativeLiveMacClaudeTransport({},process.cwd());let calls=0;
+ (runtime as unknown as {queryImpl:(input:{prompt:AsyncIterable<{uuid:string}>;options:Record<string,unknown>})=>unknown}).queryImpl=({prompt,options})=>{
+  calls++;assert.equal(options.resume,undefined);assert.equal(options.forkSession,undefined);
+  return {close(){},async *[Symbol.asyncIterator](){let initialized=false;for await(const input of prompt){if(!initialized){initialized=true;yield {type:'system',subtype:'init',session_id:'factory-persistent'};}yield {type:'result',subtype:'success',session_id:'factory-persistent',user_message_uuid:input.uuid,result:'synthetic'};}}};
+ };
+ assert.ok(runtime.openPersistentSession);const session=await runtime.openPersistentSession({authorize:async()=>true,onBackgroundResult:async()=>{}});
+ try {assert.equal((await session.submit('first',{source:'human'})).providerSessionId,'factory-persistent');assert.equal((await session.submit('wake',{source:'task-notification'})).providerSessionId,'factory-persistent');assert.equal(calls,1);}finally{await session.close();}
+});
