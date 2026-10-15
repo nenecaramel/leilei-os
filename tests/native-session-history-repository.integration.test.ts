@@ -116,7 +116,7 @@ test("first native checkpoint-only attachment resumes the selected original Sess
     dispatch_target: "claude_code", operation: "send",
     expected_head_message_id: null, text: "first LeileiOS message",
   });
-  assert.equal(prepared.ok, true, JSON.stringify(prepared));
+  assert.ok(prepared.ok, JSON.stringify(prepared));
   assert.equal(prepared.command.runtime_mode, "resume", "must not fork selected Desktop Session");
   assert.equal(prepared.command.parent_provider_session_id, originalSession);
   assert.equal(prepared.command.parent_provider_checkpoint_id, selectedCheckpoint);
@@ -168,7 +168,7 @@ test("checkpoint-only handoff retains LeileiOS display and advances ordinary Sen
     dispatch_target: "claude_code", operation: "send",
     expected_head_message_id: restored.headMessageId, text: "continue from Desktop tip",
   });
-  assert.equal(prepared.ok, true, JSON.stringify(prepared));
+  assert.ok(prepared.ok, JSON.stringify(prepared));
   assert.equal(prepared.command.runtime_mode, "resume");
   assert.equal(prepared.command.parent_provider_session_id, f.sessionId);
   assert.equal(prepared.command.parent_provider_checkpoint_id, desktopTip);
