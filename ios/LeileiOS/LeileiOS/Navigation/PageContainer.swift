@@ -91,7 +91,27 @@ struct PageContainer: View {
             }
             .toolbarBackground(.hidden, for: .navigationBar)
         }
-        .background(pageBackground.ignoresSafeArea())
+        // Never put the opaque default pageBackground behind a wallpaper
+        // chat: it leaks through the keyboard's rounded top corners when the
+        // clipped navigation card is resized for keyboard avoidance.
+        .background {
+            if selectedPage == .chat,
+               chatThemeRawValue == ChatTheme.iMessage.rawValue,
+               let chatWallpaperImage {
+                GeometryReader { geometry in
+                    Image(uiImage: chatWallpaperImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped()
+                }
+                .ignoresSafeArea(.all)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+            } else {
+                pageBackground.ignoresSafeArea()
+            }
+        }
         .task(id: wallpaperRevision) {
             chatWallpaperImage = IMessageWallpaper.load()
         }
