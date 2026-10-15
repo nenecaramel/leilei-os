@@ -101,7 +101,7 @@ test("wallpaper iMessage task subrows share Tool-list glass while non-wallpaper 
 
   // All textual levels match the Tool-list charcoal palette, while Original
   // retains hierarchical primary/secondary/tertiary text.
-  for (const [kind, alpha] of [["primary", "0.17"], ["secondary", "0.64"], ["tertiary", "0.48"]]) {
+  for (const kind of ["primary", "secondary", "tertiary"]) {
     assert.ok(task.includes("static func " + kind + "(_ enabled: Bool)"), kind);
     assert.ok(task.includes("HierarchicalShapeStyle." + kind), kind);
   }
