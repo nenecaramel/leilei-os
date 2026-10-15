@@ -96,7 +96,7 @@ test('thinking icon uses the reference dotted clock without changing the sheet o
   const surface = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
   assert.match(surface, /NativeLiveThoughtProcessIcon\(\)\s*\.frame\(width: 14, height: 14\)\s*\.scaleEffect\(1\.1\)\s*\.padding\(\.trailing, 1\)\s*\.accessibilityHidden\(true\)/);
   assert.doesNotMatch(surface, /clock\.arrow\.circlepath/);
-  assert.match(surface, /private struct NativeLiveThoughtProcessIcon: View/);
+  assert.match(surface, /struct NativeLiveThoughtProcessIcon: View/);
   assert.match(surface, /for degrees in \[200\.0, 220, 240, 260\]/);
   assert.match(surface, /lineCap: \.round/);
 });
@@ -121,4 +121,29 @@ test('clock paint and thought inset are refined while action icons return to reg
   assert.match(actions, /\}\.font\(\.system\(size:14\)\)/);
   assert.match(surface, /\.padding\(\.leading, 2\)/);
   assert.match(surface, /\.padding\(\.trailing, 1\)/);
+});
+
+test('iMessage loading and work headers adopt Thought process typography, glyph, and contrast without fake actions', () => {
+  const row = readFileSync(root + 'NativeLiveAssistantTurnRow.swift', 'utf8');
+  const thinking = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
+  const activity = readFileSync(root + 'NativeLiveRuntimeActivity.swift', 'utf8');
+
+  assert.match(row, /if processSections\.showsLoading \{\s*if chatTheme == \.iMessage \{/);
+  assert.match(row, /NativeLiveProcessStatusHeadline\(\s*title: turn\.header\.isEmpty \? "Thinking…" : turn\.header/);
+  assert.match(row, /else \{\s*Text\("Thinking\.\.\."\)\.font\(\.system\(size: 14\)\)\.foregroundStyle\(\.secondary\)/);
+  assert.match(thinking, /struct NativeLiveProcessStatusHeadline: View/);
+  const idle = thinking.slice(thinking.indexOf('struct NativeLiveProcessStatusHeadline:'), thinking.indexOf('// A small dotted clock'));
+  assert.match(idle, /HStack\(spacing: 8\)/);
+  assert.match(idle, /NativeLiveThoughtProcessIcon\(\)/);
+  assert.match(idle, /Text\(title\)\s*\.font\(\.system\(size: 14\)\)/);
+  assert.match(idle, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
+  assert.match(idle, /iMessageWallpaperVisible \? Color\.black\.opacity\(0\.75\) : \.clear/);
+  assert.doesNotMatch(idle, /Button|Image\(systemName: "chevron/);
+
+  assert.match(activity, /@Environment\(\\\.chatTheme\) private var chatTheme/);
+  assert.match(activity, /if chatTheme == \.iMessage && !header\.isEmpty \{\s*NativeLiveThoughtProcessIcon\(\)/);
+  assert.match(activity, /spacing: chatTheme == \.iMessage \? 8 : 12/);
+  assert.match(activity, /\.padding\(\.leading, chatTheme == \.iMessage && !header\.isEmpty \? 2 : 0\)/);
+  assert.match(activity, /expansion\.toggleActivity\(\)/);
+  assert.match(activity, /effectiveExpanded\s*\? "chevron\.down"\s*: "chevron\.right"/);
 });

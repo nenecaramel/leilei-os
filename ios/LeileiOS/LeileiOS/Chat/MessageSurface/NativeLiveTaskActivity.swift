@@ -1,24 +1,69 @@
 import SwiftUI
 import Foundation
 
+// Compact Tool-list glass for task headings and status/history sub-rows.
+// No visual changes without an iMessage wallpaper; child cards remain separate.
+enum NativeLiveActivityGlassText {
+    static let primaryColor = Color(red: 0.17, green: 0.20, blue: 0.23)
+
+    static func primary(_ enabled: Bool) -> AnyShapeStyle {
+        enabled ? AnyShapeStyle(primaryColor) : AnyShapeStyle(HierarchicalShapeStyle.primary)
+    }
+
+    static func secondary(_ enabled: Bool) -> AnyShapeStyle {
+        enabled ? AnyShapeStyle(Color.black.opacity(0.64)) : AnyShapeStyle(HierarchicalShapeStyle.secondary)
+    }
+
+    static func tertiary(_ enabled: Bool) -> AnyShapeStyle {
+        enabled ? AnyShapeStyle(Color.black.opacity(0.48)) : AnyShapeStyle(HierarchicalShapeStyle.tertiary)
+    }
+}
+
+struct NativeLiveActivityGlassRow: ViewModifier {
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if iMessageWallpaperVisible {
+            content
+                .padding(.horizontal, 11)
+                .padding(.vertical, 9)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassEffect(
+                    .regular,
+                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                )
+        } else {
+            content
+        }
+    }
+}
+
 struct NativeLiveLifecycleActivityRow: View {
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     let lifecycle:
         NativeLiveTurnActivityProjection.LifecycleActivity
 
     var body: some View {
         HStack(spacing: 8) {
             if lifecycle.kind == "api_retry" {
-                ProgressView()
-                    .controlSize(.mini)
+                if iMessageWallpaperVisible {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(NativeLiveActivityGlassText.primaryColor)
+                } else {
+                    ProgressView()
+                        .controlSize(.mini)
+                }
             } else {
                 Image(systemName: "clock")
                     .font(.system(size: 12.5))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(NativeLiveActivityGlassText.secondary(iMessageWallpaperVisible))
             }
 
             Text(lifecycle.title)
                 .font(.system(size: 13.5, weight: .medium))
-                .foregroundStyle(.primary)
+                .foregroundStyle(NativeLiveActivityGlassText.primary(iMessageWallpaperVisible))
                 .lineLimit(1)
 
             Spacer(minLength: 8)
@@ -27,14 +72,16 @@ struct NativeLiveLifecycleActivityRow: View {
                !detail.isEmpty {
                 Text(detail)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(NativeLiveActivityGlassText.secondary(iMessageWallpaperVisible))
             }
         }
-        .padding(.horizontal, 5)
+        .padding(.horizontal, iMessageWallpaperVisible ? 0 : 5)
+        .modifier(NativeLiveActivityGlassRow())
     }
 }
 
 struct NativeLiveTaskActivityRow: View {
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     let task: NativeLiveTurnActivityProjection.TaskActivity
     let childTools:
         [NativeLiveTurnActivityProjection.ToolActivity]
@@ -62,7 +109,7 @@ struct NativeLiveTaskActivityRow: View {
                             size: 13.5,
                             weight: .medium
                         ))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(NativeLiveActivityGlassText.primary(iMessageWallpaperVisible))
                         .lineLimit(2)
 
                     HStack(spacing: 6) {
@@ -87,11 +134,14 @@ struct NativeLiveTaskActivityRow: View {
                         }
                     }
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(NativeLiveActivityGlassText.secondary(iMessageWallpaperVisible))
                 }
 
                 Spacer(minLength: 0)
             }
+            // Only the task header gets glass. Nested Tool, Question and
+            // Resources keep their own independent surfaces and tap targets.
+            .modifier(NativeLiveActivityGlassRow())
 
             ForEach(childTools) { tool in
                 NativeLiveToolActivityRow(
@@ -128,29 +178,36 @@ struct NativeLiveTaskActivityRow: View {
         if task.isFailed {
             Image(systemName: "exclamationmark.circle")
                 .font(.system(size: 12.5))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NativeLiveActivityGlassText.secondary(iMessageWallpaperVisible))
         } else if task.isCancelled {
             Image(systemName: "xmark.circle")
                 .font(.system(size: 12.5))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NativeLiveActivityGlassText.secondary(iMessageWallpaperVisible))
         } else if task.isTerminal {
             Image(systemName: "checkmark.circle")
                 .font(.system(size: 12.5))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NativeLiveActivityGlassText.secondary(iMessageWallpaperVisible))
         } else if task.isCurrentlyActive,
                   turnIsActive
                     || task.isBackgrounded == true {
-            ProgressView()
-                .controlSize(.mini)
+            if iMessageWallpaperVisible {
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(NativeLiveActivityGlassText.primaryColor)
+            } else {
+                ProgressView()
+                    .controlSize(.mini)
+            }
         } else {
             Image(systemName: "circle")
                 .font(.system(size: 10.5))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NativeLiveActivityGlassText.secondary(iMessageWallpaperVisible))
         }
     }
 }
 
 struct NativeLiveTaskResourceRow: View {
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     let task: NativeLiveTurnActivityProjection.TaskActivity
 
     @State private var isShowingResources = false
@@ -162,31 +219,32 @@ struct NativeLiveTaskResourceRow: View {
             HStack(spacing: 8) {
                 Image(systemName: "link")
                     .font(.system(size: 12.5))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(NativeLiveActivityGlassText.secondary(iMessageWallpaperVisible))
 
                 Text("Resources")
                     .font(.system(
                         size: 13.5,
                         weight: .medium
                     ))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(NativeLiveActivityGlassText.primary(iMessageWallpaperVisible))
 
                 Spacer(minLength: 8)
 
                 Text(String(task.resourceLinks.count))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(NativeLiveActivityGlassText.secondary(iMessageWallpaperVisible))
 
                 Image(systemName: "chevron.right")
                     .font(.system(
                         size: 10.5,
                         weight: .semibold
                     ))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(NativeLiveActivityGlassText.tertiary(iMessageWallpaperVisible))
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .modifier(NativeLiveActivityGlassRow())
         .sheet(isPresented: $isShowingResources) {
             NativeLiveToolDetailSheet(
                 title: task.displayTitle,

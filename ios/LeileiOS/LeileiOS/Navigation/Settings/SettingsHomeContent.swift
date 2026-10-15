@@ -63,6 +63,20 @@ struct SettingsHomeContent: View {
             }
 
             Section("Preferences") {
+                Button {
+                    Task {
+                        await handleNotificationsTap()
+                    }
+                } label: {
+                    LabeledContent {
+                        Text(notificationStatusTitle)
+                            .foregroundStyle(.secondary)
+                    } label: {
+                        Label("Notifications", systemImage: "bell")
+                    }
+                }
+                .foregroundStyle(.primary)
+
                 Picker(selection: $appearanceModeRawValue) {
                     ForEach(AppearanceMode.allCases, id: \.rawValue) { mode in
                         Text(mode.title)
@@ -110,19 +124,6 @@ struct SettingsHomeContent: View {
                     }
                 }
 
-                Button {
-                    Task {
-                        await handleNotificationsTap()
-                    }
-                } label: {
-                    LabeledContent {
-                        Text(notificationStatusTitle)
-                            .foregroundStyle(.secondary)
-                    } label: {
-                        Label("Notifications", systemImage: "bell")
-                    }
-                }
-                .foregroundStyle(.primary)
             }
 
             if chatThemeRawValue == ChatTheme.iMessage.rawValue {
@@ -168,9 +169,6 @@ struct SettingsHomeContent: View {
                         incomingBubbleOpacity = IMessageBubbleAppearance.defaultIncomingOpacity
                     }
 
-                    Text("Opacity controls the color over native frosted glass.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                 }
             }
 

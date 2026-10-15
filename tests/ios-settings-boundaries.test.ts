@@ -63,3 +63,27 @@ test("Settings shared presentation and existing detail boundaries stay separate"
     assert.doesNotMatch(source, /@Observable\b|@StateObject|@Published|:\s*ObservableObject|UserDefaults\.standard|AuthSessionController\(/);
   }
 });
+
+test("Notifications are global and precede Appearance; bubble colors have no trailing helper row", () => {
+  const home = read("Settings/SettingsHomeContent.swift");
+  const preferences = home.slice(
+    home.indexOf('Section("Preferences")'),
+    home.indexOf('Section("iMessage Bubble Colors")')
+  );
+  const notifications = preferences.indexOf('Label("Notifications", systemImage: "bell")');
+  const appearance = preferences.indexOf('Label("Appearance", systemImage: "circle.lefthalf.filled")');
+  const chatStyle = preferences.indexOf('Label("Chat Style", systemImage: "bubble.left.and.bubble.right")');
+  const gatedBackground = preferences.indexOf('if chatThemeRawValue == ChatTheme.iMessage.rawValue {');
+  assert.ok(notifications >= 0 && notifications < appearance && appearance < chatStyle);
+  assert.ok(gatedBackground > notifications, "Notifications must not be inside the iMessage-only branch");
+  assert.equal((home.match(/Label\("Notifications", systemImage: "bell"\)/g) ?? []).length, 1);
+  assert.match(home, /await handleNotificationsTap\(\)/);
+  assert.match(home, /Text\(notificationStatusTitle\)/);
+
+  const colors = home.slice(home.indexOf('Section("iMessage Bubble Colors")'), home.indexOf('Section("Data")'));
+  assert.match(colors, /Button\("Restore Default Bubble Colors"\)/);
+  assert.match(colors, /outgoingBubbleColor = IMessageBubbleAppearance\.defaultOutgoingColorHex/);
+  assert.match(colors, /incomingBubbleOpacity = IMessageBubbleAppearance\.defaultIncomingOpacity/);
+  assert.doesNotMatch(colors, /Opacity controls the color over native frosted glass/);
+  assert.doesNotMatch(colors, /\.font\(\.footnote\)/);
+});

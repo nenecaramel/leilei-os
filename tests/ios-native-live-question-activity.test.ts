@@ -64,3 +64,57 @@ test("pending permission and question cards share wallpaper-only native glass wi
   assert.match(question, /Button\("Submit"\)/);
   assert.match(question, /"answers": \.object\(answers\)/);
 });
+
+
+test("wallpaper iMessage task subrows share Tool-list glass while non-wallpaper layouts and actions remain unchanged", () => {
+  const task = fs.readFileSync(surface + "NativeLiveTaskActivity.swift", "utf8");
+  const history = fs.readFileSync(surface + "NativeLiveRuntimeInteractions.swift", "utf8");
+  const activity = fs.readFileSync(surface + "NativeLiveRuntimeActivity.swift", "utf8");
+  const tool = fs.readFileSync(surface + "NativeLiveToolActivity.swift", "utf8");
+
+  // One 11pt Regular Liquid Glass treatment, matching Tool rows.
+  assert.match(task, /struct NativeLiveActivityGlassRow: ViewModifier/);
+  assert.match(task, /@Environment\(\\\.iMessageWallpaperVisible\) private var iMessageWallpaperVisible/);
+  assert.match(task, /if iMessageWallpaperVisible \{\s*content\s*\.padding\(\.horizontal, 11\)\s*\.padding\(\.vertical, 9\)/);
+  assert.match(task, /\.glassEffect\(\s*\.regular,\s*in: RoundedRectangle\(cornerRadius: 11, style: \.continuous\)/);
+  assert.match(task, /else \{\s*content\s*\}/);
+  assert.match(tool, /\.glassEffect\(\s*\.regular,\s*in: RoundedRectangle\(cornerRadius: 11, style: \.continuous\)/);
+
+  // Exactly three surfaces in the task file: lifecycle, parent task header,
+  // and Resources. Do not wrap the whole VStack and nested child controls.
+  assert.equal((task.match(/\.modifier\(NativeLiveActivityGlassRow\(\)\)/g) ?? []).length, 3);
+  const taskArea = task.slice(task.indexOf("struct NativeLiveTaskActivityRow:"), task.indexOf("struct NativeLiveTaskResourceRow:"));
+  assert.match(taskArea, /\.modifier\(NativeLiveActivityGlassRow\(\)\)\s*ForEach\(childTools\)/);
+  assert.match(taskArea, /NativeLiveToolActivityRow\(/);
+  assert.match(taskArea, /NativeLiveQuestionActivityRow\(/);
+  assert.match(taskArea, /NativeLiveTaskResourceRow\(/);
+  assert.match(task, /\.padding\(\.horizontal, iMessageWallpaperVisible \? 0 : 5\)/);
+
+  // Asked user and resolved permission history get their own row glass.
+  // The pending answer form stays its separate glass card.
+  assert.equal((history.match(/\.modifier\(NativeLiveActivityGlassRow\(\)\)/g) ?? []).length, 2);
+  assert.match(history, /NativeLiveQuestionInteractionCard\(/);
+  assert.match(history, /\.padding\(\.horizontal, iMessageWallpaperVisible \? 0 : 5\)/);
+  assert.match(history, /isShowingDetails = true/);
+  assert.match(history, /NativeLiveToolDetailSheet\(/);
+  assert.match(activity, /NativeLiveLifecycleActivityRow\(/);
+
+  // All textual levels match the Tool-list charcoal palette, while Original
+  // retains hierarchical primary/secondary/tertiary text.
+  for (const kind of ["primary", "secondary", "tertiary"]) {
+    assert.ok(task.includes("static func " + kind + "(_ enabled: Bool)"), kind);
+    assert.ok(task.includes("HierarchicalShapeStyle." + kind), kind);
+  }
+  assert.match(task, /Color\(red: 0\.17, green: 0\.20, blue: 0\.23\)/);
+  assert.match(task, /Color\.black\.opacity\(0\.64\)/);
+  assert.match(task, /Color\.black\.opacity\(0\.48\)/);
+  for (const item of [task, history]) {
+    assert.match(item, /NativeLiveActivityGlassText\.primary\(iMessageWallpaperVisible\)/);
+    assert.match(item, /NativeLiveActivityGlassText\.secondary\(iMessageWallpaperVisible\)/);
+    assert.match(item, /NativeLiveActivityGlassText\.tertiary\(iMessageWallpaperVisible\)/);
+  }
+  assert.match(task, /if iMessageWallpaperVisible \{\s*ProgressView\(\)\s*\.controlSize\(\.mini\)\s*\.tint\(NativeLiveActivityGlassText\.primaryColor\)/);
+  // Preserve existing depth nesting and original resource/detail actions.
+  assert.match(task, /min\(max\(task\.spawnDepth \?\? 0, 0\), 4\)/);
+  assert.match(task, /isShowingResources = true/);
+});

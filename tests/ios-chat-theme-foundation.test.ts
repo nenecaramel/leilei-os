@@ -408,7 +408,7 @@ test('iMessage offers persisted, independent color and opacity controls for both
   assert.match(settings, /Button\("Restore Default Bubble Colors"\)/);
   assert.match(settings, /outgoingBubbleOpacity = IMessageBubbleAppearance\.defaultOutgoingOpacity/);
   assert.match(settings, /incomingBubbleOpacity = IMessageBubbleAppearance\.defaultIncomingOpacity/);
-  assert.match(settings, /Opacity controls the color over native frosted glass/);
+  assert.doesNotMatch(settings, /Opacity controls the color over native frosted glass/);
 });
 
 
@@ -520,7 +520,7 @@ test('shell renders exactly one wallpaper while child pages stay transparent', (
   assert.match(shell, /shellWallpaperImage != nil/);
   assert.match(iphone, /ZStack\(alignment: \.leading\) \{\s*\/\/ The sidebar stays painted behind the chat/);
   assert.match(iphone, /Rectangle\(\)\s*\.fill\(sidebarBackground\)\s*\.ignoresSafeArea\(\)/);
-  assert.match(iphone, /if isWallpaperChatVisible \{\s*rootWallpaperBackdrop\s*\.clipShape\(/);
+  assert.match(iphone, /if isWallpaperChatVisible \{\s*rootWallpaperBackdrop\s*\.modifier\(ChatWallpaperRevealClip\(/);
   assert.match(iphone, /rootWallpaperBackdrop[\s\S]*?\.offset\(x: pageHorizontalOffset\)/);
   const sidebarIndex = iphone.indexOf('                SidebarView(');
   const wallpaperIndex = iphone.indexOf('                    rootWallpaperBackdrop', sidebarIndex);
@@ -560,7 +560,7 @@ test('sidebar gestures slide the one wallpaper with the chat instead of hiding o
   assert.match(visibility, /shellWallpaperImage != nil/);
   assert.doesNotMatch(visibility, /!menuOpen|sidebarDragTranslation/);
   assert.match(iphone, /let pageHorizontalOffset = \(menuOpen \? revealOffset : 0\)\s*\+ sidebarDragTranslation/);
-  assert.match(iphone, /rootWallpaperBackdrop\s*\.clipShape\(\s*UnevenRoundedRectangle\(/);
+  assert.match(iphone, /rootWallpaperBackdrop\s*\.modifier\(ChatWallpaperRevealClip\(/);
   assert.match(iphone, /rootWallpaperBackdrop[\s\S]*?\.offset\(x: pageHorizontalOffset\)/);
   assert.equal((iphone.match(/\.offset\(x: pageHorizontalOffset\)/g) ?? []).length, 2,
     'wallpaper and chat card share exactly the same horizontal offset');
@@ -745,4 +745,42 @@ test('iMessage assistant audio attachment and ElevenLabs use the exact incoming 
   assert.match(bubble, /else \{\s*content\.background\(\s*Color\.chatSoftFill/);
   assert.match(audio, /NativeLiveVoiceBubbleGeometry\.verticalInset/);
   assert.match(eleven, /NativeLiveVoiceBubbleGeometry\.verticalInset/);
+});
+
+test('the iMessage generating-state header matches the existing Thought/Worked contrast without changing Original', () => {
+  const row = read('Chat/MessageSurface/NativeLiveAssistantTurnRow.swift');
+  const thinking = read('Chat/MessageSurface/NativeLiveVisibleThinkingSurface.swift');
+  const activity = read('Chat/MessageSurface/NativeLiveRuntimeActivity.swift');
+  assert.match(row, /if chatTheme == \.iMessage \{\s*\/\/ A waiting state is a status/);
+  assert.match(row, /NativeLiveProcessStatusHeadline\(/);
+  assert.match(row, /else \{\s*Text\("Thinking\.\.\."\)/);
+  assert.match(thinking, /struct NativeLiveProcessStatusHeadline: View/);
+  assert.match(thinking, /NativeLiveThoughtProcessIcon\(\)/);
+  assert.match(thinking, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
+  assert.match(activity, /if chatTheme == \.iMessage && !header\.isEmpty \{/);
+  assert.match(activity, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
+});
+
+test('closed iMessage wallpaper is not clipped into keyboard safe-area bounds', () => {
+  const shell = read('Navigation/AppShell.swift');
+  const chat = read('Chat/ChatView.swift');
+  const iphone = shell.slice(shell.indexOf('    private var iPhoneLayout: some View {'), shell.indexOf('    private func sidebarDragGesture('));
+  const clip = shell.slice(shell.indexOf('private struct ChatWallpaperRevealClip:'), shell.indexOf('struct AppShell: View {'));
+
+  // The 13:28 sidebar revision masked the single wallpaper even at radius 0.
+  // Keyboard avoidance can shrink a zero-radius clip to the keyboard edge.
+  // Mask only while revealed/dragging; at rest preserve the unmasked image.
+  assert.match(iphone, /rootWallpaperBackdrop\s*\.modifier\(ChatWallpaperRevealClip\(\s*enabled: menuOpen \|\| sidebarDragTranslation != 0,\s*cornerRadius: cardCornerRadius/);
+  assert.match(clip, /if enabled \{\s*content\.clipShape\(\s*UnevenRoundedRectangle\(/);
+  assert.match(clip, /else \{\s*content\s*\}/);
+  assert.doesNotMatch(iphone, /rootWallpaperBackdrop\s*\.clipShape\(/);
+  assert.match(shell, /\.ignoresSafeArea\(\.all\)/);
+  assert.equal((shell.match(/Image\(uiImage: shellWallpaperImage\)/g) ?? []).length, 1);
+  assert.equal((iphone.match(/rootWallpaperBackdrop/g) ?? []).length, 1);
+  assert.equal((iphone.match(/\.offset\(x: pageHorizontalOffset\)/g) ?? []).length, 2);
+
+  // Do not alter composer keyboard avoidance and wallpaper transparency.
+  assert.match(chat, /\.safeAreaInset\(edge: \.bottom, spacing: selectedChatTheme == \.iMessage \? 0 : nil\)/);
+  assert.match(chat, /\.padding\(\.bottom, isSystemKeyboardVisible \? 12 : 8\)/);
+  assert.match(chat, /\.offset\(y: isSystemKeyboardVisible \? 0 : 10\)/);
 });

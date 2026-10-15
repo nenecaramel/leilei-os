@@ -2,6 +2,7 @@ import SwiftUI
 import Foundation
 
 struct NativeLiveTurnActivityView: View {
+    @Environment(\.chatTheme) private var chatTheme
     @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     let projection: NativeLiveTurnActivityProjection
     let timestampText: String?
@@ -40,16 +41,27 @@ struct NativeLiveTurnActivityView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(
-                alignment: .firstTextBaseline,
+                alignment: chatTheme == .iMessage ? .center : .firstTextBaseline,
                 spacing: 8
             ) {
                 Button {
                     expansion.toggleActivity()
                 } label: {
                     HStack(
-                        alignment: .firstTextBaseline,
-                        spacing: 12
+                        alignment: chatTheme == .iMessage ? .center : .firstTextBaseline,
+                        spacing: chatTheme == .iMessage ? 8 : 12
                     ) {
+                        if chatTheme == .iMessage && !header.isEmpty {
+                            NativeLiveThoughtProcessIcon()
+                                .frame(width: 14, height: 14)
+                                .scaleEffect(1.1)
+                                .padding(.trailing, 1)
+                                .foregroundStyle(
+                                    iMessageWallpaperVisible ? Color.white : Color.secondary
+                                )
+                                .accessibilityHidden(true)
+                        }
+
                         if let timestampText {
                             Text(timestampText)
                                 .font(.system(size: 12))
@@ -72,6 +84,7 @@ struct NativeLiveTurnActivityView: View {
                     .frame(
                         alignment: .leading
                     )
+                    .padding(.leading, chatTheme == .iMessage && !header.isEmpty ? 2 : 0)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
