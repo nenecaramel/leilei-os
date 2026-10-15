@@ -571,17 +571,31 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
             }] }] } },
           } : {}),
           canUseTool: async (name, input, context) => {
-            try { await admit("tool", host?.active?.id ?? null); }
+            // A delayed tool callback belongs to the turn that invoked it, not
+            // whichever turn happens to be active when authorization returns.
+            const turn = host?.active ?? null;
+            const assertTurn = () => {
+              assertLive("tool");
+              if ((host?.active ?? null) !== turn) throw new Error("Persistent tool turn changed.");
+            };
+            const admitTurn = async () => { await admit("tool", turn?.id ?? null); assertTurn(); };
+            try { await admitTurn(); assertTurn(); }
             catch { return { behavior: "deny", message: "LeileiOS session admission denied.", interrupt: true }; }
             const verdict = await (name === "AskUserQuestion"
               ? question ? question(name, input, context) : { behavior: "deny", message: "No question handler is configured.", interrupt: false }
               : permission(name, input, context));
-            try { await admit("tool", host?.active?.id ?? null); }
+            try { await admitTurn(); assertTurn(); }
             catch { return { behavior: "deny", message: "LeileiOS session admission denied.", interrupt: true }; }
             return verdict;
           },
           hooks: { PreToolUse: [{ hooks: [async () => {
-            try { await admit("tool", host?.active?.id ?? null); return {}; }
+            const turn = host?.active ?? null;
+            try {
+              await admit("tool", turn?.id ?? null);
+              assertLive("tool");
+              if ((host?.active ?? null) !== turn) throw new Error("Persistent tool turn changed.");
+              return {};
+            }
             catch { return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "LeileiOS session admission denied." } }; }
           }] }] },
         },

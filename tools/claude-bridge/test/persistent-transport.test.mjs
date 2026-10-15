@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AgentSdkClaudeTransport } from '../src/agent-sdk-claude-transport.mjs';
 function queue(){let waiter,ended=false;const values=[];return {push(v){if(waiter){const w=waiter;waiter=null;w({value:v,done:false});}else values.push(v);},end(){ended=true;waiter?.({done:true});},[Symbol.asyncIterator](){return {next(){return values.length?Promise.resolve({value:values.shift(),done:false}):ended?Promise.resolve({done:true}):new Promise(r=>{waiter=r;});}};}};}
-function fixture({loadQuery=null,omitEcho=false,failClose=false}={}){
+function fixture({loadQuery=null,omitEcho=false,failClose=false,manualResults=false,onInput=()=>{}}={}){
  const output=queue(),inputs=[],background=[];let calls=0,closed=0,options;
- const queryImpl=({prompt,options:opts})=>{calls++;options=opts;(async()=>{let initialized=false;for await(const input of prompt){inputs.push(input);if(!initialized){initialized=true;output.push({type:'system',subtype:'init',session_id:'s'});}output.push({type:'assistant',session_id:'s',message:{content:[{type:'text',text:input.message.content[0].text}]}});output.push({type:'result',subtype:'success',session_id:'s',result:'synthetic',...(omitEcho==='zero'?{user_message_uuid:'00000000-0000-0000-0000-000000000000'}:omitEcho?{}:{user_message_uuid:input.uuid})});}})();return {close(){closed++;if(failClose){failClose=false;throw new Error('synthetic close failure');}output.end();},async interrupt(){return {still_queued:[]};},async stopTask(){},async *[Symbol.asyncIterator](){yield* output;}};};
+ const queryImpl=({prompt,options:opts})=>{calls++;options=opts;(async()=>{let initialized=false;for await(const input of prompt){inputs.push(input);onInput(input);if(!initialized){initialized=true;output.push({type:'system',subtype:'init',session_id:'s'});}if(manualResults)continue;output.push({type:'assistant',session_id:'s',message:{content:[{type:'text',text:input.message.content[0].text}]}});output.push({type:'result',subtype:'success',session_id:'s',result:'synthetic',...(omitEcho==='zero'?{user_message_uuid:'00000000-0000-0000-0000-000000000000'}:omitEcho?{}:{user_message_uuid:input.uuid})});}})();return {close(){closed++;if(failClose){failClose=false;throw new Error('synthetic close failure');}output.end();},async interrupt(){return {still_queued:[]};},async stopTask(){},async *[Symbol.asyncIterator](){yield* output;}};};
  const transport=new AgentSdkClaudeTransport({environment:{},cwd:'/synthetic',toolPermissionPolicy:'auto_allow',...(loadQuery?{loadQuery}:{queryImpl})});
  return {transport,inputs,background,output,queryImpl,get options(){return options;},get calls(){return calls;},get closed(){return closed;},open(extra={}){return transport.openPersistentSession({authorize:async()=>true,onBackgroundResult:async value=>{background.push(value);},...extra});}};
 }
@@ -125,4 +125,35 @@ test('abort in query creation retains failed-close ownership until retry',async(
  await assert.rejects(f.open(),/close failure/);assert.equal(f.calls,1);
  await assert.rejects(f.open(),/active/);assert.equal(f.calls,1);
  await f.transport.closePersistentSession();assert.equal(f.transport.activeSessionHost,null);
+});
+
+for (const phase of ['authorization','permission','pre-tool']) test(`old ${phase} callback cannot approve a different active turn`,async t=>{
+ let release,entered,receivedOne,receivedTwo;
+ const barrier=new Promise(r=>{release=r;}),started=new Promise(r=>{entered=r;});
+ const firstInput=new Promise(r=>{receivedOne=r;}),secondInput=new Promise(r=>{receivedTwo=r;});
+ const f=fixture({manualResults:true,onInput:input=>(input.uuid==='a'?receivedOne:receivedTwo)()});
+ f.transport.toolPermissionPolicy='ask';
+ const host=await f.open({authorize:async context=>{if(phase!=='permission'&&context.phase==='tool'){entered();await barrier;}return true;},permissionHandler:async()=>{entered();await barrier;return {decision:'allow'};}});
+ t.after(async()=>{release();await host.close();});
+ const one=host.submit('first',{id:'a'});await firstInput;
+ const pending=phase==='pre-tool'?f.options.hooks.PreToolUse[0].hooks[0]():f.options.canUseTool('Write',{},{});
+ await started;
+ f.output.push({type:'result',subtype:'success',session_id:'s',user_message_uuid:'a'});await one;
+ const two=host.submit('second',{id:'b'});await secondInput;
+ release();const verdict=await pending;
+ f.output.push({type:'result',subtype:'success',session_id:'s',user_message_uuid:'b'});await two;
+ assert.equal(phase==='pre-tool'?verdict.hookSpecificOutput?.permissionDecision:verdict.behavior,'deny');
+});
+test('retirement between nested authorization and outer tool continuation cannot return allow',async t=>{
+ let host,closing,received,toolAdmissions=0;
+ const input=new Promise(r=>{received=r;});
+ const f=fixture({manualResults:true,onInput:()=>received()});f.transport.toolPermissionPolicy='ask';
+ host=await f.open({authorize:async context=>{
+  if(context.phase==='tool'&&++toolAdmissions===2){let remaining=2;const retire=()=>{if(remaining-->0)queueMicrotask(retire);else closing=host.close();};queueMicrotask(retire);}
+  return true;
+ },permissionHandler:async()=>({decision:'allow'})});
+ t.after(()=>host.close());
+ const pending=host.submit('synthetic',{id:'a'});const rejected=assert.rejects(pending,/closed/);await input;
+ const verdict=await f.options.canUseTool('Write',{},{});await closing;await rejected;
+ assert.equal(verdict.behavior,'deny');
 });
