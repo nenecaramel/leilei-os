@@ -1,3 +1,4 @@
+import { parseNativeLiveExecutionAdmissionBody } from "../../domains/bridge/protocol/native-live-execution-admission.js";
 import type {
   RequestHandler,
   Response,
@@ -146,6 +147,21 @@ export function reserveNextHandler(
     } catch (error) {
       sendRelayError(response, error);
     }
+  };
+}
+
+export function executionAdmissionHandler(dependencies: NativeLiveRelayInternalDependencies): RequestHandler {
+  return async (request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId) return;
+    const reservationId = parseReservationId(request.params.reservationId);
+    const body = parseNativeLiveExecutionAdmissionBody(request.body);
+    if (!reservationId || !body) { sendInvalid(response); return; }
+    try {
+      const admitted = await dependencies.relayService.checkExecutionAdmission?.({ userId, reservationId, ...body }) === true;
+      response.json({ success: true, data: { admitted } });
+    } catch (error) { sendRelayError(response, error); }
   };
 }
 

@@ -1,3 +1,4 @@
+import { parseNativeLiveExecutionAdmissionBody } from "../protocol/native-live-execution-admission.js";
 import { randomUUID } from "node:crypto";
 import type {
   NativeLiveDaemonLeaseState,
@@ -623,6 +624,24 @@ implements NativeLiveMacDaemonRelayClient {
       reservationId: record.reservationId,
       command: parseNativeLiveRuntimeCommand(record.command),
     };
+  }
+
+  async checkExecutionAdmission(input: {
+    listenerInstanceId: string;
+    command: import("../protocol/native-live-runtime-protocol.js").NativeLiveRuntimeCommand;
+  }): Promise<boolean> {
+    const c = input.command;
+    const body = { listener_instance_id: input.listenerInstanceId, request_id: c.request_id,
+      conversation_id: c.conversation_id, runtime_mode: c.runtime_mode,
+      canonical_user_message_id: c.canonical_user_message_id,
+      parent_provider_session_id: c.parent_provider_session_id,
+      parent_provider_checkpoint_id: c.parent_provider_checkpoint_id };
+    if (!parseNativeLiveExecutionAdmissionBody(body)) return false;
+    const data = readRecord(await this.post(
+      `/reservations/${encodeURIComponent(c.prepare_id)}/execution-admission`, body, AbortSignal.timeout(2_000),
+    ));
+    if (typeof data.admitted !== "boolean") throw new Error("Native live execution admission response is invalid.");
+    return data.admitted;
   }
 
   async markExecutionStarted(input: {

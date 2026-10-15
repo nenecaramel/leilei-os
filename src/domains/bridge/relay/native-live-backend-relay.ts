@@ -1,3 +1,5 @@
+import { checkNativeLiveExecutionAdmission } from "./native-live-execution-admission.js";
+import type { NativeLiveExecutionAdmission } from "../protocol/native-live-execution-admission.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import {
@@ -36,6 +38,7 @@ type RelayMutationOutcome =
   | "conflict";
 
 export interface NativeLiveBackendRelayPort {
+  checkExecutionAdmission?(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean>;
   enqueuePreparation(input: {
     userId: string;
     prepareId: string;
@@ -501,6 +504,10 @@ implements NativeLiveBackendRelayPort {
       );
       return row;
     });
+  }
+
+  async checkExecutionAdmission(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {
+    return checkNativeLiveExecutionAdmission(this.db, input);
   }
 
   async markExecutionStarted(input: {
@@ -984,6 +991,11 @@ export class NativeLiveBackendRelayService {
         this.outputAttachmentsEnabled,
       ),
     };
+  }
+
+  async checkExecutionAdmission(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {
+    // An older repository cannot authorize execution via late-result ownership.
+    return await this.repository.checkExecutionAdmission?.(input) === true;
   }
 
   async markExecutionStarted(input: {

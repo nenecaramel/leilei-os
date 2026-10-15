@@ -1310,3 +1310,36 @@ test("relay distinguishes HTTP 200 body transport loss from invalid JSON without
       });
   }
 });
+test("execution admission sends only reservation identity metadata with a bounded abort signal", async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async (url, init) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({ success: true, data: { admitted: true } }), { status: 200 });
+  });
+  const cmd = { ...command(), parent_provider_checkpoint_id: null };
+  assert.equal(await client.checkExecutionAdmission({ listenerInstanceId: listenerId, command: cmd }), true);
+  assert.ok(calls[0]!.url.endsWith(`/reservations/${prepareId}/execution-admission`));
+  const body = JSON.parse(calls[0]!.init!.body as string);
+  assert.equal(body.listener_instance_id, listenerId); assert.equal(body.request_id, requestId);
+  assert.equal(body.parent_provider_checkpoint_id, null); assert.equal(body.prompt, undefined);
+  assert.ok(calls[0]!.init!.signal instanceof AbortSignal);
+});
+for (const admitted of [false, "true", 1, null, undefined]) test(`execution admission never coerces ${String(admitted)} to approval`, async () => {
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async () => new Response(JSON.stringify({ success: true, data: { admitted } }), { status: 200 }));
+  const call = client.checkExecutionAdmission({ listenerInstanceId: listenerId, command: { ...command(), parent_provider_checkpoint_id: null } });
+  if (admitted === false) assert.equal(await call, false); else await assert.rejects(call, /admission/i);
+});
+test("execution admission timeout aborts one request without retry or cached approval", async () => {
+  let calls = 0;
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async (_url, init) => {
+    calls++;
+    return new Promise((_resolve, reject) => {
+      assert.ok(init?.signal);
+      init.signal.addEventListener("abort", () => reject(init.signal!.reason), { once: true });
+    });
+  });
+  // Keep the synthetic process alive; AbortSignal.timeout's timer is unref'ed.
+  const keepAlive = setTimeout(() => {}, 10_000);
+  try { await assert.rejects(client.checkExecutionAdmission({ listenerInstanceId: listenerId, command: { ...command(), parent_provider_checkpoint_id: null } }), error => error instanceof Error && error.name === "TimeoutError"); assert.equal(calls, 1); }
+  finally { clearTimeout(keepAlive); }
+});

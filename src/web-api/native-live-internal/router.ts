@@ -5,6 +5,7 @@ import {
   waitForWorkHandler,
   reserveNextHandler,
   executionStartedHandler,
+  executionAdmissionHandler,
   submitResultHandler,
   deliveryUnknownHandler,
   rejectReservationHandler,
@@ -144,6 +145,9 @@ export function createNativeLiveRelayInternalRouter(
     );
   }
   router.post("/reserve", reserveNextHandler(dependencies));
+  if (dependencies.relayService.checkExecutionAdmission) {
+    router.post("/reservations/:reservationId/execution-admission", executionAdmissionHandler(dependencies));
+  }
   router.post(
     "/reservations/:reservationId/execution-started",
     executionStartedHandler(dependencies),

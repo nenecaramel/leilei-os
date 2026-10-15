@@ -250,6 +250,8 @@ export interface NativeLiveMacDaemonRelayClient {
     dispatchTarget: "claude_code";
   }): Promise<NativeLiveDaemonReservation | null>;
 
+  checkExecutionAdmission?(input: { listenerInstanceId: string; command: NativeLiveRuntimeCommand }): Promise<boolean>;
+
   markExecutionStarted(input: {
     listenerInstanceId: string;
     reservationId: string;
