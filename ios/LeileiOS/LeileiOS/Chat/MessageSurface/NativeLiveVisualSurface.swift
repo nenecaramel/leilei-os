@@ -7,6 +7,8 @@ struct NativeLiveVisualSurface: View {
     let label: String
     var previewAction: (() -> Void)? = nil
     var compactInline = false
+    // SVG already has an outer native card; don't nest glass inside glass.
+    var embeddedInParentPanel = false
 
     @StateObject private var controller =
         NativeLiveVisualSandboxController()
@@ -134,7 +136,8 @@ struct NativeLiveVisualSurface: View {
         .padding(12)
         .modifier(NativeLiveIMessageContentPanel(
             originalOpacity: 0.045,
-            originalCornerRadius: 10
+            originalCornerRadius: 10,
+            embeddedInGlass: embeddedInParentPanel
         ))
     }
 
