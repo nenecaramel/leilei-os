@@ -1,5 +1,6 @@
 import { validateNativeHistoryRestoreInput, type listReferencedNativeSessions, type restoreNativeSessionHistory, type readNativeSessionRestoreState, type releaseNativeSessionToDesktop, type listNativeSessionSwitchChoices } from "../domains/conversation/native-session-history-repository.js";
 import { Router, type RequestHandler, type Response } from "express";
+import type { readNativeSessionLightState, switchNativeSessionOwnerLight } from "../domains/conversation/native-session-lightweight-handoff.js";
 import type { nativeSessionAsset } from "../domains/conversation/native-session-asset-repository.js";
 import type { stageNativeDisplayAssets } from "../domains/conversation/native-session-asset-staging.js";
 import {
@@ -17,6 +18,8 @@ export type NativeLiveProviderSessionStoreInternalDependencies = {
   restoreNativeHistory?: (input: Parameters<typeof restoreNativeSessionHistory>[1]) => ReturnType<typeof restoreNativeSessionHistory>;
   readNativeHistoryState?: (input: Parameters<typeof readNativeSessionRestoreState>[1]) => ReturnType<typeof readNativeSessionRestoreState>;
   releaseNativeHistory?: (input: Parameters<typeof releaseNativeSessionToDesktop>[1]) => ReturnType<typeof releaseNativeSessionToDesktop>;
+  readNativeLightState?: (input: Parameters<typeof readNativeSessionLightState>[1]) => ReturnType<typeof readNativeSessionLightState>;
+  switchNativeLightOwner?: (input: Parameters<typeof switchNativeSessionOwnerLight>[1]) => ReturnType<typeof switchNativeSessionOwnerLight>;
   providerSessionStoreService: Pick<
     NativeLiveProviderSessionStoreService,
     "append" | "load" | "listSessions" | "delete" | "listSubkeys"
@@ -36,6 +39,8 @@ export function createNativeLiveProviderSessionStoreInternalRouter(
   router.post("/native-history/state", nativeHistoryStateHandler(dependencies));
   router.post("/native-history/choices", nativeHistoryChoicesHandler(dependencies));
   router.post("/native-history/release", nativeHistoryReleaseHandler(dependencies));
+  router.post("/native-history/light-state", nativeHistoryLightStateHandler(dependencies));
+  router.post("/native-history/light-switch", nativeHistoryLightSwitchHandler(dependencies));
   router.post("/native-history/asset", nativeHistoryAssetHandler(dependencies));
   router.post("/native-history/asset-stage", nativeHistoryAssetStageHandler(dependencies));
   router.post("/native-history/referenced-sessions", async (request, response) => {
@@ -385,6 +390,42 @@ function nativeHistoryStateHandler(dependencies: NativeLiveProviderSessionStoreI
     if (!dependencies.readNativeHistoryState) { sendNativeHistoryError(response, null); return; }
     try { response.json({ success: true, data: await dependencies.readNativeHistoryState({ userId, conversationId: body.conversationId, sessionId: body.sessionId }) }); }
     catch (error) { sendNativeHistoryError(response, error); }
+  };
+}
+// Metadata-only handoff. Authenticated internal relay, no transcript body.
+function nativeHistoryLightStateHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId) return;
+    const body = readRecord(request.body);
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!body || Object.keys(body).some(key => key !== "conversationId")
+      || typeof body.conversationId !== "string" || !uuid.test(body.conversationId)) { sendInvalid(response); return; }
+    if (!dependencies.readNativeLightState) { sendNativeHistoryError(response, null); return; }
+    try { response.json({ success: true, data: await dependencies.readNativeLightState({ userId, conversationId: body.conversationId }) }); }
+    catch (error) { sendNativeHistoryError(response, error); }
+  };
+}
+function nativeHistoryLightSwitchHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId) return;
+    const body = readRecord(request.body);
+    const keys = ["conversationId", "sessionId", "expectedHeadMessageId", "expectedProviderCheckpointId",
+      "selectedCheckpointId", "effectiveWorkingDirectory", "nativeRevision", "direction"];
+    const uuidKeys = keys.slice(0, 5);
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!body || Object.keys(body).some(key => !keys.includes(key))
+      || uuidKeys.some(key => typeof body[key] !== "string" || !uuid.test(body[key] as string))
+      || typeof body.effectiveWorkingDirectory !== "string" || !body.effectiveWorkingDirectory.startsWith("/")
+      || typeof body.nativeRevision !== "string" || !/^[0-9a-f]{64}$/.test(body.nativeRevision)
+      || !["to_desktop", "to_leileios"].includes(String(body.direction))) { sendInvalid(response); return; }
+    if (!dependencies.switchNativeLightOwner) { sendNativeHistoryError(response, null); return; }
+    try {
+      response.json({ success: true, data: await dependencies.switchNativeLightOwner({
+        userId, ...body as Omit<Parameters<typeof switchNativeSessionOwnerLight>[1], "userId">,
+      }) });
+    } catch (error) { sendNativeHistoryError(response, error); }
   };
 }
 function nativeHistoryReleaseHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies): RequestHandler {

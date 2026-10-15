@@ -1,3 +1,4 @@
+import { readNativeSessionLightState, switchNativeSessionOwnerLight } from "../domains/conversation/native-session-lightweight-handoff.js";
 import { nativeSessionAsset } from "../domains/conversation/native-session-asset-repository.js";
 import { stageNativeDisplayAssets } from "../domains/conversation/native-session-asset-staging.js";
 import { restoreNativeSessionHistory, readNativeSessionRestoreState, releaseNativeSessionToDesktop, listNativeSessionSwitchChoices, listReferencedNativeSessions } from "../domains/conversation/native-session-history-repository.js";
@@ -824,6 +825,8 @@ export function createProcessRuntime(
           restoreNativeHistory: input => restoreNativeSessionHistory(database.db, input),
           readNativeHistoryState: input => readNativeSessionRestoreState(database.db, input),
           releaseNativeHistory: input => releaseNativeSessionToDesktop(database.db, input),
+          readNativeLightState: input => readNativeSessionLightState(database.db, input),
+          switchNativeLightOwner: input => switchNativeSessionOwnerLight(database.db, input),
           nativeHistoryAsset: input => nativeSessionAsset(database.db, input),
           stageNativeHistoryAssets: input => stageNativeDisplayAssets(database.db, input),
           listReferencedNativeSessions: input => listReferencedNativeSessions(database.db, input),
