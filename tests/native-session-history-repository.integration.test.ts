@@ -6,7 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import { users, conversations, conversationMessages, conversationContentBlocks, conversationProviderSessionCheckpoints, nativeLiveTurnPreparations, nativeLiveManualCompactions, nativeLiveRuntimeListenerLeases } from "../src/database/schema.js";
 import { projectNativeHistory } from "../tools/claude-bridge/src/native-session-history.mjs";
-import { readNativeSessionLightState, switchNativeSessionOwnerLight } from "../src/domains/conversation/native-session-lightweight-handoff.js";
+import { attachNativeSessionLight, readNativeSessionLightState, switchNativeSessionOwnerLight } from "../src/domains/conversation/native-session-lightweight-handoff.js";
 import { DrizzleNativeLiveCurrentPathReader } from "../src/domains/conversation/native-live-current-path-read-repository.js";
 import { NativeLiveBackendTurnCoordinator } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
@@ -91,6 +91,40 @@ test("Desktop handoff fences new send/retry/edit/compact until a released native
     dispatch_target: 'claude_code', operation: 'send', expected_head_message_id: restored.headMessageId, text: 'allowed input' });
   assert.equal(prepared.ok, true);
   await assert.rejects(release(), { code: 'NATIVE_CONVERSATION_BUSY' });
+}));
+
+test("first native checkpoint-only attachment resumes the selected original Session without old messages", { skip: !enabled }, async () => fixture(async f => {
+  const originalSession = randomUUID(), selectedCheckpoint = randomUUID();
+  const attached = await attachNativeSessionLight(f.database.db, {
+    userId: f.owner, sessionId: originalSession, selectedCheckpointId: selectedCheckpoint,
+    effectiveWorkingDirectory: "/synthetic/workspace", nativeRevision: revision(1),
+  });
+  assert.equal(attached.providerSessionId, originalSession);
+  assert.equal(attached.providerCheckpointId, selectedCheckpoint);
+  assert.equal(attached.historyImported, false);
+  const state = await readNativeSessionLightState(f.database.db, { userId: f.owner, conversationId: attached.conversationId });
+  assert.equal(state.headMessageId, null);
+  assert.equal(state.owner, "leileios");
+  await assert.rejects(attachNativeSessionLight(f.database.db, {
+    userId: f.owner, sessionId: originalSession, selectedCheckpointId: selectedCheckpoint,
+    effectiveWorkingDirectory: "/synthetic/workspace", nativeRevision: revision(1),
+  }), { code: "NATIVE_SESSION_ALREADY_ATTACHED" });
+
+  const coordinator = new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.database.db));
+  const prepared = await coordinator.prepare(f.owner, {
+    request_id: randomUUID(), conversation_id: attached.conversationId,
+    dispatch_target: "claude_code", operation: "send",
+    expected_head_message_id: null, text: "first LeileiOS message",
+  });
+  assert.equal(prepared.ok, true, JSON.stringify(prepared));
+  assert.equal(prepared.command.runtime_mode, "resume", "must not fork selected Desktop Session");
+  assert.equal(prepared.command.parent_provider_session_id, originalSession);
+  assert.equal(prepared.command.parent_provider_checkpoint_id, selectedCheckpoint);
+  const [count] = await f.database.db.execute(sql`
+    SELECT count(*)::int AS n FROM conversation_provider_session_checkpoints
+    WHERE conversation_id = ${attached.conversationId}::uuid
+  `);
+  assert.equal(count.n, 0, "no synthetic old checkpoints");
 }));
 
 test("checkpoint-only handoff retains LeileiOS display and advances ordinary Send without copying Desktop history", { skip: !enabled }, async () => fixture(async f => {
