@@ -144,6 +144,7 @@ export class ClaudeEventNormalizer {
       emit("task", this.sessionId, {
         phase: "started",
         task_id: safeString(raw.task_id),
+        ...(typeof raw.run_id === "string" ? { run_id: raw.run_id } : {}),
         tool_use_id: safeString(raw.tool_use_id),
         description: clippedString(raw.description, 2_000),
         subagent_type: safeString(raw.subagent_type),
@@ -164,6 +165,7 @@ export class ClaudeEventNormalizer {
       emit("task", this.sessionId, {
         phase: "progress",
         task_id: safeString(raw.task_id),
+        ...(typeof raw.run_id === "string" ? { run_id: raw.run_id } : {}),
         tool_use_id: safeString(raw.tool_use_id),
         description: clippedString(raw.description, 2_000),
         subagent_type: safeString(raw.subagent_type),
@@ -182,6 +184,7 @@ export class ClaudeEventNormalizer {
       emit("task", this.sessionId, {
         phase: "updated",
         task_id: safeString(raw.task_id),
+        ...(typeof raw.run_id === "string" ? { run_id: raw.run_id } : {}),
         patch: {
           status: safeString(patch.status),
           description: clippedString(patch.description, 2_000),
@@ -208,6 +211,7 @@ export class ClaudeEventNormalizer {
       emit("task", this.sessionId, {
         phase: "notification",
         task_id: safeString(raw.task_id),
+        ...(typeof raw.run_id === "string" ? { run_id: raw.run_id } : {}),
         tool_use_id: safeString(raw.tool_use_id),
         status: safeString(raw.status),
         summary: clippedString(raw.summary, 4_000),
@@ -231,6 +235,8 @@ export class ClaudeEventNormalizer {
       const tasks = Array.isArray(raw.tasks)
         ? raw.tasks.slice(0, 64).map((task) => ({
             task_id: safeString(task?.task_id),
+            ...(typeof task?.run_id === "string" ? { run_id: task.run_id } : {}),
+            ...(typeof task?.parent_task_id === "string" ? { parent_task_id: task.parent_task_id } : {}),
             task_type: safeString(task?.task_type),
             description: clippedString(task?.description, 2_000),
             ambient: task?.ambient === true,

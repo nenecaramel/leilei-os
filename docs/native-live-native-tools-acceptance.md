@@ -49,3 +49,15 @@ No production settings, credentials, daemon startup, recurring jobs or browser a
 - https://code.claude.com/docs/en/scheduled-tasks
 - https://code.claude.com/docs/en/routines
 - https://code.claude.com/docs/en/artifacts
+
+## Stage 3A: task state and stop safety (offline)
+
+The persistent host now exposes `listTasks()` and `task-state` events for its own SDK process. Shell, Agent and Monitor tasks use the SDK's full live membership snapshots. `task_started`/progress/terminal edges retain exact `run_id`; they may arrive before or after a membership change. They never add or remove live membership. Missing run IDs do not authorize ambiguous edge attribution. Task descriptions and summaries are bounded; only 128 inactive observations and up to 1,024 live tasks are retained. Larger/invalid level snapshots fail the session closed.
+
+Each task appearance has an opaque local handle. A caller can pass it to `stopTask(id, {handle})`; stale handles are refused even if a newer run reuses the same ID. Concurrent/repeated stop calls share one SDK request and a two-second response deadline. A response only acknowledges the request. The task remains live until the SDK removes it; a matching terminal notification supplies its known outcome. Timeout/disconnect is `stop_unknown`, and the same appearance is never automatically retried. When the process closes or fails, unfinished observed/live tasks become `unknown`. This process-local ledger is not persisted and does not recover subprocesses on daemon restart.
+
+This slice does not expose remote task controls or idle progress on the phone, grant idle tools permission, or activate `perTaskStopAffordance`. Those require generation/branch-fenced backend controls and actual UI wiring. Existing foreground interrupt still uses the safe whole-session fallback. Background result receipts and foreground admission remain unchanged.
+
+Pinned SDK 0.3.296 publicly exposes `stopTask` and `backgroundTasks`, but no public task-output reader on `Query`. An internal `get_task_output` protocol type is not a supported public API. No private request method, arbitrary task output file read, model call or extra polling is introduced here. TaskOutput/TaskStop availability alone does not prove background task management is complete. Live CLI/model, restart, sleep/wake, Rewind and Desktop acceptance remains pending; no formal daemon refresh was performed.
+
+Task-state observers are nonfatal and see committed membership before they can issue reentrant controls; one failing subscriber cannot prevent process cleanup or later subscribers. Local handles fence control admission and stale responses. They cannot add a run ID to the SDK's ID-only `stopTask` RPC: replacement inside the external process after dispatch remains an SDK boundary, not a proven atomic run-targeting guarantee.

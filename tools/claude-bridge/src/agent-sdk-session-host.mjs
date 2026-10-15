@@ -3,9 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { normalizeAgentSdkInterruptReceipt } from './agent-sdk-interrupt.mjs';
 import { ClaudeEventNormalizer } from './normalized-events.mjs';
 import { createToolImageForwarder } from './tool-images.mjs';
+import { AgentSdkTaskState } from './agent-sdk-task-state.mjs';
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
-// Session host used by the explicit transport API; not enabled by the daemon.
+// Persistent session host used by the Mac daemon transport.
 // The caller owns SDK launch settings, auth, canonical preparations and UI capabilities.
 export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, expectedSessionId = null, beforeSubmit = null, onBackgroundResult = null, observeOutput = null } = {}) {
   if (typeof queryImpl !== 'function') throw new Error('Session host requires an injected SDK query.');
@@ -25,6 +26,7 @@ class SessionHost {
     this.observeOutput = observeOutput;
     this.beforeSubmit = beforeSubmit; this.onBackgroundResult = onBackgroundResult;
     this.events = new EventEmitter(); this.tasks = new Map(); this.ids = new Set();
+    this.taskState = new AgentSdkTaskState(() => this.publishTaskState());
     this.pending = []; this.active = null; this.state = 'starting'; this.sessionId = null;
     this.segment = newSegment();
     this.queryClosed = false;
@@ -100,7 +102,7 @@ class SessionHost {
       // rather than making the user's foreground interrupt unavailable.
       const ids = [...this.tasks.keys()]; this.active.interruptRequested = true;
       let timer;
-      try { await Promise.race([Promise.allSettled(ids.map(async id => { await this.query.stopTask(id); })), new Promise(resolve => { timer = setTimeout(resolve, 1_000); })]); }
+      try { await Promise.race([Promise.allSettled(ids.map(async id => { await this.stopTask(id); })), new Promise(resolve => { timer = setTimeout(resolve, 1_000); })]); }
       finally { clearTimeout(timer); }
       await this.close(Object.assign(new Error('SDK turn interrupted; session closed.'), {runtimeCode:'INTERRUPTED'}));
       const all = [...new Set([...ids, ...this.tasks.keys()])];
@@ -114,11 +116,17 @@ class SessionHost {
     turn.interruptReceipt = receipt;
     return receipt;
   }
-  async stopTask(id) {
-    if (['closed', 'failed'].includes(this.state)) throw new Error('Session host is closed.');
-    if (!this.tasks.has(id)) throw new Error('Unknown session task.');
-    await this.query.stopTask(id);
-    // The authoritative SDK task snapshot, not this response, owns membership.
+  publishTaskState() {
+    // Observers cannot strand a provider process or prevent another observer
+    // from seeing cleanup. Give each subscriber a detached snapshot.
+    for (const listener of this.events.rawListeners('task-state')) {
+      try { listener.call(this.events, this.taskState.list()); } catch { /* Observability is nonfatal. */ }
+    }
+  }
+  listTasks() { return this.taskState.list(); }
+  stopTask(id, expected) {
+    if (['closed', 'failed'].includes(this.state)) return Promise.reject(new Error('Session host is closed.'));
+    return this.taskState.stop(id, expected, taskId => this.query.stopTask(taskId));
   }
   rejectWork(error) {
     this.active?.images.abort(); this.active?.reject(error); this.active = null;
@@ -165,7 +173,7 @@ class SessionHost {
   }
   async close(reason = new Error('Session host was closed.')) {
     if (this.queryClosed) return;
-    this.state = 'closed'; this.rejectWork(reason);
+    this.state = 'closed'; this.taskState.close(); this.rejectWork(reason);
     this.input.end(); await this.query.close();
     this.queryClosed = true;
   }
@@ -186,10 +194,12 @@ class SessionHost {
           const tasks = new Map();
           for (const task of message.tasks) {
             if (typeof task?.task_id !== 'string' || !task.task_id || tasks.has(task.task_id)) throw new Error('Invalid SDK task identity.');
-            tasks.set(task.task_id, task);
+            tasks.set(task.task_id, Object.freeze({ ...task }));
           }
           this.tasks = tasks;
         }
+        // Commit both views before task-state observers can issue controls.
+        this.taskState.observe(message);
         // SDK membership snapshots are authoritative. Notifications can arrive
         // out of order; never use their bookends to mutate the live task set.
         // Only the current turn owns conversation output. Idle/background events
@@ -250,7 +260,7 @@ class SessionHost {
       if (this.state !== 'closed') throw new Error('SDK session stream ended unexpectedly.');
     } catch (error) {
       if (this.state === 'closed') return;
-      this.state = 'failed'; this.rejectWork(error); this.input.end();
+      this.state = 'failed'; this.taskState.close(); this.rejectWork(error); this.input.end();
       try { await this.query.close(); this.queryClosed = true; } catch { /* Ownership remains held until close succeeds. */ }
       throw error;
     }

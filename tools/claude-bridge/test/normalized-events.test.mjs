@@ -1454,3 +1454,19 @@ test("does not project nested provider search results into conversation content"
     true,
   );
 });
+
+test("task normalization preserves exact run identity and parent ownership without inventing old-CLI runs", () => {
+  const normalizer = new ClaudeEventNormalizer(base);
+  normalizer.normalize({ type: "system", subtype: "init", session_id: "s" });
+  for (const subtype of ["task_started", "task_progress", "task_updated", "task_notification"]) {
+    const [event] = normalizer.normalize({ type: "system", subtype, session_id: "s", task_id: "task", run_id: "run-002", patch: {}, status: "completed" });
+    assert.equal(event.payload.run_id, "run-002", subtype);
+  }
+  const [level] = normalizer.normalize({ type: "system", subtype: "background_tasks_changed", session_id: "s", tasks: [
+    { task_id: "task", run_id: "run-002", parent_task_id: "parent", task_type: "shell" },
+    { task_id: "legacy", task_type: "monitor" },
+  ] });
+  assert.equal(level.payload.tasks[0].run_id, "run-002");
+  assert.equal(level.payload.tasks[0].parent_task_id, "parent");
+  assert.equal(level.payload.tasks[1].run_id, undefined);
+});
