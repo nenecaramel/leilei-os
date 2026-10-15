@@ -538,7 +538,7 @@ const TERMINAL_RESULT_RUNTIME_ONLY_EVENT_TYPES =
     "compaction",
   ]);
 
-function terminalFallbackEvents(
+export function terminalFallbackEvents(
   events: readonly NativeLiveNormalizedEvent[],
 ): NativeLiveNormalizedEvent[] {
   return events.filter(
@@ -962,7 +962,7 @@ function boundedDiagnosticText(
   return text;
 }
 
-function failure(
+export function failure(
   command: NativeLiveRuntimeCommand,
   errorCode: NativeLiveRuntimeFailureCode,
   runtimeMetadata: NativeLiveRuntimeMetadata | null = null,
@@ -980,7 +980,7 @@ function failure(
   };
 }
 
-function runtimeFailureCode(error: unknown): NativeLiveRuntimeFailureCode {
+export function runtimeFailureCode(error: unknown): NativeLiveRuntimeFailureCode {
   if (
     typeof error === "object"
     && error !== null
