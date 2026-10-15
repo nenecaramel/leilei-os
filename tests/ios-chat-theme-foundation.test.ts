@@ -492,7 +492,8 @@ test('single fixed wallpaper is independent of keyboard/composer reflow', () => 
   const composer = read('Chat/ChatComposer.swift');
   const root = shell.slice(shell.indexOf('    var body: some View {'), shell.indexOf('    private var isWallpaperChatVisible:'));
   assert.match(root, /Group \{/);
-  assert.match(root, /\.background \{\s*if isWallpaperChatVisible, let shellWallpaperImage/);
+  assert.match(root, /iPadLayout\s*\.background \{ rootWallpaperBackdrop \}/);
+  assert.match(shell, /if isWallpaperChatVisible, let shellWallpaperImage \{\s*GeometryReader/);
   assert.match(root, /Image\(uiImage: shellWallpaperImage\)/);
   assert.match(root, /\.ignoresSafeArea\(\.all\)/);
   assert.match(root, /\.environment\(\\\.iMessageWallpaperVisible, isWallpaperChatVisible\)/);
@@ -517,7 +518,8 @@ test('shell renders exactly one wallpaper while child pages stay transparent', (
   assert.match(shell, /isWallpaperChatVisible: Bool \{/);
   assert.match(shell, /chatThemeRawValue == ChatTheme\.iMessage\.rawValue/);
   assert.match(shell, /shellWallpaperImage != nil/);
-  assert.match(iphone, /Rectangle\(\)\s*\.fill\(isWallpaperChatVisible \? Color\.clear : sidebarBackground\)/);
+  assert.match(iphone, /ZStack\(alignment: \.leading\) \{\s*\/\/ Preserve the previously fixed keyboard-underlay layer/);
+  assert.match(iphone, /if isWallpaperChatVisible \{\s*rootWallpaperBackdrop\s*\} else \{\s*Rectangle\(\)\s*\.fill\(sidebarBackground\)/);
   assert.match(iphone, /PageContainer\(/);
   assert.match(iphone, /\.clipShape\(/);
   assert.equal((shell.match(/Image\(uiImage: shellWallpaperImage\)/g) ?? []).length, 1);
