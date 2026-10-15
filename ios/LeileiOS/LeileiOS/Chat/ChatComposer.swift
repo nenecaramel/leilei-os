@@ -26,6 +26,7 @@ struct ChatComposer: View {
     var onMidTurnInput: ((String) -> Void)? = nil
     var voiceEnabled = false
     var voiceStatus: String? = nil
+    var voicePhase: VoiceInputController.Phase = .idle
     var onVoiceInteractionBegin: (() -> Void)? = nil
     var onVoicePress: (() -> Void)? = nil
     var onVoiceRelease: (() -> Void)? = nil
@@ -97,7 +98,9 @@ struct ChatComposer: View {
             ComposerStatusArea(
                 voiceStatus: voiceStatus,
                 isEditing: isEditing,
-                onCancelEdit: onCancelEdit
+                onCancelEdit: onCancelEdit,
+                isIMessage: true,
+                voicePhase: voicePhase
             )
 
             if !attachments.isEmpty {

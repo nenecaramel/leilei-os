@@ -335,6 +335,7 @@ struct ChatView: View {
             },
             voiceEnabled: voiceEnabled,
             voiceStatus: voiceInput.status,
+            voicePhase: voiceInput.phase,
             onVoiceInteractionBegin: {
                 voiceInput.dismissStatusMessage()
             },
