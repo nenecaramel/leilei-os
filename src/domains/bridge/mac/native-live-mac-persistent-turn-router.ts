@@ -21,6 +21,8 @@ export type NativeLiveMacPersistentAcknowledgement =
   | Readonly<{ status: "rejected" }>;
 type TurnInput = {
   command: NativeLiveRuntimeCommand;
+  /** Materialized prompt (attachment paths appended) when the command has attachments. */
+  prompt?: string;
   // The sink must use the existing transactional reservation/head fences. An
   // execution-admission snapshot cannot make finalization safe on its own.
   onResult(frame: { command: NativeLiveRuntimeCommand; result: NativeLiveMacSessionResult; providerCheckpointId: string }): Promise<NativeLiveMacPersistentAcknowledgement>;
@@ -65,7 +67,7 @@ export class NativeLiveMacPersistentTurnRouter {
     if (this.active) throw new Error("Persistent turn is active or awaiting durable acknowledgement.");
     const command = freezeCommand(parseNativeLiveRuntimeCommand(input.command));
     if (!["send", "wake"].includes(command.operation) || !["new", "resume"].includes(command.runtime_mode)
-      || command.attachments?.length || command.failed_user_message_uuids?.length
+      || (command.attachments?.length && typeof input.prompt !== "string") || command.failed_user_message_uuids?.length
       || command.parent_provider_checkpoint_id === undefined) throw new Error("Unsupported command for persistent turn routing.");
     if (typeof input.onResult !== "function") throw new Error("Durable turn result sink is required.");
     if (this.initialCommand && command.conversation_id !== this.initialCommand.conversation_id) throw new Error("Persistent router belongs to a different conversation.");
@@ -84,7 +86,7 @@ export class NativeLiveMacPersistentTurnRouter {
       }
       if (!this.binding) await this.open(slot);
       this.assertSlot(slot);
-      const result = await this.binding!.session.submit(command.prompt, { id: slot.inputId, source: command.operation === "wake" ? "task-notification" : "human", ...this.output(slot) });
+      const result = await this.binding!.session.submit(input.prompt ?? command.prompt, { id: slot.inputId, source: command.operation === "wake" ? "task-notification" : "human", ...this.output(slot) });
       this.assertSlot(slot);
       if (result.inputId !== slot.inputId || result.providerSessionId !== this.binding!.session.sessionId) throw new Error("Persistent result changed input/session identity.");
       slot.phase = "acknowledging"; // Revoke execution before awaiting the sink.
@@ -105,6 +107,19 @@ export class NativeLiveMacPersistentTurnRouter {
       throw error;
     } finally { if (this.active === slot) this.active = null; }
   }
+
+  /** Whether this command can continue this writer: same session and committed checkpoint. */
+  matches(rawCommand: NativeLiveRuntimeCommand): boolean {
+    if (this.retired || this.active) return false;
+    let command: NativeLiveRuntimeCommand;
+    try { command = parseNativeLiveRuntimeCommand(rawCommand); } catch { return false; }
+    if (!this.binding) return this.initialCommand === null;
+    return command.conversation_id === this.binding.conversationId && command.runtime_mode === "resume"
+      && command.parent_provider_session_id === this.binding.session.sessionId
+      && command.parent_provider_checkpoint_id === this.providerCheckpointId
+      && isDeepStrictEqual(command.execution_selection, this.initialCommand?.execution_selection);
+  }
+  get workingDirectory(): string | null { return this.binding?.workingDirectory ?? null; }
 
   async close(): Promise<void> {
     this.retired = true; // Fence all callbacks synchronously before closing.

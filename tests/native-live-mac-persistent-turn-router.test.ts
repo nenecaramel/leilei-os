@@ -278,3 +278,18 @@ test("only a durably verified checkpoint reaches the sink, and the acknowledgeme
   const refused = assert.rejects(two, /durably/i); g.finish((await g.inputs.next()).value!.uuid); await refused;
   assert.equal(reached, false, "an unwritten checkpoint is never committed");
 });
+
+test("matches only the committed continuation, and a materialized prompt carries attachments", async t => {
+  const f = await fixture(t);
+  assert.equal(f.router.matches(command(1)), true, "a fresh router may open");
+  const attachment = { attachment_id: id(300), kind: "image", mime_type: "image/png", filename: "a.png", size_bytes: 1, sha256: "0".repeat(64) };
+  const one = f.run({ ...command(1), attachments: [attachment] } as NativeLiveRuntimeCommand, { prompt: "synthetic\n[local attachment]" });
+  const input = (await f.inputs.next()).value! as unknown as { uuid: string; message: { content: Array<{ text: string }> } };
+  assert.equal(input.message.content[0]!.text, "synthetic\n[local attachment]");
+  f.finish(input.uuid); await one;
+  assert.equal(f.router.matches(command(2)), true);
+  assert.equal(f.router.matches({ ...command(2), parent_provider_checkpoint_id: id(555) }), false);
+  assert.equal(f.router.matches({ ...command(2), runtime_mode: "fork" }), false);
+  assert.equal(f.router.workingDirectory !== null, true);
+  await f.router.close(); assert.equal(f.router.matches(command(2)), false);
+});

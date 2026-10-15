@@ -1,0 +1,138 @@
+import type { NativeLiveNormalizedEvent } from "../../conversation/native-live-conversation-orchestrator.js";
+import {
+  NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+  parseNativeLiveRuntimeCommand,
+  type NativeLiveRuntimeCommand,
+  type NativeLiveRuntimeExecutionResult,
+} from "../protocol/native-live-runtime-protocol.js";
+import type { NativeLiveMacAttachmentMaterializer } from "./native-live-mac-attachment-materializer.js";
+import type { NativeLiveMacOutputAttachmentSender } from "./native-live-mac-output-attachment-sender.js";
+import type { NativeLiveMacPersistentAcknowledgement, NativeLiveMacPersistentTurnRouter } from "./native-live-mac-persistent-turn-router.js";
+import { failure, runtimeFailureCode, terminalFallbackEvents } from "./native-live-mac-runtime-executor.js";
+
+type Router = Pick<NativeLiveMacPersistentTurnRouter, "execute" | "close" | "matches" | "workingDirectory">;
+type Handler = (request: Record<string, unknown>, context: { signal: AbortSignal | null }) => Promise<Record<string, unknown>>;
+export type NativeLiveMacPersistentCommit = (result: NativeLiveRuntimeExecutionResult) => Promise<{ canonicalOutcome: string | null } | void>;
+/**
+ * committed: the result was submitted inside the turn (any server outcome); never resubmit.
+ * unknown: submission was attempted and its outcome is unknown.
+ * pending: nothing was submitted; the caller submits this (failure) result normally.
+ */
+export type NativeLiveMacPersistentExecution = Readonly<{
+  result: NativeLiveRuntimeExecutionResult;
+  delivery: "committed" | "unknown" | "pending";
+  canonicalOutcome?: string | null;
+}>;
+
+// Not selected by the daemon yet. One router per conversation; a command that
+// cannot continue it (fork, edit, other checkpoint) retires it and goes legacy.
+export class NativeLiveMacPersistentExecutor {
+  private readonly routers = new Map<string, Router>();
+
+  constructor(private readonly input: {
+    createRouter(conversationId: string): Router;
+    attachmentMaterializer: NativeLiveMacAttachmentMaterializer | null;
+    outputAttachmentSender: Pick<NativeLiveMacOutputAttachmentSender, "sendFile"> & Partial<Pick<NativeLiveMacOutputAttachmentSender, "sendInlineImage">> | null;
+  }) {}
+
+  /** A send/wake that a new or the conversation's current writer can run. */
+  canRoute(rawCommand: unknown): boolean {
+    let command: NativeLiveRuntimeCommand;
+    try { command = parseNativeLiveRuntimeCommand(rawCommand); } catch { return false; }
+    if (!["send", "wake"].includes(command.operation) || !["new", "resume"].includes(command.runtime_mode)
+      || command.parent_provider_checkpoint_id === undefined || command.failed_user_message_uuids?.length) return false;
+    if (command.attachments?.length && !this.input.attachmentMaterializer) return false;
+    const router = this.routers.get(command.conversation_id);
+    return router ? router.matches(command) : true;
+  }
+
+  /** Close the conversation's writer before a legacy operation touches its session. */
+  async retire(conversationId: string): Promise<void> {
+    const router = this.routers.get(conversationId);
+    if (!router) return;
+    this.routers.delete(conversationId);
+    await router.close();
+  }
+
+  async closeAll(): Promise<void> {
+    const routers = [...this.routers.values()];
+    this.routers.clear();
+    await Promise.allSettled(routers.map(router => router.close()));
+  }
+
+  async execute(rawCommand: unknown, options: {
+    commit: NativeLiveMacPersistentCommit;
+    onNormalizedEvent?: (event: NativeLiveNormalizedEvent) => void | Promise<void>;
+    permissionHandler?: Handler;
+    questionHandler?: Handler;
+  }): Promise<NativeLiveMacPersistentExecution> {
+    const command = parseNativeLiveRuntimeCommand(rawCommand);
+    if (!this.canRoute(command)) throw new Error("Command cannot use the persistent writer.");
+    let router = this.routers.get(command.conversation_id);
+    if (!router) { router = this.input.createRouter(command.conversation_id); this.routers.set(command.conversation_id, router); }
+    const outputIds: string[] = [];
+    const outputMetadata: Array<{ attachment_id: string; duration_seconds: number }> = [];
+    let pendingOutputs = 0;
+    const sendOutput = async <T>(send: () => Promise<T>, id: (value: T) => string, limit: string, signal?: AbortSignal): Promise<T> => {
+      if (outputIds.length + pendingOutputs >= 8) throw new Error(limit);
+      pendingOutputs += 1;
+      try { const value = await send(); signal?.throwIfAborted(); outputIds.push(id(value)); return value; }
+      finally { pendingOutputs -= 1; }
+    };
+    const outputs = this.input.outputAttachmentSender && command.output_attachments_enabled !== false
+      && command.protocol_version === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION ? this.input.outputAttachmentSender : null;
+    let delivery: NativeLiveMacPersistentExecution["delivery"] = "pending";
+    let submitted: NativeLiveRuntimeExecutionResult | null = null;
+    let canonicalOutcome: string | null = null;
+    try {
+      const local = this.input.attachmentMaterializer ? await this.input.attachmentMaterializer.materialize(command) : [];
+      const prompt = this.input.attachmentMaterializer ? this.input.attachmentMaterializer.appendPrompt(command.prompt, local) : command.prompt;
+      await router.execute({
+        command, prompt,
+        ...(options.onNormalizedEvent ? { onNormalizedEvent: options.onNormalizedEvent } : {}),
+        ...(options.permissionHandler ? { permissionHandler: options.permissionHandler } : {}),
+        ...(options.questionHandler ? { questionHandler: options.questionHandler } : {}),
+        ...(outputs?.sendInlineImage ? { toolImageHandler: async (image: { data: string; mimeType: string }, context: { signal: AbortSignal }) => {
+          context.signal.throwIfAborted();
+          return sendOutput(() => outputs.sendInlineImage!({ ...image, signal: context.signal }), value => value.attachmentId,
+            "Tool images and send_file may send at most 8 files in one turn.", context.signal);
+        } } : {}),
+        ...(outputs ? { sendFileHandler: async (file: { path: string; displayName: string | null }) => {
+          const attachment = await sendOutput(() => outputs.sendFile({ path: file.path, displayName: file.displayName, workingDirectory: router!.workingDirectory! }),
+            value => value.attachmentId, "send_file may send at most 8 files in one turn.");
+          if (typeof attachment.durationSeconds === "number" && Number.isFinite(attachment.durationSeconds) && attachment.durationSeconds > 0) {
+            outputMetadata.push({ attachment_id: attachment.attachmentId, duration_seconds: attachment.durationSeconds });
+          }
+          return attachment;
+        } } : {}),
+        onResult: async ({ result, providerCheckpointId }): Promise<NativeLiveMacPersistentAcknowledgement> => {
+          const success: NativeLiveRuntimeExecutionResult = {
+            protocol_version: command.protocol_version, prepare_id: command.prepare_id, request_id: command.request_id,
+            conversation_id: command.conversation_id, status: "success", provider_session_id: result.providerSessionId,
+            effective_working_directory: router!.workingDirectory!, provider_checkpoint_id: providerCheckpointId,
+            normalized_events: terminalFallbackEvents(result.normalizedEvents),
+            ...(outputIds.length ? { output_attachment_ids: [...outputIds] } : {}),
+            ...(outputMetadata.length ? { output_attachment_metadata: [...outputMetadata] } : {}),
+          };
+          submitted = success;
+          delivery = "unknown"; // From here a lost response is not the same as "not submitted".
+          const receipt = await options.commit(success);
+          delivery = "committed"; canonicalOutcome = receipt?.canonicalOutcome ?? null;
+          // Only a canonical success advances the writer. Wake outcomes (quiet,
+          // stale, discarded) do not commit this checkpoint yet: retire.
+          return canonicalOutcome === "completed" || canonicalOutcome === "idempotent"
+            ? { status: canonicalOutcome === "completed" ? "applied" : "idempotent", providerCheckpointId }
+            : { status: "rejected" };
+        },
+      });
+      return { result: submitted!, delivery: "committed", canonicalOutcome };
+    } catch (error) {
+      // The router has already closed its writer; never replay the turn.
+      this.routers.delete(command.conversation_id);
+      if (delivery !== "pending") return { result: submitted!, delivery, ...(delivery === "committed" ? { canonicalOutcome } : {}) };
+      return { result: failure(command, runtimeFailureCode(error)), delivery };
+    } finally {
+      await this.input.attachmentMaterializer?.cleanup(command).catch(() => undefined);
+    }
+  }
+}

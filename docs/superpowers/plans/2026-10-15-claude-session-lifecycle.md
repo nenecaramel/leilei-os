@@ -114,3 +114,16 @@ Tool-result images are forwarded only for owned frames, using the owning turn's 
 Ruling: the router never commits a checkpoint it has not seen on disk. For each foreground or background frame, the transport takes the last top-level assistant record (not a subagent record), waits a bounded time (3 s) for the live CLI to write it, then requires it to be present in the durable transcript prefix and to descend from the previously committed checkpoint. A missing record is refused (`NO_PROVIDER_SESSION`), and so is a record on another branch (`PROVIDER_SESSION_CONFLICT`). The sink receives that `providerCheckpointId`, and its acknowledgement must name exactly that checkpoint. Failure retires the writer without replay.
 
 Known strictness: a frame with no top-level assistant record (no output) fails closed, including in the background. Relax it only with evidence from a real CLI.
+
+### Stage 2I: persistent executor (commit inside the turn)
+
+Ruling: the router's sink must be the real submission, because the writer may advance only after its checkpoint is committed. `NativeLiveMacPersistentExecutor` keeps one router per conversation. It routes only send/wake commands that a new writer or the current writer can continue (`router.matches`: same session, committed checkpoint and execution selection). Fork, edit, retry and other checkpoints are not routed; the caller retires the writer first and uses the legacy path. It materializes attachments into the prompt, cleans them up, and caps tool images plus send_file at 8 per turn, as the legacy executor does. It builds the success result from the verified checkpoint and submits it through the caller's `commit` inside the router's acknowledgement.
+
+Delivery states for the daemon:
+- `committed`: submitted inside the turn; never resubmit.
+- `unknown`: the commit response was lost; mark delivery unknown.
+- `pending`: nothing was submitted; submit the failure result as usual.
+
+Only `completed`/`idempotent` advance the writer. Wake outcomes (`wake_quiet`, `wake_stale`, `wake_discarded`) currently retire it.
+
+Server gap found (next): a quiet or background turn in a persistent session advances the native tail without a visible canonical message, and the next command's parent checkpoint must follow that tail. Until the server records a native tail checkpoint (and a durable background preparation/finalization endpoint exists), quiet wakes and background results retire the writer. Wakes are still dispatched as forks, so they do not route here yet.
