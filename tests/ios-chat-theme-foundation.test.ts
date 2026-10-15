@@ -92,13 +92,14 @@ test('iMessage Composer uses Apple-native controls while retaining existing acti
 test('iMessage uses a native safe-area inset with no opaque system bottom bar', () => {
   const chat = read('Chat/ChatView.swift');
   const composer = read('Chat/ChatComposer.swift');
+  const page = read('Navigation/PageContainer.swift');
   const placement = chat.slice(
     chat.indexOf('        .safeAreaInset(edge: .bottom, spacing: selectedChatTheme == .iMessage ? 0 : nil) {'),
-    chat.indexOf('        // The wallpaper belongs behind')
-  );
-  const wallpaperBackdrop = chat.slice(
-    chat.indexOf('        // The wallpaper belongs behind'),
     chat.indexOf('        .sheet(isPresented: $isNativeCallPresented)')
+  );
+  const wallpaperBackdrop = page.slice(
+    page.indexOf('        .background {'),
+    page.indexOf('        .sheet(isPresented: $showingContext)')
   );
   const shared = chat.slice(chat.indexOf('    private var chatComposer: some View {'));
 
@@ -110,14 +111,16 @@ test('iMessage uses a native safe-area inset with no opaque system bottom bar', 
   assert.match(placement, /ChatPresentationLayout\.composerHiddenKeyboardPaintOffset/);
   assert.match(placement, /\.safeAreaInset\(edge: \.bottom, spacing: selectedChatTheme == \.iMessage \? 0 : nil\)/);
   assert.match(placement, /chatComposer\s*\.frame\(maxWidth: \.infinity\)\s*\.padding\(\.horizontal, 20\)\s*\.padding\(\.top, 8\)\s*\.padding\(\.bottom, isSystemKeyboardVisible \? 12 : 8\)\s*\.offset\(y: isSystemKeyboardVisible \? 0 : 10\)/);
-  assert.match(wallpaperBackdrop, /\.background \{\s*if selectedChatTheme == \.iMessage, let wallpaperImage/);
+  assert.match(wallpaperBackdrop, /\.background \{\s*if selectedPage == \.chat,/);
+  assert.match(wallpaperBackdrop, /chatThemeRawValue == ChatTheme\.iMessage\.rawValue,/);
+  assert.match(wallpaperBackdrop, /let chatWallpaperImage/);
   assert.match(wallpaperBackdrop, /\.ignoresSafeArea\(\.container\)/);
   assert.match(wallpaperBackdrop, /\.ignoresSafeArea\(\.keyboard, edges: \.bottom\)/);
-  assert.match(wallpaperBackdrop, /Color\(\.systemBackground\)\s*\.ignoresSafeArea\(\)/);
+  assert.match(wallpaperBackdrop, /pageBackground\.ignoresSafeArea\(\)/);
+  assert.doesNotMatch(placement, /\.background \{|Image\(uiImage: wallpaperImage\)/);
   assert.ok(
-    chat.indexOf('        .background {\n            if selectedChatTheme == .iMessage, let wallpaperImage') >
-    chat.indexOf('        .safeAreaInset(edge: .bottom, spacing: selectedChatTheme == .iMessage ? 0 : nil) {'),
-    'wallpaper belongs behind the entire composer inset'
+    page.indexOf('        .background {') > page.indexOf('        NavigationStack {'),
+    'wallpaper belongs to navigation-page root, not keyboard-sized chat scroll'
   );
   assert.doesNotMatch(placement, /safeAreaBar|ToolbarItem|\.background\(|\.regularMaterial/);
 
@@ -350,11 +353,16 @@ test('a single local wallpaper serves every iMessage conversation without changi
   // composer safe areas; Original keeps its former opaque scroll background.
   assert.match(chat, /@AppStorage\(IMessageWallpaper\.revisionKey\) private var wallpaperRevision/);
   assert.match(chat, /\.task\(id: wallpaperRevision\)/);
-  assert.match(chat, /if selectedChatTheme == \.iMessage, let wallpaperImage/);
-  assert.match(chat, /Image\(uiImage: wallpaperImage\)/);
-  assert.match(chat, /\.scaledToFill\(\)/);
-  assert.match(chat, /\.ignoresSafeArea\(\.container\)/);
-  assert.match(chat, /\.ignoresSafeArea\(\.keyboard, edges: \.bottom\)/);
+  const page = read('Navigation/PageContainer.swift');
+  assert.match(chat, /selectedChatTheme == \.iMessage && wallpaperImage != nil/);
+  assert.doesNotMatch(chat, /Image\(uiImage: wallpaperImage\)/);
+  assert.match(page, /@AppStorage\(IMessageWallpaper\.revisionKey\) private var wallpaperRevision/);
+  assert.match(page, /\.task\(id: wallpaperRevision\)/);
+  assert.match(page, /chatWallpaperImage = IMessageWallpaper\.load\(\)/);
+  assert.match(page, /Image\(uiImage: chatWallpaperImage\)/);
+  assert.match(page, /\.scaledToFill\(\)/);
+  assert.match(page, /\.ignoresSafeArea\(\.container\)/);
+  assert.match(page, /\.ignoresSafeArea\(\.keyboard, edges: \.bottom\)/);
   assert.match(surface, /\.background\(chatTheme == \.iMessage \? Color\.clear : Color\(\.systemBackground\)\)/);
 
   // Picker is separate from the composer image-attachment workflow; users
@@ -486,4 +494,24 @@ test('wallpaper-backed Tool and Tool result use composer-like glass and dark lab
   assert.match(bubble, /\.fill\(tintColor\)/);
   assert.match(settings, /Slider\(value: \$outgoingBubbleOpacity, in: 0\.\.\.1/);
   assert.match(settings, /Slider\(value: \$incomingBubbleOpacity, in: 0\.\.\.1/);
+});
+
+
+test('iMessage scroll-to-latest stays inside viewport above composer while Original remains unchanged', () => {
+  const surface = read('Chat/NativeLiveMessageSurface.swift');
+  const layout = read('Chat/ChatPresentationLayout.swift');
+  const chat = read('Chat/ChatView.swift');
+  const viewport = surface.slice(
+    surface.indexOf('    private func messageList('),
+    surface.indexOf('    @ViewBuilder\\n    private func loadOlderButton(')
+  );
+  assert.match(viewport, /\.scrollClipDisabled\(chatTheme != \.iMessage\)/);
+  assert.match(viewport, /\.overlay\(alignment: \.bottom\)/);
+  assert.match(viewport, /scrollState\.shouldShowReturnToBottom/);
+  assert.match(viewport, /\.padding\(\.bottom, chatTheme == \.iMessage \? 12 : 0\)/);
+  assert.match(viewport, /\.offset\(y: chatTheme == \.iMessage \? 0 : ChatPresentationLayout\.scrollActionPaintOffset\)/);
+  assert.match(viewport, /scrollState\.returnToBottom\(\)/);
+  assert.match(viewport, /proxy\.scrollTo\(/);
+  assert.match(layout, /scrollActionPaintOffset: CGFloat = 22/);
+  assert.match(chat, /\.padding\(\.bottom, isSystemKeyboardVisible \? 12 : 8\)/);
 });
