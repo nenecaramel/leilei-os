@@ -182,28 +182,6 @@ struct ChatView: View {
                     .offset(y: isSystemKeyboardVisible ? 0 : 10)
             }
         }
-        // The wallpaper belongs behind the *entire* chat + safe-area inset,
-        // not just behind the scrolling transcript. Drawing it here keeps
-        // the composer-to-keyboard gap from exposing PageContainer's
-        // systemBackground. Only the backdrop ignores the keyboard area:
-        // the text field and its safe-area inset still avoid the keyboard.
-        .background {
-            if selectedChatTheme == .iMessage, let wallpaperImage {
-                GeometryReader { geometry in
-                    Image(uiImage: wallpaperImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .clipped()
-                }
-                .ignoresSafeArea(.container)
-                .ignoresSafeArea(.keyboard, edges: .bottom)
-                .accessibilityHidden(true)
-            } else {
-                Color(.systemBackground)
-                    .ignoresSafeArea()
-            }
-        }
         .sheet(isPresented: $isNativeCallPresented) {
             if let conversationID = appModel.activeNativeLiveConversationID {
                 NavigationStack {
