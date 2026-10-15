@@ -5,7 +5,7 @@ const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
 // Session host used by the explicit transport API; not enabled by the daemon.
 // The caller owns SDK launch settings, auth, canonical preparations and UI capabilities.
-export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, expectedSessionId = null, beforeSubmit = null, onBackgroundResult = null } = {}) {
+export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, expectedSessionId = null, beforeSubmit = null, onBackgroundResult = null, observeOutput = null } = {}) {
   if (typeof queryImpl !== 'function') throw new Error('Session host requires an injected SDK query.');
   if (queryOptions.forkSession) throw new Error('Session host cannot fork.');
   const input = createInputQueue();
@@ -13,13 +13,14 @@ export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, 
   if (!query || typeof query[Symbol.asyncIterator] !== 'function') {
     input.end(); query?.close?.(); throw new Error('SDK query must be async iterable.');
   }
-  return new SessionHost(query, input, expectedSessionId, queryOptions.perTaskStopAffordance === true, beforeSubmit, onBackgroundResult);
+  return new SessionHost(query, input, expectedSessionId, queryOptions.perTaskStopAffordance === true, beforeSubmit, onBackgroundResult, observeOutput);
 }
 
 class SessionHost {
-  constructor(query, input, expectedSessionId, perTaskStopAffordance, beforeSubmit, onBackgroundResult) {
+  constructor(query, input, expectedSessionId, perTaskStopAffordance, beforeSubmit, onBackgroundResult, observeOutput) {
     this.query = query; this.input = input; this.expectedSessionId = expectedSessionId;
     this.perTaskStopAffordance = perTaskStopAffordance;
+    this.observeOutput = observeOutput;
     this.beforeSubmit = beforeSubmit; this.onBackgroundResult = onBackgroundResult;
     this.events = new EventEmitter(); this.tasks = new Map(); this.ids = new Set();
     this.pending = []; this.active = null; this.state = 'starting'; this.sessionId = null;
@@ -89,6 +90,7 @@ class SessionHost {
     try {
       for await (const message of this.query) {
         if (this.state === 'closed') break;
+        this.observeOutput?.(message);
         const sid = message?.session_id;
         if (sid && ((this.sessionId && sid !== this.sessionId) || (this.expectedSessionId && sid !== this.expectedSessionId))) throw new Error('SDK session identity changed.');
         if (message?.type === 'system' && message.subtype === 'init') {

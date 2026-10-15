@@ -52,6 +52,15 @@ test("execution admission PostgreSQL snapshot fences", { skip: process.env.RUN_N
     await db.update(conversations).set({ providerMetadata: { native_live_presentation_owner: { prepareId: reservationId, anchorHeadMessageId: canonicalUserMessageId } }, lifecycleStatus: "archived" }).where(eq(conversations.id, conversationId)); assert.equal(await check(), false);
     await db.update(conversations).set({ lifecycleStatus: "active" }).where(eq(conversations.id, conversationId)); assert.equal(await check(), true);
   });
+  await t.test("Desktop ownership revokes execution even while the old reservation is otherwise valid", async () => {
+    const owner = { native_live_presentation_owner: { prepareId: reservationId, anchorHeadMessageId: canonicalUserMessageId } };
+    for (const ownership of ["desktop", "unknown"]) {
+      await db.update(conversations).set({ providerMetadata: { ...owner, nativeSessionSource: { owner: ownership } } }).where(eq(conversations.id, conversationId));
+      assert.equal(await check(), false);
+    }
+    await db.update(conversations).set({ providerMetadata: { ...owner, nativeSessionSource: { owner: "leileios" } } }).where(eq(conversations.id, conversationId)); assert.equal(await check(), true);
+    await db.update(conversations).set({ providerMetadata: owner }).where(eq(conversations.id, conversationId)); assert.equal(await check(), true, "legacy source without owner remains compatible");
+  });
   const parent = crypto.randomUUID(), checkpoint = crypto.randomUUID();
   await t.test("resume uses the current durable parent checkpoint and cwd binding", async () => {
     await db.insert(conversationMessages).values({ id: parent, userId, conversationId, role: "assistant", status: "completed" });
