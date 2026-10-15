@@ -124,7 +124,9 @@ export async function switchNativeSessionLight({
   fetchImpl = fetch, recoveryDirectory = path.join(homedir(), '.leileios'),
   sleep, retryDelaysMs,
 }) {
-  if (!uuid.test(conversationId ?? '') || !['to_desktop', 'to_leileios'].includes(direction)) {
+  if ((conversationId != null && !uuid.test(conversationId)) ||
+    (direction === 'to_desktop' && !uuid.test(conversationId ?? '')) ||
+    !['to_desktop', 'to_leileios'].includes(direction)) {
     throw fail('INVALID_NATIVE_RESTORE_ENDPOINT');
   }
   const request = nativeHistoryRequest({ relayUrl, relayToken, fetchImpl, sleep, retryDelaysMs });
@@ -147,6 +149,29 @@ export async function switchNativeSessionLight({
     throw fail(release.state === 'still_open' ? 'NATIVE_SESSION_STILL_OPEN' : 'NATIVE_RELEASE_UNCONFIRMED');
   }
 
+  if (!conversationId) {
+    // First attach: use the original native Session and its exact checkpoint,
+    // not a fork and not a projection of old Desktop messages.
+    const native = await readNativeSession(input.projectDirectory, selected.providerSessionId);
+    if (native.revision !== selected.nativeRevision) throw fail('NATIVE_INSPECTION_CHANGED');
+    durableCheckpointPrefix(native.entries, selected.providerCheckpointId);
+    await assertNativeHandoffRecoveryClear(recoveryDirectory);
+    const latest = await inspectNativeCheckpointOnly(input);
+    if (latest.nativeRevision !== selected.nativeRevision ||
+      latest.providerCheckpointId !== selected.providerCheckpointId ||
+      latest.workingDirectory !== selected.workingDirectory) throw fail('NATIVE_INSPECTION_CHANGED');
+    const attached = await request('light-attach', {
+      sessionId: selected.providerSessionId,
+      selectedCheckpointId: selected.providerCheckpointId,
+      effectiveWorkingDirectory: selected.workingDirectory,
+      nativeRevision: selected.nativeRevision,
+    });
+    if (!attached || !uuid.test(attached.conversationId ?? '') ||
+      attached.providerSessionId !== selected.providerSessionId ||
+      attached.providerCheckpointId !== selected.providerCheckpointId ||
+      attached.owner !== 'leileios') throw fail('NATIVE_RESTORE_INVALID_RESPONSE');
+    return { outcome: 'attached', ...attached, executionAuthorized: false, historyImported: false };
+  }
   const state = await request('light-state', { conversationId });
   if (!state || state.providerSessionId !== selected.providerSessionId ||
     !uuid.test(state.headMessageId ?? '') || !uuid.test(state.providerCheckpointId ?? '') ||
