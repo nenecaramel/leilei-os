@@ -408,7 +408,7 @@ test('iMessage offers persisted, independent color and opacity controls for both
   assert.match(settings, /Button\("Restore Default Bubble Colors"\)/);
   assert.match(settings, /outgoingBubbleOpacity = IMessageBubbleAppearance\.defaultOutgoingOpacity/);
   assert.match(settings, /incomingBubbleOpacity = IMessageBubbleAppearance\.defaultIncomingOpacity/);
-  assert.match(settings, /Opacity controls the color over native frosted glass/);
+  assert.doesNotMatch(settings, /Opacity controls the color over native frosted glass/);
 });
 
 
