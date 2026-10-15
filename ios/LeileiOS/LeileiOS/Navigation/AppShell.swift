@@ -185,8 +185,15 @@ struct AppShell: View {
             let revealOffset = min(proxy.size.width * 0.77, 330)
             let pageHorizontalOffset = (menuOpen ? revealOffset : 0)
                 + sidebarDragTranslation
-            let revealProgress = max(0, min(1, pageHorizontalOffset / revealOffset))
-            let fullViewport = fullIPhoneViewport(for: proxy.size)
+            // Original retains the previous state-based card geometry.
+            // Only wallpaper-backed iMessage uses continuous drag progress
+            // and a keyboard-independent screen canvas.
+            let revealProgress = isWallpaperChatVisible
+                ? max(0, min(1, pageHorizontalOffset / revealOffset))
+                : (menuOpen ? 1 : 0)
+            let fullViewport = isWallpaperChatVisible
+                ? fullIPhoneViewport(for: proxy.size)
+                : proxy.size
 
             ZStack(alignment: .topLeading) {
                 // The sidebar stays painted behind the chat, but must never
@@ -233,44 +240,44 @@ struct AppShell: View {
                     }
 
                     PageContainer(
-                    selectedPage: selectedPage,
-                    diaryTarget: diaryTarget,
-                    daySpaceTarget: daySpaceTarget,
-                    universeTargetNodeID: universeTargetNodeID,
-                    isDraftConversation: isDraftConversation,
-                    draftConversationID: draftConversationID,
-                    onDraftCommitted: {
-                        isDraftConversation = false
-                    },
-                    onMenu: {
-                        withAnimation(.snappy) {
-                            menuOpen.toggle()
+                        selectedPage: selectedPage,
+                        diaryTarget: diaryTarget,
+                        daySpaceTarget: daySpaceTarget,
+                        universeTargetNodeID: universeTargetNodeID,
+                        isDraftConversation: isDraftConversation,
+                        draftConversationID: draftConversationID,
+                        onDraftCommitted: {
+                            isDraftConversation = false
+                        },
+                        onMenu: {
+                            withAnimation(.snappy) {
+                                menuOpen.toggle()
+                            }
+                        },
+                        onOpenConversation: {
+                            selectedPage = .chat
+                        },
+                        onOpenDiary: { target in
+                            diaryTarget = target
+                            selectedPage = .diary
+                        },
+                        onDiaryTargetConsumed: {
+                            diaryTarget = nil
+                        },
+                        onOpenDaySpace: { target in
+                            daySpaceTarget = target
+                            selectedPage = .daySpace
+                        },
+                        onDaySpaceTargetConsumed: {
+                            daySpaceTarget = nil
+                        },
+                        onOpenUniverseNode: { nodeID in
+                            universeTargetNodeID = nodeID
+                            selectedPage = .universe
+                        },
+                        onUniverseTargetConsumed: {
+                            universeTargetNodeID = nil
                         }
-                    },
-                    onOpenConversation: {
-                        selectedPage = .chat
-                    },
-                    onOpenDiary: { target in
-                        diaryTarget = target
-                        selectedPage = .diary
-                    },
-                    onDiaryTargetConsumed: {
-                        diaryTarget = nil
-                    },
-                    onOpenDaySpace: { target in
-                        daySpaceTarget = target
-                        selectedPage = .daySpace
-                    },
-                    onDaySpaceTargetConsumed: {
-                        daySpaceTarget = nil
-                    },
-                    onOpenUniverseNode: { nodeID in
-                        universeTargetNodeID = nodeID
-                        selectedPage = .universe
-                    },
-                    onUniverseTargetConsumed: {
-                        universeTargetNodeID = nil
-                    }
                     )
                     // ChatView keeps native keyboard avoidance and the
                     // bottom safe-area inset. Only its height may shrink.

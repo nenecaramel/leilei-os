@@ -537,7 +537,7 @@ test('sidebar animation uses the same continuous progress for position and round
   const mask = shell.slice(shell.indexOf('private struct SidebarRevealCardMask: Shape'),
                            shell.indexOf('struct AppShell: View {'));
   assert.match(iphone, /let pageHorizontalOffset = \(menuOpen \? revealOffset : 0\)\s*\+ sidebarDragTranslation/);
-  assert.match(iphone, /let revealProgress = max\(0, min\(1, pageHorizontalOffset \/ revealOffset\)\)/);
+  assert.match(iphone, /let revealProgress = isWallpaperChatVisible\s*\? max\(0, min\(1, pageHorizontalOffset \/ revealOffset\)\)\s*: \(menuOpen \? 1 : 0\)/);
   assert.match(iphone, /\.clipShape\(SidebarRevealCardMask\(progress: revealProgress\)\)/);
   assert.match(mask, /var animatableData: CGFloat/);
   assert.match(mask, /let radius = 50 \* min\(max\(progress, 0\), 1\)/);
@@ -765,7 +765,7 @@ test('keyboard changes chat height but not photo viewport, page mask, or iPad ba
   assert.match(shell, /private func fullIPhoneViewport\(for proposed: CGSize\) -> CGSize/);
   assert.match(shell, /abs\(proposed\.width - iPhoneFullViewport\.width\) < 1/);
   assert.match(shell, /height: max\(proposed\.height, iPhoneFullViewport\.height\)/);
-  assert.match(iphone, /let fullViewport = fullIPhoneViewport\(for: proxy\.size\)/);
+  assert.match(iphone, /let fullViewport = isWallpaperChatVisible\s*\? fullIPhoneViewport\(for: proxy\.size\)\s*: proxy\.size/);
   assert.match(iphone, /wallpaperImage\(shellWallpaperImage, size: fullViewport\)/);
   assert.match(iphone, /\.frame\(width: proxy\.size\.width, height: proxy\.size\.height\)/);
   assert.match(iphone, /\.frame\(\s*width: fullViewport\.width,\s*height: fullViewport\.height,\s*alignment: \.topLeading\s*\)\s*\.clipShape\(SidebarRevealCardMask\(progress: revealProgress\)\)/);
