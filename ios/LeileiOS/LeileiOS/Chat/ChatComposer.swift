@@ -108,7 +108,7 @@ struct ChatComposer: View {
                 )
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
+            HStack(alignment: .bottom, spacing: 10) {
                 iMessagePlusMenu
 
                 HStack(alignment: .bottom, spacing: 8) {
