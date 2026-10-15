@@ -35,8 +35,8 @@ async function readRow(db: Pick<Database, "execute">, input: { userId: string; c
       AND cp.canonical_message_id = c.current_head_message_id AND cp.provider = 'claude_code'
     WHERE c.id = ${input.conversationId}::uuid AND c.user_id = ${input.userId}::uuid
       AND c.origin = 'native_live' AND c.lifecycle_status = 'active'
-    ${locked ? sql`FOR UPDATE OF c` : sql``}
     LIMIT 1
+    ${locked ? sql`FOR UPDATE OF c` : sql``}
   `);
   return rows[0] ?? null;
 }
