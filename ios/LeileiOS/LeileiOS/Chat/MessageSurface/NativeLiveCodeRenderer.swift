@@ -7,16 +7,21 @@ struct NativeLiveIMessageContentPanel: ViewModifier {
     @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     let originalOpacity: Double
     let originalCornerRadius: CGFloat
+    var embeddedInGlass: Bool = false
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if iMessageWallpaperVisible {
-            content
-                .foregroundStyle(Color(red: 0.17, green: 0.20, blue: 0.23))
-                .glassEffect(
-                    .regular,
-                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-                )
+            if embeddedInGlass {
+                content
+            } else {
+                content
+                    .foregroundStyle(Color(red: 0.17, green: 0.20, blue: 0.23))
+                    .glassEffect(
+                        .regular,
+                        in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    )
+            }
         } else if originalOpacity > 0 {
             content.background(
                 Color.primary.opacity(originalOpacity),
