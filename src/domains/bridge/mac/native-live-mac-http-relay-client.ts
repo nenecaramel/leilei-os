@@ -648,6 +648,11 @@ implements NativeLiveMacDaemonRelayClient {
     return data.admitted;
   }
 
+  async renewSessionLease(input: {listenerInstanceId:string}): Promise<boolean> {
+    const data=readRecord(await this.post("/session-lease/renew",{listener_instance_id:input.listenerInstanceId,dispatch_target:"claude_code"},AbortSignal.timeout(2_000)));
+    if(typeof data.renewed!=="boolean")throw new Error("Invalid session lease renewal receipt.");return data.renewed;
+  }
+
   async renewExecutionLease(input: { listenerInstanceId: string; command: import("../protocol/native-live-runtime-protocol.js").NativeLiveRuntimeCommand }): Promise<boolean> {
     const c = input.command;
     const body = { listener_instance_id: input.listenerInstanceId, request_id: c.request_id, conversation_id: c.conversation_id,

@@ -4,7 +4,7 @@ export type NativeSessionDrainReport = {
   tasks: Array<{ id: string; status: "stopped" | "completed" | "unknown" }>;
 };
 export function createNativeSessionDrainServer(input: {
-  recoveryDirectory: string;
+  recoveryDirectory: string; recoverStale?: boolean;
   drain(conversationId: string, providerSessionId: string): Promise<NativeSessionDrainReport>;
 }): Promise<() => Promise<void>>;
 export function requestNativeSessionDrain(input: {

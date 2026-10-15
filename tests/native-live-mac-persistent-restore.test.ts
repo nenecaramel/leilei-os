@@ -16,9 +16,10 @@ async function fixture(t: test.TestContext) {
   const registry = new NativeLiveMacSessionRegistry({}, root, async () => {
     let host: NativeLiveMacPersistentSession | undefined;
     let state = "idle";
+    let complete!: () => void; const completion = new Promise<void>(resolve => { complete = resolve; });
     const runtime = { abort() {}, async deleteSession() {}, async openPersistentSession() { opens++; throw Error("must use restore path"); },
-      async restorePersistentSession(spec: unknown, opts: NativeLiveMacPersistentSessionOptions) { restores++; observed.push(spec); host = { get state() { return state; }, sessionId: sid, events: new EventEmitter(), tasks: new Map(), completion: new Promise<void>(() => {}),
-        async submit(_text: string, submit: { id: string; source: "task-notification" }) { assert.equal(await opts.authorize({ phase: "input", inputId: submit.id, source: submit.source, providerSessionId: sid }), true); return { providerSessionId: sid, inputId: submit.id, result: {}, events: [] }; }, async interruptTurn() { return null; }, async stopTask() {}, async close() { closes++; state = "closed"; } }; return host; },
+      async restorePersistentSession(spec: unknown, opts: NativeLiveMacPersistentSessionOptions) { restores++; observed.push(spec); host = { get state() { return state; }, sessionId: sid, events: new EventEmitter(), tasks: new Map(), completion,
+        async submit(_text: string, submit: { id: string; source: "task-notification" }) { assert.equal(await opts.authorize({ phase: "input", inputId: submit.id, source: submit.source, providerSessionId: sid }), true); return { providerSessionId: sid, inputId: submit.id, result: {}, events: [] }; }, async interruptTurn() { return null; }, async stopTask() {}, async close() { closes++; state = "closed"; complete(); } }; return host; },
       async closePersistentSession() { await host?.close(); } };
     return { kind: "agent_sdk" as const, runtime };
   });

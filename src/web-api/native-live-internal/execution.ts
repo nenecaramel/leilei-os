@@ -414,3 +414,13 @@ function sendRelayError(response: Response, error: unknown): void {
     },
   });
 }
+
+export function renewSessionLeaseHandler(dependencies: NativeLiveRelayInternalDependencies): RequestHandler {
+  return async(request,response)=>{
+    const userId=requireInternalUser(response,request.mcpUserId);if(!userId)return;
+    const body=parseListenerBody(request.body);if(!body){sendInvalid(response);return;}
+    response.setHeader("Cache-Control","no-store");
+    try {response.json({success:true,data:{renewed:await dependencies.relayService.renewSessionLease!({userId,listenerInstanceId:body.listener_instance_id})}});}
+    catch(error){sendRelayError(response,error);}
+  };
+}

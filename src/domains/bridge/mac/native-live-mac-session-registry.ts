@@ -49,6 +49,9 @@ export class NativeLiveMacSessionRegistry {
     if (!Number.isSafeInteger(maxSessions) || maxSessions < 1) throw new Error("Session capacity must be a positive integer.");
   }
   get size(): number { return this.entries.size; }
+  snapshot(): ReadonlyArray<NativeLiveMacSessionBinding> {
+    return [...this.entries.values()].flatMap(entry=>entry.binding&&!entry.retired?[entry.binding]:[]);
+  }
 
   async openNew(input: OpenInput): Promise<NativeLiveMacSessionBinding> {
     return this.openOwned(input, null);

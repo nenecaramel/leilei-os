@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import { backgroundIdentity, backgroundResult, type NativeLiveBackgroundPrepare, type NativeLiveBackgroundSubmit, type NativeLiveBackgroundPrepared, type NativeLiveBackgroundAck } from "../protocol/native-live-background-result.js";
 import { requireUuid } from "../protocol/runtime-protocol/parsing.js";
 import type { NativeLiveMacPersistentAcknowledgement, NativeLiveMacPersistentBackgroundOwner } from "./native-live-mac-persistent-turn-router.js";
@@ -33,15 +33,26 @@ export class NativeLiveMacBackgroundResultOutbox {
     try { writeFileSync(fd, body); fsyncSync(fd); } finally { closeSync(fd); }
     renameSync(temporary, path); this.sync();
   }
-  async list(): Promise<Entry[]> {
-    if (!existsSync(this.directory)) return [];
-    return readdirSync(this.directory).filter(name => /^[a-f0-9]{64}\.json$/.test(name)).sort().map(name => {
-      const path = join(this.directory, name);
+  async list(): Promise<Entry[]> { return this.listDirectory(this.directory); }
+  async listQuarantined(): Promise<Entry[]> { return this.listDirectory(join(this.directory,"blocked")); }
+  private listDirectory(directory: string): Entry[] {
+    if (!existsSync(directory)) return [];
+    return readdirSync(directory).filter(name => /^[a-f0-9]{64}\.json$/.test(name)).sort().map(name => {
+      const path = join(directory, name);
       if (lstatSync(path).isSymbolicLink()) throw new Error("Invalid background receipt file.");
       const value = entry(JSON.parse(readFileSync(path, "utf8")) as Entry);
-      if (this.path(value) !== path) throw new Error("Invalid background receipt identity.");
+      if (basename(this.path(value)) !== name) throw new Error("Invalid background receipt identity.");
       return value;
     });
+  }
+  async quarantine(raw: Entry): Promise<void> {
+    const value=entry(raw),source=this.path(value),directory=join(this.directory,"blocked");
+    if(lstatSync(source).isSymbolicLink()||readFileSync(source,"utf8")!==JSON.stringify(value))throw new Error("Conflicting recovery evidence.");
+    mkdirSync(directory,{recursive:true,mode:0o700});
+    const target=join(directory,basename(source));
+    if(existsSync(target))throw new Error("Conflicting quarantined receipt.");
+    renameSync(source,target);
+    const fd=openSync(directory,"r");try{fsyncSync(fd);}finally{closeSync(fd);}this.sync();
   }
   async acknowledge(raw: Entry): Promise<void> {
     const value = entry(raw), path = this.path(value);
@@ -57,7 +68,10 @@ export class NativeLiveMacBackgroundResultOutbox {
 
 export class NativeLiveMacBackgroundResultSink {
   private queue = Promise.resolve();
-  constructor(private readonly input: { listenerInstanceId: string; relay: Relay; outbox: NativeLiveMacBackgroundResultOutbox }) {}
+  private readonly retryAfter = new Map<string,number>();
+  constructor(private readonly input: { listenerInstanceId: string; relay: Relay; outbox: NativeLiveMacBackgroundResultOutbox;
+    now?:()=>number; onRecoveryBlocked?(conversationId:string):Promise<void>; onRecovered?(conversationId:string):Promise<void>;
+  }) {}
   async commit(owner: NativeLiveMacPersistentBackgroundOwner, frame: Frame): Promise<NativeLiveMacPersistentAcknowledgement> {
     if (!owner.source || !owner.parentProviderCheckpointId || !owner.providerSessionId || !isAbsolute(owner.workingDirectory)) throw new Error("No committed background source is available.");
     const pending = entry({ sourcePrepareId: owner.source.prepareId, receiptId: randomUUID(), listenerInstanceId: this.input.listenerInstanceId,
@@ -77,7 +91,23 @@ export class NativeLiveMacBackgroundResultSink {
   async flush(): Promise<number> {
     return this.serial(async () => {
       let settled = 0;
-      for (const value of (await this.input.outbox.list()).slice(0, 16)) { await this.deliver(value); settled++; }
+      const quarantined=await this.input.outbox.listQuarantined();
+      for(const conversation of new Set(quarantined.map(v=>v.result.conversation_id)))await this.input.onRecoveryBlocked?.(conversation).catch(()=>{});
+      const now=(this.input.now??Date.now)();
+      // One bounded delivery per dispatch pass; a broken receipt must not
+      // prevent unrelated foreground work from ever reaching the daemon loop.
+      const value=(await this.input.outbox.list()).find(v=>(this.retryAfter.get(v.receiptId)??0)<=now);
+      if(!value)return 0;
+      try {
+        await this.deliver(value);settled++;this.retryAfter.delete(value.receiptId);
+        if(![...quarantined,...await this.input.outbox.list()].some(v=>v.result.conversation_id===value.result.conversation_id))
+          await this.input.onRecovered?.(value.result.conversation_id);
+      } catch(error) {
+        this.retryAfter.set(value.receiptId,now+30_000);
+        await this.input.onRecoveryBlocked?.(value.result.conversation_id).catch(()=>{});
+        const code=error&&typeof error==="object"&&"relayCode" in error?error.relayCode:null;
+        if(code==="BACKGROUND_CONFLICT"||code==="BACKGROUND_NOT_FOUND")await this.input.outbox.quarantine(value);
+      }
       return settled;
     });
   }

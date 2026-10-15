@@ -117,19 +117,20 @@ export class NativeLiveMacPersistentTurnRouter {
       if (input.controlPump) {
         slot.controlAbort = new AbortController();
         const session = this.binding!.session;
-        const control = async <T>(call: () => Promise<T>): Promise<T> => {
-          this.assertSlot(slot);
+        const control = async <T>(call: () => Promise<T>, allowClosed = false): Promise<T> => {
+          this.assertSlot(slot); if (this.suspended) throw new Error("Persistent session is draining.");
           let timer: ReturnType<typeof setTimeout> | undefined;
           try {
             const receipt = await Promise.race([call(), new Promise<never>((_, reject) => {
               timer = setTimeout(() => { void this.close().catch(() => {}); reject(new Error("Control receipt deadline expired; provider outcome unknown.")); }, 2_000);
             })]);
-            this.assertSlot(slot); return receipt;
+            if (allowClosed && receipt && typeof receipt === "object" && "session_closed" in receipt && receipt.session_closed === true && this.active === slot && !this.suspended) return receipt;
+            this.assertSlot(slot); if (this.suspended) throw new Error("Persistent session is draining."); return receipt;
           } finally { clearTimeout(timer); }
         };
         const controller: NativeLiveMacActiveTurnController = {
           sendUserMessage: (text, options) => control(() => session.sendUserMessage(text, options)),
-          interrupt: async () => { const receipt = await control(() => session.interruptTurn()); if (!receipt) throw new Error("No active input can be interrupted."); return receipt; },
+          interrupt: async () => { const receipt = await control(() => session.interruptTurn(), true); if (!receipt) throw new Error("No active input can be interrupted."); return receipt; },
         };
         controls = Promise.resolve().then(() => input.controlPump!(controller, { signal: slot.controlAbort!.signal }));
         controls.catch(() => {});
@@ -211,7 +212,7 @@ export class NativeLiveMacPersistentTurnRouter {
       const checkpoint = this.providerCheckpointId;
       const admitted = await slot.authorize(context);
       this.assertSlot(slot);
-      if (checkpoint !== this.providerCheckpointId) return false;
+      if (this.suspended || checkpoint !== this.providerCheckpointId) return false;
       return admitted;
     } catch { return false; }
   }
@@ -221,12 +222,12 @@ export class NativeLiveMacPersistentTurnRouter {
         ? { decision: "cancel", message: "No live turn question handler is available." }
         : { decision: "deny", message: "No live turn permission handler is available.", interrupt: true };
       const slot = this.active;
-      if (!slot || !slot[kind]) return denied;
+      if (this.suspended || !slot || !slot[kind]) return denied;
       try {
         this.assertSlot(slot);
         const response = await slot[kind]!(request, context);
         this.assertSlot(slot);
-        return response;
+        return this.suspended ? denied : response;
       } catch { return denied; }
     };
   }
@@ -235,6 +236,7 @@ export class NativeLiveMacPersistentTurnRouter {
   private output(slot: Slot): NativeLiveMacPersistentTurnOutput {
     const guard = <A extends unknown[], R>(handler: ((...args: A) => R) | undefined) => handler && ((...args: A): R => {
       this.assertSlot(slot);
+      if (this.suspended) throw new Error("Persistent output is fenced for handoff.");
       return handler(...args);
     });
     return {

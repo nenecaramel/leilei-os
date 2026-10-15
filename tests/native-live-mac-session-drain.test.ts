@@ -17,3 +17,9 @@ test("a stop RPC without an authoritative task removal never claims stopped or a
 test("failed close and unacknowledged delivery are reported unknown",async()=>{
  for(const phase of ["close","settle"]){const report=await drainNativeLiveMacSession({session:{tasks:new Map(),async stopTask(){},completion:Promise.resolve()},fence(){},async close(){if(phase==="close")throw new Error("failed");},async settle(){if(phase==="settle")throw new Error("lost response");},timeoutMs:100});assert.equal(report.ready,false);}
 });
+
+test("tasks discovered while stopping the initial snapshot prevent a ready handoff",async()=>{
+ const tasks=new Map([["initial",{}]]);
+ const report=await drainNativeLiveMacSession({session:{tasks,async stopTask(id:string){tasks.delete(id);tasks.set("new-in-flight",{});},completion:Promise.resolve()},fence(){},async close(){},async settle(){},timeoutMs:20});
+ assert.equal(report.ready,false);assert.ok(report.tasks.some(task=>task.id==="new-in-flight"&&task.status==="unknown"));
+});

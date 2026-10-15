@@ -1,4 +1,4 @@
-import { renewNativeLiveExecutionLease, NATIVE_LIVE_EXECUTION_LEASE_MS } from "./native-live-execution-lease.js";
+import { renewNativeLiveSessionLease, renewNativeLiveExecutionLease, NATIVE_LIVE_EXECUTION_LEASE_MS } from "./native-live-execution-lease.js";
 import { NativeLiveBackgroundResultError } from "../protocol/native-live-background-result.js";
 import { prepareNativeLiveBackgroundResult, submitNativeLiveBackgroundResult } from "./native-live-background-result-repository.js";
 import type { NativeLiveBackgroundPrepare, NativeLiveBackgroundSubmit, NativeLiveBackgroundPrepared, NativeLiveBackgroundAck } from "../protocol/native-live-background-result.js";
@@ -45,6 +45,7 @@ export interface NativeLiveBackendRelayPort {
   prepareBackgroundResult?(input: NativeLiveBackgroundPrepare & { userId: string }): Promise<NativeLiveBackgroundPrepared>;
   submitBackgroundResult?(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck>;
   checkExecutionAdmission?(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean>;
+  renewSessionLease?(input: {userId:string;listenerInstanceId:string}): Promise<boolean>;
   renewExecutionLease?(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean>;
   enqueuePreparation(input: {
     userId: string;
@@ -532,6 +533,10 @@ implements NativeLiveBackendRelayPort {
   }
   submitBackgroundResult(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck> {
     return submitNativeLiveBackgroundResult(this.db, input);
+  }
+
+  async renewSessionLease(input: {userId:string;listenerInstanceId:string}): Promise<boolean> {
+    return renewNativeLiveSessionLease(this.db, input);
   }
 
   async renewExecutionLease(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {
@@ -1034,6 +1039,10 @@ export class NativeLiveBackendRelayService {
   submitBackgroundResult(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck> {
     if (!this.repository.submitBackgroundResult) throw new NativeLiveBackgroundResultError("BACKGROUND_UNAVAILABLE");
     return this.repository.submitBackgroundResult(input);
+  }
+
+  async renewSessionLease(input: {userId:string;listenerInstanceId:string}): Promise<boolean> {
+    return await this.repository.renewSessionLease?.(input) === true;
   }
 
   async renewExecutionLease(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {

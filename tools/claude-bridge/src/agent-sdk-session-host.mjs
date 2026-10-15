@@ -95,7 +95,17 @@ class SessionHost {
   }
   async interruptTurn() {
     if (!this.active) return null;
-    if (this.tasks.size && !this.perTaskStopAffordance) throw new Error('Per-task stop capability is required before preserving background tasks.');
+    if (this.tasks.size && !this.perTaskStopAffordance) {
+      // No task-management UI is advertised. Stop the whole owned writer
+      // rather than making the user's foreground interrupt unavailable.
+      const ids = [...this.tasks.keys()]; this.active.interruptRequested = true;
+      let timer;
+      try { await Promise.race([Promise.allSettled(ids.map(async id => { await this.query.stopTask(id); })), new Promise(resolve => { timer = setTimeout(resolve, 1_000); })]); }
+      finally { clearTimeout(timer); }
+      await this.close(Object.assign(new Error('SDK turn interrupted; session closed.'), {runtimeCode:'INTERRUPTED'}));
+      const all = [...new Set([...ids, ...this.tasks.keys()])];
+      return {still_queued:[],session_closed:true,background_tasks:all.map(id=>({id,status:this.tasks.has(id)?'unknown':'stopped'}))};
+    }
     const turn = this.active;
     const expected = new Set([...turn.commandIds, ...this.pending.flatMap(item => [...item.commandIds])]);
     turn.interruptRequested = true;
@@ -153,9 +163,9 @@ class SessionHost {
       if (['assistant', 'user', 'result', 'stream_event'].includes(message.type)) segment.rawBackground.push(message);
     }
   }
-  async close() {
+  async close(reason = new Error('Session host was closed.')) {
     if (this.queryClosed) return;
-    this.state = 'closed'; this.rejectWork(new Error('Session host was closed.'));
+    this.state = 'closed'; this.rejectWork(reason);
     this.input.end(); await this.query.close();
     this.queryClosed = true;
   }

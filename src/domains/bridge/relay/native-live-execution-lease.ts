@@ -34,3 +34,21 @@ export async function renewNativeLiveExecutionLease(db: Database, input: NativeL
     }
   }
 }
+
+/** Maintenance of an existing writer lease only; never acquire or revive. */
+export async function renewNativeLiveSessionLease(db: Database, input: {userId:string;listenerInstanceId:string}): Promise<boolean> {
+  return db.transaction(async tx=>{
+    await tx.execute(sql`SET LOCAL statement_timeout='2s'`);
+    await tx.execute(sql`SET LOCAL lock_timeout='1s'`);
+    // Evaluate wall-clock expiry after the row lock, including when a lock-only
+    // transaction held the unchanged row across its original expiry.
+    await tx.execute(sql`SELECT user_id FROM native_live_runtime_listener_leases
+      WHERE user_id=${input.userId}::uuid AND dispatch_target='claude_code' FOR UPDATE`);
+    const rows=await tx.execute(sql`UPDATE native_live_runtime_listener_leases
+      SET lease_expires_at=clock_timestamp()+${NATIVE_LIVE_EXECUTION_LEASE_MS}*interval '1 millisecond',updated_at=clock_timestamp()
+      WHERE user_id=${input.userId}::uuid AND dispatch_target='claude_code'
+        AND listener_instance_id=${input.listenerInstanceId}::uuid AND lease_expires_at>clock_timestamp()
+      RETURNING user_id`);
+    return rows.length===1;
+  });
+}

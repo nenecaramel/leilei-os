@@ -19,3 +19,14 @@ test('unknown drain and handler failure never claim a released writer',async t=>
  assert.equal((await requestNativeSessionDrain({recoveryDirectory:root,conversationId:A,providerSessionId:B})).ready,false);
  fail=true;await assert.rejects(requestNativeSessionDrain({recoveryDirectory:root,conversationId:A,providerSessionId:B}),e=>e.code==='NATIVE_DAEMON_DRAIN_UNCONFIRMED'&&!e.message.includes('PRIVATE'));
 });
+
+test('verified dead socket recovery allows restart but never replaces a live listener',async t=>{
+ const {spawn}=await import('node:child_process');const {once}=await import('node:events');const {mkdir}=await import('node:fs/promises');
+ const root=await mkdtemp(path.join(tmpdir(),'drain-crash-'));t.after(()=>rm(root,{recursive:true,force:true}));const directory=path.join(root,'daemon-control');await mkdir(directory,{mode:0o700});const target=path.join(directory,'handoff.sock');
+ const child=spawn(process.execPath,['--input-type=module','-e',"import net from 'node:net';import {chmodSync} from 'node:fs';net.createServer().listen(process.argv[1],()=>{chmodSync(process.argv[1],0o600);process.stdout.write('ready');});",target],{stdio:['ignore','pipe','pipe']});t.after(()=>{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');});
+ await once(child.stdout,'data');const gone=once(child,'exit');child.kill('SIGKILL');await gone;
+ const options={recoveryDirectory:root,recoverStale:true,drain:async()=>({ready:true,writer:'closed',tasks:[]})};
+ const close=await createNativeSessionDrainServer(options);t.after(close);
+ await assert.rejects(createNativeSessionDrainServer(options),/already exists/);
+ assert.equal((await requestNativeSessionDrain({recoveryDirectory:root,conversationId:A,providerSessionId:B})).ready,true);
+});

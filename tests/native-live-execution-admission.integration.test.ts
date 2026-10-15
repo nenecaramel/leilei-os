@@ -28,6 +28,15 @@ test("execution admission PostgreSQL snapshot fences", { skip: process.env.RUN_N
     await db.transaction(async tx => { await tx.execute(sql`SET TRANSACTION READ ONLY`); await tx.execute(sql`SET LOCAL statement_timeout = '5s'`); assert.equal(await new DrizzleNativeLiveBackendRelayRepository(tx as typeof db).checkExecutionAdmission(input), true); });
     assert.deepEqual(await db.select().from(preparations).where(eq(preparations.id, reservationId)), before);
   });
+  await t.test("idle session renewal extends only a still-live exact listener and never resurrects expiry",async()=>{
+    const renew=()=> (repository as any).renewSessionLease({userId,listenerInstanceId});
+    assert.equal(await renew(),true);
+    await db.update(leases).set({leaseExpiresAt:earlier}).where(eq(leases.userId,userId));
+    const before=await db.select().from(leases).where(eq(leases.userId,userId));assert.equal(await renew(),false);
+    assert.deepEqual(await db.select().from(leases).where(eq(leases.userId,userId)),before);
+    await db.update(leases).set({leaseExpiresAt:later}).where(eq(leases.userId,userId));
+    assert.equal(await (repository as any).renewSessionLease({userId,listenerInstanceId:crypto.randomUUID()}),false);
+  });
   await t.test("renewal extends only the live executing reservation and its exact listener", async () => {
     const short = new Date(Date.now() + 10_000);
     await db.update(preparations).set({ reservationExpiresAt: short }).where(eq(preparations.id, reservationId));
@@ -106,9 +115,20 @@ test("execution admission PostgreSQL snapshot fences", { skip: process.env.RUN_N
     const head = crypto.randomUUID(); await db.insert(conversationMessages).values({ id: head, userId, conversationId, parentMessageId: canonicalUserMessageId, role: "assistant" });
     await db.insert(checkpoints).values({ userId, conversationId, canonicalMessageId: head, provider: "claude_code", providerSessionId: "provider-a", providerCheckpointId: checkpoint, effectiveWorkingDirectory: "/synthetic" });
     await db.update(conversations).set({ currentHeadMessageId: head }).where(eq(conversations.id, conversationId));
-    await db.insert(preparations).values({ id: reservationId, userId, requestId, conversationId, operation: "wake", requestHash: "a".repeat(64), runtimeMode: "resume", parentProviderSessionId: "provider-a", parentProviderCheckpointId: checkpoint, expectedWorkingDirectory: "/synthetic", wakeContext: { epoch_id: canonicalUserMessageId, source_user_message_id: canonicalUserMessageId, source_head_message_id: head }, prompt: "synthetic wake", dispatchStatus: "executing", reservedBy: listenerInstanceId, reservedAt: new Date(), reservationExpiresAt: later, executionStartedAt: new Date() });
+    await db.insert(preparations).values({ id: reservationId, userId, requestId, conversationId, operation: "wake", requestHash: "a".repeat(64), runtimeMode: "resume", parentProviderSessionId: "provider-a", parentProviderCheckpointId: checkpoint, expectedWorkingDirectory: "/synthetic", wakeContext: { epoch_id: canonicalUserMessageId, source_user_message_id: canonicalUserMessageId, source_head_message_id: head, runtime_generation: { presentation_owner_id: reservationId, source_revision: null } }, prompt: "synthetic wake", dispatchStatus: "executing", reservedBy: listenerInstanceId, reservedAt: new Date(), reservationExpiresAt: later, executionStartedAt: new Date() });
     input = { ...input, canonicalUserMessageId: null }; assert.equal(await check(), true);
-    const wakeContext = { epoch_id: canonicalUserMessageId, source_user_message_id: canonicalUserMessageId, source_head_message_id: head };
+    const wakeContext = { epoch_id: canonicalUserMessageId, source_user_message_id: canonicalUserMessageId, source_head_message_id: head, runtime_generation: { presentation_owner_id: reservationId, source_revision: null } };
+    await wakeTest.test("same-head owner or source revision rotation denies wake admission and renewal", async () => {
+      const [before] = await db.select().from(conversations).where(eq(conversations.id,conversationId));
+      for (const metadata of [
+        { ...before!.providerMetadata, native_live_presentation_owner: { prepareId:crypto.randomUUID(),anchorHeadMessageId:canonicalUserMessageId } },
+        { ...before!.providerMetadata, nativeSessionSource: { owner:"leileios",revision:"b".repeat(64) } },
+      ]) {
+        await db.update(conversations).set({ providerMetadata:metadata }).where(eq(conversations.id,conversationId));
+        try { assert.equal(await check(),false); assert.equal(await repository.renewExecutionLease(input),false); }
+        finally { await db.update(conversations).set({providerMetadata:before!.providerMetadata}).where(eq(conversations.id,conversationId)); }
+      }
+    });
     await wakeTest.test("wake epoch must equal its actual source user", async () => {
       await db.update(preparations).set({ wakeContext: { ...wakeContext, epoch_id: crypto.randomUUID() } }).where(eq(preparations.id, reservationId));
       try { assert.equal(await check(), false); } finally { await db.update(preparations).set({ wakeContext }).where(eq(preparations.id, reservationId)); }

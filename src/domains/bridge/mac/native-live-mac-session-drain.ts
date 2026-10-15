@@ -28,6 +28,7 @@ export async function drainNativeLiveMacSession(input: {
     writer = "closed";
     await bounded(input.settle()); settled = true;
   } catch { /* Fail closed with a metadata-only receipt; never guess. */ }
-  const tasks = ids.map(id => ({ id, status: input.session.tasks.has(id) ? "unknown" as const : stopped.has(id) ? "stopped" as const : "completed" as const }));
-  return { ready: writer === "closed" && settled && tasks.every(task => task.status !== "unknown"), tasks, writer };
+  const allIds = [...new Set([...ids, ...input.session.tasks.keys()])];
+  const tasks = allIds.map(id => ({ id, status: input.session.tasks.has(id) ? "unknown" as const : stopped.has(id) ? "stopped" as const : "completed" as const }));
+  return { ready: writer === "closed" && settled && input.session.tasks.size === 0 && tasks.every(task => task.status !== "unknown"), tasks, writer };
 }

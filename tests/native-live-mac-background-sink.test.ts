@@ -36,3 +36,22 @@ test("stale result is acknowledged locally without advancing the persistent writ
  const sink=new NativeLiveMacBackgroundResultSink({listenerInstanceId:id(7),relay,outbox:f.outbox});
  assert.deepEqual(await sink.commit(owner,frame),{status:"rejected"});assert.equal((await f.outbox.list()).length,0);
 });
+
+test("an unpreparable receipt is quarantined and fenced without starving another conversation",async t=>{
+ const f=await fixture(t);const blocked:string[]=[];let broken=true;
+ const relay={...f.relay,async prepareBackgroundResult(input:any){if(broken)throw Object.assign(new Error("rejected"),{relayCode:"BACKGROUND_CONFLICT",httpStatus:409});return {receiptId:input.receiptId,providerSessionId:"synthetic",parentProviderCheckpointId:id(5),expiresAt:new Date(Date.now()+600000).toISOString()};}};
+ const sink=new NativeLiveMacBackgroundResultSink({listenerInstanceId:id(7),relay,outbox:f.outbox,onRecoveryBlocked:async(id:string)=>{blocked.push(id);}} as any);
+ await assert.rejects(sink.commit(owner,frame));assert.equal(await sink.flush(),0);assert.deepEqual(blocked,[id(1)]);
+ assert.equal((await f.outbox.list()).length,0);assert.equal((await (f.outbox as any).listQuarantined()).length,1);
+ broken=false;assert.deepEqual(await sink.commit({...owner,conversationId:id(20)},frame),{status:"applied",providerCheckpointId:id(6)});
+ assert.equal((await (f.outbox as any).listQuarantined()).length,1,"uncertain evidence remains durable");
+});
+
+test("network-unknown recovery is backed off and later replays its original receipt exactly once",async t=>{
+ const f=await fixture(t);let now=1000,attempts=0,available=false;const blocks:string[]=[],recovered:string[]=[];
+ const relay={...f.relay,async prepareBackgroundResult(input:any){attempts++;if(!available)throw new TypeError("network unavailable");return f.relay.prepareBackgroundResult(input);}};
+ const sink=new NativeLiveMacBackgroundResultSink({listenerInstanceId:id(7),relay,outbox:f.outbox,now:()=>now,onRecoveryBlocked:async(id:string)=>{blocks.push(id);},onRecovered:async(id:string)=>{recovered.push(id);}} as any);
+ await assert.rejects(sink.commit(owner,frame));assert.equal(await sink.flush(),0);assert.equal(attempts,2);
+ assert.equal(await sink.flush(),0);assert.equal(attempts,2,"backoff prevents every user message waiting on the broken receipt");
+ available=true;now+=30000;assert.equal(await sink.flush(),1);assert.equal(f.committed.size,1);assert.deepEqual(recovered,[id(1)]);assert.ok(blocks.length>0);
+});

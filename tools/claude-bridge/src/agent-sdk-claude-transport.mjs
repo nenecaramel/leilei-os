@@ -691,7 +691,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       };
       const release = () => { if (this.activeSessionHost === host && host.queryClosed) this.activeSessionHost = null; };
       const close = host.close.bind(host);
-      host.close = async () => { rejectStartup?.(new Error("Native session startup was closed.")); await close(); release(); };
+      host.close = async reason => { rejectStartup?.(new Error("Native session startup was closed.")); await close(reason); release(); };
       void host.completion.then(release, release);
       if (claim.cancelled) { await host.close(); throw runtimeError("Persistent session startup was aborted.", { runtimeCode: "ABORTED" }); }
       if (startupReady) {

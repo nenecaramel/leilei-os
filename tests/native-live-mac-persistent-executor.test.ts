@@ -127,3 +127,10 @@ test("shutdown reports failed writers and allows a later close retry", async () 
   assert.equal(executor.canRoute(command()), false, "shutdown never accepts new work");
   await executor.closeAll(); assert.equal(closes, 2);
 });
+
+test("full persistent capacity safely routes a fifth conversation to the existing fallback",async()=>{
+ let routers=0;
+ const executor=new NativeLiveMacPersistentExecutor({hasCapacity:()=>routers<4,attachmentMaterializer:null,outputAttachmentSender:null,createRouter(){routers++;return {workingDirectory:"/work",matches:()=>true,async close(){},async execute(input:TurnInput){await frame(input);return {} as never;}};}} as any);
+ for(let n=0;n<4;n++)await executor.execute(command({conversation_id:id(100+n)}),{async commit(){return {canonicalOutcome:"completed"};}});
+ assert.equal(executor.canRoute(command({conversation_id:id(104)})),false);assert.equal(routers,4);await executor.closeAll();
+});

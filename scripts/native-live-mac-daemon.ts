@@ -225,6 +225,7 @@ const persistentRuntime = new NativeLiveMacPersistentRuntime({
   mcpServerConfig: { type: "http", url: relayBaseUrl + "/internal/native-live-mcp", headers: { Authorization: "Bearer " + relayToken } },
 });
 const closeHandoffServer = await createNativeSessionDrainServer({
+  recoverStale: true, // Exclusive daemonLock was acquired before this control endpoint.
   recoveryDirectory: join(homedir(), ".leileios"),
   drain: (conversationId: string, providerSessionId: string) => persistentRuntime.drain(conversationId, providerSessionId),
 });

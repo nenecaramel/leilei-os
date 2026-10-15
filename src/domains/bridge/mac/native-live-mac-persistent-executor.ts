@@ -31,12 +31,19 @@ export class NativeLiveMacPersistentExecutor {
   private readonly routers = new Map<string, Router>();
   private readonly retiring = new Set<string>();
   private shutDown = false;
-  private readonly suspended = new Set<string>();
-  suspend(conversationId: string): void { this.suspended.add(conversationId); this.routers.get(conversationId)?.suspend?.(); }
+  private readonly suspended = new Map<string, Set<"handoff" | "recovery">>();
+  suspend(conversationId: string, reason: "handoff" | "recovery" = "handoff"): void {
+    const reasons=this.suspended.get(conversationId)??new Set();reasons.add(reason);this.suspended.set(conversationId,reasons);this.routers.get(conversationId)?.suspend?.();
+  }
+  async recovered(conversationId:string):Promise<void>{
+    const reasons=this.suspended.get(conversationId);if(!reasons?.has("recovery"))return;
+    await this.retire(conversationId);reasons.delete("recovery");if(!reasons.size)this.suspended.delete(conversationId);
+  }
   assertAccepting(conversationId: string): void { if (this.shutDown || this.suspended.has(conversationId)) throw new Error("Persistent session is fenced for handoff."); }
 
   constructor(private readonly input: {
     createRouter(conversationId: string): Router;
+    hasCapacity?(): boolean;
     attachmentMaterializer: NativeLiveMacAttachmentMaterializer | null;
     outputAttachmentSender: Pick<NativeLiveMacOutputAttachmentSender, "sendFile"> & Partial<Pick<NativeLiveMacOutputAttachmentSender, "sendInlineImage">> | null;
   }) {}
@@ -51,7 +58,7 @@ export class NativeLiveMacPersistentExecutor {
     if (command.attachments?.length && !this.input.attachmentMaterializer) return false;
     if (this.retiring.has(command.conversation_id) || this.suspended.has(command.conversation_id)) return false;
     const router = this.routers.get(command.conversation_id);
-    return router ? router.matches(command) : true;
+    return router ? router.matches(command) : this.input.hasCapacity?.() !== false;
   }
 
   /** Close the conversation's writer before a legacy operation touches its session. */
@@ -69,11 +76,15 @@ export class NativeLiveMacPersistentExecutor {
     for (const [id, router] of this.routers) if (router.providerSessionId === providerSessionId) await this.retire(id);
   }
 
+  async retireAll(): Promise<void> {
+    const outcomes=await Promise.allSettled([...this.routers.keys()].map(id=>this.retire(id)));
+    const errors=outcomes.filter((r):r is PromiseRejectedResult=>r.status==="rejected");
+    if(errors.length)throw new AggregateError(errors.map(r=>r.reason),"Persistent writers could not all close.");
+  }
+
   async closeAll(): Promise<void> {
     this.shutDown = true;
-    const results = await Promise.allSettled([...this.routers.keys()].map(id => this.retire(id)));
-    const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
-    if (failures.length) throw new AggregateError(failures.map(r => r.reason), "Persistent writers could not all close.");
+    await this.retireAll();
   }
 
   async execute(rawCommand: unknown, options: {

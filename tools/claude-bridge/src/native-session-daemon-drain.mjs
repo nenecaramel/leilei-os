@@ -11,13 +11,27 @@ function validReport(value) {
     && value.tasks.every(task => typeof task.id === 'string' && task.id.length <= 256 && ['stopped', 'completed', 'unknown'].includes(task.status))
     && (!value.ready || value.writer === 'closed' && value.tasks.every(task => task.status !== 'unknown'));
 }
-export async function createNativeSessionDrainServer({ recoveryDirectory, drain }) {
+export async function createNativeSessionDrainServer({ recoveryDirectory, drain, recoverStale = false }) {
   const socketPath = endpoint(recoveryDirectory), directory = path.dirname(socketPath);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const info = await lstat(directory);
   if (!info.isDirectory() || !owned(info)) throw fail();
-  try { await lstat(socketPath); throw new Error('Daemon control socket already exists; do not replace an unverified owner.'); }
-  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  try {
+    const previous = await lstat(socketPath);
+    let dead = false;
+    // Only the daemon, after acquiring its exclusive process lock, opts in.
+    // A successful connection or uncertainty always preserves the old socket.
+    if (recoverStale && previous.isSocket() && owned(previous)) dead = await new Promise(resolve => {
+      const probe = net.createConnection(socketPath); let settled = false;
+      const finish = value => { if (settled) return; settled = true; probe.destroy(); resolve(value); };
+      probe.setTimeout(500, () => finish(false)); probe.on('connect', () => finish(false));
+      probe.on('error', error => finish(error.code === 'ECONNREFUSED'));
+    });
+    if (!dead) throw new Error('Daemon control socket already exists; do not replace an unverified owner.');
+    const current = await lstat(socketPath);
+    if (!current.isSocket() || !owned(current) || current.ino !== previous.ino || current.dev !== previous.dev) throw fail();
+    await unlink(socketPath);
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
   const sockets = new Set();
   const server = net.createServer(socket => {
     if (sockets.size >= 4) { socket.destroy(); return; }

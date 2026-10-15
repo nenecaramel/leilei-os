@@ -32,3 +32,11 @@ test("only reserve accepts the explicit persistent-session capability; old reque
   assert.equal((await send("lease/renew",{...old,persistent_sessions:true})).status,400);
  });assert.equal(calls.length,2);assert.equal(calls[0].persistentSessions,undefined);assert.equal(calls[1].persistentSessions,true);
 });
+
+test("session lease renewal authenticates and never reacquires the listener",async()=>{
+ const calls:any[]=[];const service=Object.assign(new FakeRelayService(),{async renewSessionLease(input:any){calls.push(input);return false;}});
+ await withServer(app=>{app.use((req,_res,next)=>{req.mcpUserId=userId;next();});app.use("/relay",createNativeLiveRelayInternalRouter({relayService:service}));},async base=>{
+  const result=await fetch(`${base}/relay/session-lease/renew`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({listener_instance_id:listenerId,dispatch_target:"claude_code"})});assert.equal(result.status,200);assert.deepEqual(await result.json(),{success:true,data:{renewed:false}});
+ });assert.equal(calls.length,1);
+ const client=new NativeLiveMacHttpRelayClient("https://relay.invalid","synthetic",async(_url,init)=>{assert.ok(init?.signal instanceof AbortSignal);return new Response(JSON.stringify({success:true,data:{renewed:false}}));});assert.equal(await (client as any).renewSessionLease({listenerInstanceId:listenerId}),false);
+});

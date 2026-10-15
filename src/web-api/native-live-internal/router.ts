@@ -5,6 +5,7 @@ import {
   renewLeaseHandler,
   waitForWorkHandler,
   reserveNextHandler,
+  renewSessionLeaseHandler,
   executionStartedHandler,
   executionAdmissionHandler,
   renewExecutionLeaseHandler,
@@ -147,6 +148,7 @@ export function createNativeLiveRelayInternalRouter(
     );
   }
   router.post("/reserve", reserveNextHandler(dependencies));
+  if (dependencies.relayService.renewSessionLease) router.post("/session-lease/renew", renewSessionLeaseHandler(dependencies));
   if (dependencies.relayService.checkExecutionAdmission) {
     router.post("/reservations/:reservationId/execution-admission", executionAdmissionHandler(dependencies));
   }

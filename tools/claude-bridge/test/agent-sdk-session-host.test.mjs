@@ -34,8 +34,10 @@ test('foreign-session output fails pending turns without replay',async()=>{
 test('process exit rejects active and queued work without retrying it',async()=>{
  const f=await fixture();const one=assert.rejects(f.host.submit('one'),/ended/i),two=assert.rejects(f.host.submit('two'),/ended/i);f.output.end();await Promise.all([one,two]);await assert.rejects(f.host.completion,/ended/i);assert.equal(f.calls,1);
 });
-test('without actual per-task stop capability declaration, interrupt refuses to strand background work',async t=>{
- const f=await fixture({perTaskStopAffordance:false});t.after(()=>f.host.close());const turn=f.host.submit('synthetic');await f.event(tasks());await assert.rejects(f.host.interruptTurn(),/stop/i);assert.equal(f.interrupts,0);await f.event({...result(),user_message_uuid:f.host.active?.id});await turn;
+test('without per-task UI, foreground interrupt stops the session and reports unresolved background tasks truthfully',async t=>{
+ const f=await fixture({perTaskStopAffordance:false});t.after(()=>f.host.close());const turn=f.host.submit('synthetic');const interrupted=assert.rejects(turn,error=>error.runtimeCode==='INTERRUPTED');interrupted.catch(()=>{});await f.event(tasks());
+ const receipt=await f.host.interruptTurn();await interrupted;await f.host.completion;
+ assert.equal(receipt.session_closed,true);assert.deepEqual(receipt.still_queued,[]);assert.deepEqual(receipt.background_tasks,[{id:'task',status:'unknown'}]);assert.deepEqual(f.stopped,['task']);assert.equal(f.closed,1);assert.equal(f.interrupts,0);
 });
 
 test('autonomous result during idle remains a session event',async t=>{

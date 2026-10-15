@@ -325,3 +325,19 @@ test("a wake without a model override inherits this session's existing selection
  const running=f.run(wake);f.finish((await f.inputs.next()).value!.uuid);await running;assert.equal(f.launches,1);
  assert.equal(f.router.matches({...command(3),execution_selection:{...selection,effort:"low"}}),false);
 });
+
+test("suspension revokes authorization already awaiting the server response",async t=>{
+ const f=await fixture(t);const running=f.run(command(1));running.catch(()=>{});const input=(await f.inputs.next()).value!;
+ const entered=deferred<void>(),release=deferred<boolean>();f.setAdmission(async()=>{entered.resolve();return release.promise;});
+ const admitted=(f.router as any).authorize({phase:"tool",inputId:input.uuid,source:"human",providerSessionId:sid});
+ await entered.promise;f.router.suspend();release.resolve(true);assert.equal(await admitted,false);
+ await f.router.close();await running.catch(()=>{});
+});
+
+test("foreground stop with background work closes the owned session and returns an applied close receipt",async t=>{
+ const f=await fixture(t),stop=deferred<void>(),receipt=deferred<Record<string,unknown>>();
+ const running=f.run(command(1),{async controlPump(controller:any){await stop.promise;receipt.resolve(await controller.interrupt());}});running.catch(()=>{});
+ await f.inputs.next();const host=f.registry.get(conversation,f.registry.getGenerationId(conversation)!)!.session;const seen=new Promise<void>(resolve=>host.events.once("event",()=>resolve()));
+ f.output.push({type:"system",subtype:"background_tasks_changed",session_id:sid,tasks:[{task_id:"background",run_id:"r1"}]});await seen;stop.resolve();
+ await assert.rejects(running,(error:any)=>error.runtimeCode==="INTERRUPTED");assert.equal((await receipt.promise).session_closed,true);assert.equal(f.closes,1);
+});
