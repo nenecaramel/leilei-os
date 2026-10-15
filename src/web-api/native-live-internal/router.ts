@@ -1,3 +1,4 @@
+import { prepareBackgroundResultHandler, submitBackgroundResultHandler } from "./background-results.js";
 import { Router } from "express";
 import type { NativeLiveRelayInternalDependencies } from "./dependencies.js";
 import {
@@ -182,6 +183,8 @@ export function createNativeLiveRelayInternalRouter(
       completeRuntimeControlHandler(dependencies),
     );
   }
+  router.post("/reservations/:reservationId/background-results/prepare", prepareBackgroundResultHandler(dependencies));
+  router.post("/reservations/:reservationId/background-results/:receiptId/result", submitBackgroundResultHandler(dependencies));
   router.post(
     "/reservations/:reservationId/result",
     submitResultHandler(dependencies),

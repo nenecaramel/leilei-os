@@ -415,3 +415,6 @@ function normalizeRuntimeEvent(
     ...(payload === undefined ? {} : { payload }),
   };
 }
+
+// Shared structural validation for independently persisted background frames.
+export { normalizeRuntimeEvent as normalizeNativeLiveRuntimeEvent };

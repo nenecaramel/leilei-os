@@ -1,3 +1,6 @@
+import { NativeLiveBackgroundResultError } from "../protocol/native-live-background-result.js";
+import { prepareNativeLiveBackgroundResult, submitNativeLiveBackgroundResult } from "./native-live-background-result-repository.js";
+import type { NativeLiveBackgroundPrepare, NativeLiveBackgroundSubmit, NativeLiveBackgroundPrepared, NativeLiveBackgroundAck } from "../protocol/native-live-background-result.js";
 import { checkNativeLiveExecutionAdmission } from "./native-live-execution-admission.js";
 import type { NativeLiveExecutionAdmission } from "../protocol/native-live-execution-admission.js";
 import { and, eq, sql } from "drizzle-orm";
@@ -38,6 +41,8 @@ type RelayMutationOutcome =
   | "conflict";
 
 export interface NativeLiveBackendRelayPort {
+  prepareBackgroundResult?(input: NativeLiveBackgroundPrepare & { userId: string }): Promise<NativeLiveBackgroundPrepared>;
+  submitBackgroundResult?(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck>;
   checkExecutionAdmission?(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean>;
   enqueuePreparation(input: {
     userId: string;
@@ -504,6 +509,13 @@ implements NativeLiveBackendRelayPort {
       );
       return row;
     });
+  }
+
+  prepareBackgroundResult(input: NativeLiveBackgroundPrepare & { userId: string }): Promise<NativeLiveBackgroundPrepared> {
+    return prepareNativeLiveBackgroundResult(this.db, input);
+  }
+  submitBackgroundResult(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck> {
+    return submitNativeLiveBackgroundResult(this.db, input);
   }
 
   async checkExecutionAdmission(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {
@@ -991,6 +1003,15 @@ export class NativeLiveBackendRelayService {
         this.outputAttachmentsEnabled,
       ),
     };
+  }
+
+  prepareBackgroundResult(input: NativeLiveBackgroundPrepare & { userId: string }): Promise<NativeLiveBackgroundPrepared> {
+    if (!this.repository.prepareBackgroundResult) throw new NativeLiveBackgroundResultError("BACKGROUND_UNAVAILABLE");
+    return this.repository.prepareBackgroundResult(input);
+  }
+  submitBackgroundResult(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck> {
+    if (!this.repository.submitBackgroundResult) throw new NativeLiveBackgroundResultError("BACKGROUND_UNAVAILABLE");
+    return this.repository.submitBackgroundResult(input);
   }
 
   async checkExecutionAdmission(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {

@@ -294,7 +294,7 @@ test(
     );
     assert.deepEqual(
       firstDurableMetadata.runtimeMetadata,
-      { ...runtimeMetadata, provider_checkpoint_version: 1, turn_started_at: finalizedRead.startedAt },
+      { ...runtimeMetadata, native_live_generation: { presentation_owner_id: firstPrepare.command.prepare_id, source_revision: null }, provider_checkpoint_version: 1, turn_started_at: finalizedRead.startedAt },
     );
     assert.ok(firstDurableMetadata.observedAt);
 
@@ -405,7 +405,7 @@ test(
     );
     assert.deepEqual(
       secondDurableMetadata.runtimeMetadata,
-      { provider_checkpoint_version: 1, turn_started_at: (await port.readTurn({ userId:user.id, prepareId:secondPrepare.command.prepare_id }))?.startedAt },
+      { native_live_generation: { presentation_owner_id: secondPrepare.command.prepare_id, source_revision: null }, provider_checkpoint_version: 1, turn_started_at: (await port.readTurn({ userId:user.id, prepareId:secondPrepare.command.prepare_id }))?.startedAt },
       "latest checkpoint carries its own turn start and must not inherit older provider metadata",
     );
 
