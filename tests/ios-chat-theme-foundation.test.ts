@@ -63,7 +63,7 @@ test('iMessage Composer uses Apple-native controls while retaining existing acti
   assert.match(originalBody, /controlRow/);
   assert.match(originalBody, /\.glassEffect\(/);
 
-  assert.match(imessageBody, /Text\("Message"\)/);
+  assert.match(imessageBody, /Text\("Message"\)\s*\.foregroundStyle\(Color\.primary\.opacity\(0\.70\)\)/);
   assert.match(imessageBody, /TextField\(/);
   assert.match(imessageBody, /\.lineLimit\(1\.\.\.6\)/);
   assert.match(imessageBody, /\.glassEffect\(\.regular, in: Capsule\(\)\)/);
@@ -123,6 +123,12 @@ test('iMessage uses a native safe-area inset with no opaque system bottom bar', 
   ]) assert.ok(shared.includes(route), route);
   assert.match(shared, /sendMessage\(\)/);
 
+  const iMessageAction = composer.slice(
+    composer.indexOf('    private var iMessageActionLabel: some View {'),
+    composer.indexOf('    private var voiceActionButton: some View {')
+  );
+  assert.match(iMessageAction, /case \.voice:\s*Image\(systemName: "waveform"\)\s*\.font\(\.system\(size: 18, weight: \.medium\)\)/);
+  assert.match(iMessageAction, /width: LeileiUI\.ControlGeometry\.compact,\s*height: LeileiUI\.ControlGeometry\.compact/);
   assert.match(composer, /case \.voice:\s*Image\(systemName: "waveform"\)/);
   assert.match(composer, /case \.send, \.midTurnSend, \.disabledSend:/);
   assert.match(composer, /\.background\(\.tint, in: Circle\(\)\)/);
