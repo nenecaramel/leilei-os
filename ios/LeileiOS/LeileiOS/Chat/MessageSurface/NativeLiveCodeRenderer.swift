@@ -17,6 +17,7 @@ struct NativeLiveIMessageContentPanel: ViewModifier {
             } else {
                 content
                     .foregroundStyle(Color(red: 0.17, green: 0.20, blue: 0.23))
+                    .tint(Color(red: 0.17, green: 0.20, blue: 0.23))
                     .glassEffect(
                         .regular,
                         in: RoundedRectangle(cornerRadius: 11, style: .continuous)
