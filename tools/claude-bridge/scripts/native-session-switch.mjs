@@ -1,7 +1,7 @@
-import { restoreDesktopNativeSession, handoffNativeSessionToDesktop } from '../src/native-session-switch-restore.mjs';
+import { restoreDesktopNativeSession, handoffNativeSessionToDesktop, switchNativeSessionLight } from '../src/native-session-switch-restore.mjs';
 import path from 'node:path';
 import { homedir } from 'node:os';
-import { inspectDesktopNativeSession, listDesktopNativeSessions, resolveDesktopNativeSelection } from '../src/native-session-inspection.mjs';
+import { inspectDesktopNativeSession, listDesktopNativeSessions, resolveDesktopNativeSelection, resolveNativeCheckpointOnlySelection } from '../src/native-session-inspection.mjs';
 import { nativeSwitchErrorCode } from '../src/native-session-switch-codes.mjs';
 import { preflightNativeSessionSwitch } from '../src/native-session-switch-preflight.mjs';
 
@@ -10,7 +10,7 @@ import { preflightNativeSessionSwitch } from '../src/native-session-switch-prefl
 const args = process.argv.slice(2);
 const flags = new Map();
 const allowed = new Set(['--desktop-index', '--project-dir', '--config-dir', '--conversation-id', '--session-id', '--desktop-dir']);
-let valid = ['--list', '--check', '--restore', '--desktop', '--desktop-manual'].includes(args[0]) && args.length % 2 === 1;
+let valid = ['--list', '--check', '--restore', '--desktop', '--desktop-manual', '--light-desktop', '--light-leileios'].includes(args[0]) && args.length % 2 === 1;
 for (let i = 1; i < args.length; i += 2) {
   if (!allowed.has(args[i]) || flags.has(args[i]) || !args[i + 1] || args[i + 1].startsWith('--')) valid = false;
   flags.set(args[i], args[i + 1]);
@@ -20,7 +20,9 @@ if (args[0] === '--list') valid &&= [...flags.keys()].every(flag => ['--config-d
 else valid &&= flags.has('--session-id')
   ? !explicitPaths
   : flags.has('--desktop-index') && flags.has('--project-dir') && !flags.has('--desktop-dir');
-if (!valid || (['--desktop', '--desktop-manual'].includes(args[0]) && !flags.has('--session-id'))) {
+const light = ['--light-desktop', '--light-leileios'].includes(args[0]);
+if (!valid || (['--desktop', '--desktop-manual'].includes(args[0]) && !flags.has('--session-id')) ||
+    (light && (!flags.has('--session-id') || !flags.has('--conversation-id')))) {
   console.error('Usage: native-session-switch.mjs --list|--check|--restore|--desktop|--desktop-manual [--session-id UUID] [--config-dir DIRECTORY] [--desktop-dir DIRECTORY] [--conversation-id UUID]; explicit --desktop-index FILE --project-dir DIRECTORY remains supported for check/restore');
   process.exitCode = 1;
 } else {
@@ -30,6 +32,24 @@ if (!valid || (['--desktop', '--desktop-manual'].includes(args[0]) && !flags.has
   try {
     if (args[0] === '--list') {
       console.log(JSON.stringify(await listDesktopNativeSessions(discovery), null, 2));
+    } else if (light) {
+      const direction = args[0] === '--light-desktop' ? 'to_desktop' : 'to_leileios';
+      const { input, selection } = await resolveNativeCheckpointOnlySelection({
+        ...discovery, sessionId: flags.get('--session-id'), direction,
+      });
+      const pinned = { ...input,
+        expectedSessionId: selection.providerSessionId,
+        expectedCheckpointId: selection.providerCheckpointId,
+        expectedRevision: selection.nativeRevision,
+        expectedWorkingDirectory: selection.workingDirectory,
+      };
+      const result = await switchNativeSessionLight({
+        input: pinned, conversationId: flags.get('--conversation-id'),
+        direction,
+        relayUrl: process.env.LEILEI_NATIVE_LIVE_RELAY_URL,
+        relayToken: process.env.LEILEI_NATIVE_LIVE_RELAY_TOKEN,
+      });
+      console.log(JSON.stringify(result, null, 2));
     } else {
       const resolved = flags.has('--session-id')
         ? await resolveDesktopNativeSelection({ ...discovery, sessionId: flags.get('--session-id') }) : null;
