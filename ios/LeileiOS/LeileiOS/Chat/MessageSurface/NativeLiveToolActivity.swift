@@ -1,12 +1,30 @@
 import SwiftUI
 import Foundation
 
-// The wallpaper is visible beneath iMessage tool activity, independently
-// of the user/assistant text-bubble tint and its opacity slider.
+// The same native Liquid Glass used by the iMessage composer, with dark
+// content on light glass. Independent of chat bubble tints and their sliders.
 private enum NativeLiveToolWallpaperStyle {
-    static let background = Color(red: 0.29, green: 0.33, blue: 0.36).opacity(0.94)
-    static let secondary = Color.white.opacity(0.78)
-    static let tertiary = Color.white.opacity(0.65)
+    static let primary = Color(red: 0.17, green: 0.20, blue: 0.23)
+    static let secondary = Color.black.opacity(0.64)
+    static let tertiary = Color.black.opacity(0.48)
+}
+
+// No glass modifier or new background is applied outside wallpaper-backed
+// iMessage, so Original and plain iMessage retain their existing appearance.
+private struct NativeLiveToolWallpaperGlass: ViewModifier {
+    let enabled: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            content.glassEffect(
+                .regular,
+                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+            )
+        } else {
+            content
+        }
+    }
 }
 
 struct NativeLiveToolActivityRow: View {
@@ -81,7 +99,7 @@ struct NativeLiveToolCallCard: View {
                     if iMessageWallpaperVisible {
                         ProgressView()
                             .controlSize(.small)
-                            .tint(.white)
+                            .tint(NativeLiveToolWallpaperStyle.primary)
                     } else {
                         ProgressView()
                             .controlSize(.small)
@@ -116,7 +134,7 @@ struct NativeLiveToolCallCard: View {
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(
                         iMessageWallpaperVisible
-                            ? AnyShapeStyle(Color.white)
+                            ? AnyShapeStyle(NativeLiveToolWallpaperStyle.primary)
                             : AnyShapeStyle(HierarchicalShapeStyle.primary)
                     )
                     .lineLimit(1)
@@ -148,15 +166,14 @@ struct NativeLiveToolCallCard: View {
         .padding(.horizontal, 11)
         .padding(.vertical, 9)
         .background(
-            iMessageWallpaperVisible
-                ? NativeLiveToolWallpaperStyle.background
-                : Color.primary.opacity(0.045),
+            iMessageWallpaperVisible ? Color.clear : Color.primary.opacity(0.045),
             in: RoundedRectangle(
                 cornerRadius: 11,
                 style: .continuous
             )
         )
         .frame(maxWidth: .infinity, alignment: .leading)
+        .modifier(NativeLiveToolWallpaperGlass(enabled: iMessageWallpaperVisible))
         .sheet(isPresented: $isShowingDetails) {
             NativeLiveToolDetailSheet(
                 title: nativeLiveToolDisplayName(toolName),
@@ -241,16 +258,7 @@ struct NativeLiveToolResultCard: View {
         .buttonStyle(.plain)
         .padding(.leading, 5)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            if iMessageWallpaperVisible {
-                // Result rows had no fill at all; paint behind the row
-                // without changing its size, vertical spacing, or actions.
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(NativeLiveToolWallpaperStyle.background)
-                    .padding(.vertical, -3)
-                    .allowsHitTesting(false)
-            }
-        }
+        .modifier(NativeLiveToolWallpaperGlass(enabled: iMessageWallpaperVisible))
         .sheet(isPresented: $isShowingDetails) {
             NativeLiveToolDetailSheet(
                 title: isError ? "Tool failed" : "Tool result",
