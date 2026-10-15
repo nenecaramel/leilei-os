@@ -32,6 +32,23 @@ struct AppShell: View {
                 iPhoneLayout
             }
         }
+        // The one physical image is anchored outside the keyboard-avoiding
+        // navigation/composer layout; all children are transparent above it.
+        .background {
+            if isWallpaperChatVisible, let shellWallpaperImage {
+                GeometryReader { geometry in
+                    Image(uiImage: shellWallpaperImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped()
+                }
+                .ignoresSafeArea(.all)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+            }
+        }
+        .environment(\.iMessageWallpaperVisible, isWallpaperChatVisible)
         .environment(\.colorScheme, shellColorScheme)
         .tint(.primary)
         .task(id: wallpaperRevision) {
@@ -56,6 +73,14 @@ struct AppShell: View {
                 inheritedColorScheme
             )
         }
+    }
+
+    private var isWallpaperChatVisible: Bool {
+        selectedPage == .chat
+            && chatThemeRawValue == ChatTheme.iMessage.rawValue
+            && shellWallpaperImage != nil
+            && !menuOpen
+            && sidebarDragTranslation == 0
     }
 
     private var isUniverseTheme: Bool {
@@ -113,34 +138,11 @@ struct AppShell: View {
             let cardCornerRadius: CGFloat = menuOpen ? 50 : 0
 
             ZStack(alignment: .leading) {
-                // Keyboard top corners reveal the shell *outside* the page
-                // card's clipShape. Fill that last exposed layer with the same
-                // wallpaper instead of the sidebar's near-white background.
-                // Only the backdrop ignores the keyboard; the composer still
-                // uses the normal keyboard-safe navigation layout.
-                if selectedPage == .chat,
-                   !menuOpen,
-                   sidebarDragTranslation == 0,
-                   chatThemeRawValue == ChatTheme.iMessage.rawValue,
-                   let shellWallpaperImage {
-                    GeometryReader { geometry in
-                        Image(uiImage: shellWallpaperImage)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(
-                                width: geometry.size.width,
-                                height: geometry.size.height
-                            )
-                            .clipped()
-                    }
-                    .ignoresSafeArea(.all)
-                    .accessibilityHidden(true)
-                    .allowsHitTesting(false)
-                } else {
-                    Rectangle()
-                        .fill(sidebarBackground)
-                        .ignoresSafeArea()
-                }
+                // Keep the sidebar's original paint while it is visible.
+                // Closed iMessage chats expose the single, fixed root image.
+                Rectangle()
+                    .fill(isWallpaperChatVisible ? Color.clear : sidebarBackground)
+                    .ignoresSafeArea()
 
                 SidebarView(
                     selectedPage: $selectedPage,
