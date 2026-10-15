@@ -309,6 +309,12 @@ for (const manual of [false, true]) test(`fixed ID ${manual ? 'manual' : 'automa
     const launcher = path.join(bin, 'claude');
     await writeFile(launcher, `#!${process.execPath}\nrequire('node:fs').writeFileSync(process.env.SYNTHETIC_LAUNCH_RESULT, JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),relayTokenPresent:!!process.env.LEILEI_NATIVE_LIVE_RELAY_TOKEN}));\n`);
     await chmod(launcher, 0o700);
+    // The CLI flow tests its launcher contract, not the host OS's `script`
+    // dialect. Real macOS TTY behavior has its own platform-gated test below.
+    const terminalMarker = path.join(root, 'terminal.json');
+    const terminal = path.join(bin, 'script');
+    await writeFile(terminal, `#!${process.execPath}\nconst args=process.argv.slice(2);if(args[0]!=='-q'||args[1]!=='/dev/null')process.exit(2);require('node:fs').writeFileSync(process.env.SYNTHETIC_TERMINAL_RESULT,JSON.stringify(args));const result=require('node:child_process').spawnSync(args[2],args.slice(3),{env:process.env,stdio:'inherit'});process.exit(result.status??1);\n`);
+    await chmod(terminal, 0o700);
     // Use a real existing synthetic cwd; do not change any owner directory.
     const index = path.join(org, `local_${D}.json`);
     const metadata = JSON.parse(await readFile(index, 'utf8')); metadata.cwd = root;
@@ -332,8 +338,8 @@ for (const manual of [false, true]) test(`fixed ID ${manual ? 'manual' : 'automa
     try {
       const script = new URL('../scripts/native-session-switch.mjs', import.meta.url).pathname;
       const flags = ['--session-id', A, '--desktop-dir', desktopDirectory, '--config-dir', input.configDirectory];
-      const env = { ...process.env, HOME: root, PATH: bin + path.delimiter + process.env.PATH,
-        SYNTHETIC_LAUNCH_RESULT: marker, LEILEI_NATIVE_LIVE_RELAY_URL: `http://127.0.0.1:${server.address().port}`, LEILEI_NATIVE_LIVE_RELAY_TOKEN: 'PRIVATE_TOKEN' };
+      const env = { ...process.env, HOME: root, PATH: bin,
+        SYNTHETIC_LAUNCH_RESULT: marker, SYNTHETIC_TERMINAL_RESULT: terminalMarker, LEILEI_NATIVE_LIVE_RELAY_URL: `http://127.0.0.1:${server.address().port}`, LEILEI_NATIVE_LIVE_RELAY_TOKEN: 'PRIVATE_TOKEN' };
       const before = await readFile(transcriptFile);
       const desktop = await execute(process.execPath, [script, manual ? '--desktop-manual' : '--desktop', ...flags], { env });
       assert.equal(JSON.parse(desktop.stdout).owner, 'desktop');
@@ -341,7 +347,11 @@ for (const manual of [false, true]) test(`fixed ID ${manual ? 'manual' : 'automa
       if (manual) {
         await assert.rejects(readFile(marker), error => error.code === 'ENOENT');
         assert.equal(JSON.parse(desktop.stdout).desktopLaunchRequested, false);
-      } else assert.deepEqual(JSON.parse(await readFile(marker, 'utf8')), { args: ['--desktop', '--resume', A], cwd: await realpath(root), relayTokenPresent: false });
+        await assert.rejects(readFile(terminalMarker), error => error.code === 'ENOENT');
+      } else {
+        assert.deepEqual(JSON.parse(await readFile(marker, 'utf8')), { args: ['--desktop', '--resume', A], cwd: await realpath(root), relayTokenPresent: false });
+        assert.deepEqual(JSON.parse(await readFile(terminalMarker, 'utf8')), ['-q', '/dev/null', 'claude', '--desktop', '--resume', A]);
+      }
       assert.deepEqual(await readFile(transcriptFile), before);
       const entries = before.toString().split('\n').map(JSON.parse);
       entries.push({ type: 'user', uuid: nextUser, parentUuid: CP, message: { content: 'PRIVATE_DESKTOP_INPUT' } },
