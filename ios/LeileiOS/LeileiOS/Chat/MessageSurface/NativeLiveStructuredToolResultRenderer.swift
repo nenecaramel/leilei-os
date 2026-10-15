@@ -20,6 +20,7 @@ struct NativeLiveStructuredToolResultView: View {
     }
 }
 struct NativeLiveStructuredJSONView: View {
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     let json: NativeLiveStructuredJSON
     @State private var expanded=false
     var body: some View {
@@ -28,7 +29,7 @@ struct NativeLiveStructuredJSONView: View {
             if json.truncated { Text("Value is incomplete").font(.caption).foregroundStyle(.secondary) }
             Button("Copy JSON") { UIPasteboard.general.string=json.copyJSON }.font(.caption)
         }
-        .padding(12)
+        .padding(iMessageWallpaperVisible ? 12 : 0)
         .modifier(NativeLiveIMessageContentPanel(
             originalOpacity: 0,
             originalCornerRadius: 11
