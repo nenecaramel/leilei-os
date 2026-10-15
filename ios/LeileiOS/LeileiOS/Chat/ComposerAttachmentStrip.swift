@@ -98,7 +98,7 @@ struct NativeLiveComposerAttachmentChip: View {
     // The same native regular glass as the iMessage input capsule.
     // A failed attachment's preview itself is the retry action.
     private var iMessageBody: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             Group {
                 if case .failed = attachment.state {
                     Button(action: onRetry) {
