@@ -186,11 +186,21 @@ test('a turn checkpoint is accepted only once durable and descended from the com
  const host=await transport.openPersistentSession({authorize:async()=>true,onBackgroundResult:async()=>{}});t.after(()=>host.close());
  const pending=host.submit('first',{id:'a'});await new Promise(r=>setTimeout(r,0));
  const said=uuid=>({type:'assistant',uuid,session_id:'s',parent_tool_use_id:null,message:{content:[{type:'text',text:'x'}]}});
- const events=[{type:'assistant',uuid:'sub',session_id:'s',parent_tool_use_id:'tool',message:{content:[]}},said('a1')];
+ const events=[{type:'assistant',uuid:'sub',session_id:'s',parent_tool_use_id:'tool',message:{content:[]}},
+  {type:'assistant',uuid:'agent',session_id:'s',parent_agent_id:'subagent',message:{content:[]}},said('a1')];
  // Not yet written: a bounded wait, then refused.
  await assert.rejects(host.verifyCheckpoint({events,timeoutMs:30,pollMs:5}),/durably/);
  transcript.push({type:'user',uuid:'u1',parentUuid:null},{type:'assistant',uuid:'a1',parentUuid:'u1'});
  assert.equal(await host.verifyCheckpoint({events,timeoutMs:30,pollMs:5}),'a1','top-level assistant, not the subagent record');
+ // Persisted UUIDs must identify a unique top-level assistant, not a user
+ // echo, another session's record or a duplicated provider transcript entry.
+ transcript.push({type:'user',uuid:'wrong-type',parentUuid:'a1'});
+ await assert.rejects(host.verifyCheckpoint({events:[said('wrong-type')],parentCheckpointId:'a1',timeoutMs:30,pollMs:5}),/top-level assistant/);
+ transcript.push({type:'assistant',uuid:'wrong-session',parentUuid:'a1',sessionId:'elsewhere'});
+ await assert.rejects(host.verifyCheckpoint({events:[said('wrong-session')],parentCheckpointId:'a1',timeoutMs:30,pollMs:5}),/top-level assistant/);
+ transcript.push({type:'assistant',uuid:'duplicated',parentUuid:'a1'},{type:'assistant',uuid:'duplicated',parentUuid:'a1'});
+ await assert.rejects(host.verifyCheckpoint({events:[said('duplicated')],parentCheckpointId:'a1',timeoutMs:30,pollMs:5}),/top-level assistant/);
+ await assert.rejects(host.verifyCheckpoint({events:[{...said('agent'),parent_agent_id:'subagent'}],timeoutMs:30,pollMs:5}),/no new/);
  // Written while we wait.
  setTimeout(()=>transcript.push({type:'user',uuid:'u2',parentUuid:'a1'},{type:'assistant',uuid:'a2',parentUuid:'u2'}),10);
  assert.equal(await host.verifyCheckpoint({events:[said('a2')],parentCheckpointId:'a1',timeoutMs:500,pollMs:5}),'a2');
