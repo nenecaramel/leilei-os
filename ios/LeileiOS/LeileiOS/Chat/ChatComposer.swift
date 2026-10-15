@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ChatComposer: View {
     @Environment(\.chatTheme) private var chatTheme
-    @State private var isIMessageModelSettingsPresented = false
     @Binding var text: String
     @Binding var model: NativeLiveClaudeModel
     @Binding var thinking: NativeLiveThinkingMode
@@ -174,11 +173,30 @@ struct ChatComposer: View {
 
             Divider()
 
-            // A native nested Menu adds an unwanted, non-removable
-            // "Model Settings" navigation header above its options on iOS 26.
-            // Present the second level separately so its first row is a choice.
-            Button {
-                isIMessageModelSettingsPresented = true
+            Menu {
+                Section("Model") {
+                    Picker("Model", selection: modelSelection) {
+                        ForEach(Array(NativeLiveClaudeModel.allCases.reversed())) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                }
+
+                Section("Effort") {
+                    Picker("Effort", selection: $effort) {
+                        ForEach(availableEffortLevels) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                }
+
+                Section("Thinking") {
+                    Picker("Thinking", selection: thinkingSelection) {
+                        ForEach(Array(model.supportedThinkingModes.reversed())) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                }
             } label: {
                 Label("Model Settings", systemImage: "slider.horizontal.3")
             }
@@ -201,89 +219,6 @@ struct ChatComposer: View {
                 .contentShape(Circle())
         }
         .accessibilityLabel("Attachments and model settings")
-        .popover(
-            isPresented: $isIMessageModelSettingsPresented,
-            attachmentAnchor: .rect(.bounds),
-            arrowEdge: .bottom
-        ) {
-            iMessageModelSettingsPanel
-                .presentationCompactAdaptation(.popover)
-        }
-    }
-
-    // Headerless second-level selector. The parent menu still shows the
-    // "Model Settings" entry, but its panel starts directly with options.
-    // Selection continues to use the same model / thinking / effort bindings.
-    private var iMessageModelSettingsPanel: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(model.supportedThinkingModes.reversed())) { option in
-                    iMessageModelOption(
-                        option.displayName,
-                        isSelected: option == thinking
-                    ) {
-                        thinkingSelection.wrappedValue = option
-                        isIMessageModelSettingsPresented = false
-                    }
-                }
-
-                Divider()
-                    .padding(.vertical, 7)
-
-                ForEach(availableEffortLevels) { option in
-                    iMessageModelOption(
-                        option.displayName,
-                        isSelected: option == effort
-                    ) {
-                        $effort.wrappedValue = option
-                        isIMessageModelSettingsPresented = false
-                    }
-                }
-
-                Divider()
-                    .padding(.vertical, 7)
-
-                ForEach(Array(NativeLiveClaudeModel.allCases.reversed())) { option in
-                    iMessageModelOption(
-                        option.displayName,
-                        isSelected: option == model
-                    ) {
-                        modelSelection.wrappedValue = option
-                        isIMessageModelSettingsPresented = false
-                    }
-                }
-            }
-            .padding(.vertical, 8)
-        }
-        .frame(width: 266)
-        .frame(maxHeight: 510)
-        .accessibilityIdentifier("imessage-model-options")
-    }
-
-    private func iMessageModelOption(
-        _ title: String,
-        isSelected: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 15, weight: .semibold))
-                    .opacity(isSelected ? 1 : 0)
-                    .frame(width: 19, alignment: .center)
-
-                Text(title)
-                    .font(.system(size: 16))
-                    .foregroundStyle(.primary)
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 14)
-            .frame(height: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityValue(isSelected ? "Selected" : "")
     }
 
     private var canAttachFromIMessage: Bool {
