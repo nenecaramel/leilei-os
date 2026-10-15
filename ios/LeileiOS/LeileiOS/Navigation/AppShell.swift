@@ -206,10 +206,10 @@ struct AppShell: View {
                 // Move and clip it with the chat card when the sidebar opens;
                 // do not disable it or switch the card back to white.
                 if isWallpaperChatVisible {
+                    // At rest, leave the all-safe-area wallpaper unmasked.
+                    // Even a zero-radius clip can expose the sidebar's
+                    // light base near the keyboard's rounded top corners.
                     rootWallpaperBackdrop
-                        // At rest, leave the all-safe-area wallpaper unmasked.
-                        // Even a zero-radius clip can expose the sidebar's
-                        // light base near the keyboard's rounded top corners.
                         .modifier(ChatWallpaperRevealClip(
                             enabled: menuOpen || sidebarDragTranslation != 0,
                             cornerRadius: cardCornerRadius
