@@ -17,8 +17,7 @@ struct ChatView: View {
     @State var messageText = ""
     @AppStorage(ChatTheme.storageKey) private var chatThemeRawValue =
         ChatTheme.original.rawValue
-    @AppStorage(IMessageWallpaper.revisionKey) private var wallpaperRevision = ""
-    @State private var wallpaperImage: UIImage?
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
 
     private var selectedChatTheme: ChatTheme {
         ChatTheme(rawValue: chatThemeRawValue) ?? .original
@@ -47,22 +46,9 @@ struct ChatView: View {
 
     var body: some View {
         ZStack {
-            // Keep the wallpaper in the actual visible chat content layer.
-            // A NavigationStack background outside its content can be hidden
-            // by the stack's own opaque system background.
-            if selectedChatTheme == .iMessage, let wallpaperImage {
-                GeometryReader { geometry in
-                    Image(uiImage: wallpaperImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .clipped()
-                }
-                .ignoresSafeArea(.container)
-                .ignoresSafeArea(.keyboard, edges: .bottom)
-                .accessibilityHidden(true)
-                .allowsHitTesting(false)
-            } else {
+            // A single fixed wallpaper lives behind the whole AppShell.
+            // Suppress the opaque fallback only while it is visible.
+            if !iMessageWallpaperVisible {
                 Color(.systemBackground)
                     .ignoresSafeArea()
             }
@@ -112,9 +98,6 @@ struct ChatView: View {
                     }
                 )
             }
-        }
-        .task(id: wallpaperRevision) {
-            wallpaperImage = IMessageWallpaper.load()
         }
         .task(id: appModel.activeNativeLiveConversationID) {
             guard !isDraftConversation else { return }
@@ -286,10 +269,6 @@ struct ChatView: View {
             }
         }
         .environment(\.chatTheme, selectedChatTheme)
-        .environment(
-            \.iMessageWallpaperVisible,
-            selectedChatTheme == .iMessage && wallpaperImage != nil
-        )
     }
 
     // Exactly one composer owner. Original and iMessage both use the native
