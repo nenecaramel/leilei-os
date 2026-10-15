@@ -113,7 +113,10 @@ private struct NativeLiveVisualFallbackView: View {
         }
         .foregroundStyle(.secondary)
         .padding(10)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 11))
+        .modifier(NativeLiveIMessageContentPanel(
+            originalOpacity: 0.045,
+            originalCornerRadius: 11
+        ))
         .accessibilityElement(children: .combine)
     }
 }
