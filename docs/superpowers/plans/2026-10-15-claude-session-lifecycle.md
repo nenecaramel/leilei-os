@@ -30,6 +30,12 @@ Passing host tests proves our queue/event/ownership implementation against a con
 
 ## Stage-2 hard gates identified by the prototype
 
+### Stage 2A: safe same-session wake contract (first prerequisite)
+
+Existing discard logic assumes every wake owns a fork and schedules its result session for deletion. Before any live same-session integration, discard must only retire a distinct fork child; quiet/stale resume must preserve the source session. Protocol v4 accepts checkpoint-addressed resume wake while retaining exact session-result matching, no fabricated canonical user message and existing checkpoint validation. This prerequisite does not change wake creation: it still dispatches forks until session-host integration and capability rollout are ready. Old daemon compatibility is therefore unchanged.
+
+Behavior and isolated PostgreSQL regressions cover quiet/stale resume, a fork unexpectedly returning its own source ID, and normal distinct-child cleanup. The database is local test-only. Further stage-2 work must also track the native tail/checkpoint of quiet same-session turns without inventing visible user messages; reopening from the old canonical checkpoint must not rewind away completed background activity.
+
 - Require reliable consumed-input UUID echo. Unsupported or missing correlation needs a bounded failure policy; the inactive prototype otherwise leaves the submitted input pending.
 - Verify native resume identity before permitted execution, preserving existing startup-hook/checkpoint safeguards. Initial-prompt ordering in a controlled stream is not that proof.
 - Route autonomous and folded turns through durable backend preparations. Never charge a background result to an unrelated user request.
