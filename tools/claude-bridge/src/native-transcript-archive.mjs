@@ -21,7 +21,7 @@ const lastAssistant = snapshot => snapshot.entries.filter(e => !e.isSidechain).f
  * identically from the kept files alone, or nothing is archived.
  */
 export async function planNativeTranscriptArchive({ projectDirectory, windows = new Map(), referenced = new Set(),
-  isOpen = async () => false, now = Date.now(), recentMs = 24 * 60 * 60 * 1000 }) {
+  isOpen = async () => false, now = Date.now(), recentMs = 60 * 60 * 1000 }) {
   const index = await scanNativeSessionIndex(projectDirectory);
   const ids = [...index.keys()];
   const sizes = new Map(), reasons = new Map();
