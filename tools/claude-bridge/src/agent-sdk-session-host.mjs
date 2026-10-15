@@ -1,10 +1,11 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { normalizeAgentSdkInterruptReceipt } from './agent-sdk-interrupt.mjs';
+const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
-// Stage-1 host prototype. Deliberately not wired into the Mac transport/daemon.
+// Session host used by the explicit transport API; not enabled by the daemon.
 // The caller owns SDK launch settings, auth, canonical preparations and UI capabilities.
-export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, expectedSessionId = null } = {}) {
+export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, expectedSessionId = null, beforeSubmit = null, onBackgroundResult = null } = {}) {
   if (typeof queryImpl !== 'function') throw new Error('Session host requires an injected SDK query.');
   if (queryOptions.forkSession) throw new Error('Session host cannot fork.');
   const input = createInputQueue();
@@ -12,33 +13,56 @@ export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, 
   if (!query || typeof query[Symbol.asyncIterator] !== 'function') {
     input.end(); query?.close?.(); throw new Error('SDK query must be async iterable.');
   }
-  return new SessionHost(query, input, expectedSessionId, queryOptions.perTaskStopAffordance === true);
+  return new SessionHost(query, input, expectedSessionId, queryOptions.perTaskStopAffordance === true, beforeSubmit, onBackgroundResult);
 }
 
 class SessionHost {
-  constructor(query, input, expectedSessionId, perTaskStopAffordance) {
+  constructor(query, input, expectedSessionId, perTaskStopAffordance, beforeSubmit, onBackgroundResult) {
     this.query = query; this.input = input; this.expectedSessionId = expectedSessionId;
     this.perTaskStopAffordance = perTaskStopAffordance;
+    this.beforeSubmit = beforeSubmit; this.onBackgroundResult = onBackgroundResult;
     this.events = new EventEmitter(); this.tasks = new Map(); this.ids = new Set();
     this.pending = []; this.active = null; this.state = 'starting'; this.sessionId = null;
     this.turnEvents = [];
+    this.queryClosed = false;
+    this.backgroundPending = false;
+    this.backgroundAcknowledgement = null;
+    this.backgroundGeneration = 0;
     this.completion = this.consume();
     // Consumers may attach after startup failure. Preserve rejection for awaiters.
     this.completion.catch(() => {});
   }
-  submit(text, { id = randomUUID() } = {}) {
+  submit(text, { id = randomUUID(), source = 'unclassified' } = {}) {
     if (this.state === 'closed' || this.state === 'failed') return Promise.reject(new Error('Session host is closed.'));
     if (typeof text !== 'string' || !text.trim() || typeof id !== 'string' || !id.trim()) return Promise.reject(new Error('Nonblank input/id required.'));
+    if (id === ZERO_UUID) return Promise.reject(new Error('Zero input id cannot establish correlation.'));
     if (this.ids.has(id)) return Promise.reject(new Error('Duplicate session input id.'));
+    if (!['human', 'task-notification', 'unclassified'].includes(source)) return Promise.reject(new Error('Invalid session input source.'));
     this.ids.add(id);
-    const completion = new Promise((resolve, reject) => this.pending.push({ text, id, resolve, reject, events: [] }));
+    const completion = new Promise((resolve, reject) => this.pending.push({ text, id, source, resolve, reject }));
     this.pump(); return completion;
   }
-  pump() {
-    if (this.active || !this.pending.length || ['closed', 'failed'].includes(this.state)) return;
+  async pump() {
+    if (this.backgroundPending || this.active || !this.pending.length || ['closed', 'failed'].includes(this.state)) return;
     this.active = this.pending.shift(); this.state = 'running';
-    this.input.push({ type: 'user', uuid: this.active.id, parent_tool_use_id: null,
-      message: { role: 'user', content: [{ type: 'text', text: this.active.text }] } });
+    const turn = this.active;
+    try {
+      // A background result may arrive while admission awaits canonical state.
+      // Await its durable acknowledgement, then revalidate before dispatch.
+      let generation;
+      do {
+        if (this.backgroundAcknowledgement) await this.backgroundAcknowledgement;
+        if (this.active !== turn || ['closed', 'failed'].includes(this.state)) return;
+        generation = this.backgroundGeneration;
+        if (this.beforeSubmit) await this.beforeSubmit({ inputId: turn.id, providerSessionId: this.sessionId, source: turn.source });
+      } while (this.backgroundPending || generation !== this.backgroundGeneration);
+      if (this.active !== turn || ['closed', 'failed'].includes(this.state)) return;
+      this.input.push({ type: 'user', uuid: turn.id, parent_tool_use_id: null, origin: { kind: turn.source },
+        message: { role: 'user', content: [{ type: 'text', text: turn.text }] } });
+    } catch (error) {
+      if (this.active !== turn) return;
+      this.active = null; this.state = 'idle'; turn.reject(error); void this.pump();
+    }
   }
   async interruptTurn() {
     if (!this.active) return null;
@@ -56,9 +80,10 @@ class SessionHost {
     for (const item of this.pending.splice(0)) item.reject(error);
   }
   async close() {
-    if (['closed', 'failed'].includes(this.state)) return;
+    if (this.queryClosed) return;
     this.state = 'closed'; this.rejectWork(new Error('Session host was closed.'));
     this.input.end(); await this.query.close();
+    this.queryClosed = true;
   }
   async consume() {
     try {
@@ -87,10 +112,20 @@ class SessionHost {
         if (['assistant', 'user', 'result', 'stream_event'].includes(message?.type)) this.turnEvents.push(message);
         if (message?.type === 'result') {
           const frame = this.turnEvents; this.turnEvents = [];
-          const consumed = [message.user_message_uuid, ...(Array.isArray(message.user_message_uuids) ? message.user_message_uuids : [])];
+          const consumed = [message.user_message_uuid, ...(Array.isArray(message.user_message_uuids) ? message.user_message_uuids : [])].filter(id => id !== ZERO_UUID);
+          if (this.active && !consumed.some(id => typeof id === 'string' && id.trim())) throw new Error('SDK input correlation is unavailable.');
           if (!this.active || !consumed.includes(this.active.id)) {
+            if (this.onBackgroundResult) {
+              this.backgroundGeneration++;
+              this.backgroundPending = true;
+              this.backgroundAcknowledgement = Promise.resolve().then(() => this.onBackgroundResult({ result: message, events: frame }));
+              try { await this.backgroundAcknowledgement; }
+              finally { this.backgroundPending = false; this.backgroundAcknowledgement = null; }
+            }
+            if (this.state === 'closed') break;
             this.events.emit('background-result', { result: message, events: frame });
             this.events.emit('event', message);
+            void this.pump();
             continue;
           }
           const turn = this.active; this.active = null; this.state = 'idle';
@@ -104,7 +139,7 @@ class SessionHost {
     } catch (error) {
       if (this.state === 'closed') return;
       this.state = 'failed'; this.rejectWork(error); this.input.end();
-      try { await this.query.close(); } catch { /* Preserve the original failure. */ }
+      try { await this.query.close(); this.queryClosed = true; } catch { /* Ownership remains held until close succeeds. */ }
       throw error;
     }
   }

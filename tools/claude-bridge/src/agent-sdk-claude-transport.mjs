@@ -7,6 +7,8 @@ import { listDesktopNativeSessions } from "./native-session-inspection.mjs";
 import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import { createAgentSdkTurnHandle } from "./agent-sdk-turn-handle.mjs";
+import { createAgentSdkSessionHost } from "./agent-sdk-session-host.mjs";
+import { createAgentSdkQuestionCallback } from "./agent-sdk-question.mjs";
 import { createAgentSdkPermissionCallback, normalizeAgentSdkToolPermissionPolicy } from "./agent-sdk-permission.mjs";
 import { LEILEIOS_MIND_SYSTEM_PROMPT } from "./leileios-mind-system-prompt.mjs";
 import { LEILEIOS_WAKE_SYSTEM_PROMPT } from "./leileios-wake-system-prompt.mjs";
@@ -469,7 +471,77 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.events = new EventEmitter();
     this.activeQuery = null;
     this.activeTurnHandle = null;
+    this.activeSessionHost = null;
+    this.legacyOperation = null;
     this.abortRequested = false;
+  }
+
+  // Explicit stage-2 entry point; the existing daemon does not call it yet.
+  // Restoring an existing session needs native identity/checkpoint integration.
+  async openPersistentSession(options = {}) {
+    const allowed = new Set(["authorize", "onBackgroundResult", "execution", "permissionHandler", "questionHandler", "perTaskStopAffordance"]);
+    for (const key of Object.keys(options)) if (!allowed.has(key)) throw new Error(`Unsupported persistent session option: ${key}`);
+    const { authorize, onBackgroundResult, execution = null, permissionHandler = null,
+      questionHandler = null, perTaskStopAffordance = false } = options;
+    if (typeof authorize !== "function" || typeof onBackgroundResult !== "function") throw new Error("Persistent sessions require authorize and onBackgroundResult handlers.");
+    if (typeof perTaskStopAffordance !== "boolean") throw new Error("Task stop capability must be boolean.");
+    if (this.activeQuery || this.activeTurnHandle || this.activeSessionHost || this.legacyOperation) throw runtimeError("Claude transport already has an active session.", { runtimeCode: "RUNTIME_UNAVAILABLE" });
+    const claim = { cancelled: false, close: async () => { claim.cancelled = true; } };
+    this.activeSessionHost = claim;
+    let host;
+    const admit = async (phase, inputId = null, source = null) => {
+      if (this.activeSessionHost !== (host ?? claim) || (phase === "tool" && !host) || host?.queryClosed || ["closed", "failed"].includes(host?.state)) throw new Error("Persistent session admission was aborted.");
+      if (await authorize({ phase, inputId, source, providerSessionId: host?.sessionId ?? null }) !== true) throw new Error("Persistent session admission denied.");
+      if (this.activeSessionHost !== (host ?? claim) || (phase === "tool" && !host) || host?.queryClosed || ["closed", "failed"].includes(host?.state)) throw new Error("Persistent session admission was aborted.");
+    };
+    try {
+      const queryImpl = await this.#resolveQuery();
+      if (this.activeSessionHost !== claim || claim.cancelled) throw runtimeError("Persistent session startup was aborted.", { runtimeCode: "ABORTED" });
+      const permission = createAgentSdkPermissionCallback({
+        toolPermissionPolicy: this.toolPermissionPolicy, events: this.events,
+        permissionHandler: permissionHandler ?? (async () => ({ decision: "deny", message: "No permission handler is configured.", interrupt: false })),
+      });
+      const question = questionHandler ? createAgentSdkQuestionCallback({ questionHandler, events: this.events }) : null;
+      host = await createAgentSdkSessionHost({ queryImpl,
+        beforeSubmit: context => admit("input", context.inputId, context.source), onBackgroundResult,
+        queryOptions: {
+          cwd: this.cwd, env: this.environment, settingSources: ["user", "project", "local"],
+          permissionMode: "default", includePartialMessages: true, perTaskStopAffordance,
+          verbatimPrompts: true,
+          systemPrompt: { type: "preset", preset: "claude_code", append: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT },
+          ...normalizeAgentSdkExecutionSelection(execution),
+          ...(this.chromeEnabled ? { extraArgs: { chrome: null } } : {}),
+          ...(this.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
+          ...leileiosMcpQueryOptions(this.mcpServerConfig),
+          ...(this.sessionStore ? { sessionStore: this.sessionStore } : {}),
+          canUseTool: async (name, input, context) => {
+            try { await admit("tool", host?.active?.id ?? null); }
+            catch { return { behavior: "deny", message: "LeileiOS session admission denied.", interrupt: true }; }
+            const verdict = await (name === "AskUserQuestion"
+              ? question ? question(name, input, context) : { behavior: "deny", message: "No question handler is configured.", interrupt: false }
+              : permission(name, input, context));
+            try { await admit("tool", host?.active?.id ?? null); }
+            catch { return { behavior: "deny", message: "LeileiOS session admission denied.", interrupt: true }; }
+            return verdict;
+          },
+          hooks: { PreToolUse: [{ hooks: [async () => {
+            try { await admit("tool", host?.active?.id ?? null); return {}; }
+            catch { return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "LeileiOS session admission denied." } }; }
+          }] }] },
+        },
+      });
+      this.activeSessionHost = host;
+      const release = () => { if (this.activeSessionHost === host && host.queryClosed) this.activeSessionHost = null; };
+      const close = host.close.bind(host);
+      host.close = async () => { await close(); release(); };
+      void host.completion.then(release, release);
+      if (claim.cancelled) { await host.close(); throw runtimeError("Persistent session startup was aborted.", { runtimeCode: "ABORTED" }); }
+      if (host.state === "failed") await host.completion;
+      return host;
+    } catch (error) {
+      if (this.activeSessionHost === claim || (this.activeSessionHost === host && host.queryClosed)) this.activeSessionHost = null;
+      throw error;
+    }
   }
 
   sendNew(prompt, execution = null) {
@@ -511,6 +583,22 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   }
 
   async executeTurn(
+    prompt, options = {},
+  ) {
+    return this.#withLegacyAdmission(() => this.#executeTurn(prompt, options));
+  }
+
+  async #withLegacyAdmission(operation) {
+    if (this.legacyOperation || this.activeSessionHost || this.activeQuery || this.activeTurnHandle) {
+      throw runtimeError("Claude Agent SDK transport already has an active turn.", { runtimeCode: "RUNTIME_UNAVAILABLE" });
+    }
+    const claim = {};
+    this.legacyOperation = claim;
+    try { return await operation(); }
+    finally { if (this.legacyOperation === claim) this.legacyOperation = null; }
+  }
+
+  async #executeTurn(
     prompt,
     {
       mode = "new",
@@ -531,7 +619,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       nativeSessionMirror = null,
     } = {},
   ) {
-    if (this.activeQuery || this.activeTurnHandle) {
+    if (this.activeQuery || this.activeTurnHandle || this.activeSessionHost) {
       throw runtimeError(
         "Claude Agent SDK transport already has an active turn.",
         { runtimeCode: "RUNTIME_UNAVAILABLE" },
@@ -1042,7 +1130,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   async inspectDesktopSessions({
     desktopSessionsDirectory = join(homedir(), "Library", "Application Support", "Claude", "claude-code-sessions"),
   } = {}) {
-    if (this.activeQuery || this.activeTurnHandle) {
+    if (this.activeQuery || this.activeTurnHandle || this.activeSessionHost) {
       throw runtimeError("Native Desktop inspection is unavailable during an active LeileiOS turn.", { runtimeCode: "RUNTIME_UNAVAILABLE" });
     }
     const configDirectory = this.environment.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
@@ -1058,7 +1146,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     limit = 100,
     offset = 0,
   } = {}) {
-    if (this.activeQuery || this.activeTurnHandle) {
+    if (this.activeQuery || this.activeTurnHandle || this.activeSessionHost) {
       throw runtimeError(
         "Claude Agent SDK sessions cannot be listed during an active turn.",
         { runtimeCode: "RUNTIME_UNAVAILABLE" },
@@ -1106,7 +1194,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   }
 
   async deleteSession(sessionId) {
-    if (this.activeQuery || this.activeTurnHandle) {
+    if (this.activeQuery || this.activeTurnHandle || this.activeSessionHost) {
       throw runtimeError(
         "Claude Agent SDK session cannot be deleted during an active turn.",
         { runtimeCode: "RUNTIME_UNAVAILABLE" },
@@ -1139,6 +1227,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
   abort() {
     this.abortRequested = true;
+    void this.activeSessionHost?.close?.().catch(() => {});
     this.activeTurnHandle?.abort?.();
     this.activeQuery?.close?.();
   }
@@ -1686,6 +1775,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   }
 
   async #run(
+    prompt, options = {},
+  ) {
+    return this.#withLegacyAdmission(() => this.#runAdmitted(prompt, options));
+  }
+
+  async #runAdmitted(
     prompt,
     {
       mode = "new",
@@ -1700,7 +1795,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       hooks = null,
     } = {},
   ) {
-    if (this.activeQuery || this.activeTurnHandle) {
+    if (this.activeQuery || this.activeTurnHandle || this.activeSessionHost) {
       throw runtimeError(
         "Claude Agent SDK transport already has an active turn.",
         { runtimeCode: "RUNTIME_UNAVAILABLE" },

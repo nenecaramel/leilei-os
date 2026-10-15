@@ -43,3 +43,15 @@ Behavior and isolated PostgreSQL regressions cover quiet/stale resume, a fork un
 - Provide actual per-task stop controls before declaring the SDK capability.
 
 Independent review exposed incorrect result attribution and startup ordering. Result/input UUID joins, separate autonomous result frames, and first input triggering initialization are now tested. Real CLI/model acceptance remains pending.
+
+### Stage 2B: explicit persistent transport entry point
+
+Ruling: connect the host to the actual configured transport through `openPersistentSession` for NEW sessions only; do not activate it in the daemon yet. Existing-session restore still requires the pre-execution native identity/checkpoint protocol, so unsupported resume/fork options reject instead of silently creating or branching a session. Stage 2 remains incomplete until the daemon/canonical adapter is connected.
+
+The entry point requires an `authorize` callback and an awaited `onBackgroundResult` sink. Admission runs before each submitted input and at PreToolUse/permission callbacks; the consumer must implement real head/epoch/checkpoint/lease checks rather than returning true in production. Human and task-notification sources are explicit; unspecified input is unclassified, never assumed human. SDK default permissions, real question answers, setting sources, environment, MCP configuration and execution selection are preserved. Per-task stop capability defaults false and must not be declared true until the consumer has real controls.
+
+Transport admission is held during SDK loading, legacy turn execution, live sessions and failed closes. Abort prevents late startup or late admitted input. A successful close releases ownership; failed close can be retried without starting another process. Missing/zeroed SDK result correlation fails the host explicitly; distinct autonomous results reach the mandatory sink, and newly submitted work waits for that sink's acknowledgement before admission.
+
+Before activation, the daemon adapter still must provide durable turn reservations/finalization and normalized streaming events, track native quiet-tail checkpoints, preserve image/file callback ownership and execution readback, reconcile queued-input interrupt receipts, and manage separate session identities rather than treating the cwd pool as a session registry. Native restore/startup safeguards and capability rollout remain required. No model call, migration, daemon restart, hook change, production switch or default wake behavior change is part of this prerequisite.
+
+Review rulings: lifecycle admission is checked before/after authorization and after asynchronous permission/question answers. Canceled startup retains ownership until its actual query closes; failed close retains a retryable host. Background acknowledgement generations invalidate input admission even when the acknowledgement completes during the admission await. Deferred-response behavior tests cover each ordering; none uses real models.
