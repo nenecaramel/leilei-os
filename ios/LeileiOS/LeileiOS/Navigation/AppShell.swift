@@ -142,15 +142,11 @@ struct AppShell: View {
             let cardCornerRadius: CGFloat = menuOpen ? 50 : 0
 
             ZStack(alignment: .leading) {
-                // Preserve the previously fixed keyboard-underlay layer
-                // as the iPhone shell's bottommost ZStack child.
-                if isWallpaperChatVisible {
-                    rootWallpaperBackdrop
-                } else {
-                    Rectangle()
-                        .fill(sidebarBackground)
-                        .ignoresSafeArea()
-                }
+                // The sidebar stays painted behind the chat, but must never
+                // appear through its transparent iMessage message surface.
+                Rectangle()
+                    .fill(sidebarBackground)
+                    .ignoresSafeArea()
 
                 SidebarView(
                     selectedPage: $selectedPage,
@@ -181,6 +177,13 @@ struct AppShell: View {
                 .frame(width: 300)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .safeAreaPadding()
+
+                // One fixed wallpaper ABOVE sidebar text and BELOW the chat.
+                // Its placement stays at the outer iPhone shell so the
+                // keyboard does not change the image crop or reveal white.
+                if isWallpaperChatVisible {
+                    rootWallpaperBackdrop
+                }
 
                 PageContainer(
                     selectedPage: selectedPage,
