@@ -6,6 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import { users, conversations, conversationMessages, conversationContentBlocks, conversationProviderSessionCheckpoints, nativeLiveTurnPreparations, nativeLiveManualCompactions, nativeLiveRuntimeListenerLeases } from "../src/database/schema.js";
 import { projectNativeHistory } from "../tools/claude-bridge/src/native-session-history.mjs";
+import { readNativeSessionLightState, switchNativeSessionOwnerLight } from "../src/domains/conversation/native-session-lightweight-handoff.js";
 import { DrizzleNativeLiveCurrentPathReader } from "../src/domains/conversation/native-live-current-path-read-repository.js";
 import { NativeLiveBackendTurnCoordinator } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
@@ -90,6 +91,53 @@ test("Desktop handoff fences new send/retry/edit/compact until a released native
     dispatch_target: 'claude_code', operation: 'send', expected_head_message_id: restored.headMessageId, text: 'allowed input' });
   assert.equal(prepared.ok, true);
   await assert.rejects(release(), { code: 'NATIVE_CONVERSATION_BUSY' });
+}));
+
+test("checkpoint-only handoff retains LeileiOS display and advances ordinary Send without copying Desktop history", { skip: !enabled }, async () => fixture(async f => {
+  f.input.nativeSnapshot = { sessionId: f.sessionId, revision: revision(1), entries: f.entries };
+  const restored = await f.write();
+  const before = await f.state();
+  const base = {
+    userId: f.owner, conversationId: f.input.conversationId, sessionId: f.sessionId,
+    expectedHeadMessageId: restored.headMessageId,
+    expectedProviderCheckpointId: f.entries[1].uuid,
+    effectiveWorkingDirectory: "/synthetic/workspace",
+    nativeRevision: revision(2),
+  };
+  const originalRows = await f.database.db.execute(sql`SELECT count(*)::int AS n FROM native_live_provider_session_entries WHERE user_id = ${f.owner}::uuid`);
+  const released = await switchNativeSessionOwnerLight(f.database.db, {
+    ...base, selectedCheckpointId: f.entries[1].uuid, direction: "to_desktop",
+  });
+  assert.equal(released.owner, "desktop");
+  assert.equal((await readNativeSessionLightState(f.database.db, base)).owner, "desktop");
+  await assert.rejects(switchNativeSessionOwnerLight(f.database.db, {
+    ...base, selectedCheckpointId: f.entries[1].uuid, direction: "to_desktop",
+  }), { code: "NATIVE_SOURCE_BINDING_REQUIRED" });
+
+  const desktopTip = randomUUID();
+  const claimed = await switchNativeSessionOwnerLight(f.database.db, {
+    ...base, selectedCheckpointId: desktopTip, nativeRevision: revision(3), direction: "to_leileios",
+  });
+  assert.equal(claimed.providerCheckpointId, desktopTip);
+  assert.equal((await readNativeSessionLightState(f.database.db, base)).owner, "leileios");
+
+  const after = await f.state();
+  assert.equal(after.messages.length, before.messages.length, "no Desktop old messages projected");
+  assert.equal(after.conversation.currentHeadMessageId, restored.headMessageId);
+  assert.equal(after.checkpoints[0].providerCheckpointId, f.entries[1].uuid, "Edit/Retry source checkpoint preserved");
+  const rows = await f.database.db.execute(sql`SELECT count(*)::int AS n FROM native_live_provider_session_entries WHERE user_id = ${f.owner}::uuid`);
+  assert.equal(rows[0].n, originalRows[0].n, "no cloud SessionStore transcript or asset writes");
+
+  const coordinator = new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.database.db));
+  const prepared = await coordinator.prepare(f.owner, {
+    request_id: randomUUID(), conversation_id: f.input.conversationId,
+    dispatch_target: "claude_code", operation: "send",
+    expected_head_message_id: restored.headMessageId, text: "continue from Desktop tip",
+  });
+  assert.equal(prepared.ok, true, JSON.stringify(prepared));
+  assert.equal(prepared.command.runtime_mode, "resume");
+  assert.equal(prepared.command.parent_provider_session_id, f.sessionId);
+  assert.equal(prepared.command.parent_provider_checkpoint_id, desktopTip);
 }));
 
 test("native sync appends under revision/head CAS and lost-response replay remains idempotent", { skip: !enabled }, async () => fixture(async f => {
