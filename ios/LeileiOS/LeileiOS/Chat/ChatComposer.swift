@@ -116,7 +116,7 @@ struct ChatComposer: View {
                         "",
                         text: $text,
                         prompt: Text("Message")
-                            .foregroundStyle(.secondary),
+                            .foregroundStyle(Color.primary.opacity(0.70)),
                         axis: .vertical
                     )
                     .focused(isFocused)
@@ -352,7 +352,7 @@ struct ChatComposer: View {
         switch actionPresentation.mode {
         case .voice:
             Image(systemName: "waveform")
-                .font(.system(size: 21, weight: .medium))
+                .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(.primary)
                 .frame(
                     width: LeileiUI.ControlGeometry.compact,
