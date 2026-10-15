@@ -17,9 +17,9 @@ Retirement patch: the legacy full-history restore/state/release/asset and
 asset-stage internal routes return HTTP 410. The old external history
 snapshot read API also returns HTTP 410; snapshot uploads are rejected.
 LeileiOS no longer fetches the 813-message display projection or offers
-its JSONL history-upload picker. All native-history-assets SessionStore
-appends are rejected regardless of conversation mode; ordinary session
-transcripts and new LeileiOS canonical messages are untouched.
+its JSONL history-upload picker. The authenticated remote SessionStore /append API now refuses native-history-assets/*.
+The lower-level store remains available for isolated legacy recovery tests;
+ordinary session transcripts and new canonical messages are untouched.
 
 The runtime's default persistent Mac session registry has no remote
 SessionStore configured, but an explicit old full-history restore can

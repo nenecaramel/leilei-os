@@ -95,6 +95,15 @@ function appendHandler(
       sendInvalid(response);
       return;
     }
+    // Stop the obsolete resource-copy transport without changing ordinary
+    // SDK SessionStore transcripts, subagents or recovery operations.
+    if ((key.subpath ?? "").startsWith("native-history-assets/")) {
+      response.status(409).json({ success: false, error: {
+        code: "LEGACY_ASSET_WRITE_DISABLED",
+        message: "Legacy historical display asset uploads are retired.",
+      } });
+      return;
+    }
     try {
       await dependencies.providerSessionStoreService.append({
         userId,
@@ -346,14 +355,6 @@ function sendInvalid(response: Response): void {
 }
 
 function sendStoreError(response: Response, error: unknown): void {
-  if (typeof error === "object" && error !== null && "code" in error
-    && error.code === "LEGACY_ASSET_WRITE_DISABLED") {
-    response.status(409).json({ success: false, error: {
-      code: "LEGACY_ASSET_WRITE_DISABLED",
-      message: "Legacy historical asset writes are retired.",
-    } });
-    return;
-  }
   if (error instanceof NativeLiveProviderSessionStoreError) {
     response.status(400).json({
       success: false,

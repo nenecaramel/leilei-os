@@ -3,7 +3,6 @@ import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import { nativeLiveProviderSessionEntries } from "../../../database/schema.js";
 import { providerSessionOwnershipLock } from "./native-live-provider-session-references.js";
-import { assertLegacyAssetWriteAllowed } from "./native-live-provider-session-storage-policy.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -58,9 +57,6 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
     if (input.entries.length === 0) return;
     await this.db.transaction(async transaction => {
       await transaction.execute(sql`SELECT ${providerSessionOwnershipLock({ providerSessionId: input.key.sessionId, wait: true })}`);
-      if ((input.key.subpath ?? "").startsWith("native-history-assets/")) {
-        await assertLegacyAssetWriteAllowed();
-      }
       await transaction
       .insert(nativeLiveProviderSessionEntries)
       .values(

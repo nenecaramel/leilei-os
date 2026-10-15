@@ -11,14 +11,6 @@ import {
   NativeLiveProviderSessionStoreService,
 } from "../src/domains/bridge/provider-session/native-live-provider-session-store.js";
 
-import { assertLegacyAssetWriteAllowed } from "../src/domains/bridge/provider-session/native-live-provider-session-storage-policy.js";
-
-test("Railway rejects all obsolete native-history-assets writes", () => {
-  assert.throws(
-    () => assertLegacyAssetWriteAllowed(),
-    (error: unknown) => (error as { code?: string }).code === "LEGACY_ASSET_WRITE_DISABLED",
-  );
-});
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_PROVIDER_SESSION_STORE_DATABASE_TEST === "1";
