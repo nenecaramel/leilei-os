@@ -24,6 +24,7 @@ export async function checkNativeLiveExecutionAdmission(db: Database, input: Nat
         AND p.status = 'prepared' AND p.dispatch_status = 'executing' AND p.execution_started_at IS NOT NULL
         AND p.reservation_expires_at > now() AND l.lease_expires_at > now()
         AND c.origin = 'native_live' AND c.lifecycle_status = 'active'
+        AND coalesce(c.provider_metadata->'nativeSessionSource'->>'owner', 'leileios') = 'leileios'
         AND (
           (p.operation = 'send' AND u.role = 'user' AND c.current_head_message_id = u.id
             AND c.provider_metadata->'native_live_presentation_owner'->>'prepareId' = p.id::text

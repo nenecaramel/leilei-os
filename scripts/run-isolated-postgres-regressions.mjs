@@ -85,6 +85,7 @@ run([
   "tests/native-live-silence-wake.integration.test.ts",
   "tests/native-live-wake-session-safety.integration.test.ts",
   "tests/native-live-backend-relay.integration.test.ts",
+  "tests/native-live-execution-admission.integration.test.ts",
   "tests/runtime-subject-state-repository.integration.test.ts",
   "tests/mind-memory-migration.integration.test.ts",
   "tests/native-live-background-model-queue.integration.test.ts",

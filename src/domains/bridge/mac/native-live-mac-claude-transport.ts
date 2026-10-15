@@ -31,6 +31,13 @@ export type NativeLiveMacPersistentSession = {
   stopTask(id: string): Promise<void>;
   close(): Promise<void>;
 };
+export type NativeLiveMacSessionRestore = Readonly<{
+  sessionId: string;
+  checkpointId: string;
+  inputId: string;
+  source: "human" | "task-notification";
+  timeoutMs?: number;
+}>;
 export type NativeLiveMacPersistentSessionOptions = {
   authorize(context: { phase: "input" | "tool"; inputId: string | null; source: NativeLiveMacSessionSource | null; providerSessionId: string | null }): Promise<boolean>;
   onBackgroundResult(frame: { result: Record<string, unknown>; events: Record<string, unknown>[] }): Promise<void>;
@@ -96,6 +103,7 @@ export type NativeLiveMacInteractiveTurnOptions = {
 export type NativeLiveMacClaudeTransport =
   NativeLiveClaudeRuntime & {
     closePersistentSession?(): Promise<void>;
+    restorePersistentSession?(restore: NativeLiveMacSessionRestore, options: NativeLiveMacPersistentSessionOptions): Promise<NativeLiveMacPersistentSession>;
     openPersistentSession?(options: NativeLiveMacPersistentSessionOptions): Promise<NativeLiveMacPersistentSession>;
     abort(): void;
     deleteSession(sessionId: string): Promise<void>;

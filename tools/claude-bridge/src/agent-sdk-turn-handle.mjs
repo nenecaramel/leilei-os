@@ -1,3 +1,4 @@
+import { observeNativeSessionStartup } from "./native-session-startup-identity.mjs";
 import { isNativeSessionMirror } from "./native-session-mirror.mjs";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
@@ -756,37 +757,7 @@ export class AgentSdkTurnHandle {
           break;
         }
         const message = step.value.value;
-        if (this.settleNativeIdentity) {
-          const sessionId = nonblankString(message?.session_id) ?? nonblankString(message?.sessionId);
-          if (sessionId && sessionId !== this.parentProviderSessionId) {
-            throw runtimeError("Native resume started a different provider session before prompt delivery.", {
-              runtimeCode: "PROVIDER_SESSION_CONFLICT",
-            });
-          }
-          if (this.startupReceipt && message?.type === "system" &&
-              message?.subtype === "hook_response" && message?.hook_event === "SessionStart" &&
-              message?.stdout?.trim() === this.startupReceipt && message?.outcome === "success" &&
-              message?.exit_code === 0) {
-            if (!sessionId) throw runtimeError("Native resume startup receipt has no session identity.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
-            this.nativeStartupReceiptConfirmed = true;
-            this.settleNativeIdentity(true);
-          }
-          // CLI acknowledges the queued command before emitting per-turn init.
-          // These are transport receipts, never approval for assistant execution.
-          const verifiedQueueReceipt = this.nativeStartupReceiptConfirmed &&
-            sessionId === this.parentProviderSessionId &&
-            message?.type === "command_lifecycle" &&
-            message?.command_uuid === this.initialUserMessageUuid &&
-            (message?.state === "queued" || message?.state === "started");
-          if (message?.type === "system" && message?.subtype === "init") {
-            if (!sessionId) throw runtimeError("Native resume init has no session identity.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
-            clearTimeout(nativeStartupTimer);
-            this.nativeIdentityConfirmed = true;
-            this.settleNativeIdentity(true);
-          } else if (!this.nativeIdentityConfirmed && message?.type !== "system" && !verifiedQueueReceipt) {
-            throw runtimeError("Native resume has no verified init before execution.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
-          }
-        }
+        if (this.settleNativeIdentity && observeNativeSessionStartup(this, message)) clearTimeout(nativeStartupTimer);
         parsedEvents.push(message);
         this.providerSessionId =
           this.providerSessionId

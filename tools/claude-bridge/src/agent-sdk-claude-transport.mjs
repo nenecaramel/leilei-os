@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { observeNativeSessionStartup } from "./native-session-startup-identity.mjs";
 import { isNativeSessionMirror } from "./native-session-mirror.mjs";
 import { durableCheckpointPrefix, checkpointForkSessionStore } from "./provider-checkpoint-prefix.mjs";
 import { EventEmitter } from "node:events";
@@ -477,8 +479,23 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   }
 
   // Explicit stage-2 entry point; the existing daemon does not call it yet.
-  // Restoring an existing session needs native identity/checkpoint integration.
+  // Keep new-session creation separate from exact native restore below.
   async openPersistentSession(options = {}) {
+    return this.#openPersistentSession(options);
+  }
+
+  async restorePersistentSession(restore, options = {}) {
+    const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+    if (!restore || Object.keys(restore).some(key => !["sessionId", "checkpointId", "inputId", "source", "timeoutMs"].includes(key))
+      || !uuid.test(restore.sessionId ?? "") || !uuid.test(restore.checkpointId ?? "") || !uuid.test(restore.inputId ?? "")
+      || !["human", "task-notification"].includes(restore.source)) throw new Error("Native restore requires exact session/checkpoint/input identity and source.");
+    const timeoutMs = restore.timeoutMs ?? 8_000;
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000) throw new Error("Native restore startup timeout is invalid.");
+    if (this.sessionStore) throw new Error("Persistent native restore requires the original local transcript without a materializing session store.");
+    return this.#openPersistentSession(options, { ...restore, timeoutMs });
+  }
+
+  async #openPersistentSession(options = {}, restore = null) {
     const allowed = new Set(["authorize", "onBackgroundResult", "execution", "permissionHandler", "questionHandler", "perTaskStopAffordance"]);
     for (const key of Object.keys(options)) if (!allowed.has(key)) throw new Error(`Unsupported persistent session option: ${key}`);
     const { authorize, onBackgroundResult, execution = null, permissionHandler = null,
@@ -488,22 +505,56 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     if (this.activeQuery || this.activeTurnHandle || this.activeSessionHost || this.legacyOperation) throw runtimeError("Claude transport already has an active session.", { runtimeCode: "RUNTIME_UNAVAILABLE" });
     const claim = { cancelled: false, close: async () => { claim.cancelled = true; } };
     this.activeSessionHost = claim;
-    let host;
+    let host, startup = null, rejectStartup = null;
+    let firstInputAdmitted = false;
+    const assertLive = phase => {
+      if (this.activeSessionHost !== (host ?? claim) || claim.cancelled || (phase === "tool" && !host)
+        || host?.queryClosed || ["closed", "failed"].includes(host?.state)
+        || (restore && phase === "tool" && !startup?.nativeIdentityConfirmed)) throw new Error("Persistent session admission was aborted.");
+    };
     const admit = async (phase, inputId = null, source = null) => {
-      if (this.activeSessionHost !== (host ?? claim) || (phase === "tool" && !host) || host?.queryClosed || ["closed", "failed"].includes(host?.state)) throw new Error("Persistent session admission was aborted.");
-      if (await authorize({ phase, inputId, source, providerSessionId: host?.sessionId ?? null }) !== true) throw new Error("Persistent session admission denied.");
-      if (this.activeSessionHost !== (host ?? claim) || (phase === "tool" && !host) || host?.queryClosed || ["closed", "failed"].includes(host?.state)) throw new Error("Persistent session admission was aborted.");
+      assertLive(phase);
+      if (await authorize({ phase, inputId, source, providerSessionId: host?.sessionId ?? restore?.sessionId ?? null }) !== true) throw new Error("Persistent session admission denied.");
+      assertLive(phase);
     };
     try {
+      if (restore) {
+        await admit("input", restore.inputId, restore.source);
+        await this.#requireSession(restore.sessionId);
+        await this.#requireCheckpoint(restore.sessionId, restore.checkpointId);
+        await this.#validateLocalResumeTail(restore.sessionId, restore.checkpointId, null, []);
+      }
       const queryImpl = await this.#resolveQuery();
       if (this.activeSessionHost !== claim || claim.cancelled) throw runtimeError("Persistent session startup was aborted.", { runtimeCode: "ABORTED" });
+      let startupReady = null;
+      if (restore) {
+        // Re-read after asynchronous SDK loading: the ancestry cache cannot
+        // prove Desktop has not advanced the source transcript in the meantime.
+        await admit("input", restore.inputId, restore.source);
+        await this.#validateLocalResumeTail(restore.sessionId, restore.checkpointId, null, []);
+        assertLive("input");
+        startupReady = new Promise((resolve, reject) => {
+          rejectStartup = reject;
+          startup = { parentProviderSessionId: restore.sessionId, initialUserMessageUuid: restore.inputId,
+            startupReceipt: JSON.stringify({ continue: true, suppressOutput: true, stopReason: `native-resume-${randomUUID()}` }),
+            nativeIdentityConfirmed: false, nativeStartupReceiptConfirmed: false,
+            settleNativeIdentity: accepted => accepted ? resolve() : reject(new Error("Native startup identity was rejected.")) };
+        });
+        startupReady.catch(() => {});
+      }
       const permission = createAgentSdkPermissionCallback({
         toolPermissionPolicy: this.toolPermissionPolicy, events: this.events,
         permissionHandler: permissionHandler ?? (async () => ({ decision: "deny", message: "No permission handler is configured.", interrupt: false })),
       });
       const question = questionHandler ? createAgentSdkQuestionCallback({ questionHandler, events: this.events }) : null;
       host = await createAgentSdkSessionHost({ queryImpl,
-        beforeSubmit: context => admit("input", context.inputId, context.source), onBackgroundResult,
+        expectedSessionId: restore?.sessionId ?? null,
+        observeOutput: startup ? message => observeNativeSessionStartup(startup, message) : null,
+        beforeSubmit: async context => {
+          if (restore && !firstInputAdmitted && (context.inputId !== restore.inputId || context.source !== restore.source)) throw new Error("Initial native input identity/source does not match its reservation.");
+          await admit("input", context.inputId, context.source);
+          firstInputAdmitted = true;
+        }, onBackgroundResult,
         queryOptions: {
           cwd: this.cwd, env: this.environment, settingSources: ["user", "project", "local"],
           permissionMode: "default", includePartialMessages: true, perTaskStopAffordance,
@@ -514,6 +565,11 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           ...(this.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
           ...leileiosMcpQueryOptions(this.mcpServerConfig),
           ...(this.sessionStore ? { sessionStore: this.sessionStore } : {}),
+          ...(restore ? { resume: restore.sessionId, resumeSessionAt: restore.checkpointId,
+            settings: { ...(this.artifactEnabled ? { enableArtifact: true } : {}), hooks: { SessionStart: [{ hooks: [{
+              type: "command", command: `printf '%s' '${startup.startupReceipt}'`,
+            }] }] } },
+          } : {}),
           canUseTool: async (name, input, context) => {
             try { await admit("tool", host?.active?.id ?? null); }
             catch { return { behavior: "deny", message: "LeileiOS session admission denied.", interrupt: true }; }
@@ -533,10 +589,23 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       this.activeSessionHost = host;
       const release = () => { if (this.activeSessionHost === host && host.queryClosed) this.activeSessionHost = null; };
       const close = host.close.bind(host);
-      host.close = async () => { await close(); release(); };
+      host.close = async () => { rejectStartup?.(new Error("Native session startup was closed.")); await close(); release(); };
       void host.completion.then(release, release);
       if (claim.cancelled) { await host.close(); throw runtimeError("Persistent session startup was aborted.", { runtimeCode: "ABORTED" }); }
+      if (startupReady) {
+        let timer;
+        try {
+          await Promise.race([startupReady,
+            host.completion.then(() => { throw new Error("Native session ended before startup identity was confirmed."); }),
+            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Native startup identity deadline expired.")), restore.timeoutMs); }),
+          ]);
+        } catch (error) {
+          if (!host.queryClosed && host.state !== "failed") await host.close();
+          throw error;
+        } finally { clearTimeout(timer); }
+      }
       if (host.state === "failed") await host.completion;
+      assertLive("input");
       return host;
     } catch (error) {
       if (this.activeSessionHost === claim || (this.activeSessionHost === host && host.queryClosed)) this.activeSessionHost = null;
