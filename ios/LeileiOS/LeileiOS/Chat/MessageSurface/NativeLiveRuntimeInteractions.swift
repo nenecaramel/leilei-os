@@ -2,6 +2,7 @@ import SwiftUI
 import Foundation
 
 struct NativeLiveQuestionActivityRow: View {
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     let question: NativeLiveTurnActivityProjection.QuestionActivity
     let onResolveInteraction:
         ((NativeLiveRuntimeInteractionSnapshot, [String: NativeLiveJSONValue]) async throws -> Void)?
@@ -18,21 +19,22 @@ struct NativeLiveQuestionActivityRow: View {
                         ? "checkmark.circle"
                         : question.statusLabel == "Cancelled" ? "xmark.circle" : "questionmark.circle")
                         .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(NativeLiveActivityGlassText.secondary(iMessageWallpaperVisible))
                     Text("Asked user")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(NativeLiveActivityGlassText.primary(iMessageWallpaperVisible))
                     Spacer(minLength: 8)
                     Text(question.statusLabel)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(NativeLiveActivityGlassText.secondary(iMessageWallpaperVisible))
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(NativeLiveActivityGlassText.tertiary(iMessageWallpaperVisible))
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .modifier(NativeLiveActivityGlassRow())
 
             if let interaction = question.interaction,
                interaction.isPending,
@@ -43,7 +45,7 @@ struct NativeLiveQuestionActivityRow: View {
                 )
             }
         }
-        .padding(.horizontal, 5)
+        .padding(.horizontal, iMessageWallpaperVisible ? 0 : 5)
         .sheet(isPresented: $isShowingDetails) {
             NativeLiveToolDetailSheet(
                 title: "Asked user",
@@ -58,6 +60,7 @@ struct NativeLiveQuestionActivityRow: View {
 }
 
 struct NativeLiveInteractionHistoryRow: View {
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     let interaction: NativeLiveRuntimeInteractionSnapshot
     var presentation: NativeLiveInteractionHistoryPresentation = .standard
 
@@ -79,33 +82,34 @@ struct NativeLiveInteractionHistoryRow: View {
                             )
                 )
                 .font(.system(size: 12.5))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NativeLiveActivityGlassText.secondary(iMessageWallpaperVisible))
 
                 Text(title)
                     .font(.system(
                         size: 13.5,
                         weight: .medium
                     ))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(NativeLiveActivityGlassText.primary(iMessageWallpaperVisible))
                     .lineLimit(1)
 
                 Spacer(minLength: 8)
 
                 Text(statusLabel)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(NativeLiveActivityGlassText.secondary(iMessageWallpaperVisible))
 
                 Image(systemName: "chevron.right")
                     .font(.system(
                         size: 10.5,
                         weight: .semibold
                     ))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(NativeLiveActivityGlassText.tertiary(iMessageWallpaperVisible))
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 5)
+        .padding(.horizontal, iMessageWallpaperVisible ? 0 : 5)
+        .modifier(NativeLiveActivityGlassRow())
         .sheet(isPresented: $isShowingDetails) {
             NativeLiveToolDetailSheet(
                 title: title,
