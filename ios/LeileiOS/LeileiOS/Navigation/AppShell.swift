@@ -131,6 +131,11 @@ struct AppShell: View {
             && shellWallpaperImage != nil
     }
 
+    private var isOriginalChat: Bool {
+        selectedPage == .chat
+            && chatThemeRawValue == ChatTheme.original.rawValue
+    }
+
     private var isUniverseTheme: Bool {
         selectedPage == .universe
     }
@@ -185,13 +190,13 @@ struct AppShell: View {
             let revealOffset = min(proxy.size.width * 0.77, 330)
             let pageHorizontalOffset = (menuOpen ? revealOffset : 0)
                 + sidebarDragTranslation
-            // Original retains the previous state-based card geometry.
-            // Only wallpaper-backed iMessage uses continuous drag progress
-            // and a keyboard-independent screen canvas.
-            let revealProgress = isWallpaperChatVisible
+            // Both chat themes keep their backdrop at the full screen height.
+            // Other pages continue using their existing keyboard/layout size.
+            let hasPinnedChatBackdrop = isWallpaperChatVisible || isOriginalChat
+            let revealProgress = hasPinnedChatBackdrop
                 ? max(0, min(1, pageHorizontalOffset / revealOffset))
                 : (menuOpen ? 1 : 0)
-            let fullViewport = isWallpaperChatVisible
+            let fullViewport = hasPinnedChatBackdrop
                 ? fullIPhoneViewport(for: proxy.size)
                 : proxy.size
 
@@ -235,6 +240,18 @@ struct AppShell: View {
                 // The sidebar is always below this ONE composited chat card.
                 // The photo and navigation never get independent transforms.
                 ZStack(alignment: .topLeading) {
+                    // Match Original's existing system background, but keep
+                    // its paint behind the keyboard corners even when the
+                    // foreground NavigationStack is shortened by avoidance.
+                    if isOriginalChat {
+                        Color(.systemBackground)
+                            .frame(
+                                width: fullViewport.width,
+                                height: fullViewport.height
+                            )
+                            .allowsHitTesting(false)
+                    }
+
                     if isWallpaperChatVisible, let shellWallpaperImage {
                         wallpaperImage(shellWallpaperImage, size: fullViewport)
                     }
