@@ -499,3 +499,85 @@ test('default Desktop launcher runs under a pseudo terminal with stdin from /dev
     assert.equal(await readFile(path.join(dir, 'seen'), 'utf8'), `stdin-tty\nstdout-tty\n--desktop --resume ${A}\n`);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('continuation attach/release exchanges metadata only, never restores history/assets or modifies native files', async () => {
+  const { attachDesktopNativeContinuation, handoffNativeContinuationToDesktop } = await import('../src/native-session-continuation.mjs');
+  await fixture(async ({ input, transcriptFile }) => {
+    const before = await readFile(transcriptFile), calls = [];
+    const options = { input: { ...input, historyMode: 'continuation' }, conversationId: A, relayUrl: 'https://fixture.example', relayToken: 'PRIVATE_TOKEN', retryDelaysMs: [],
+      fetchImpl: async (url, request) => {
+        const route = new URL(url).pathname.split('/').at(-1), body = JSON.parse(request.body);
+        calls.push({ route, body });
+        assert.doesNotMatch(request.body, /PRIVATE_PROMPT|PRIVATE_REPLY|nativeSnapshot|projection|displayAssets/);
+        const data = route === 'continuation-state' ? { expectedHeadMessageId: null, expectedRevision: input.expectedRevision,
+          providerSessionId: A, providerCheckpointId: CP, effectiveWorkingDirectory: '/fixture', owner: 'desktop' }
+          : { outcome: 'attached', owner: route === 'continuation-release' ? 'desktop' : 'leileios', conversationId: A,
+            headMessageId: null, providerSessionId: A, providerCheckpointId: CP, inserted: 0 };
+        return new Response(JSON.stringify({ success: true, data }));
+      },
+    };
+    assert.equal((await attachDesktopNativeContinuation(options)).inserted, 0);
+    let launched;
+    await handoffNativeContinuationToDesktop({ ...options, launchImpl: async selection => { launched = selection.providerSessionId; } });
+    assert.equal(launched, A);
+    assert.deepEqual(calls.map(c => c.route), ['continuation-state', 'continuation-attach', 'continuation-state', 'continuation-release']);
+    assert.deepEqual(await readFile(transcriptFile), before);
+  });
+});
+
+test('continuation refuses pending durable recovery and open native peers before attachment', async () => {
+  const { attachDesktopNativeContinuation } = await import('../src/native-session-continuation.mjs');
+  await fixture(async ({ input }) => {
+    const options = { input, conversationId: A, relayUrl: 'https://fixture.example', relayToken: 'PRIVATE',
+      fetchImpl: async () => assert.fail('must refuse before network') };
+    const scope = path.join(input.recoveryDirectory, 'terminal-results', 'a'.repeat(64));
+    await mkdir(scope, { recursive: true }); await writeFile(path.join(scope, 'pending.json'), '{}');
+    await assert.rejects(attachDesktopNativeContinuation(options), e => e.code === 'NATIVE_SESSION_RECOVERY_REQUIRED');
+  });
+});
+
+test('fixed CLI continuation mode uses the metadata endpoint instead of legacy restore', async () => {
+  const { createServer } = await import('node:http');
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  await fixture(async ({ input, transcriptFile }) => {
+    const before = await readFile(transcriptFile), routes = [];
+    const server = createServer(async (request, response) => {
+      const chunks = []; for await (const chunk of request) chunks.push(chunk);
+      const text = Buffer.concat(chunks).toString();
+      assert.doesNotMatch(text, /PRIVATE_PROMPT|PRIVATE_REPLY|nativeSnapshot|projection/);
+      assert.equal(request.headers.authorization, 'Bearer fixture');
+      const route = request.url.split('/').at(-1); routes.push(route);
+      const data = route === 'continuation-state' ? { expectedHeadMessageId: null, expectedRevision: null,
+        providerSessionId: null, providerCheckpointId: null, effectiveWorkingDirectory: null, owner: null }
+        : { outcome: 'attached', owner: 'leileios', conversationId: A, providerSessionId: A, providerCheckpointId: CP, headMessageId: null, inserted: 0 };
+      response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ success: true, data }));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const { stdout, stderr } = await promisify(execFile)(process.execPath, [new URL('../scripts/native-session-switch.mjs', import.meta.url).pathname,
+        '--restore', '--history-mode', 'continuation', '--desktop-index', input.indexFile, '--project-dir', input.projectDirectory,
+        '--config-dir', input.configDirectory, '--conversation-id', A], { env: { ...process.env,
+          LEILEI_NATIVE_LIVE_RELAY_URL: `http://127.0.0.1:${server.address().port}`, LEILEI_NATIVE_LIVE_RELAY_TOKEN: 'fixture' }, timeout: 10_000 });
+      assert.equal(stderr, ''); assert.equal(JSON.parse(stdout).inserted, 0);
+      assert.deepEqual(routes, ['continuation-state', 'continuation-attach']);
+      assert.deepEqual(await readFile(transcriptFile), before);
+    } finally { await new Promise(resolve => server.close(resolve)); }
+  });
+});
+
+test('continuation detects transcript changes across state round trips before binding and never falls back to full upload', async () => {
+  const { attachDesktopNativeContinuation } = await import('../src/native-session-continuation.mjs');
+  await fixture(async ({ input, transcriptFile }) => {
+    let calls = 0;
+    await assert.rejects(attachDesktopNativeContinuation({ input, conversationId: A, relayUrl: 'https://fixture.example', relayToken: 'fixture', retryDelaysMs: [],
+      fetchImpl: async () => {
+        calls++;
+        await writeFile(transcriptFile, (await readFile(transcriptFile, 'utf8')) + '\n' + JSON.stringify({ type: 'system', subtype: 'local_auxiliary' }));
+        return Response.json({ success: true, data: { expectedHeadMessageId: null, expectedRevision: null,
+          providerSessionId: null, providerCheckpointId: null, owner: null } });
+      },
+    }), e => e.code === 'STALE_NATIVE_SELECTION');
+    assert.equal(calls, 1);
+  });
+});

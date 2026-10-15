@@ -1,3 +1,4 @@
+import { attachNativeContinuation, releaseNativeContinuation, readNativeContinuationState } from "../domains/conversation/native-session-continuation-repository.js";
 import { nativeSessionAsset } from "../domains/conversation/native-session-asset-repository.js";
 import { stageNativeDisplayAssets } from "../domains/conversation/native-session-asset-staging.js";
 import { restoreNativeSessionHistory, readNativeSessionRestoreState, releaseNativeSessionToDesktop, listNativeSessionSwitchChoices, listReferencedNativeSessions } from "../domains/conversation/native-session-history-repository.js";
@@ -821,6 +822,9 @@ export function createProcessRuntime(
             nativeLiveExternalSessionBridgeService,
           providerSessionStoreService:
             nativeLiveProviderSessionStoreService,
+          attachNativeContinuation: input => attachNativeContinuation(database.db, input),
+          releaseNativeContinuation: input => releaseNativeContinuation(database.db, input),
+          readNativeContinuationState: input => readNativeContinuationState(database.db, input),
           restoreNativeHistory: input => restoreNativeSessionHistory(database.db, input),
           readNativeHistoryState: input => readNativeSessionRestoreState(database.db, input),
           releaseNativeHistory: input => releaseNativeSessionToDesktop(database.db, input),

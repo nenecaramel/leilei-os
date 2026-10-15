@@ -1,6 +1,7 @@
+import { durableCheckpointPrefix } from "./provider-checkpoint-prefix.mjs";
 import { createHash } from "node:crypto";
 import { readNativeHistorySources, verifyNativeHistorySources } from "./native-session-source-files.mjs";
-import { TextDecoder } from "node:util";
+import { TextDecoder, isDeepStrictEqual } from "node:util";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { readOnlyFileSnapshot } from "./read-only-file-snapshot.mjs";
@@ -25,7 +26,7 @@ async function readIndex(indexFile) {
 }
 
 // Read-only preparation evidence. This deliberately has no resume/fork/write API.
-async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirectory, probeProcessStart, followNativeContinuation = false, expectedSessionId }) {
+async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirectory, probeProcessStart, followNativeContinuation = false, expectedSessionId, historyMode = "complete" }) {
   // indexFile === null selects a local-only session (no Desktop window yet) by its pinned id.
   if (indexFile === null && !sessionPattern.test(expectedSessionId ?? "")) throw fail("INVALID_SESSION_ID");
   const index = indexFile === null ? null : await readIndex(indexFile);
@@ -33,18 +34,23 @@ async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirec
   const snapshot = await readNativeSession(projectDirectory, index ? metadata.cliSessionId : expectedSessionId);
   const identity = index ? resolveDesktopSession(metadata, new Map([[snapshot.sessionId, snapshot]])) : resolveLocalNativeSession(snapshot);
   let sourceSnapshots = [];
-  try { nativeDisplayChain(snapshot, identity.providerCheckpointId); }
+  try { if (historyMode !== "continuation") nativeDisplayChain(snapshot, identity.providerCheckpointId); }
   catch (error) {
     if (!['COMPACT_SOURCE_HISTORY_REQUIRED', 'NATIVE_HISTORY_GAP'].includes(error.code)) throw error;
     sourceSnapshots = await readNativeHistorySources(projectDirectory, snapshot.sessionId, snapshot);
   }
   const options = { sourceSnapshots };
-  if (followNativeContinuation) identity.providerCheckpointId = nativeContinuationCheckpoint(snapshot, identity.providerCheckpointId, options);
+  if (followNativeContinuation) identity.providerCheckpointId = historyMode === "continuation"
+    ? nativeExecutionContinuation(snapshot, identity.providerCheckpointId).checkpointId
+    : nativeContinuationCheckpoint(snapshot, identity.providerCheckpointId, options);
   let history;
   let projection = null;
   try {
-    projection = projectNativeHistory(snapshot, identity.providerCheckpointId, options);
-    history = { state: "complete", messageCount: projection.messages.length, blockCount: projection.messages.reduce((sum, message) => sum + message.blocks.length, 0) };
+    if (historyMode === "continuation") history = { state: "not_requested" };
+    else {
+      projection = projectNativeHistory(snapshot, identity.providerCheckpointId, options);
+      history = { state: "complete", messageCount: projection.messages.length, blockCount: projection.messages.reduce((sum, message) => sum + message.blocks.length, 0) };
+    }
   } catch (error) {
     if (!historyErrors.has(error.code)) throw error;
     history = { state: "unavailable", reason: error.code, messageCount: null, blockCount: null };
@@ -71,7 +77,7 @@ async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirec
   const activityTime = new Date(metadata.lastActivityAt ?? snapshot.entries.findLast(entry => typeof entry.timestamp === "string")?.timestamp ?? NaN);
   return { inspection: { readOnly: true, ...identity, title: typeof metadata.title === 'string' ? metadata.title.slice(0, 160) : null,
     updatedAt: Number.isFinite(activityTime.getTime()) ? activityTime.toISOString() : null,
-    activity, history, historyRevision, handoffAllowed: false }, projection,
+    activity, history, historyRevision, ...(historyMode === "continuation" ? { continuationReady: true } : {}), handoffAllowed: false }, projection,
     nativeSnapshot: { sessionId: snapshot.sessionId, revision: snapshot.revision, entries: snapshot.entries, ...(displayAssets ? { displayAssets } : {}) } };
 }
 
@@ -112,7 +118,7 @@ export async function nativeSessionLocations(projectsDirectory) {
   return locations;
 }
 
-async function discoverDesktopNativeSessions({ desktopSessionsDirectory, projectsDirectory, peerDirectory, probeProcessStart }) {
+async function discoverDesktopNativeSessions({ desktopSessionsDirectory, projectsDirectory, peerDirectory, probeProcessStart, historyMode }) {
   const locations = await nativeSessionLocations(projectsDirectory);
   const sessions = [];
   for (const account of await sortedEntries(desktopSessionsDirectory)) {
@@ -134,7 +140,7 @@ async function discoverDesktopNativeSessions({ desktopSessionsDirectory, project
           const candidates = locations.get(metadata.cliSessionId) ?? [];
           if (candidates.length === 0) throw fail("DESKTOP_NATIVE_SESSION_UNAVAILABLE");
           if (candidates.length !== 1) throw fail("AMBIGUOUS_NATIVE_SESSION_LOCATION");
-          const result = await inspectDesktopNativeSession({ indexFile, projectDirectory: candidates[0], peerDirectory, probeProcessStart });
+          const result = await inspectDesktopNativeSession({ indexFile, projectDirectory: candidates[0], peerDirectory, probeProcessStart, historyMode, followNativeContinuation: historyMode === "continuation" });
           if (result.desktopSessionId !== desktopSessionId) throw fail("DESKTOP_INDEX_IDENTITY_MISMATCH");
           sessions.push({ inspection: result, indexFile, projectDirectory: candidates[0], providerSessionId });
         } catch (error) {
@@ -167,13 +173,52 @@ export async function resolveDesktopNativeSelection({ sessionId, ...input }) {
     if (candidates.length !== 1) throw fail('AMBIGUOUS_NATIVE_SESSION_LOCATION');
     const local = { indexFile: null, projectDirectory: candidates[0] };
     const inspection = await inspectDesktopNativeSession({ ...input, ...local, expectedSessionId: sessionId, followNativeContinuation: true });
-    if (inspection.history.state !== 'complete') throw fail(inspection.history.reason);
+    if (input.historyMode !== 'continuation' && inspection.history.state !== 'complete') throw fail(inspection.history.reason);
     return { ...local, inspection };
   }
   if (matches.length !== 1) throw fail('AMBIGUOUS_NATIVE_SELECTION');
   const selected = matches[0];
   if (selected.inspection.error) throw fail(selected.inspection.error);
-  if (selected.inspection.history.state !== 'complete') throw fail(selected.inspection.history.reason);
+  if (input.historyMode !== 'continuation' && selected.inspection.history.state !== 'complete') throw fail(selected.inspection.history.reason);
   const source = { indexFile: selected.indexFile, projectDirectory: selected.projectDirectory };
   return { ...source, inspection: await inspectDesktopNativeSession({ ...input, ...source, followNativeContinuation: true }) };
+}
+
+// Execution ancestry stops at the native compact root. It deliberately never
+// expands logicalParentUuid or reads other session files for display history.
+function nativeExecutionContinuation(snapshot, desktopCheckpointId) {
+  const carriers = snapshot.entries.filter(e => e && !e.isSidechain &&
+    ["user", "assistant", "system", "attachment"].includes(e.type) && typeof e.uuid === "string" && Object.hasOwn(e, "parentUuid"));
+  const byId = new Map();
+  for (const entry of carriers) {
+    const previous = byId.get(entry.uuid);
+    if (previous && !isDeepStrictEqual([previous.type, previous.parentUuid, previous.message, previous.attachment],
+      [entry.type, entry.parentUuid, entry.message, entry.attachment])) throw fail("CONFLICTING_NATIVE_UUID");
+    byId.set(entry.uuid, entry);
+  }
+  const tail = carriers.at(-1);
+  if (!tail) throw fail("NATIVE_HISTORY_GAP");
+  let ancestry;
+  try { ancestry = durableCheckpointPrefix(snapshot.entries, tail.uuid).ancestry; }
+  catch { throw fail("NATIVE_HISTORY_GAP"); }
+  if (!ancestry.has(desktopCheckpointId)) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
+  const chain = carriers.filter(e => ancestry.has(e.uuid));
+  const last = chain.findLast(e => !e.isMeta && !e.isCompactSummary && ["user", "assistant"].includes(e.type));
+  if (last?.type !== "assistant" || last.message?.stop_reason === "tool_use" ||
+    (Array.isArray(last.message?.content) && last.message.content.at(-1)?.type === "tool_use")) throw fail("NATIVE_TURN_UNFINISHED");
+  // Only native Stop receipts may follow a completed reply. An arbitrary tool,
+  // attachment or compaction tail is not equivalent to the completed checkpoint.
+  const trailing = chain.slice(chain.findLastIndex(e => e.uuid === last.uuid) + 1);
+  if (trailing.some(e => e.type !== "system" || e.subtype !== "stop_hook_summary")) throw fail("NATIVE_TURN_UNFINISHED");
+  return { checkpointId: last.uuid, checkpointIds: [...ancestry], completedTurnCheckpointIds: [last.uuid, ...trailing.map(e => e.uuid)] };
+}
+
+export async function readNativeContinuationEvidence(input) {
+  if (!sessionPattern.test(input.expectedSessionId ?? "") || !sessionPattern.test(input.expectedCheckpointId ?? "") ||
+    !/^[0-9a-f]{64}$/.test(input.expectedRevision ?? "")) throw fail("STALE_NATIVE_SELECTION");
+  const result = await loadDesktopNativeSession({ ...input, historyMode: "continuation", followNativeContinuation: true });
+  const { inspection, nativeSnapshot } = result;
+  if (inspection.providerSessionId !== input.expectedSessionId || inspection.providerCheckpointId !== input.expectedCheckpointId ||
+    inspection.nativeRevision !== input.expectedRevision) throw fail("STALE_NATIVE_SELECTION");
+  return { inspection, ...nativeExecutionContinuation(nativeSnapshot, input.expectedCheckpointId) };
 }

@@ -27,7 +27,10 @@ export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "exec
         AND c.origin = 'native_live' AND c.lifecycle_status = 'active'
         AND coalesce(c.provider_metadata->'nativeSessionSource'->>'owner', 'leileios') = 'leileios'
         AND (
-          (p.operation = 'send' AND u.role = 'user' AND c.current_head_message_id = u.id
+          (p.operation = 'send' AND u.role = 'user'
+            AND (c.current_head_message_id = u.id OR (
+              c.provider_metadata->'nativeSessionSource'->>'mode' = 'continuation'
+              AND c.current_head_message_id IS NOT DISTINCT FROM u.parent_message_id))
             AND c.provider_metadata->'native_live_presentation_owner'->>'prepareId' = p.id::text
             AND (c.provider_metadata->'native_live_presentation_owner' ? 'anchorHeadMessageId')
             AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM c.current_head_message_id::text)
@@ -57,6 +60,12 @@ export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "exec
         AND (
           (p.runtime_mode = 'new' AND p.operation = 'send' AND u.parent_message_id IS NULL
             AND p.parent_provider_session_id IS NULL AND p.parent_provider_checkpoint_id IS NULL)
+          OR (p.runtime_mode = 'resume' AND p.operation = 'send'
+            AND c.provider_metadata->'nativeSessionSource'->>'mode' = 'continuation'
+            AND (u.parent_message_id::text) IS NOT DISTINCT FROM (c.provider_metadata->'nativeSessionSource'->>'headMessageId')
+            AND p.parent_provider_session_id = c.provider_metadata->'nativeSessionSource'->>'sessionId'
+            AND p.parent_provider_checkpoint_id = c.provider_metadata->'nativeSessionSource'->>'checkpointId'
+            AND p.expected_working_directory = c.provider_metadata->'nativeSessionSource'->>'effectiveWorkingDirectory')
           OR (p.runtime_mode = 'resume' AND p.parent_provider_checkpoint_id IS NOT NULL
             AND EXISTS (
               SELECT 1 FROM conversation_provider_session_checkpoints cp

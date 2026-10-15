@@ -124,3 +124,24 @@ test("referenced-sessions endpoint binds the authenticated owner and takes no in
     assert.equal((await send({ userId: sid })).status, 400);
   });
 });
+
+test('continuation endpoints accept only authenticated metadata, never a history payload or spoofed owner', async () => {
+  const value = { conversationId, sessionId: sid, checkpointId: cp, revision, effectiveWorkingDirectory: '/synthetic',
+    expectedHeadMessageId: null, expectedRevision: null, checkpointIds: [cp], completedTurnCheckpointIds: [cp] };
+  let calls = 0;
+  await withServer(app => {
+    app.use((request, _response, next) => { request.mcpUserId = userId; next(); });
+    app.use('/store', createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any,
+      attachNativeContinuation: async input => { calls++; assert.equal(input.userId, userId); return { outcome: 'attached', owner: 'leileios', conversationId, providerSessionId: sid, providerCheckpointId: cp, headMessageId: null, inserted: 0 }; },
+    }));
+  }, async url => {
+    const send = (body: unknown) => fetch(url + '/store/native-history/continuation-attach', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal((await send(value)).status, 200);
+    for (const invalid of [{ ...value, projection: body().projection }, { ...value, userId: sid }, { ...value, nativeSnapshot: entries },
+      { ...value, expectedHeadMessageId: undefined }, { ...value, checkpointIds: [] }, { ...value, completedTurnCheckpointIds: [sid] }]) assert.equal((await send(invalid)).status, 400);
+    assert.equal(calls, 1);
+  });
+  await withServer(app => app.use('/store', createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any })), async url => {
+    assert.equal((await fetch(url + '/store/native-history/continuation-state', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ conversationId, sessionId: sid }) })).status, 401);
+  });
+});
