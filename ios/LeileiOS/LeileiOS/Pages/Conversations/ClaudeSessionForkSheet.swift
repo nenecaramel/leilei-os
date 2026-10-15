@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct ClaudeSessionForkSheet: View {
     @EnvironmentObject private var appModel: AppModel
@@ -12,10 +11,6 @@ struct ClaudeSessionForkSheet: View {
     @State private var isLoading = true
     @State private var forkingSessionID: String?
     @State private var errorMessage: String?
-    @State private var historyUpload:
-        NativeLiveConversationHistoryUpload?
-    @State private var isHistoryImporterPresented = false
-    @State private var historyImportError: String?
 
     var body: some View {
         NavigationStack {
@@ -92,51 +87,12 @@ struct ClaudeSessionForkSheet: View {
                     .disabled(forkingSessionID != nil)
                 }
 
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        isHistoryImporterPresented = true
-                    } label: {
-                        Label(
-                            historyUpload.map {
-                                "History \($0.messages.count)"
-                            } ?? "History",
-                            systemImage:
-                                historyUpload == nil
-                                ? "doc.badge.plus"
-                                : "doc.badge.checkmark"
-                        )
-                    }
-                    .disabled(forkingSessionID != nil)
-                    .accessibilityLabel(
-                        historyUpload == nil
-                        ? "Attach Claude history"
-                        : "Replace attached Claude history"
-                    )
-                }
             }
         }
         .presentationDetents([.medium, .large])
         .task {
             await loadSessions()
         }
-        .fileImporter(
-            isPresented: $isHistoryImporterPresented,
-            allowedContentTypes: [.json, .plainText, .data],
-            allowsMultipleSelection: false
-        ) { result in
-            importHistory(result)
-        }
-        .appFailureAlert(
-            message: historyImportError ?? "The history could not be imported.",
-            isPresented: Binding(
-                get: { historyImportError != nil },
-                set: { visible in
-                    if !visible {
-                        historyImportError = nil
-                    }
-                }
-            )
-        )
     }
 
     @MainActor
@@ -251,87 +207,4 @@ struct ClaudeSessionForkSheet: View {
         return directoryName + " · " + shortID
     }
 
-    private func importHistory(
-        _ result: Result<[URL], Error>
-    ) {
-        do {
-            guard let url = try result.get().first else {
-                return
-            }
-
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer {
-                if scoped {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-
-            let data = try Data(contentsOf: url)
-            guard data.count <= 900_000,
-                  let text = String(data: data, encoding: .utf8) else {
-                throw ClaudeHistoryImportError.invalidFile
-            }
-
-            let decoder = JSONDecoder()
-            var messages: [NativeLiveConversationHistoryInputMessage] = []
-            var totalCharacters = 0
-
-            for line in text.split(
-                whereSeparator: { $0.isNewline }
-            ) {
-                let message = try decoder.decode(
-                    NativeLiveConversationHistoryInputMessage.self,
-                    from: Data(line.utf8)
-                )
-                guard
-                    message.role == "user"
-                        || message.role == "assistant",
-                    !message.time.trimmingCharacters(
-                        in: .whitespacesAndNewlines
-                    ).isEmpty,
-                    !message.content.trimmingCharacters(
-                        in: .whitespacesAndNewlines
-                    ).isEmpty,
-                    message.content.count <= 100_000
-                else {
-                    throw ClaudeHistoryImportError.invalidFile
-                }
-
-                totalCharacters += message.content.count
-                guard messages.count < 5_000,
-                      totalCharacters <= 700_000 else {
-                    throw ClaudeHistoryImportError.tooLarge
-                }
-                messages.append(message)
-            }
-
-            guard !messages.isEmpty else {
-                throw ClaudeHistoryImportError.invalidFile
-            }
-
-            historyUpload = NativeLiveConversationHistoryUpload(
-                sourceLabel: url.lastPathComponent,
-                timeZone: "Asia/Shanghai",
-                messages: messages
-            )
-            historyImportError = nil
-        } catch {
-            historyUpload = nil
-            historyImportError = error.localizedDescription
-        }
-    }
-}
-
-private enum ClaudeHistoryImportError: LocalizedError {
-    case invalidFile
-    case tooLarge
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidFile:
-            return "Choose the main-branch JSONL with role, time, and content on every line."
-        case .tooLarge:
-            return "History must contain at most 5,000 messages and 700,000 characters."
-        }
-    }
 }

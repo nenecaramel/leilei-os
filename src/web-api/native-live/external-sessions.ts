@@ -177,57 +177,21 @@ export function createNativeLiveConversationFromClaudeSessionHandler(
 }
 
 export function readNativeLiveConversationHistorySnapshotHandler(
-  dependencies: NativeLiveApiDependencies,
+  _dependencies: NativeLiveApiDependencies,
 ): RequestHandler {
-  return async (request, response) => {
+  return (request, response) => {
     if (!requireWebUser(response, request.webUserId)) return;
-    const conversationId = request.params.conversationId;
-    if (
-      typeof conversationId !== "string"
-      || !UUID_PATTERN.test(conversationId)
-    ) {
-      response.status(400).json({
-        success: false,
-        error: {
-          code: "INVALID_NATIVE_LIVE_CONVERSATION_ID",
-          message: "Conversation id is invalid.",
-        },
-      });
+    if (typeof request.params.conversationId !== "string"
+      || !UUID_PATTERN.test(request.params.conversationId)) {
+      response.status(400).json({ success: false, error: {
+        code: "INVALID_NATIVE_LIVE_CONVERSATION_ID", message: "Conversation id is invalid.",
+      } });
       return;
     }
-
-    // The canonical LeileiOS conversation/current path remains available.
-    // This old Desktop history projection is no longer served or loaded.
     response.status(410).json({ success: false, error: {
       code: "HISTORY_SNAPSHOT_RETIRED",
-      message: "Old Desktop history projections are retired.",
+      message: "Old Desktop display history is no longer served by LeileiOS.",
     } });
-    return;
-
-    try {
-      const snapshot =
-        await dependencies.externalSessionBridgeService!
-          .readConversationHistorySnapshot({
-            userId: request.webUserId!,
-            conversationId,
-          });
-      if (!snapshot) {
-        response.status(404).json({
-          success: false,
-          error: {
-            code: "HISTORY_SNAPSHOT_NOT_FOUND",
-            message: "Conversation history snapshot was not found.",
-          },
-        });
-        return;
-      }
-      response.json({
-        success: true,
-        data: snapshot,
-      });
-    } catch (error) {
-      sendExternalSessionBridgeError(response, error);
-    }
   };
 }
 
