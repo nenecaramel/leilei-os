@@ -116,7 +116,7 @@ struct ChatComposer: View {
                         "",
                         text: $text,
                         prompt: Text("Message")
-                            .foregroundStyle(Color.primary.opacity(0.70)),
+                            .foregroundStyle(Color.primary.opacity(0.35)),
                         axis: .vertical
                     )
                     .focused(isFocused)
