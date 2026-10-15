@@ -1,3 +1,4 @@
+import { requestNativeSessionDrain } from './native-session-daemon-drain.mjs';
 import { preflightNativeSessionSwitch } from './native-session-switch-preflight.mjs';
 import { readDesktopNativeHistory } from './native-session-inspection.mjs';
 import { lstat, readdir } from 'node:fs/promises';
@@ -195,7 +196,7 @@ export async function assertNativeHandoffRecoveryClear(recoveryDirectory) {
       throw fail('NATIVE_RECOVERY_UNCONFIRMED');
     }
   };
-  for (const folder of ['terminal-results', 'session-store-append-receipts']) {
+  for (const folder of ['terminal-results', 'background-results', 'session-store-append-receipts']) {
     for (const scope of await directoryEntries(path.join(recoveryDirectory, folder))) {
       if (!scope.isDirectory() || !/^[a-f0-9]{64}$/.test(scope.name)) throw fail('NATIVE_RECOVERY_UNCONFIRMED');
       if ((await directoryEntries(path.join(recoveryDirectory, folder, scope.name))).length) throw fail('NATIVE_SESSION_RECOVERY_REQUIRED');
@@ -229,6 +230,8 @@ export async function launchDesktopNativeSession(selection, execute = runUnderTe
 export async function handoffNativeSessionToDesktop({ input, conversationId, relayUrl, relayToken, fetchImpl = fetch,
   recoveryDirectory = path.join(homedir(), '.leileios'), launchImpl = launchDesktopNativeSession, sleep, retryDelaysMs }) {
   const request = nativeHistoryRequest({ relayUrl, relayToken, fetchImpl, sleep, retryDelaysMs });
+  const drain = await requestNativeSessionDrain({ recoveryDirectory, conversationId, providerSessionId: input.expectedSessionId });
+  if (drain && !drain.ready) throw fail('NATIVE_DAEMON_DRAIN_UNCONFIRMED');
   await assertNativeHandoffRecoveryClear(recoveryDirectory);
   const synced = await restoreDesktopNativeSession({ input, conversationId, relayUrl, relayToken, fetchImpl, recoveryDirectory, sleep, retryDelaysMs });
   const selected = await preflightNativeSessionSwitch(input);
@@ -242,7 +245,7 @@ export async function handoffNativeSessionToDesktop({ input, conversationId, rel
   await preflightNativeSessionSwitch(input);
   await assertNativeHandoffRecoveryClear(recoveryDirectory);
   await launchImpl({ ...selected, configDirectory: input.configDirectory });
-  return { ...released, desktopLaunchRequested: true, desktopSessionVerified: false };
+  return { ...released, ...(drain ? { drain } : {}), desktopLaunchRequested: true, desktopSessionVerified: false };
 }
 
 async function readBoundedResponse(response) {

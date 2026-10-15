@@ -22,7 +22,7 @@ export type NativeLiveRelayInternalDependencies = {
     | "submitResult"
     | "markResultDeliveryUnknown"
     | "rejectReservation"
-  > & Partial<Pick<NativeLiveBackendRelayService, "checkExecutionAdmission" | "prepareBackgroundResult" | "submitBackgroundResult">>;
+  > & Partial<Pick<NativeLiveBackendRelayService, "checkExecutionAdmission" | "renewExecutionLease" | "renewSessionLease" | "prepareBackgroundResult" | "submitBackgroundResult">>;
   semanticService?: Pick<
     NativeLiveSemanticHandshakeService,
     "reserveNext" | "submitScores" | "submitFallback"

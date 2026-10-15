@@ -6,7 +6,7 @@ import type { NativeLiveExecutionAdmission } from "../protocol/native-live-execu
 type Database = ReturnType<typeof createDatabase>["db"];
 // A single SELECT observes reservation, live listener, canonical surface and
 // checkpoint binding together. This grants no lasting lease and mutates nothing.
-export async function checkNativeLiveExecutionAdmission(db: Database, input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {
+export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "execute">, input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {
   const [row] = await db.execute<{ admitted: boolean }>(sql`
     SELECT EXISTS (
       SELECT 1 FROM native_live_turn_preparations p
@@ -32,6 +32,12 @@ export async function checkNativeLiveExecutionAdmission(db: Database, input: Nat
             AND (c.provider_metadata->'native_live_presentation_owner' ? 'anchorHeadMessageId')
             AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM c.current_head_message_id::text)
           OR (p.operation = 'wake' AND p.canonical_user_message_id IS NULL
+            AND jsonb_typeof(p.wake_context->'runtime_generation') = 'object'
+            AND (p.wake_context->'runtime_generation') ? 'source_revision'
+            AND p.wake_context->'runtime_generation'->>'presentation_owner_id'
+              = c.provider_metadata->'native_live_presentation_owner'->>'prepareId'
+            AND (p.wake_context->'runtime_generation'->>'source_revision') IS NOT DISTINCT FROM
+              (c.provider_metadata->'nativeSessionSource'->>'revision')
             AND p.wake_context->>'epoch_id' = p.wake_context->>'source_user_message_id'
             AND NOT EXISTS (
               SELECT 1 FROM native_live_turn_preparations foreground

@@ -49,6 +49,9 @@ export class NativeLiveMacSessionRegistry {
     if (!Number.isSafeInteger(maxSessions) || maxSessions < 1) throw new Error("Session capacity must be a positive integer.");
   }
   get size(): number { return this.entries.size; }
+  snapshot(): ReadonlyArray<NativeLiveMacSessionBinding> {
+    return [...this.entries.values()].flatMap(entry=>entry.binding&&!entry.retired?[entry.binding]:[]);
+  }
 
   async openNew(input: OpenInput): Promise<NativeLiveMacSessionBinding> {
     return this.openOwned(input, null);
@@ -176,7 +179,15 @@ export class NativeLiveMacSessionRegistry {
     if (entry.closing) return entry.closing;
     const closing = (async () => {
       await entry.opening.catch(() => {});
-      if (entry.attemptedOpen) await entry.runtime!.closePersistentSession!();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([(async () => {
+          if (entry.attemptedOpen) await entry.runtime!.closePersistentSession!();
+          if (entry.binding) await entry.binding.session.completion.catch(() => {});
+        })(), new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("Persistent output stream close is unconfirmed.")), 5_000);
+        })]);
+      } finally { clearTimeout(timer); }
       if (entry.binding && entry.observeEvent) entry.binding.session.events.off("event", entry.observeEvent);
       if (this.entries.get(entry.conversationId) === entry) this.entries.delete(entry.conversationId);
     })();

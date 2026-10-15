@@ -17,6 +17,9 @@ export type NativeLiveMacSessionSource = "human" | "task-notification" | "unclas
 export type NativeLiveMacSessionResult = {
   providerSessionId: string;
   inputId: string;
+  contextUsage?: NativeLiveRuntimeContextUsage | null;
+  executionReadback?: NativeLiveRuntimeExecutionReadback | null;
+  executionReadbackError?: string | null;
   result: Record<string, unknown>;
   events: Record<string, unknown>[];
   /** Normalized output this turn owns (SDK-stamped), as streamed live. */
@@ -34,6 +37,7 @@ export type NativeLiveMacPersistentSession = {
   events: Pick<EventEmitter, "on" | "off" | "once">;
   completion: Promise<void>;
   submit(text: string, options?: { id?: string; source?: NativeLiveMacSessionSource } & NativeLiveMacPersistentTurnOutput): Promise<NativeLiveMacSessionResult>;
+  sendUserMessage(text: string, options?: { uuid?: string | null }): Promise<Record<string, unknown>>;
   interruptTurn(): Promise<{ still_queued: string[] } | null>;
   stopTask(id: string): Promise<void>;
   /** The frame's last top-level assistant record, once durable and descended from the parent. */
@@ -66,7 +70,7 @@ export type NativeLiveMacActiveTurnController = {
   sendUserMessage(
     text: string,
     options?: { uuid?: string | null },
-  ): Record<string, unknown>;
+  ): Record<string, unknown> | Promise<Record<string, unknown>>;
   interrupt(): Promise<Record<string, unknown>>;
 };
 

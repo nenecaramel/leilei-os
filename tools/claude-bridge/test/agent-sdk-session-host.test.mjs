@@ -34,8 +34,10 @@ test('foreign-session output fails pending turns without replay',async()=>{
 test('process exit rejects active and queued work without retrying it',async()=>{
  const f=await fixture();const one=assert.rejects(f.host.submit('one'),/ended/i),two=assert.rejects(f.host.submit('two'),/ended/i);f.output.end();await Promise.all([one,two]);await assert.rejects(f.host.completion,/ended/i);assert.equal(f.calls,1);
 });
-test('without actual per-task stop capability declaration, interrupt refuses to strand background work',async t=>{
- const f=await fixture({perTaskStopAffordance:false});t.after(()=>f.host.close());const turn=f.host.submit('synthetic');await f.event(tasks());await assert.rejects(f.host.interruptTurn(),/stop/i);assert.equal(f.interrupts,0);await f.event({...result(),user_message_uuid:f.host.active?.id});await turn;
+test('without per-task UI, foreground interrupt stops the session and reports unresolved background tasks truthfully',async t=>{
+ const f=await fixture({perTaskStopAffordance:false});t.after(()=>f.host.close());const turn=f.host.submit('synthetic');const interrupted=assert.rejects(turn,error=>error.runtimeCode==='INTERRUPTED');interrupted.catch(()=>{});await f.event(tasks());
+ const receipt=await f.host.interruptTurn();await interrupted;await f.host.completion;
+ assert.equal(receipt.session_closed,true);assert.deepEqual(receipt.still_queued,[]);assert.deepEqual(receipt.background_tasks,[{id:'task',status:'unknown'}]);assert.deepEqual(f.stopped,['task']);assert.equal(f.closed,1);assert.equal(f.interrupts,0);
 });
 
 test('autonomous result during idle remains a session event',async t=>{
@@ -175,4 +177,32 @@ test('user echoes and ping stamps do not authorize an unstamped assistant reply 
  const owned=await pending;
  assert.equal(live.length,0);
  assert.ok(texts(owned.normalizedEvents).includes('older-producer'));
+});
+
+test('mid-turn input joins the active logical turn and waits for every accepted command result',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const live=[];
+ const turn=f.host.submit('first',{id:'first',onNormalizedEvent:e=>live.push(e)});let settled=false;turn.then(()=>settled=true,()=>settled=true);
+ assert.deepEqual(await f.host.sendUserMessage('follow-up',{uuid:'follow-up'}),{status:'queued',command_uuid:'follow-up'});
+ await f.event(stamped('first','first-output'));await f.event({...result(),user_message_uuid:'first'});
+ assert.equal(settled,false,'the accepted follow-up must not be lost at the first result');
+ await f.event(stamped('follow-up','follow-up-output'));await f.event({...result(),user_message_uuid:'follow-up'});
+ const done=await turn;assert.equal(done.inputId,'first');assert.ok(texts(done.normalizedEvents).includes('first-output'));assert.ok(texts(done.normalizedEvents).includes('follow-up-output'));assert.deepEqual(f.inputs.map(x=>x.uuid),['first','follow-up']);assert.equal(f.closed,0);
+});
+test('folded result can consume multiple accepted inputs without a duplicate submission',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const turn=f.host.submit('first',{id:'first'});turn.catch(()=>{});
+ await f.host.sendUserMessage('follow-up',{uuid:'follow-up'});
+ await assert.rejects(f.host.sendUserMessage('duplicate',{uuid:'follow-up'}),/duplicate/i);
+ await f.event({...result(),user_message_uuid:'first',user_message_uuids:['first','follow-up']});await turn;assert.equal(f.inputs.length,2);
+});
+
+test('supplemental input cannot cross a turn boundary during asynchronous authorization',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const turn=f.host.submit('first',{id:'first'});let release;f.host.beforeSubmit=()=>new Promise(r=>release=r);
+ const pending=f.host.sendUserMessage('late',{uuid:'late'});pending.catch(()=>{});
+ await f.event({...result(),user_message_uuid:'first'});await turn;release();await assert.rejects(pending,/ownership changed/i);assert.deepEqual(f.inputs.map(x=>x.uuid),['first']);
+});
+test('interrupt receipts cannot claim queued commands from another session or duplicate an id',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const turn=f.host.submit('first',{id:'first'});turn.catch(()=>{});
+ f.host.query.interrupt=async()=>({still_queued:['foreign']});await assert.rejects(f.host.interruptTurn(),/queued/i);
+ f.host.query.interrupt=async()=>({still_queued:['first','first']});await assert.rejects(f.host.interruptTurn(),/queued/i);
+ await f.event({...result(),user_message_uuid:'first'});await turn;
 });

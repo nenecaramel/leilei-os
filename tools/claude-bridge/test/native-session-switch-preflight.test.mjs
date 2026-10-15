@@ -199,6 +199,12 @@ test('Desktop handoff syncs then releases before launch; pending recovery or rel
     await assert.rejects(handoffNativeSessionToDesktop(options), e => e.code === 'NATIVE_SESSION_RECOVERY_REQUIRED');
     assert.deepEqual(calls, []);
     await rm(scope, { recursive: true });
+    const backgroundScope = path.join(recoveryDirectory, 'background-results', 'd'.repeat(64));
+    await mkdir(backgroundScope, { recursive: true });
+    await writeFile(path.join(backgroundScope, 'receipt.json'), 'PRIVATE_BACKGROUND');
+    await assert.rejects(handoffNativeSessionToDesktop(options), e => e.code === 'NATIVE_SESSION_RECOVERY_REQUIRED');
+    assert.deepEqual(calls, []);
+    await rm(backgroundScope, { recursive: true });
     const appendScope = path.join(recoveryDirectory, 'session-store-append-receipts', 'c'.repeat(64));
     await mkdir(appendScope, { recursive: true });
     await writeFile(path.join(appendScope, 'intent.json'), 'PRIVATE_APPEND');

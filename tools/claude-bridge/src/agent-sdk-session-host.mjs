@@ -50,7 +50,7 @@ class SessionHost {
     this.ids.add(id);
     const completion = new Promise((resolve, reject) => this.pending.push({ text, id, source, resolve, reject,
       onNormalizedEvent, forwardImages: createToolImageForwarder(toolImageHandler), images: new AbortController(), delivery: Promise.resolve(),
-      normalizedEvents: [], rawEvents: [], stampedReply: false }));
+      normalizedEvents: [], rawEvents: [], stampedReply: false, commandIds: new Set([id]), remainingIds: new Set([id]), dispatched: false }));
     this.pump(); return completion;
   }
   async pump() {
@@ -68,6 +68,7 @@ class SessionHost {
         if (this.beforeSubmit) await this.beforeSubmit({ inputId: turn.id, providerSessionId: this.sessionId, source: turn.source });
       } while (this.backgroundPending || generation !== this.backgroundGeneration);
       if (this.active !== turn || ['closed', 'failed'].includes(this.state)) return;
+      turn.dispatched = true;
       this.input.push({ type: 'user', uuid: turn.id, parent_tool_use_id: null, origin: { kind: turn.source },
         message: { role: 'user', content: [{ type: 'text', text: turn.text }] } });
     } catch (error) {
@@ -75,10 +76,43 @@ class SessionHost {
       this.active = null; this.state = 'idle'; turn.reject(error); void this.pump();
     }
   }
+  async sendUserMessage(text, { uuid = null } = {}) {
+    uuid ??= randomUUID();
+    const turn = this.active;
+    if (!turn?.dispatched || this.state !== 'running') throw new Error('Session turn is not accepting input.');
+    if (typeof text !== 'string' || !text.trim() || typeof uuid !== 'string' || !uuid.trim() || uuid === ZERO_UUID) throw new Error('Nonblank input/id required.');
+    if (this.ids.has(uuid)) throw new Error('Duplicate session input id.');
+    const generation = this.backgroundGeneration;
+    if (this.backgroundPending) throw new Error('Background acknowledgement is pending.');
+    if (this.beforeSubmit) await this.beforeSubmit({ inputId: turn.id, providerSessionId: this.sessionId, source: turn.source });
+    if (this.active !== turn || this.state !== 'running' || this.backgroundPending || generation !== this.backgroundGeneration) throw new Error('Session input ownership changed.');
+    if (this.ids.has(uuid)) throw new Error('Duplicate session input id.');
+    this.ids.add(uuid); turn.commandIds.add(uuid); turn.remainingIds.add(uuid);
+    this.input.push({ type: 'user', uuid, parent_tool_use_id: null, origin: { kind: turn.source }, message: { role: 'user', content: [{ type: 'text', text }] } });
+    const receipt = { status: 'queued', command_uuid: uuid };
+    this.events.emit('mid-turn-input', receipt);
+    return receipt;
+  }
   async interruptTurn() {
     if (!this.active) return null;
-    if (this.tasks.size && !this.perTaskStopAffordance) throw new Error('Per-task stop capability is required before preserving background tasks.');
-    return normalizeAgentSdkInterruptReceipt(await this.query.interrupt());
+    if (this.tasks.size && !this.perTaskStopAffordance) {
+      // No task-management UI is advertised. Stop the whole owned writer
+      // rather than making the user's foreground interrupt unavailable.
+      const ids = [...this.tasks.keys()]; this.active.interruptRequested = true;
+      let timer;
+      try { await Promise.race([Promise.allSettled(ids.map(async id => { await this.query.stopTask(id); })), new Promise(resolve => { timer = setTimeout(resolve, 1_000); })]); }
+      finally { clearTimeout(timer); }
+      await this.close(Object.assign(new Error('SDK turn interrupted; session closed.'), {runtimeCode:'INTERRUPTED'}));
+      const all = [...new Set([...ids, ...this.tasks.keys()])];
+      return {still_queued:[],session_closed:true,background_tasks:all.map(id=>({id,status:this.tasks.has(id)?'unknown':'stopped'}))};
+    }
+    const turn = this.active;
+    const expected = new Set([...turn.commandIds, ...this.pending.flatMap(item => [...item.commandIds])]);
+    turn.interruptRequested = true;
+    const receipt = normalizeAgentSdkInterruptReceipt(await this.query.interrupt());
+    if (new Set(receipt.still_queued).size !== receipt.still_queued.length || receipt.still_queued.some(id => !expected.has(id))) throw new Error('Interrupt queued command identity is invalid.');
+    turn.interruptReceipt = receipt;
+    return receipt;
   }
   async stopTask(id) {
     if (['closed', 'failed'].includes(this.state)) throw new Error('Session host is closed.');
@@ -101,13 +135,13 @@ class SessionHost {
     const isReply = message.type === 'assistant'
       || (message.type === 'stream_event' && message.event?.type !== 'ping');
     if (isReply && stamps.some(id => typeof id === 'string' && id && id !== ZERO_UUID)) {
-      const turn = this.active && stamps.includes(this.active.id) ? this.active : null;
+      const turn = this.active && stamps.some(id => this.active.commandIds.has(id)) ? this.active : null;
       segment.owner = turn ? 'turn' : 'background'; segment.ownerId = turn?.id ?? null;
       if (turn) turn.stampedReply = true;
     }
     const isOwnedResult = message.type === 'result'
-      && this.active?.stampedReply
-      && stamps.includes(this.active.id);
+      && this.segment.owner === 'turn' && this.active
+      && stamps.some(id => this.active.commandIds.has(id));
     const turn = isOwnedResult ? this.active
       : message.type === 'result' ? null
       : this.ownedInputId() ? this.active : null;
@@ -129,9 +163,9 @@ class SessionHost {
       if (['assistant', 'user', 'result', 'stream_event'].includes(message.type)) segment.rawBackground.push(message);
     }
   }
-  async close() {
+  async close(reason = new Error('Session host was closed.')) {
     if (this.queryClosed) return;
-    this.state = 'closed'; this.rejectWork(new Error('Session host was closed.'));
+    this.state = 'closed'; this.rejectWork(reason);
     this.input.end(); await this.query.close();
     this.queryClosed = true;
   }
@@ -166,7 +200,7 @@ class SessionHost {
           const segment = this.segment; this.segment = newSegment();
           const consumed = [message.user_message_uuid, ...(Array.isArray(message.user_message_uuids) ? message.user_message_uuids : [])].filter(id => id !== ZERO_UUID);
           if (this.active && !consumed.some(id => typeof id === 'string' && id.trim())) throw new Error('SDK input correlation is unavailable.');
-          if (!this.active || !consumed.includes(this.active.id)) {
+          if (!this.active || !consumed.some(id => this.active.commandIds.has(id))) {
             if (this.onBackgroundResult) {
               this.backgroundGeneration++;
               this.backgroundPending = true;
@@ -180,16 +214,34 @@ class SessionHost {
             void this.pump();
             continue;
           }
-          const turn = this.active; this.active = null; this.state = 'idle';
+          const turn = this.active;
+          // A result may fold several accepted commands. Resolve this logical
+          // reservation only after every queued command has an authoritative result.
+          const remaining = consumed.filter(id => turn.remainingIds.has(id));
+          if (!remaining.length) throw new Error('Duplicate SDK command result.');
+          for (const id of remaining) turn.remainingIds.delete(id);
+          if (segment.owner !== 'turn') {
+            turn.rawEvents.push(...segment.rawBackground);
+            turn.normalizedEvents.push(...segment.background);
+          }
+          if (message.subtype === 'success' && !message.is_error && turn.remainingIds.size) {
+            this.events.emit('event', message); continue;
+          }
+          this.active = null; this.state = 'idle';
+          // Distinguish a logical foreground boundary from autonomous results.
+          // The owner serializes its durable commit before later background frames.
+          this.events.emit('turn-result', { inputId: turn.id });
           turn.images.abort();
           // Without a live stamp (older producer) the result alone proves the
           // whole frame is this turn's; it was just not streamed early.
           // Older producers may omit reply stamps. A matching result then
           // attributes the unstamped frame without streaming it early.
-          const events = turn.stampedReply ? turn.rawEvents : segment.rawBackground;
-          const normalizedEvents = turn.stampedReply ? turn.normalizedEvents : segment.background;
+          const events = turn.rawEvents;
+          const normalizedEvents = turn.normalizedEvents;
           await turn.delivery;
-          if (message.subtype !== 'success' || message.is_error) turn.reject(new Error('SDK turn failed.'));
+          if (message.subtype !== 'success' || message.is_error) turn.reject(Object.assign(new Error(turn.interruptRequested ? 'SDK turn interrupted.' : 'SDK turn failed.'), {
+            runtimeCode: turn.interruptRequested ? 'INTERRUPTED' : 'CLAUDE_PROCESS_FAILED', ...(turn.interruptReceipt ? { interruptReceipt: turn.interruptReceipt } : {}),
+          }));
           else turn.resolve({ providerSessionId: this.sessionId, inputId: turn.id, result: message, events, normalizedEvents });
           this.pump();
         }

@@ -1,3 +1,5 @@
+import { NativeLiveMacPersistentRuntime } from "../src/domains/bridge/mac/native-live-mac-persistent-runtime.js";
+import { createNativeSessionDrainServer } from "../tools/claude-bridge/src/native-session-daemon-drain.mjs";
 import { startMindRecallSemanticServer } from "../src/domains/bridge/mac/native-live-mac-mind-recall-server.js";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
@@ -215,6 +217,18 @@ const executor = new NativeLiveMacRuntimeExecutor(
     );
   },
 );
+const persistentRuntime = new NativeLiveMacPersistentRuntime({
+  environment: process.env, defaultWorkingDirectory, listenerInstanceId, relay,
+  outboxDirectory: join(homedir(), ".leileios", "background-results",
+    createHash("sha256").update(JSON.stringify([relayBaseUrl, relayToken])).digest("hex")),
+  attachmentMaterializer: new NativeLiveMacAttachmentMaterializer(relay), outputAttachmentSender,
+  mcpServerConfig: { type: "http", url: relayBaseUrl + "/internal/native-live-mcp", headers: { Authorization: "Bearer " + relayToken } },
+});
+const closeHandoffServer = await createNativeSessionDrainServer({
+  recoverStale: true, // Exclusive daemonLock was acquired before this control endpoint.
+  recoveryDirectory: join(homedir(), ".leileios"),
+  drain: (conversationId: string, providerSessionId: string) => persistentRuntime.drain(conversationId, providerSessionId),
+});
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);
 const semanticScorer = new LocalE5BreathSemanticScorer();
@@ -232,6 +246,7 @@ const loop = new NativeLiveMacDaemonLoop(
   workingDirectoryRuntimePool,
   new NativeLiveMacResultOutbox(join(homedir(), ".leileios", "terminal-results",
     createHash("sha256").update(JSON.stringify([relayBaseUrl, relayToken])).digest("hex"))),
+  persistentRuntime.executor,
 );
 
 let stopping = false;
@@ -240,6 +255,7 @@ const stop = () => {
   stopping = true;
   activeWorkWaitController?.abort();
   workingDirectoryRuntimePool.abortAll();
+  void persistentRuntime.closeAll().catch(() => {});
 };
 process.once("SIGINT", stop);
 process.once("SIGTERM", stop);
@@ -426,6 +442,7 @@ function isWakeTerminalOutcome(
 
 while (!stopping) {
   try {
+    await persistentRuntime.backgroundResults.flush();
     const outcome = await loop.runOnce();
     consecutiveWakeErrors = 0;
     const wakeTerminalOutcome =
@@ -665,5 +682,7 @@ while (!stopping) {
   }
 }
 
+await closeHandoffServer();
+await persistentRuntime.closeAll();
 await closeMindRecallServer?.();
 daemonLock.release();

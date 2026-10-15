@@ -139,6 +139,7 @@ export async function runDaemonScenario(options: {
       markDirty() {},
       async offer() { metrics.companionOffers++; },
     },
+    persistentRuntime: { backgroundResults: { async flush() { return 0; } } },
     relay: { async waitForWork() { throw new Error("unexpected main relay long-poll"); } },
     wakeBrokerCursor: { generation: "broker-generation", version: 0 },
     loop: { async runOnce() {

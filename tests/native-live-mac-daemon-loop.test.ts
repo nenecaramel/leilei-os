@@ -1238,3 +1238,38 @@ test("production loop persists before submit and restarted daemon replays withou
   assert.equal(executor.calls.length, 1);
   assert.deepEqual(await outbox.list(), []);
 });
+
+test("persistent daemon commits inside the turn exactly once, after saving the outbox", async t => {
+  const relay = new FakeRelay(); relay.canonicalOutcome = "completed";
+  let legacy = 0, commits = 0;
+  const root = mkdtempSync(join(tmpdir(), "persistent-daemon-")); t.after(() => rmSync(root,{recursive:true,force:true}));
+  const outbox = new NativeLiveMacResultOutbox(root);
+  const persistent = { canRoute: () => true, async retire() {}, async execute(_command: unknown, options: any) {
+    const receipt = await options.commit({ ...success(), prepare_id: reservationId }); commits++;
+    assert.equal((await outbox.list()).length,0);
+    assert.equal(receipt.canonicalOutcome,"completed");
+    return {result:success(),delivery:"committed",canonicalOutcome:receipt.canonicalOutcome};
+  }};
+  const submit = relay.submitResult.bind(relay);
+  relay.submitResult = async input => { assert.equal((await outbox.list()).length,1); return submit(input); };
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){legacy++;return success();}},null,null,null,null,null,null,outbox,persistent as never);
+  assert.equal((await loop.runOnce()).outcome,"completed");
+  assert.equal(legacy,0); assert.equal(commits,1); assert.equal(relay.calls.filter(c=>c.name==="submitResult").length,1);
+});
+
+test("persistent unknown result is retained for delivery replay without re-executing", async t => {
+  const relay = new FakeRelay(); relay.submitError = new Error("response lost");
+  const root = mkdtempSync(join(tmpdir(), "persistent-daemon-")); t.after(() => rmSync(root,{recursive:true,force:true}));
+  const outbox = new NativeLiveMacResultOutbox(root); let executions = 0;
+  const persistent = {canRoute:()=>true,async retire(){},async execute(_c:unknown,o:any){executions++;try{await o.commit({ ...success(), prepare_id: reservationId });}catch{}return {result:success(),delivery:"unknown"};}};
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){throw new Error("legacy forbidden");}},null,null,null,null,null,null,outbox,persistent as never);
+  assert.equal((await loop.runOnce()).outcome,"delivery_unknown"); assert.equal((await outbox.list()).length,1);
+  relay.submitError=null; assert.equal((await loop.runOnce()).outcome,"completed"); assert.equal(executions,1);
+});
+
+test("legacy fallback never starts if retiring the persistent writer failed",async()=>{
+  const relay=new FakeRelay();let legacy=0;
+  const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){legacy++;return success();}},null,null,null,null,null,null,null,
+    {canRoute:()=>false,async retire(){throw new Error("close unknown");}} as never);
+  assert.equal((await loop.runOnce()).outcome,"rejected");assert.equal(legacy,0);
+});

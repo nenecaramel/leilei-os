@@ -109,7 +109,10 @@ export function reserveNextHandler(
   return async (request, response) => {
     const userId = requireInternalUser(response, request.mcpUserId);
     if (!userId) return;
-    const body = parseListenerBody(request.body);
+    const record = request.body;
+    const hasCapability = record && typeof record === "object" && Object.hasOwn(record, "persistent_sessions");
+    const { persistent_sessions: capability, ...listener } = record && typeof record === "object" && !Array.isArray(record) ? record : {};
+    const body = hasCapability && typeof capability !== "boolean" ? null : parseListenerBody(listener);
     if (!body) {
       sendInvalid(response);
       return;
@@ -120,6 +123,7 @@ export function reserveNextHandler(
         userId,
         listenerInstanceId: body.listener_instance_id,
         dispatchTarget: "claude_code",
+        ...(capability === true ? { persistentSessions: true } : {}),
       });
       if (reservation) {
         process.stdout.write(
@@ -161,6 +165,19 @@ export function executionAdmissionHandler(dependencies: NativeLiveRelayInternalD
     try {
       const admitted = await dependencies.relayService.checkExecutionAdmission?.({ userId, reservationId, ...body }) === true;
       response.json({ success: true, data: { admitted } });
+    } catch (error) { sendRelayError(response, error); }
+  };
+}
+
+export function renewExecutionLeaseHandler(dependencies: NativeLiveRelayInternalDependencies): RequestHandler {
+  return async (request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    const userId = requireInternalUser(response, request.mcpUserId); if (!userId) return;
+    const reservationId = parseReservationId(request.params.reservationId), body = parseNativeLiveExecutionAdmissionBody(request.body);
+    if (!reservationId || !body) { sendInvalid(response); return; }
+    try {
+      const renewed = await dependencies.relayService.renewExecutionLease?.({ userId, reservationId, ...body }) === true;
+      response.json({ success: true, data: { renewed } });
     } catch (error) { sendRelayError(response, error); }
   };
 }
@@ -396,4 +413,14 @@ function sendRelayError(response: Response, error: unknown): void {
       message: "Native live relay is temporarily unavailable.",
     },
   });
+}
+
+export function renewSessionLeaseHandler(dependencies: NativeLiveRelayInternalDependencies): RequestHandler {
+  return async(request,response)=>{
+    const userId=requireInternalUser(response,request.mcpUserId);if(!userId)return;
+    const body=parseListenerBody(request.body);if(!body){sendInvalid(response);return;}
+    response.setHeader("Cache-Control","no-store");
+    try {response.json({success:true,data:{renewed:await dependencies.relayService.renewSessionLease!({userId,listenerInstanceId:body.listener_instance_id})}});}
+    catch(error){sendRelayError(response,error);}
+  };
 }

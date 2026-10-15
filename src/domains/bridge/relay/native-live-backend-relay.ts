@@ -1,3 +1,4 @@
+import { renewNativeLiveSessionLease, renewNativeLiveExecutionLease, NATIVE_LIVE_EXECUTION_LEASE_MS } from "./native-live-execution-lease.js";
 import { NativeLiveBackgroundResultError } from "../protocol/native-live-background-result.js";
 import { prepareNativeLiveBackgroundResult, submitNativeLiveBackgroundResult } from "./native-live-background-result-repository.js";
 import type { NativeLiveBackgroundPrepare, NativeLiveBackgroundSubmit, NativeLiveBackgroundPrepared, NativeLiveBackgroundAck } from "../protocol/native-live-background-result.js";
@@ -31,8 +32,8 @@ import { hasDiscardedWakeReceipt } from "../turn/turn-repository/discard-wake.js
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
-const LISTENER_LEASE_MS = 60_000;
-const RESERVATION_LEASE_MS = 60_000;
+const LISTENER_LEASE_MS = NATIVE_LIVE_EXECUTION_LEASE_MS;
+const RESERVATION_LEASE_MS = NATIVE_LIVE_EXECUTION_LEASE_MS;
 
 type RelayMutationOutcome =
   | "applied"
@@ -44,6 +45,8 @@ export interface NativeLiveBackendRelayPort {
   prepareBackgroundResult?(input: NativeLiveBackgroundPrepare & { userId: string }): Promise<NativeLiveBackgroundPrepared>;
   submitBackgroundResult?(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck>;
   checkExecutionAdmission?(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean>;
+  renewSessionLease?(input: {userId:string;listenerInstanceId:string}): Promise<boolean>;
+  renewExecutionLease?(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean>;
   enqueuePreparation(input: {
     userId: string;
     prepareId: string;
@@ -55,6 +58,7 @@ export interface NativeLiveBackendRelayPort {
   reserveNext(input: {
     userId: string;
     listenerInstanceId: string;
+    persistentSessions?: boolean;
   }): Promise<NativeLivePreparedTurn | null>;
   markExecutionStarted(input: {
     userId: string;
@@ -332,6 +336,7 @@ implements NativeLiveBackendRelayPort {
   async reserveNext(input: {
     userId: string;
     listenerInstanceId: string;
+    persistentSessions?: boolean;
   }): Promise<NativeLivePreparedTurn | null> {
     return this.db.transaction(async (transaction) => {
       const lease = await transaction.execute<{ user_id: string }>(sql`
@@ -502,6 +507,18 @@ implements NativeLiveBackendRelayPort {
       `);
 
       if (!reserved[0]) return null;
+      // A capability changes dispatch mode, never authorization. Execution and
+      // finalization still enforce the captured generation/head/epoch/cursor.
+      if (input.persistentSessions === true) await transaction.execute(sql`
+        UPDATE native_live_turn_preparations
+        SET runtime_mode = 'resume'
+        WHERE id = ${reserved[0].id}::uuid AND user_id = ${input.userId}::uuid
+          AND operation = 'wake' AND runtime_mode = 'fork'
+          AND dispatch_status = 'reserved' AND reserved_by = ${input.listenerInstanceId}::uuid
+          AND parent_provider_session_id IS NOT NULL AND parent_provider_checkpoint_id IS NOT NULL
+          AND jsonb_typeof(wake_context->'runtime_generation'->'presentation_owner_id') = 'string'
+          AND (wake_context->'runtime_generation') ? 'source_revision'
+      `);
       const row = await this.findPreparation(
         transaction as Transaction,
         input.userId,
@@ -516,6 +533,14 @@ implements NativeLiveBackendRelayPort {
   }
   submitBackgroundResult(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck> {
     return submitNativeLiveBackgroundResult(this.db, input);
+  }
+
+  async renewSessionLease(input: {userId:string;listenerInstanceId:string}): Promise<boolean> {
+    return renewNativeLiveSessionLease(this.db, input);
+  }
+
+  async renewExecutionLease(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {
+    return renewNativeLiveExecutionLease(this.db, input);
   }
 
   async checkExecutionAdmission(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {
@@ -983,11 +1008,13 @@ export class NativeLiveBackendRelayService {
   async reserveNext(input: {
     userId: string;
     listenerInstanceId: string;
+    persistentSessions?: boolean;
     dispatchTarget: "claude_code";
   }): Promise<NativeLiveDaemonReservation | null> {
     const preparation = await this.repository.reserveNext({
       userId: input.userId,
       listenerInstanceId: input.listenerInstanceId,
+      ...(input.persistentSessions === true ? { persistentSessions: true } : {}),
     });
     if (!preparation) return null;
     // A persisted checkpoint field marks a modern preparation, including a new
@@ -1012,6 +1039,14 @@ export class NativeLiveBackendRelayService {
   submitBackgroundResult(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck> {
     if (!this.repository.submitBackgroundResult) throw new NativeLiveBackgroundResultError("BACKGROUND_UNAVAILABLE");
     return this.repository.submitBackgroundResult(input);
+  }
+
+  async renewSessionLease(input: {userId:string;listenerInstanceId:string}): Promise<boolean> {
+    return await this.repository.renewSessionLease?.(input) === true;
+  }
+
+  async renewExecutionLease(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {
+    return await this.repository.renewExecutionLease?.(input) === true;
   }
 
   async checkExecutionAdmission(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {

@@ -628,7 +628,26 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           if (sendFileHandler && sendFiles.get(id) === sendFileHandler) sendFiles.delete(id);
         };
         completion.then(release, release);
-        return completion;
+        return completion.then(async result => {
+          // Observability never blocks canonical output indefinitely. Capture
+          // before the router acknowledges and admits the next logical turn.
+          let settings = null, supportedModels = null, rawUsage = null, readbackError = null;
+          let timer;
+          try {
+            await Promise.race([(async () => {
+              if (execution) {
+                if (typeof host.query.getSettings !== "function") throw new Error("SDK settings readback unavailable.");
+                settings = await host.query.getSettings();
+                if (typeof host.query.supportedModels === "function") supportedModels = await host.query.supportedModels();
+              }
+              if (typeof host.query.getContextUsage === "function") rawUsage = await host.query.getContextUsage({ detail: "summary" });
+            })(), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("SDK readback deadline expired.")), 2_000); })]);
+          } catch (error) { readbackError = error instanceof Error ? error.message : String(error); }
+          finally { clearTimeout(timer); }
+          return { ...result, contextUsage: normalizeAgentSdkContextUsage(rawUsage),
+            executionReadback: execution ? normalizeAgentSdkExecutionReadback({ requested: execution, settings, supportedModels }) : null,
+            executionReadbackError: readbackError };
+        });
       };
       // A turn's checkpoint is its last top-level assistant record, accepted only
       // once durably in the local transcript and descended from the previously
@@ -672,7 +691,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       };
       const release = () => { if (this.activeSessionHost === host && host.queryClosed) this.activeSessionHost = null; };
       const close = host.close.bind(host);
-      host.close = async () => { rejectStartup?.(new Error("Native session startup was closed.")); await close(); release(); };
+      host.close = async reason => { rejectStartup?.(new Error("Native session startup was closed.")); await close(reason); release(); };
       void host.completion.then(release, release);
       if (claim.cancelled) { await host.close(); throw runtimeError("Persistent session startup was aborted.", { runtimeCode: "ABORTED" }); }
       if (startupReady) {

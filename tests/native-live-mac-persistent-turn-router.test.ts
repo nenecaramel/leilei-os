@@ -53,12 +53,12 @@ async function fixture(t: test.TestContext) {
     } });
     return configured;
   });
-  const admissions: string[] = [], background: string[] = [], results: string[] = [];
+  const admissions: string[] = [], background: string[] = [], results: string[] = [], backgroundOwners: any[] = [];
   let backgroundSink: (() => Promise<NativeLiveMacPersistentAcknowledgement>) | null = null;
   let allow = true;
   let admissionSink: ((command: NativeLiveRuntimeCommand) => Promise<boolean>) | null = null;
   const router = new NativeLiveMacPersistentTurnRouter({ registry, listenerInstanceId: "listener", relay: { async checkExecutionAdmission(input) { admissions.push(input.command.prepare_id); return admissionSink ? admissionSink(input.command) : allow; } },
-    async onBackgroundResult(owner, frame) { assert.equal(owner.conversationId, conversation); assert.ok(owner.generationId); background.push(frame.result.user_message_uuid as string); return backgroundSink ? backgroundSink() : acknowledged(frame.events.findLast(event => event.type === "assistant")?.uuid as string); } });
+    async onBackgroundResult(owner, frame) { backgroundOwners.push(structuredClone(owner)); assert.equal(owner.conversationId, conversation); assert.ok(owner.generationId); background.push(frame.result.user_message_uuid as string); return backgroundSink ? backgroundSink() : acknowledged(frame.events.findLast(event => event.type === "assistant")?.uuid as string); } });
   const run = (c: NativeLiveRuntimeCommand, extra = {}) => router.execute({ command: c, async onResult(frame) { results.push(frame.command.prepare_id); return acknowledged(frame.result.events.findLast(event => event.type === "assistant")?.uuid as string); }, ...extra });
   const finish = (uuid: string) => {
     const checkpoint = id(nextCheckpoint++);
@@ -67,7 +67,7 @@ async function fixture(t: test.TestContext) {
     output.push({ type: "result", subtype: "success", session_id: sid, user_message_uuid: uuid });
   };
   t.after(async () => { await router.close(); await registry.closeAll(); await rm(root, { recursive: true, force: true }); });
-  return { router, registry, run, finish, output, inputs, admissions, background, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
+  return { router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
 }
 
 test("two reservations and wake reuse one SDK query and rotate execution admission", async t => {
@@ -292,4 +292,52 @@ test("matches only the committed continuation, and a materialized prompt carries
   assert.equal(f.router.matches({ ...command(2), runtime_mode: "fork" }), false);
   assert.equal(f.router.workingDirectory !== null, true);
   await f.router.close(); assert.equal(f.router.matches(command(2)), false);
+});
+
+test("background receipt binds the last completed visible source, not the original or quiet wake preparation",async t=>{
+ const f=await fixture(t);
+ const first=f.run(command(1));f.finish((await f.inputs.next()).value!.uuid);await first;
+ const second=f.run(command(2));f.finish((await f.inputs.next()).value!.uuid);await second;
+ const quiet=f.run(command(3,true),{async onResult(){return {...acknowledged(id(103)),continuationOnly:true};}});
+ f.finish((await f.inputs.next()).value!.uuid);await quiet;
+ const host=f.registry.get(conversation,f.registry.getGenerationId(conversation)!)!.session;
+ const settled=new Promise<void>(resolve=>host.events.once("background-result",()=>resolve()));
+ f.finish(id(99));await settled;
+ assert.deepEqual(f.backgroundOwners.at(-1),{conversationId:conversation,generationId:f.registry.getGenerationId(conversation),source:{prepareId:id(2),requestId:id(12)},providerSessionId:sid,parentProviderCheckpointId:id(103),workingDirectory:f.router.workingDirectory});
+});
+
+test("persistent runtime control pump keeps supplemental input in this reservation and returns its queue receipt",{timeout:3000},async t=>{
+ const f=await fixture(t), receipts:any[]=[], ready=deferred<{uuid:string}>();let called=false;
+ const running=f.run(command(1),{async controlPump(controller:any){
+  called=true;const first=await ready.promise;
+  receipts.push(await controller.sendUserMessage("synthetic follow-up",{uuid:id(88)}));
+  assert.equal((await f.inputs.next()).value!.uuid,id(88));
+  f.finish(first.uuid);f.finish(id(88));
+ }});running.catch(()=>{});
+ const first=(await f.inputs.next()).value!;assert.equal(called,true,"the actual router must start its control pump");ready.resolve(first);
+ assert.equal((await running).inputId,id(21));assert.deepEqual(receipts,[{status:"queued",command_uuid:id(88)}]);assert.deepEqual(f.results,[id(1)]);assert.equal(f.launches,1);
+});
+
+test("a wake without a model override inherits this session's existing selection",async t=>{
+ const f=await fixture(t);const selection={model:"claude-opus-5-5",thinking:"adaptive",effort:"high"} as const;
+ const first=f.run({...command(1),execution_selection:selection});f.finish((await f.inputs.next()).value!.uuid);await first;
+ const wake={...command(2,true),execution_selection:null};assert.equal(f.router.matches(wake),true);
+ const running=f.run(wake);f.finish((await f.inputs.next()).value!.uuid);await running;assert.equal(f.launches,1);
+ assert.equal(f.router.matches({...command(3),execution_selection:{...selection,effort:"low"}}),false);
+});
+
+test("suspension revokes authorization already awaiting the server response",async t=>{
+ const f=await fixture(t);const running=f.run(command(1));running.catch(()=>{});const input=(await f.inputs.next()).value!;
+ const entered=deferred<void>(),release=deferred<boolean>();f.setAdmission(async()=>{entered.resolve();return release.promise;});
+ const admitted=(f.router as any).authorize({phase:"tool",inputId:input.uuid,source:"human",providerSessionId:sid});
+ await entered.promise;f.router.suspend();release.resolve(true);assert.equal(await admitted,false);
+ await f.router.close();await running.catch(()=>{});
+});
+
+test("foreground stop with background work closes the owned session and returns an applied close receipt",async t=>{
+ const f=await fixture(t),stop=deferred<void>(),receipt=deferred<Record<string,unknown>>();
+ const running=f.run(command(1),{async controlPump(controller:any){await stop.promise;receipt.resolve(await controller.interrupt());}});running.catch(()=>{});
+ await f.inputs.next();const host=f.registry.get(conversation,f.registry.getGenerationId(conversation)!)!.session;const seen=new Promise<void>(resolve=>host.events.once("event",()=>resolve()));
+ f.output.push({type:"system",subtype:"background_tasks_changed",session_id:sid,tasks:[{task_id:"background",run_id:"r1"}]});await seen;stop.resolve();
+ await assert.rejects(running,(error:any)=>error.runtimeCode==="INTERRUPTED");assert.equal((await receipt.promise).session_closed,true);assert.equal(f.closes,1);
 });
