@@ -218,6 +218,8 @@ export function submitResultHandler(
           canonicalOutcome: finalized.ok
             ? finalized.outcome
             : finalized.code,
+          ...(finalized.ok && finalized.outcome === "wake_quiet" && finalized.nativeResumeCheckpointId
+            ? { nativeResumeCheckpointId: finalized.nativeResumeCheckpointId } : {}),
         },
       });
     } catch (error) {

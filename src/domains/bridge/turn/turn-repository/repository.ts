@@ -1,3 +1,4 @@
+import { commitQuietWake } from "./commit-quiet-wake.js";
 import { DrizzleNativeLiveConversationRepository } from "../../../conversation/native-live-conversation-repository.js";
 import type {
   NativeLiveMessage,
@@ -201,6 +202,10 @@ implements NativeLiveBackendTurnPort {
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
   }): Promise<NativeLiveFinalizeFailurePortResult> {
     return finalizeFailure.call(this.context, input);
+  }
+
+  commitQuietWake(input: Parameters<NonNullable<NativeLiveBackendTurnPort["commitQuietWake"]>>[0]): Promise<"committed" | "stale"> {
+    return commitQuietWake.call(this.context, input);
   }
 
   discardWake(input: {

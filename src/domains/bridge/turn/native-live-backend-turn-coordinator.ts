@@ -157,6 +157,7 @@ export type NativeLiveFinalizeResult =
       operation: "wake";
       conversationId: string;
       providerSessionId: string | null;
+      nativeResumeCheckpointId?: string;
     }
   | {
       ok: false;
@@ -245,6 +246,14 @@ export interface NativeLiveBackendTurnPort {
     errorCode: NativeLiveRuntimeFailureCode | "RUNTIME_PROTOCOL_ERROR";
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
   }): Promise<NativeLiveFinalizeFailurePortResult>;
+
+  commitQuietWake?(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+    providerSessionId: string;
+    providerCheckpointId: string;
+    effectiveWorkingDirectory: string | null;
+  }): Promise<"committed" | "stale">;
 
   discardWake?(input: {
     userId: string;
@@ -524,11 +533,16 @@ export class NativeLiveBackendTurnCoordinator {
       && isQuietWakeResult(result.normalized_events, canonical.blocks)
     ) {
       try {
-        await this.discardWake({
-          userId,
-          preparation,
-          providerSessionId: result.provider_session_id,
-        });
+        let nativeResumeCheckpointId: string | undefined;
+        if (preparation.runtimeMode === "resume") {
+          if (!this.port.commitQuietWake || !result.provider_checkpoint_id) throw new Error("Quiet same-session cursor commit is unavailable.");
+          const outcome = await this.port.commitQuietWake({ userId, preparation, providerSessionId: result.provider_session_id,
+            providerCheckpointId: result.provider_checkpoint_id, effectiveWorkingDirectory: result.effective_working_directory ?? null });
+          if (outcome === "stale") return { ok: true, outcome: "wake_stale", requestId: preparation.requestId, operation: "wake", conversationId: preparation.conversationId, providerSessionId: result.provider_session_id };
+          nativeResumeCheckpointId = result.provider_checkpoint_id;
+        } else {
+          await this.discardWake({ userId, preparation, providerSessionId: result.provider_session_id });
+        }
         return {
           ok: true,
           outcome: "wake_quiet",
@@ -536,6 +550,7 @@ export class NativeLiveBackendTurnCoordinator {
           operation: "wake",
           conversationId: preparation.conversationId,
           providerSessionId: result.provider_session_id,
+          ...(nativeResumeCheckpointId ? { nativeResumeCheckpointId } : {}),
         };
       } catch {
         return failureForResult(result, "INTERNAL_ERROR");

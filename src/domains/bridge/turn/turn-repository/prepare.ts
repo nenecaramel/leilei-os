@@ -1,3 +1,4 @@
+import { readNativeResumeCheckpoint } from "../native-live-resume-checkpoint.js";
 import {
   and,
   eq,
@@ -617,7 +618,7 @@ export async function resolveRuntimeParent(
       runtimeMode: continuation === "send" && checkpoint.providerCheckpointId ? "resume" : "fork",
       parentProviderSessionId: checkpoint.providerSessionId,
       expectedWorkingDirectory: checkpoint.effectiveWorkingDirectory,
-      parentProviderCheckpointId: checkpoint.providerCheckpointId,
+      parentProviderCheckpointId: continuation === "send" ? await readNativeResumeCheckpoint(executor, { userId, conversationId, canonicalMessageId: parentMessageId }) : checkpoint.providerCheckpointId,
     };
   }
 

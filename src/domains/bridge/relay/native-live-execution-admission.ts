@@ -1,3 +1,4 @@
+import { nativeResumeCheckpointSql } from "../turn/native-live-resume-checkpoint.js";
 import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import type { NativeLiveExecutionAdmission } from "../protocol/native-live-execution-admission.js";
@@ -56,7 +57,9 @@ export async function checkNativeLiveExecutionAdmission(db: Database, input: Nat
               WHERE cp.user_id = p.user_id AND cp.conversation_id = p.conversation_id AND cp.provider = 'claude_code'
                 AND cp.canonical_message_id = CASE WHEN p.operation = 'wake' THEN c.current_head_message_id ELSE u.parent_message_id END
                 AND cp.provider_session_id = p.parent_provider_session_id
-                AND cp.provider_checkpoint_id = p.parent_provider_checkpoint_id
+                AND ((p.operation = 'wake' AND ${nativeResumeCheckpointSql("cp", "c")} = p.parent_provider_checkpoint_id)
+                  OR (p.operation = 'send' AND (cp.provider_checkpoint_id = p.parent_provider_checkpoint_id
+                    OR ${nativeResumeCheckpointSql("cp", "c", false)} = p.parent_provider_checkpoint_id)))
                 AND cp.effective_working_directory IS NOT DISTINCT FROM p.expected_working_directory
             ))
         )
