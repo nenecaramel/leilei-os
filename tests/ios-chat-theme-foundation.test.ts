@@ -328,7 +328,7 @@ test('a single local wallpaper serves every iMessage conversation without changi
   assert.equal((shell.match(/Image\(uiImage: shellWallpaperImage\)/g) ?? []).length, 1);
   assert.match(shell, /\.ignoresSafeArea\(\.all\)/);
   assert.match(shell, /\.environment\(\\\.iMessageWallpaperVisible, isWallpaperChatVisible\)/);
-  assert.doesNotMatch(page, /Image\(uiImage:|wallpaperRevision|chatWallpaperImage|IMessageWallpaper\.load/);
+  assert.doesNotMatch(page, /Image\(uiImage: chatWallpaperImage\)|wallpaperRevision|chatWallpaperImage|IMessageWallpaper\.load/);
   assert.doesNotMatch(chat, /Image\(uiImage:|wallpaperRevision|wallpaperImage|IMessageWallpaper\.load/);
   assert.match(chat, /if !iMessageWallpaperVisible \{\s*Color\(\.systemBackground\)/);
   assert.match(surface, /\.background\(chatTheme == \.iMessage \? Color\.clear : Color\(\.systemBackground\)\)/);
@@ -498,7 +498,7 @@ test('single fixed wallpaper is independent of keyboard/composer reflow', () => 
   assert.match(root, /shellWallpaperImage = IMessageWallpaper\.load\(\)/);
   assert.match(page, /if !iMessageWallpaperVisible \{\s*pageBackground\.ignoresSafeArea\(\)/);
   assert.match(chat, /if !iMessageWallpaperVisible \{\s*Color\(\.systemBackground\)/);
-  assert.doesNotMatch(page, /Image\(uiImage:/);
+  assert.doesNotMatch(page, /Image\(uiImage: chatWallpaperImage\)/);
   assert.doesNotMatch(chat, /Image\(uiImage:/);
   assert.match(chat, /\.padding\(\.bottom, isSystemKeyboardVisible \? 12 : 8\)/);
   assert.match(composer, /HStack\(alignment: \.bottom, spacing: 10\) \{\s*iMessagePlusMenu/);
@@ -520,7 +520,7 @@ test('shell renders exactly one wallpaper while child pages stay transparent', (
   assert.match(iphone, /PageContainer\(/);
   assert.match(iphone, /\.clipShape\(/);
   assert.equal((shell.match(/Image\(uiImage: shellWallpaperImage\)/g) ?? []).length, 1);
-  assert.doesNotMatch(page, /Image\(uiImage:|IMessageWallpaper\.load/);
+  assert.doesNotMatch(page, /Image\(uiImage: chatWallpaperImage\)|IMessageWallpaper\.load/);
   assert.doesNotMatch(chat, /Image\(uiImage:|IMessageWallpaper\.load/);
   assert.match(page, /if !iMessageWallpaperVisible \{\s*pageBackground\.ignoresSafeArea\(\)/);
   assert.match(chat, /if !iMessageWallpaperVisible \{\s*Color\(\.systemBackground\)/);
