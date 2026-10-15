@@ -11,6 +11,25 @@ import {
   NativeLiveProviderSessionStoreService,
 } from "../src/domains/bridge/provider-session/native-live-provider-session-store.js";
 
+import { assertLegacyAssetWriteAllowed } from "../src/domains/bridge/provider-session/native-live-provider-session-storage-policy.js";
+
+test("Railway historical asset writes are rejected for continuation mode, but explicit legacy imports remain possible", async () => {
+  const identity = { userId: crypto.randomUUID(), sessionId: crypto.randomUUID() };
+  const queried = [];
+  const blocked = {
+    execute: async (query: unknown) => { queried.push(query); return [{ blocked: true }]; },
+  } as unknown as Parameters<typeof assertLegacyAssetWriteAllowed>[0];
+  await assert.rejects(
+    assertLegacyAssetWriteAllowed(blocked, identity),
+    (e: unknown) => (e as { code?: string }).code === "LEGACY_ASSET_WRITE_DISABLED",
+  );
+  assert.equal(queried.length, 1);
+  const allowed = {
+    execute: async () => [{ blocked: false }],
+  } as unknown as Parameters<typeof assertLegacyAssetWriteAllowed>[0];
+  await assert.doesNotReject(assertLegacyAssetWriteAllowed(allowed, identity));
+});
+
 const enabled =
   process.env.RUN_NATIVE_LIVE_PROVIDER_SESSION_STORE_DATABASE_TEST === "1";
 
