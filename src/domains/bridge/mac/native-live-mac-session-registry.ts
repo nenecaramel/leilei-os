@@ -1,0 +1,158 @@
+import { randomUUID } from "node:crypto";
+import {
+  createNativeLiveMacClaudeTransport,
+  type NativeLiveMacClaudeTransport,
+  type NativeLiveMacMcpServerConfig,
+  type NativeLiveMacPersistentSession,
+  type NativeLiveMacPersistentSessionOptions,
+} from "./native-live-mac-claude-transport.js";
+import { resolveNativeLiveMacWorkingDirectory } from "./native-live-mac-working-directory-runtime.js";
+
+export type NativeLiveMacSessionBinding = Readonly<{
+  conversationId: string;
+  generationId: string;
+  workingDirectory: string;
+  session: NativeLiveMacPersistentSession;
+}>;
+type Entry = {
+  conversationId: string;
+  generationId: string;
+  retired: boolean;
+  runtime?: NativeLiveMacClaudeTransport;
+  attemptedOpen: boolean;
+  binding?: NativeLiveMacSessionBinding;
+  opening: Promise<NativeLiveMacSessionBinding>;
+  closing: Promise<void> | null;
+};
+type OpenInput = {
+  conversationId: string;
+  expectedWorkingDirectory: string | null;
+  options: NativeLiveMacPersistentSessionOptions;
+};
+
+// Explicit new-session owner; not a replacement for durable relay/head fences.
+// The cwd pool remains available for legacy turns, listing, compact and cleanup.
+export class NativeLiveMacSessionRegistry {
+  private readonly entries = new Map<string, Entry>();
+  private shutDown = false;
+  constructor(
+    private readonly environment: NodeJS.ProcessEnv,
+    private readonly defaultWorkingDirectory: string,
+    private readonly createTransport = createNativeLiveMacClaudeTransport,
+    private readonly createSessionStore: () => unknown = () => null,
+    private readonly mcpServerConfig: NativeLiveMacMcpServerConfig | null = null,
+    private readonly maxSessions = 4,
+  ) {
+    if (!Number.isSafeInteger(maxSessions) || maxSessions < 1) throw new Error("Session capacity must be a positive integer.");
+  }
+  get size(): number { return this.entries.size; }
+
+  async openNew(input: OpenInput): Promise<NativeLiveMacSessionBinding> {
+    if (this.shutDown) throw new Error("Persistent session registry is shut down.");
+    const { conversationId } = input;
+    if (typeof conversationId !== "string" || !conversationId.trim()) throw new Error("Conversation identity is required.");
+    if (this.entries.has(conversationId)) throw new Error("Conversation already owns a session; retire it explicitly first.");
+    if (this.size >= this.maxSessions) throw new Error("Persistent session capacity reached; no background work was evicted.");
+    // Reserve synchronously before path/factory awaits so duplicate opens cannot
+    // replace callback ownership. Generation is local, not a server epoch token.
+    const entry: Entry = {
+      conversationId, generationId: randomUUID(), retired: false,
+      attemptedOpen: false, closing: null, opening: null!,
+    };
+    this.entries.set(conversationId, entry);
+    entry.opening = this.launch(entry, { ...input, options: { ...input.options } });
+    try { return await entry.opening; }
+    catch (error) {
+      entry.retired = true;
+      // Failed close retains the slot/runtime for an explicit close retry.
+      try { await this.dispose(entry); } catch { /* Preserve startup error. */ }
+      throw error;
+    }
+  }
+
+  // Metadata-only lookup permits targeted cleanup after failed startup, when
+  // openNew could not return a binding. This token is not durable admission.
+  getGenerationId(conversationId: string): string | null {
+    return this.entries.get(conversationId)?.generationId ?? null;
+  }
+
+  get(conversationId: string, generationId: string): NativeLiveMacSessionBinding | null {
+    const entry = this.entries.get(conversationId);
+    if (!entry || entry.generationId !== generationId || entry.retired || !entry.binding
+      || ["closed", "failed"].includes(entry.binding.session.state)) return null;
+    return entry.binding;
+  }
+
+  async close(conversationId: string, generationId: string): Promise<void> {
+    const entry = this.entries.get(conversationId);
+    if (!entry || entry.generationId !== generationId) return;
+    this.retire(entry);
+    await this.dispose(entry);
+  }
+
+  async closeAll(): Promise<void> {
+    this.shutDown = true;
+    const entries = [...this.entries.values()];
+    // Revoke every captured generation before awaiting any one SDK process.
+    for (const entry of entries) this.retire(entry);
+    const outcomes = await Promise.allSettled(entries.map(entry => this.dispose(entry)));
+    const failures = outcomes.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (failures.length) throw new AggregateError(failures.map(r => r.reason), "Persistent sessions could not all close.");
+  }
+
+  private retire(entry: Entry): void {
+    const wasRetired = entry.retired;
+    entry.retired = true;
+    // Startup may still await the SDK loader. Cancel its transport claim now;
+    // waiting only for open() would permit a late process launch after retire.
+    if (!wasRetired && !entry.binding) entry.runtime?.abort();
+  }
+  private assertLive(entry: Entry): void {
+    if (entry.retired || this.entries.get(entry.conversationId) !== entry) throw new Error("Persistent session generation was retired.");
+  }
+  private async launch(entry: Entry, input: OpenInput): Promise<NativeLiveMacSessionBinding> {
+    const workingDirectory = await resolveNativeLiveMacWorkingDirectory(input.expectedWorkingDirectory ?? this.defaultWorkingDirectory);
+    this.assertLive(entry);
+    const { runtime } = await this.createTransport(this.environment, workingDirectory, this.createSessionStore(), this.mcpServerConfig);
+    if ([...this.entries.values()].some(other => other !== entry && other.runtime === runtime)) {
+      throw new Error("Persistent runtime is already owned by another conversation.");
+    }
+    entry.runtime = runtime;
+    this.assertLive(entry);
+    if (!runtime.openPersistentSession || !runtime.closePersistentSession) throw new Error("Runtime does not support owned persistent sessions.");
+    const { authorize, onBackgroundResult, ...settings } = input.options;
+    if (typeof authorize !== "function" || typeof onBackgroundResult !== "function") throw new Error("Session admission and durable background sink are required.");
+    entry.attemptedOpen = true;
+    const session = await runtime.openPersistentSession({
+      ...settings,
+      authorize: async context => {
+        this.assertLive(entry);
+        const admitted = await authorize(context);
+        this.assertLive(entry);
+        return admitted;
+      },
+      onBackgroundResult: async frame => {
+        this.assertLive(entry);
+        // The caller must enforce durable reservation/lease/head fencing inside
+        // the sink. Local retirement cannot undo an already committed write.
+        await onBackgroundResult(frame);
+        this.assertLive(entry);
+      },
+    });
+    this.assertLive(entry);
+    const binding = Object.freeze({ conversationId: entry.conversationId, generationId: entry.generationId, workingDirectory, session });
+    entry.binding = binding;
+    return binding;
+  }
+  private async dispose(entry: Entry): Promise<void> {
+    if (entry.closing) return entry.closing;
+    const closing = (async () => {
+      await entry.opening.catch(() => {});
+      if (entry.attemptedOpen) await entry.runtime!.closePersistentSession!();
+      if (this.entries.get(entry.conversationId) === entry) this.entries.delete(entry.conversationId);
+    })();
+    entry.closing = closing;
+    try { await closing; }
+    finally { if (entry.closing === closing) entry.closing = null; }
+  }
+}
