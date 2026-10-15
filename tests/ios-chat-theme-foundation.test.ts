@@ -116,7 +116,15 @@ test('iMessage uses a native safe-area inset with no opaque system bottom bar', 
   assert.match(wallpaperBackdrop, /let chatWallpaperImage/);
   assert.match(wallpaperBackdrop, /\.ignoresSafeArea\(\.container\)/);
   assert.match(wallpaperBackdrop, /\.ignoresSafeArea\(\.keyboard, edges: \.bottom\)/);
-  assert.match(page, /\.background\(pageBackground\.ignoresSafeArea\(\)\)/);
+  assert.match(page, /pageBackground\.ignoresSafeArea\(\)/);
+  const outerBackdrop = page.slice(
+    page.indexOf('        .toolbarBackground(.hidden, for: .navigationBar)'),
+    page.indexOf('        .task(id: wallpaperRevision)')
+  );
+  assert.match(outerBackdrop, /\.background \{\s*if selectedPage == \.chat,/);
+  assert.match(outerBackdrop, /chatThemeRawValue == ChatTheme\.iMessage\.rawValue,/);
+  assert.match(outerBackdrop, /Image\(uiImage: chatWallpaperImage\)/);
+  assert.match(outerBackdrop, /\.ignoresSafeArea\(\.all\)/);
   assert.doesNotMatch(placement, /\.background \{|Image\(uiImage: wallpaperImage\)/);
   assert.match(chat, /if selectedChatTheme == \.iMessage, let wallpaperImage/);
   assert.match(chat, /Image\(uiImage: wallpaperImage\)/);
@@ -552,7 +560,15 @@ test('custom wallpaper stays visibly inside navigation chat after keyboard focus
   assert.match(nestedBackground, /chatThemeRawValue == ChatTheme\.iMessage\.rawValue/);
   assert.match(nestedBackground, /Image\(uiImage: chatWallpaperImage\)/);
   assert.match(nestedBackground, /\.ignoresSafeArea\(\.keyboard, edges: \.bottom\)/);
-  assert.match(page, /\.background\(pageBackground\.ignoresSafeArea\(\)\)/);
+  assert.match(page, /pageBackground\.ignoresSafeArea\(\)/);
+  const outerBackdrop = page.slice(
+    page.indexOf('        .toolbarBackground(.hidden, for: .navigationBar)'),
+    page.indexOf('        .task(id: wallpaperRevision)')
+  );
+  assert.match(outerBackdrop, /\.background \{\s*if selectedPage == \.chat,/);
+  assert.match(outerBackdrop, /chatThemeRawValue == ChatTheme\.iMessage\.rawValue,/);
+  assert.match(outerBackdrop, /Image\(uiImage: chatWallpaperImage\)/);
+  assert.match(outerBackdrop, /\.ignoresSafeArea\(\.all\)/);
   assert.match(page, /chatWallpaperImage = IMessageWallpaper\.load\(\)/);
 
   // Keyboard gap and scroll-to-bottom adjustments are independent of image.
@@ -590,7 +606,15 @@ test('iPhone shell paints wallpaper beneath keyboard rounded corners without cha
   assert.match(chat, /\.padding\(\.bottom, isSystemKeyboardVisible \? 12 : 8\)/);
   assert.match(chat, /\.offset\(y: isSystemKeyboardVisible \? 0 : 10\)/);
   assert.match(chat, /Image\(uiImage: wallpaperImage\)/);
-  assert.match(page, /\.background\(pageBackground\.ignoresSafeArea\(\)\)/);
+  assert.match(page, /pageBackground\.ignoresSafeArea\(\)/);
+  const outerBackdrop = page.slice(
+    page.indexOf('        .toolbarBackground(.hidden, for: .navigationBar)'),
+    page.indexOf('        .task(id: wallpaperRevision)')
+  );
+  assert.match(outerBackdrop, /\.background \{\s*if selectedPage == \.chat,/);
+  assert.match(outerBackdrop, /chatThemeRawValue == ChatTheme\.iMessage\.rawValue,/);
+  assert.match(outerBackdrop, /Image\(uiImage: chatWallpaperImage\)/);
+  assert.match(outerBackdrop, /\.ignoresSafeArea\(\.all\)/);
   assert.match(composer, /\.frame\(width: 42, height: 42\)/);
   assert.doesNotMatch(iphone, /\.ignoresSafeArea\(\.keyboard\).*PageContainer/);
 });
