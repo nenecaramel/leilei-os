@@ -28,24 +28,9 @@ struct AppShell: View {
         Group {
             if horizontalSizeClass == .regular {
                 iPadLayout
+                    .background { rootWallpaperBackdrop }
             } else {
                 iPhoneLayout
-            }
-        }
-        // The one physical image is anchored outside the keyboard-avoiding
-        // navigation/composer layout; all children are transparent above it.
-        .background {
-            if isWallpaperChatVisible, let shellWallpaperImage {
-                GeometryReader { geometry in
-                    Image(uiImage: shellWallpaperImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .clipped()
-                }
-                .ignoresSafeArea(.all)
-                .accessibilityHidden(true)
-                .allowsHitTesting(false)
             }
         }
         .environment(\.iMessageWallpaperVisible, isWallpaperChatVisible)
@@ -72,6 +57,25 @@ struct AppShell: View {
                 \.colorScheme,
                 inheritedColorScheme
             )
+        }
+    }
+
+    // Exactly one physical renderer. iPhone places it in the previously
+    // verified ZStack background beneath the navigation card (and keyboard);
+    // iPad uses the same view behind its split layout.
+    @ViewBuilder
+    private var rootWallpaperBackdrop: some View {
+        if isWallpaperChatVisible, let shellWallpaperImage {
+            GeometryReader { geometry in
+                Image(uiImage: shellWallpaperImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+            }
+            .ignoresSafeArea(.all)
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
         }
     }
 
@@ -138,11 +142,15 @@ struct AppShell: View {
             let cardCornerRadius: CGFloat = menuOpen ? 50 : 0
 
             ZStack(alignment: .leading) {
-                // Keep the sidebar's original paint while it is visible.
-                // Closed iMessage chats expose the single, fixed root image.
-                Rectangle()
-                    .fill(isWallpaperChatVisible ? Color.clear : sidebarBackground)
-                    .ignoresSafeArea()
+                // Preserve the previously fixed keyboard-underlay layer
+                // as the iPhone shell's bottommost ZStack child.
+                if isWallpaperChatVisible {
+                    rootWallpaperBackdrop
+                } else {
+                    Rectangle()
+                        .fill(sidebarBackground)
+                        .ignoresSafeArea()
+                }
 
                 SidebarView(
                     selectedPage: $selectedPage,
