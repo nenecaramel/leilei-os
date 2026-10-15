@@ -4,13 +4,9 @@ import UIKit
 struct PageContainer: View {
     @EnvironmentObject private var appModel: AppModel
 
-    // Supplemental wallpaper behind NavigationStack content fills exposed
-    // keyboard corners. ChatView still owns the primary visible wallpaper
-    // and the composer remains responsible for its own keyboard avoidance.
-    @AppStorage(ChatTheme.storageKey) private var chatThemeRawValue =
-        ChatTheme.original.rawValue
-    @AppStorage(IMessageWallpaper.revisionKey) private var wallpaperRevision = ""
-    @State private var chatWallpaperImage: UIImage?
+    // The fixed iMessage wallpaper is painted exactly once by AppShell.
+    // Do not place a keyboard-sized image behind this NavigationStack.
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
 
     @State private var renameTitle = ""
     @State private var showingRenameAlert = false
@@ -42,26 +38,6 @@ struct PageContainer: View {
         // Universe extends its map beneath the transparent navigation bar.
         NavigationStack {
             pageContent
-            // Place the keyboard-safe wallpaper immediately behind the
-            // navigation content, not outside NavigationStack, whose own
-            // system background can otherwise hide the custom image.
-            .background {
-                if selectedPage == .chat,
-                   chatThemeRawValue == ChatTheme.iMessage.rawValue,
-                   let chatWallpaperImage {
-                    GeometryReader { geometry in
-                        Image(uiImage: chatWallpaperImage)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                            .clipped()
-                    }
-                    .ignoresSafeArea(.container)
-                    .ignoresSafeArea(.keyboard, edges: .bottom)
-                    .accessibilityHidden(true)
-                    .allowsHitTesting(false)
-                }
-            }
             .navigationTitle(selectedPage == .chat || selectedPage == .universe ? "" : pageTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -91,29 +67,13 @@ struct PageContainer: View {
             }
             .toolbarBackground(.hidden, for: .navigationBar)
         }
-        // Never put the opaque default pageBackground behind a wallpaper
-        // chat: it leaks through the keyboard's rounded top corners when the
-        // clipped navigation card is resized for keyboard avoidance.
+        // Leave the navigation container transparent when the shell owns the
+        // wallpaper. Every other page and the Original chat keep their prior
+        // system background.
         .background {
-            if selectedPage == .chat,
-               chatThemeRawValue == ChatTheme.iMessage.rawValue,
-               let chatWallpaperImage {
-                GeometryReader { geometry in
-                    Image(uiImage: chatWallpaperImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .clipped()
-                }
-                .ignoresSafeArea(.all)
-                .accessibilityHidden(true)
-                .allowsHitTesting(false)
-            } else {
+            if !iMessageWallpaperVisible {
                 pageBackground.ignoresSafeArea()
             }
-        }
-        .task(id: wallpaperRevision) {
-            chatWallpaperImage = IMessageWallpaper.load()
         }
         .sheet(isPresented: $showingContext) {
             ContextOverviewSheet()
