@@ -1,6 +1,33 @@
 import SwiftUI
 import UIKit
 
+// Match the native regular glass used by Tool rows and the iMessage input.
+// Original and chats without a wallpaper retain each renderer's old fill.
+struct NativeLiveIMessageContentPanel: ViewModifier {
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
+    let originalOpacity: Double
+    let originalCornerRadius: CGFloat
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if iMessageWallpaperVisible {
+            content
+                .foregroundStyle(Color(red: 0.17, green: 0.20, blue: 0.23))
+                .glassEffect(
+                    .regular,
+                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                )
+        } else if originalOpacity > 0 {
+            content.background(
+                Color.primary.opacity(originalOpacity),
+                in: RoundedRectangle(cornerRadius: originalCornerRadius)
+            )
+        } else {
+            content
+        }
+    }
+}
+
 // All source surfaces share bounded native scrolling and independent copy semantics.
 struct NativeLiveSourcePanel<Content: View>: View {
     let label: String
@@ -35,7 +62,10 @@ struct NativeLiveSourcePanel<Content: View>: View {
             }.frame(maxHeight: 360)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
+        .modifier(NativeLiveIMessageContentPanel(
+            originalOpacity: 0.055,
+            originalCornerRadius: 10
+        ))
     }
 
     private func copy() {
