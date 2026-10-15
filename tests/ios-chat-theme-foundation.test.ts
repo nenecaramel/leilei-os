@@ -518,8 +518,18 @@ test('shell renders exactly one wallpaper while child pages stay transparent', (
   assert.match(shell, /isWallpaperChatVisible: Bool \{/);
   assert.match(shell, /chatThemeRawValue == ChatTheme\.iMessage\.rawValue/);
   assert.match(shell, /shellWallpaperImage != nil/);
-  assert.match(iphone, /ZStack\(alignment: \.leading\) \{\s*\/\/ Preserve the previously fixed keyboard-underlay layer/);
-  assert.match(iphone, /if isWallpaperChatVisible \{\s*rootWallpaperBackdrop\s*\} else \{\s*Rectangle\(\)\s*\.fill\(sidebarBackground\)/);
+  assert.match(iphone, /ZStack\(alignment: \.leading\) \{\s*\/\/ The sidebar stays painted behind the chat/);
+  assert.match(iphone, /Rectangle\(\)\s*\.fill\(sidebarBackground\)\s*\.ignoresSafeArea\(\)/);
+  assert.match(iphone, /if isWallpaperChatVisible \{\s*rootWallpaperBackdrop\s*\}/);
+  const sidebarIndex = iphone.indexOf('                SidebarView(');
+  const wallpaperIndex = iphone.indexOf('                    rootWallpaperBackdrop', sidebarIndex);
+  const pageIndex = iphone.indexOf('                PageContainer(', wallpaperIndex);
+  assert.ok(
+    sidebarIndex >= 0 && wallpaperIndex > sidebarIndex && pageIndex > wallpaperIndex,
+    'iPhone wallpaper must paint after sidebar text and before transparent chat'
+  );
+  assert.equal((iphone.match(/rootWallpaperBackdrop/g) ?? []).length, 1);
+  assert.doesNotMatch(iphone.slice(0, sidebarIndex), /rootWallpaperBackdrop/);
   assert.match(iphone, /PageContainer\(/);
   assert.match(iphone, /\.clipShape\(/);
   assert.equal((shell.match(/Image\(uiImage: shellWallpaperImage\)/g) ?? []).length, 1);
