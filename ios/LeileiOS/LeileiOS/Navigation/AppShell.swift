@@ -1,6 +1,28 @@
 import SwiftUI
 import UIKit
 
+// A single animatable clip follows the same continuous reveal progress as
+// the chat card's horizontal offset. Both wallpaper and messages share it.
+private struct SidebarRevealCardMask: Shape {
+    var progress: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let radius = 50 * min(max(progress, 0), 1)
+        return UnevenRoundedRectangle(
+            topLeadingRadius: radius,
+            bottomLeadingRadius: radius,
+            bottomTrailingRadius: radius,
+            topTrailingRadius: radius,
+            style: .continuous
+        ).path(in: rect)
+    }
+}
+
 struct AppShell: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var inheritedColorScheme
@@ -23,6 +45,7 @@ struct AppShell: View {
     @State private var draftConversationID = UUID()
     @State private var sidebarSearchCenterY: CGFloat?
     @State private var sidebarDragTranslation: CGFloat = 0
+    @State private var iPhoneFullViewport = CGSize.zero
 
     var body: some View {
         Group {
@@ -60,22 +83,45 @@ struct AppShell: View {
         }
     }
 
-    // Exactly one physical renderer. iPhone places it in the previously
-    // verified ZStack background beneath the navigation card (and keyboard);
-    // iPad uses the same view behind its split layout.
+    // iPhone measures the photo once against the full phone viewport; it
+    // must not rescale when the keyboard reduces navigation's safe area.
+    // The image renderer is shared with the unchanged iPad background.
+    private func wallpaperImage(_ image: UIImage, size: CGSize) -> some View {
+        Image(uiImage: image)
+            .resizable()
+            .scaledToFill()
+            .frame(width: size.width, height: size.height)
+            .clipped()
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
+    }
+
     @ViewBuilder
     private var rootWallpaperBackdrop: some View {
         if isWallpaperChatVisible, let shellWallpaperImage {
             GeometryReader { geometry in
-                Image(uiImage: shellWallpaperImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .clipped()
+                wallpaperImage(shellWallpaperImage, size: geometry.size)
             }
             .ignoresSafeArea(.all)
-            .accessibilityHidden(true)
-            .allowsHitTesting(false)
+        }
+    }
+
+    private func fullIPhoneViewport(for proposed: CGSize) -> CGSize {
+        // A width change indicates rotation: discard the old height.
+        guard abs(proposed.width - iPhoneFullViewport.width) < 1 else {
+            return proposed
+        }
+        return CGSize(
+            width: proposed.width,
+            height: max(proposed.height, iPhoneFullViewport.height)
+        )
+    }
+
+    private func rememberIPhoneViewport(_ proposed: CGSize) {
+        guard proposed.width > 0, proposed.height > 0 else { return }
+        let full = fullIPhoneViewport(for: proposed)
+        if iPhoneFullViewport != full {
+            iPhoneFullViewport = full
         }
     }
 
@@ -137,11 +183,12 @@ struct AppShell: View {
     private var iPhoneLayout: some View {
         GeometryReader { proxy in
             let revealOffset = min(proxy.size.width * 0.77, 330)
-            let cardCornerRadius: CGFloat = menuOpen ? 50 : 0
             let pageHorizontalOffset = (menuOpen ? revealOffset : 0)
                 + sidebarDragTranslation
+            let revealProgress = max(0, min(1, pageHorizontalOffset / revealOffset))
+            let fullViewport = fullIPhoneViewport(for: proxy.size)
 
-            ZStack(alignment: .leading) {
+            ZStack(alignment: .topLeading) {
                 // The sidebar stays painted behind the chat, but must never
                 // appear through its transparent iMessage message surface.
                 Rectangle()
@@ -178,24 +225,14 @@ struct AppShell: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .safeAreaPadding()
 
-                // The one fixed wallpaper stays between sidebar and chat.
-                // Move and clip it with the chat card when the sidebar opens;
-                // do not disable it or switch the card back to white.
-                if isWallpaperChatVisible {
-                    rootWallpaperBackdrop
-                        .clipShape(
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: cardCornerRadius,
-                                bottomLeadingRadius: cardCornerRadius,
-                                bottomTrailingRadius: cardCornerRadius,
-                                topTrailingRadius: cardCornerRadius,
-                                style: .continuous
-                            )
-                        )
-                        .offset(x: pageHorizontalOffset)
-                }
+                // The sidebar is always below this ONE composited chat card.
+                // The photo and navigation never get independent transforms.
+                ZStack(alignment: .topLeading) {
+                    if isWallpaperChatVisible, let shellWallpaperImage {
+                        wallpaperImage(shellWallpaperImage, size: fullViewport)
+                    }
 
-                PageContainer(
+                    PageContainer(
                     selectedPage: selectedPage,
                     diaryTarget: diaryTarget,
                     daySpaceTarget: daySpaceTarget,
@@ -234,17 +271,18 @@ struct AppShell: View {
                     onUniverseTargetConsumed: {
                         universeTargetNodeID = nil
                     }
-                )
-                .frame(width: proxy.size.width, height: proxy.size.height)
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: cardCornerRadius,
-                        bottomLeadingRadius: cardCornerRadius,
-                        bottomTrailingRadius: cardCornerRadius,
-                        topTrailingRadius: cardCornerRadius,
-                        style: .continuous
                     )
+                    // ChatView keeps native keyboard avoidance and the
+                    // bottom safe-area inset. Only its height may shrink.
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                }
+                // A full-viewport canvas/mask never shrinks with the keyboard.
+                .frame(
+                    width: fullViewport.width,
+                    height: fullViewport.height,
+                    alignment: .topLeading
                 )
+                .clipShape(SidebarRevealCardMask(progress: revealProgress))
                 .shadow(
                     color: .black.opacity(menuOpen ? 0.08 : 0),
                     radius: 12,
@@ -270,7 +308,18 @@ struct AppShell: View {
                 )
 
             }
+            .frame(
+                width: proxy.size.width,
+                height: proxy.size.height,
+                alignment: .topLeading
+            )
             .coordinateSpace(name: "sidebar-drag-space")
+            .onAppear {
+                rememberIPhoneViewport(proxy.size)
+            }
+            .onChange(of: proxy.size) { _, size in
+                rememberIPhoneViewport(size)
+            }
         }
         .ignoresSafeArea(.container)
     }
