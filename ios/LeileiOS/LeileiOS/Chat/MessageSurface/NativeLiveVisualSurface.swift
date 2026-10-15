@@ -7,6 +7,8 @@ struct NativeLiveVisualSurface: View {
     let label: String
     var previewAction: (() -> Void)? = nil
     var compactInline = false
+    // SVG already has an outer native card; don't nest glass inside glass.
+    var embeddedInParentPanel = false
 
     @StateObject private var controller =
         NativeLiveVisualSandboxController()
@@ -77,6 +79,7 @@ struct NativeLiveVisualSurface: View {
                                     : "square.on.square"
                         )
                         .font(.system(size: 15))
+                        .rotationEffect(.degrees(isCopied ? 0 : 180))
                         .frame(width: 24, height: 24)
                     }
                     .foregroundStyle(.secondary)
@@ -132,10 +135,11 @@ struct NativeLiveVisualSurface: View {
             }
         }
         .padding(12)
-        .background(
-            Color.primary.opacity(0.045),
-            in: RoundedRectangle(cornerRadius: 10)
-        )
+        .modifier(NativeLiveIMessageContentPanel(
+            originalOpacity: 0.045,
+            originalCornerRadius: 10,
+            embeddedInGlass: embeddedInParentPanel
+        ))
     }
 
     @ViewBuilder

@@ -4,6 +4,10 @@ import UIKit
 struct PageContainer: View {
     @EnvironmentObject private var appModel: AppModel
 
+    // The fixed iMessage wallpaper is painted exactly once by AppShell.
+    // Do not place a keyboard-sized image behind this NavigationStack.
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
+
     @State private var renameTitle = ""
     @State private var showingRenameAlert = false
     @State private var renameErrorMessage: String?
@@ -34,6 +38,13 @@ struct PageContainer: View {
         // Universe extends its map beneath the transparent navigation bar.
         NavigationStack {
             pageContent
+            // NavigationStack has its own container surface. Clearing just
+            // .background below it is insufficient: the navigation canvas
+            // can hide the one wallpaper painted by AppShell.
+            .containerBackground(
+                iMessageWallpaperVisible ? Color.clear : pageBackground,
+                for: .navigation
+            )
             .navigationTitle(selectedPage == .chat || selectedPage == .universe ? "" : pageTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -63,7 +74,14 @@ struct PageContainer: View {
             }
             .toolbarBackground(.hidden, for: .navigationBar)
         }
-        .background(pageBackground.ignoresSafeArea())
+        // Leave the navigation container transparent when the shell owns the
+        // wallpaper. Every other page and the Original chat keep their prior
+        // system background.
+        .background {
+            if !iMessageWallpaperVisible {
+                pageBackground.ignoresSafeArea()
+            }
+        }
         .sheet(isPresented: $showingContext) {
             ContextOverviewSheet()
         }

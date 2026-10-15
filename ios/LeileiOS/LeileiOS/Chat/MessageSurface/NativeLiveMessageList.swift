@@ -13,9 +13,10 @@ func nativeLiveMessageList<Pagination: View>(
     onRetryMessage: @escaping (String) -> Void,
     onEditMessage: @escaping (NativeLiveCurrentPathMessage) -> Void,
     onResolveRuntimeInteraction: @escaping (NativeLiveRuntimeInteractionSnapshot, [String: NativeLiveJSONValue]) async throws -> Void,
+    rowSpacing: CGFloat = ChatPresentationLayout.turnSpacing,
     @ViewBuilder pagination: @escaping () -> Pagination
 ) -> some View {
-    LazyVStack(spacing: ChatPresentationLayout.turnSpacing) {
+    LazyVStack(spacing: rowSpacing) {
         if !rows.contains(where: \.isHistoryDivider) {
             pagination()
         }

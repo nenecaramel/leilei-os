@@ -32,7 +32,7 @@ struct NativeLiveSVGRenderer: View {
         VStack(alignment:.leading,spacing:8) {
             Text(input.filename).font(.subheadline).accessibilityLabel(input.filename)
             if let visual = loader.input {
-                NativeLiveVisualSurface(input:visual,label:input.filename,previewAction:{ fullscreen = true })
+                NativeLiveVisualSurface(input:visual,label:input.filename,previewAction:{ fullscreen = true },embeddedInParentPanel:true)
                 Button("Fullscreen preview") { fullscreen = true }.font(.caption)
             } else if loader.loading { Label("Loading SVG…",systemImage:"hourglass").font(.caption) }
             else { Text(loader.error ?? input.presentationState.rawValue).font(.caption).foregroundStyle(.secondary) }
@@ -42,7 +42,11 @@ struct NativeLiveSVGRenderer: View {
             }.font(.caption)
             if let openError { Text(openError).font(.caption) }
         }
-        .padding(10).background(Color.primary.opacity(0.045),in:RoundedRectangle(cornerRadius:12))
+        .padding(10)
+        .modifier(NativeLiveIMessageContentPanel(
+            originalOpacity: 0.045,
+            originalCornerRadius: 12
+        ))
         .task(id: "\(input.entityID ?? input.draftID)|\(input.sha256 ?? "")|\(input.materialization)|\(retry)") { await loader.load(input,appModel:appModel) }
         .sheet(item:$lease,onDismiss:{ lease?.cleanup(); lease = nil }) { NativeLiveFileOpenView(lease:$0) }
         .fullScreenCover(isPresented:$fullscreen) {

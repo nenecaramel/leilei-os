@@ -1,9 +1,17 @@
 import SwiftUI
+import UIKit
 
 struct AppShell: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var inheritedColorScheme
     @EnvironmentObject private var appModel: AppModel
+
+    // The iPhone shell is the final backdrop exposed by the system keyboard's
+    // rounded top corners, outside PageContainer's clipped navigation card.
+    @AppStorage(ChatTheme.storageKey) private var chatThemeRawValue =
+        ChatTheme.original.rawValue
+    @AppStorage(IMessageWallpaper.revisionKey) private var wallpaperRevision = ""
+    @State private var shellWallpaperImage: UIImage?
 
     @State private var selectedPage: AppPage = .chat
     @State private var diaryTarget: DiaryNavigationTarget?
@@ -20,12 +28,17 @@ struct AppShell: View {
         Group {
             if horizontalSizeClass == .regular {
                 iPadLayout
+                    .background { rootWallpaperBackdrop }
             } else {
                 iPhoneLayout
             }
         }
+        .environment(\.iMessageWallpaperVisible, isWallpaperChatVisible)
         .environment(\.colorScheme, shellColorScheme)
         .tint(.primary)
+        .task(id: wallpaperRevision) {
+            shellWallpaperImage = IMessageWallpaper.load()
+        }
         .onPreferenceChange(FloatingControlCenterPreferenceKey.self) { centers in
             guard selectedPage == .chat,
                   let centerY = centers[FloatingControlCenter.menu]
@@ -45,6 +58,31 @@ struct AppShell: View {
                 inheritedColorScheme
             )
         }
+    }
+
+    // Exactly one physical renderer. iPhone places it in the previously
+    // verified ZStack background beneath the navigation card (and keyboard);
+    // iPad uses the same view behind its split layout.
+    @ViewBuilder
+    private var rootWallpaperBackdrop: some View {
+        if isWallpaperChatVisible, let shellWallpaperImage {
+            GeometryReader { geometry in
+                Image(uiImage: shellWallpaperImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+            }
+            .ignoresSafeArea(.all)
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
+        }
+    }
+
+    private var isWallpaperChatVisible: Bool {
+        selectedPage == .chat
+            && chatThemeRawValue == ChatTheme.iMessage.rawValue
+            && shellWallpaperImage != nil
     }
 
     private var isUniverseTheme: Bool {
@@ -100,8 +138,12 @@ struct AppShell: View {
         GeometryReader { proxy in
             let revealOffset = min(proxy.size.width * 0.77, 330)
             let cardCornerRadius: CGFloat = menuOpen ? 50 : 0
+            let pageHorizontalOffset = (menuOpen ? revealOffset : 0)
+                + sidebarDragTranslation
 
             ZStack(alignment: .leading) {
+                // The sidebar stays painted behind the chat, but must never
+                // appear through its transparent iMessage message surface.
                 Rectangle()
                     .fill(sidebarBackground)
                     .ignoresSafeArea()
@@ -135,6 +177,23 @@ struct AppShell: View {
                 .frame(width: 300)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .safeAreaPadding()
+
+                // The one fixed wallpaper stays between sidebar and chat.
+                // Move and clip it with the chat card when the sidebar opens;
+                // do not disable it or switch the card back to white.
+                if isWallpaperChatVisible {
+                    rootWallpaperBackdrop
+                        .clipShape(
+                            UnevenRoundedRectangle(
+                                topLeadingRadius: cardCornerRadius,
+                                bottomLeadingRadius: cardCornerRadius,
+                                bottomTrailingRadius: cardCornerRadius,
+                                topTrailingRadius: cardCornerRadius,
+                                style: .continuous
+                            )
+                        )
+                        .offset(x: pageHorizontalOffset)
+                }
 
                 PageContainer(
                     selectedPage: selectedPage,
@@ -203,11 +262,7 @@ struct AppShell: View {
                         }
                     }
                 }
-                .offset(
-                    x:
-                        (menuOpen ? revealOffset : 0)
-                        + sidebarDragTranslation
-                )
+                .offset(x: pageHorizontalOffset)
                 .simultaneousGesture(
                     sidebarDragGesture(
                         revealOffset: revealOffset

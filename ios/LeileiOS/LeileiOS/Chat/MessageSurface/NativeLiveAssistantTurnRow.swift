@@ -3,6 +3,7 @@ import SwiftUI
 // The row draws a single pre-reconciled turn. It never chooses runtime/canonical owners.
 struct NativeLiveAssistantTurnRow: View {
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.chatTheme) private var chatTheme
     let turn: NativeLiveAssistantTurnPresentation
     let isCurrentHead: Bool
     let isTurnInFlight: Bool
@@ -10,7 +11,14 @@ struct NativeLiveAssistantTurnRow: View {
     let onCopyMessage: (String) -> Void
     let onRetryMessage: (String) -> Void
     let onResolveInteraction: (NativeLiveRuntimeInteractionSnapshot,[String:NativeLiveJSONValue]) async throws -> Void
-    var body: some View {
+    var body: some View { content }
+
+    private var retryAction: (() -> Void)? {
+        guard turn.canRetry, let userID = turn.parentUserMessageID else { return nil }
+        return { onRetryMessage(userID) }
+    }
+
+    private var content: some View {
         VStack(alignment:.leading,spacing:ChatPresentationLayout.assistantSpacing) {
             if processSections.showsLoading {
                 Text("Thinking...").font(.system(size: 14)).foregroundStyle(.secondary)
@@ -21,10 +29,24 @@ struct NativeLiveAssistantTurnRow: View {
                 .padding(.bottom, processSections.showsActivity && !turn.bodyPresentation.nodes.isEmpty ? processSectionExtraSpacing : 0)
             spotifyResultArea
             elevenLabsResultArea
-            NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)
+            if chatTheme == .iMessage {
+                NativeLiveIMessageTextBubbleList(
+                    presentation: turn.bodyPresentation,
+                    side: .incoming,
+                    timestamp: turn.visibleTimestamp.map { MessageTimestampFormatter.string(from: $0) },
+                    onCopy: onCopyMessage,
+                    onRetry: retryAction,
+                    isRetryDisabled: isTurnInFlight
+                )
+                .textSelection(.enabled)
+            } else {
+                NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)
+            }
             MindWriteIndicator(items:mindWrites)
-            nativeLiveAssistantActions(turn:turn,isTurnInFlight:isTurnInFlight,isCopied:isCopied,
-                onCopyMessage:onCopyMessage,onRetryMessage:onRetryMessage)
+            if chatTheme == .original {
+                nativeLiveAssistantActions(turn:turn,isTurnInFlight:isTurnInFlight,isCopied:isCopied,
+                    onCopyMessage:onCopyMessage,onRetryMessage:onRetryMessage)
+            }
         }
         .frame(maxWidth:.infinity,alignment:.leading)
         .task(id:turn.canonicalMessageID) {
@@ -32,10 +54,11 @@ struct NativeLiveAssistantTurnRow: View {
             await appModel.refreshMindWrites(messageID:id)
         }
     }
-    // Add only the difference to the existing row spacing. Footer and body
-    // spacing stay unchanged; absent sections add no extra inset.
+    // iMessage targets 10pt between Thought/Worked, Worked/body, or
+    // Thought/body: the 6pt VStack gap plus 4pt conditional inset.
+    // Original retains the existing 18pt process gap and footer behavior.
     private var processSectionExtraSpacing: CGFloat {
-        ChatPresentationLayout.processSectionSpacing - ChatPresentationLayout.assistantSpacing
+        (chatTheme == .iMessage ? ChatPresentationLayout.iMessageProcessSectionSpacing : ChatPresentationLayout.processSectionSpacing) - ChatPresentationLayout.assistantSpacing
     }
     private var processSections: NativeLiveProcessSections {
         NativeLiveProcessSections(isActive: turn.activityProjection.turnIsActive,

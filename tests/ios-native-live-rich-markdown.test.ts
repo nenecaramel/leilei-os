@@ -138,3 +138,43 @@ test("compact provider tables, inline math visuals, wide math scrolling and visu
   );
   assert.doesNotMatch(visual, /"doc\.on\.doc"/);
 });
+
+
+test("all special-card top-right copy glyphs rotate in place across both chat themes", () => {
+  const root = "ios/LeileiOS/LeileiOS/Chat/MessageSurface/";
+  const source = fs.readFileSync(root + "NativeLiveCodeRenderer.swift", "utf8");
+  const visual = fs.readFileSync(root + "NativeLiveVisualSurface.swift", "utf8");
+  const table = fs.readFileSync(root + "NativeLiveTableRenderer.swift", "utf8");
+  const diff = fs.readFileSync(root + "NativeLiveDiffRenderer.swift", "utf8");
+  const math = fs.readFileSync(root + "NativeLiveMathRenderer.swift", "utf8");
+  const svg = fs.readFileSync(root + "NativeLiveSVGRenderer.swift", "utf8");
+  const actions = fs.readFileSync(root + "NativeLiveAssistantActions.swift", "utf8");
+
+  // Rotate only the SF Symbol inside its existing fixed 24x24 hit target,
+  // and leave the temporary "Copied" checkmark in its normal orientation.
+  const icon = /Image\(\s*systemName:\s*isCopied\s*\?\s*"checkmark"\s*:\s*"square\.on\.square"\s*\)\s*\.font\(\.system\(size: 15\)\)\s*\.rotationEffect\(\.degrees\(isCopied \? 0 : 180\)\)\s*\.frame\(width: 24, height: 24\)/;
+  for (const [name, text] of [
+    ["code/table/diff shared source", source],
+    ["math/Mermaid visual preview", visual],
+  ] as const) {
+    assert.match(text, icon, name);
+    assert.equal((text.match(/\.rotationEffect\(\.degrees\(isCopied \? 0 : 180\)\)/g) ?? []).length, 1);
+    assert.match(text, /\.buttonStyle\(\.plain\)/);
+    assert.match(text, /accessibilityLabel\(/);
+  }
+
+  // No new per-theme branch; all content types use the same two shared
+  // copy controls and their original copy/status implementations.
+  assert.match(source, /struct NativeLiveSourcePanel<Content: View>: View/);
+  assert.match(source, /NativeLiveSourcePanel\(label: model\.language/);
+  assert.match(table, /NativeLiveSourcePanel\(label: "Table"/);
+  assert.match(diff, /NativeLiveSourcePanel\(label: "Diff"/);
+  assert.match(math, /NativeLiveSourcePanel\(/);
+  assert.match(visual, /private var regularSurface: some View/);
+  assert.match(svg, /NativeLiveVisualSurface\(input:visual/);
+  assert.match(source, /UIPasteboard\.general\.string = copyText/);
+  assert.match(visual, /UIPasteboard\.general\.string = input\.source/);
+  assert.match(actions, /\.rotationEffect\(\.degrees\(isCopied \? 0 : 180\)\)/);
+  assert.doesNotMatch(source, /chatTheme == \.iMessage[\s\S]*?rotationEffect/);
+  assert.doesNotMatch(visual, /chatTheme == \.iMessage[\s\S]*?rotationEffect/);
+});

@@ -8,6 +8,13 @@ enum ChatPresentationLayout {
     static let turnSpacing: CGFloat = 25
     static let messageVerticalInset: CGFloat = 8
     static let userLeadingClearance: CGFloat = 48
+    static let iMessageUserLeadingClearance: CGFloat = 70
+    static let iMessageUserBubbleVerticalInset: CGFloat = 10
+    static let iMessageUserBubbleRadius: CGFloat = 20
+    // iMessage-only layout; Original theme keeps its existing spacing constants.
+    static let iMessageTurnSpacing: CGFloat = 12
+    static let iMessageTextBubbleSpacing: CGFloat = 8
+    static let iMessageProcessSectionSpacing: CGFloat = 10
     static let bubbleHorizontalInset: CGFloat = 14
     static let bubbleVerticalInset: CGFloat = 12
     static let bubbleRadius: CGFloat = 18

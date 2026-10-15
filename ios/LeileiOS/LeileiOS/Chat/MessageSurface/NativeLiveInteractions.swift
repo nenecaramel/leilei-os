@@ -1,6 +1,29 @@
 import SwiftUI
 import Foundation
 
+// Same 11pt native regular glass as Tool and rich-content cards, only with
+// an iMessage wallpaper. Keep the existing 14pt Original gray panel verbatim.
+private struct NativeLiveInteractionCardBackground: ViewModifier {
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if iMessageWallpaperVisible {
+            content
+                .foregroundStyle(Color(red: 0.17, green: 0.20, blue: 0.23))
+                .glassEffect(
+                    .regular,
+                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                )
+        } else {
+            content.background(
+                Color.primary.opacity(0.055),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+        }
+    }
+}
+
 struct NativeLivePermissionInteractionCard: View {
     let interaction: NativeLiveRuntimeInteractionSnapshot
     let onResolve:
@@ -67,13 +90,7 @@ struct NativeLivePermissionInteractionCard: View {
             }
         }
         .padding(14)
-        .background(
-            Color.primary.opacity(0.055),
-            in: RoundedRectangle(
-                cornerRadius: 14,
-                style: .continuous
-            )
-        )
+        .modifier(NativeLiveInteractionCardBackground())
     }
 
     private func submit(
@@ -244,13 +261,7 @@ struct NativeLiveQuestionInteractionCard: View {
             }
         }
         .padding(14)
-        .background(
-            Color.primary.opacity(0.055),
-            in: RoundedRectangle(
-                cornerRadius: 14,
-                style: .continuous
-            )
-        )
+        .modifier(NativeLiveInteractionCardBackground())
     }
 
     private func isSelected(

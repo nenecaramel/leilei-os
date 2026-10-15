@@ -23,6 +23,7 @@ struct NativeLiveMessageSurface: View {
     let onEditMessage: (NativeLiveCurrentPathMessage) -> Void
 
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.chatTheme) private var chatTheme
     private let bottomAnchorID = "native-live-chat-bottom"
     @State private var scrollState = NativeLiveConversationScrollState()
     @State private var scrollPosition = ScrollPosition()
@@ -59,7 +60,9 @@ struct NativeLiveMessageSurface: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
+        // The iMessage wallpaper is owned by ChatView behind this scroll
+        // surface; Original retains its opaque system background.
+        .background(chatTheme == .iMessage ? Color.clear : Color(.systemBackground))
         .environment(\.nativeLiveCopyFeedback) { text in
             showCopyFeedback(text)
         }
@@ -99,13 +102,17 @@ struct NativeLiveMessageSurface: View {
                     onRetryMessage: onRetryMessage,
                     onEditMessage: onEditMessage,
                     onResolveRuntimeInteraction: onResolveRuntimeInteraction,
+                    rowSpacing: chatTheme == .iMessage ? ChatPresentationLayout.iMessageTurnSpacing : ChatPresentationLayout.turnSpacing,
                     pagination: { loadOlderButton(snapshot) }
                 )
             }
             // Scroll observation and lifecycle: order and owner intentionally unchanged.
             .scrollDismissesKeyboard(.interactively)
             .scrollBounceBehavior(.always)
-            .scrollClipDisabled()
+            // iMessage's composer is a translucent separate safe-area inset.
+            // Do not let oversized transcript content paint underneath it.
+            // Original preserves its existing unclipped scrolling surface.
+            .scrollClipDisabled(chatTheme != .iMessage)
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .alignment)
             .refreshable {
@@ -169,7 +176,12 @@ struct NativeLiveMessageSurface: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Scroll to latest")
-                    .offset(y: ChatPresentationLayout.scrollActionPaintOffset)
+                    // Pin inside the visible transcript above the composer.
+                    // The old +22pt paint offset pushed the button into the
+                    // iMessage input when the keyboard shortened the viewport.
+                    // Original retains the previous visual position.
+                    .padding(.bottom, chatTheme == .iMessage ? 12 : 0)
+                    .offset(y: chatTheme == .iMessage ? 0 : ChatPresentationLayout.scrollActionPaintOffset)
                     .transition(
                         .scale(scale: 0.9)
                             .combined(with: .opacity)

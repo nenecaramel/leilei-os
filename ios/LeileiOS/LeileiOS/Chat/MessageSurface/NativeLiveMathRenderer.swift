@@ -23,6 +23,7 @@ struct NativeLiveMathRenderer: View {
 // paragraph wrapping natively, but render math runs with the visual math
 // surface instead of exposing raw LaTeX in the paragraph.
 struct NativeLiveInlineMathParagraphRenderer: View {
+    @Environment(\.chatTheme) private var chatTheme
     let node: NativeLiveVisualNode
     let model: NativeLiveMarkdownPresentation
     let role: String
@@ -51,7 +52,7 @@ struct NativeLiveInlineMathParagraphRenderer: View {
         case .list(let marker, let depth):
             HStack(alignment: .top, spacing: 8) {
                 Text(marker)
-                    .font(.system(size: 17))
+                    .font(isIMessageBubbleText ? .body : .system(size: 17))
                 flow
             }
             .padding(.leading, CGFloat(depth) * 12)
@@ -71,6 +72,10 @@ struct NativeLiveInlineMathParagraphRenderer: View {
         }
     }
 
+    private var isIMessageBubbleText: Bool {
+        chatTheme == .iMessage && (role == "user" || role == "assistant")
+    }
+
     private var flow: some View {
         NativeLiveInlineMathFlowLayout(
             horizontalSpacing: 1,
@@ -81,9 +86,9 @@ struct NativeLiveInlineMathParagraphRenderer: View {
                     NativeLiveInlineMathVisualRenderer(model: math)
                 } else if let markdown = child.markdown {
                     Text(markdown.inline)
-                        .font(.system(size: 17))
+                        .font(isIMessageBubbleText ? .body : .system(size: 17))
                         .textSelection(.enabled)
-                        .lineSpacing(role == "user" ? 5 : 6)
+                        .lineSpacing(isIMessageBubbleText ? 0 : (role == "user" ? 5 : 6))
                         .environment(
                             \.openURL,
                             OpenURLAction { url in
@@ -96,7 +101,7 @@ struct NativeLiveInlineMathParagraphRenderer: View {
                         )
                 } else if let text = child.text {
                     Text(text)
-                        .font(.system(size: 17))
+                        .font(isIMessageBubbleText ? .body : .system(size: 17))
                         .textSelection(.enabled)
                 }
             }

@@ -232,7 +232,24 @@ struct NativeLiveMediaCard: View {
         }
     }
 
-    private var fileLabel: some View {
+    // Ordinary files reuse rich-content glass; photos and audio retain their presentation.
+    @ViewBuilder private var fileLabel: some View {
+        if input.mediaKind == .file {
+            fileLabelContent
+                .modifier(NativeLiveIMessageContentPanel(
+                    originalOpacity: 0.045,
+                    originalCornerRadius: 12
+                ))
+        } else {
+            fileLabelContent
+                .background(
+                    Color.primary.opacity(0.045),
+                    in: RoundedRectangle(cornerRadius: 12)
+                )
+        }
+    }
+
+    private var fileLabelContent: some View {
         HStack(spacing:10) {
             Image(systemName:input.mediaKind == .svg ? "photo.artframe" : (input.mediaKind == .bitmap ? "photo" : "doc"))
             VStack(alignment:.leading,spacing:3) {
@@ -250,7 +267,6 @@ struct NativeLiveMediaCard: View {
             else { Image(systemName:"arrow.up.right.square").foregroundStyle(.secondary) }
         }
         .padding(11).frame(maxWidth:.infinity,alignment:.leading)
-        .background(Color.primary.opacity(0.045),in:RoundedRectangle(cornerRadius:12))
     }
 
     private func retryFailedOperation() {

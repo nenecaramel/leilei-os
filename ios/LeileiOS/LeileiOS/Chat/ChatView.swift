@@ -17,6 +17,7 @@ struct ChatView: View {
     @State var messageText = ""
     @AppStorage(ChatTheme.storageKey) private var chatThemeRawValue =
         ChatTheme.original.rawValue
+    @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
 
     private var selectedChatTheme: ChatTheme {
         ChatTheme(rawValue: chatThemeRawValue) ?? .original
@@ -45,8 +46,12 @@ struct ChatView: View {
 
     var body: some View {
         ZStack {
-            Color(.systemBackground)
-                .ignoresSafeArea()
+            // A single fixed wallpaper lives behind the whole AppShell.
+            // Suppress the opaque fallback only while it is visible.
+            if !iMessageWallpaperVisible {
+                Color(.systemBackground)
+                    .ignoresSafeArea()
+            }
 
             if isDraftConversation && pendingOperation == nil {
                 NativeLiveMessageSurface.scrollableState { Color.clear }
@@ -155,9 +160,9 @@ struct ChatView: View {
             pendingMidTurnDelivery = nil
         }
         // Native safe-area placement without a toolbar's opaque bar backdrop.
-        // Original keeps its existing geometry; the iMessage presentation is
-        // independently padded using system spacing without hard-coded gutters.
-        .safeAreaInset(edge: .bottom) {
+        // Original keeps its existing geometry; only the iMessage
+        // presentation uses the requested visual placement and fixed gutters.
+        .safeAreaInset(edge: .bottom, spacing: selectedChatTheme == .iMessage ? 0 : nil) {
             if selectedChatTheme == .original {
                 chatComposer
                     .padding(.horizontal, ChatPresentationLayout.composerOuterHorizontal)
@@ -169,10 +174,15 @@ struct ChatView: View {
                             : ChatPresentationLayout.composerHiddenKeyboardPaintOffset
                     )
             } else {
+                // Keep the requested 10pt visual lowering while the keyboard
+                // is hidden. Once it appears, use real layout padding so the
+                // input never paints into the keyboard boundary.
                 chatComposer
                     .frame(maxWidth: .infinity)
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, isSystemKeyboardVisible ? 12 : 8)
+                    .offset(y: isSystemKeyboardVisible ? 0 : 10)
             }
         }
         .sheet(isPresented: $isNativeCallPresented) {
@@ -325,6 +335,7 @@ struct ChatView: View {
             },
             voiceEnabled: voiceEnabled,
             voiceStatus: voiceInput.status,
+            voicePhase: voiceInput.phase,
             onVoiceInteractionBegin: {
                 voiceInput.dismissStatusMessage()
             },

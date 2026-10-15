@@ -4,21 +4,36 @@ struct ComposerStatusArea: View {
     let voiceStatus: String?
     let isEditing: Bool
     let onCancelEdit: (() -> Void)?
+    var isIMessage = false
+    var voicePhase: VoiceInputController.Phase = .idle
 
     @ViewBuilder var body: some View {
         if let voiceStatus {
-            Text(voiceStatus).font(.footnote).foregroundStyle(.secondary)
+            if isIMessage {
+                IMessageVoiceStatusView(status: voiceStatus, phase: voicePhase)
+            } else {
+                Text(voiceStatus).font(.footnote).foregroundStyle(.secondary)
+            }
         }
         if isEditing {
-            ComposerEditBanner(onCancelEdit: onCancelEdit)
+            ComposerEditBanner(onCancelEdit: onCancelEdit, isIMessage: isIMessage)
         }
     }
 }
 
 struct ComposerEditBanner: View {
     let onCancelEdit: (() -> Void)?
+    var isIMessage = false
 
-    var body: some View {
+    @ViewBuilder var body: some View {
+        if isIMessage {
+            iMessageBanner
+        } else {
+            originalBanner
+        }
+    }
+
+    private var originalBanner: some View {
         HStack(spacing: ChatPresentationLayout.composerRowSpacing) {
             Text("Edit message")
                 .font(.system(size: 13.5, weight: .regular))
@@ -48,6 +63,104 @@ struct ComposerEditBanner: View {
             )
         )
         .transition(.opacity)
+    }
+
+    private var iMessageBanner: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "pencil")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            Text("Editing message")
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundStyle(.primary)
+
+            Spacer(minLength: 0)
+
+            Button {
+                onCancelEdit?()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .frame(width: 30, height: 30)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Cancel edit")
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 5)
+        .frame(height: 40)
+        .glassEffect(
+            .regular,
+            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+        )
+        .transition(.opacity)
+    }
+}
+
+// This is presentation only: the recording phases and callbacks are still
+// owned by VoiceInputController. No new microphone or send behavior is added.
+private struct IMessageVoiceStatusView: View {
+    let status: String
+    let phase: VoiceInputController.Phase
+
+    var body: some View {
+        HStack(spacing: 10) {
+            statusIcon
+                .frame(width: 26, height: 24)
+
+            Text(status)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(minHeight: 40)
+        .glassEffect(
+            .regular,
+            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private var statusIcon: some View {
+        switch phase {
+        case .recording:
+            IMessageVoiceWaveform()
+        case .authorizing, .finishing:
+            ProgressView()
+                .controlSize(.small)
+                .tint(.primary)
+        case .idle:
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 16))
+                .foregroundStyle(.red)
+        }
+    }
+}
+
+// A tiny time-driven visual waveform; it does not sample microphone data.
+private struct IMessageVoiceWaveform: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.12)) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            HStack(alignment: .center, spacing: 2.5) {
+                ForEach(0..<6, id: \.self) { index in
+                    Capsule()
+                        .fill(Color.primary)
+                        .frame(
+                            width: 2.5,
+                            height: 5 + 15 * abs(sin(time * 6.5 + Double(index) * 0.85))
+                        )
+                }
+            }
+            .frame(width: 26, height: 24)
+        }
+        .accessibilityHidden(true)
     }
 }
 

@@ -26,6 +26,7 @@ struct ChatComposer: View {
     var onMidTurnInput: ((String) -> Void)? = nil
     var voiceEnabled = false
     var voiceStatus: String? = nil
+    var voicePhase: VoiceInputController.Phase = .idle
     var onVoiceInteractionBegin: (() -> Void)? = nil
     var onVoicePress: (() -> Void)? = nil
     var onVoiceRelease: (() -> Void)? = nil
@@ -97,7 +98,9 @@ struct ChatComposer: View {
             ComposerStatusArea(
                 voiceStatus: voiceStatus,
                 isEditing: isEditing,
-                onCancelEdit: onCancelEdit
+                onCancelEdit: onCancelEdit,
+                isIMessage: true,
+                voicePhase: voicePhase
             )
 
             if !attachments.isEmpty {
@@ -108,7 +111,7 @@ struct ChatComposer: View {
                 )
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
+            HStack(alignment: .bottom, spacing: 10) {
                 iMessagePlusMenu
 
                 HStack(alignment: .bottom, spacing: 8) {
@@ -116,7 +119,7 @@ struct ChatComposer: View {
                         "",
                         text: $text,
                         prompt: Text("Message")
-                            .foregroundStyle(.secondary),
+                            .foregroundStyle(Color.primary.opacity(0.35)),
                         axis: .vertical
                     )
                     .focused(isFocused)
@@ -352,7 +355,7 @@ struct ChatComposer: View {
         switch actionPresentation.mode {
         case .voice:
             Image(systemName: "waveform")
-                .font(.system(size: 21, weight: .medium))
+                .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(.primary)
                 .frame(
                     width: LeileiUI.ControlGeometry.compact,

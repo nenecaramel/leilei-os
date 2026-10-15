@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PhotosUI
 import UserNotifications
 
 struct SettingsHomeContent: View {
@@ -8,6 +9,17 @@ struct SettingsHomeContent: View {
     @AppStorage("appearanceMode") private var appearanceModeRawValue = AppearanceMode.system.rawValue
     @AppStorage(ChatTheme.storageKey) private var chatThemeRawValue =
         ChatTheme.original.rawValue
+    @AppStorage(IMessageWallpaper.revisionKey) private var wallpaperRevision = ""
+    @AppStorage(IMessageBubbleAppearance.outgoingColorKey)
+    private var outgoingBubbleColor = IMessageBubbleAppearance.defaultOutgoingColorHex
+    @AppStorage(IMessageBubbleAppearance.incomingColorKey)
+    private var incomingBubbleColor = IMessageBubbleAppearance.defaultIncomingColorHex
+    @AppStorage(IMessageBubbleAppearance.outgoingOpacityKey)
+    private var outgoingBubbleOpacity = IMessageBubbleAppearance.defaultOutgoingOpacity
+    @AppStorage(IMessageBubbleAppearance.incomingOpacityKey)
+    private var incomingBubbleOpacity = IMessageBubbleAppearance.defaultIncomingOpacity
+    @State private var wallpaperSelection: PhotosPickerItem?
+    @State private var hasWallpaper = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var authorizationStatus: UNAuthorizationStatus = .notDetermined
     @State private var showingSignOutConfirmation = false
@@ -71,6 +83,33 @@ struct SettingsHomeContent: View {
                 }
                 .pickerStyle(.menu)
 
+                if chatThemeRawValue == ChatTheme.iMessage.rawValue {
+                    LabeledContent("Chat Background") {
+                        Text(hasWallpaper ? "Custom" : "Default")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    PhotosPicker(selection: $wallpaperSelection, matching: .images) {
+                        Label(
+                            hasWallpaper ? "Change Chat Background" : "Choose Chat Background",
+                            systemImage: "photo.on.rectangle.angled"
+                        )
+                    }
+
+                    if hasWallpaper {
+                        Button(role: .destructive) {
+                            do {
+                                try IMessageWallpaper.remove()
+                                wallpaperRevision = UUID().uuidString
+                            } catch {
+                                authErrorMessage = error.localizedDescription
+                            }
+                        } label: {
+                            Label("Restore Default Background", systemImage: "arrow.uturn.backward")
+                        }
+                    }
+                }
+
                 Button {
                     Task {
                         await handleNotificationsTap()
@@ -84,6 +123,55 @@ struct SettingsHomeContent: View {
                     }
                 }
                 .foregroundStyle(.primary)
+            }
+
+            if chatThemeRawValue == ChatTheme.iMessage.rawValue {
+                Section("iMessage Bubble Colors") {
+                    ColorPicker(
+                        "User Bubble Color",
+                        selection: outgoingBubbleColorSelection,
+                        supportsOpacity: false
+                    )
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("User Color Opacity")
+                            Spacer()
+                            Text("\(Int((outgoingBubbleOpacity * 100).rounded()))%")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $outgoingBubbleOpacity, in: 0...1, step: 0.01)
+                    }
+
+                    ColorPicker(
+                        "Assistant Bubble Color",
+                        selection: incomingBubbleColorSelection,
+                        supportsOpacity: false
+                    )
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Assistant Color Opacity")
+                            Spacer()
+                            Text("\(Int((incomingBubbleOpacity * 100).rounded()))%")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $incomingBubbleOpacity, in: 0...1, step: 0.01)
+                    }
+
+                    Button("Restore Default Bubble Colors") {
+                        outgoingBubbleColor = IMessageBubbleAppearance.defaultOutgoingColorHex
+                        incomingBubbleColor = IMessageBubbleAppearance.defaultIncomingColorHex
+                        outgoingBubbleOpacity = IMessageBubbleAppearance.defaultOutgoingOpacity
+                        incomingBubbleOpacity = IMessageBubbleAppearance.defaultIncomingOpacity
+                    }
+
+                    Text("Opacity controls the color over native frosted glass.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Data") {
@@ -116,6 +204,25 @@ struct SettingsHomeContent: View {
         .task {
             await refreshAuthorizationStatus()
         }
+        .task(id: wallpaperRevision) {
+            hasWallpaper = IMessageWallpaper.load() != nil
+        }
+        .onChange(of: wallpaperSelection) { _, item in
+            guard let item else { return }
+            Task { @MainActor in
+                defer { wallpaperSelection = nil }
+                do {
+                    guard let data = try await item.loadTransferable(type: Data.self),
+                          let image = UIImage(data: data) else {
+                        throw IMessageWallpaper.WallpaperError.invalidImage
+                    }
+                    try IMessageWallpaper.save(image)
+                    wallpaperRevision = UUID().uuidString
+                } catch {
+                    authErrorMessage = error.localizedDescription
+                }
+            }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             Task {
@@ -137,6 +244,20 @@ struct SettingsHomeContent: View {
                 get: { authErrorMessage != nil },
                 set: { if !$0 { authErrorMessage = nil } }
             )
+        )
+    }
+
+    private var outgoingBubbleColorSelection: Binding<Color> {
+        Binding(
+            get: { IMessageBubbleAppearance.color(hex: outgoingBubbleColor) },
+            set: { outgoingBubbleColor = IMessageBubbleAppearance.hex(from: $0) }
+        )
+    }
+
+    private var incomingBubbleColorSelection: Binding<Color> {
+        Binding(
+            get: { IMessageBubbleAppearance.color(hex: incomingBubbleColor) },
+            set: { incomingBubbleColor = IMessageBubbleAppearance.hex(from: $0) }
         )
     }
 
