@@ -83,8 +83,6 @@ struct AppShell: View {
         selectedPage == .chat
             && chatThemeRawValue == ChatTheme.iMessage.rawValue
             && shellWallpaperImage != nil
-            && !menuOpen
-            && sidebarDragTranslation == 0
     }
 
     private var isUniverseTheme: Bool {
@@ -140,6 +138,8 @@ struct AppShell: View {
         GeometryReader { proxy in
             let revealOffset = min(proxy.size.width * 0.77, 330)
             let cardCornerRadius: CGFloat = menuOpen ? 50 : 0
+            let pageHorizontalOffset = (menuOpen ? revealOffset : 0)
+                + sidebarDragTranslation
 
             ZStack(alignment: .leading) {
                 // The sidebar stays painted behind the chat, but must never
@@ -178,11 +178,21 @@ struct AppShell: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .safeAreaPadding()
 
-                // One fixed wallpaper ABOVE sidebar text and BELOW the chat.
-                // Its placement stays at the outer iPhone shell so the
-                // keyboard does not change the image crop or reveal white.
+                // The one fixed wallpaper stays between sidebar and chat.
+                // Move and clip it with the chat card when the sidebar opens;
+                // do not disable it or switch the card back to white.
                 if isWallpaperChatVisible {
                     rootWallpaperBackdrop
+                        .clipShape(
+                            UnevenRoundedRectangle(
+                                topLeadingRadius: cardCornerRadius,
+                                bottomLeadingRadius: cardCornerRadius,
+                                bottomTrailingRadius: cardCornerRadius,
+                                topTrailingRadius: cardCornerRadius,
+                                style: .continuous
+                            )
+                        )
+                        .offset(x: pageHorizontalOffset)
                 }
 
                 PageContainer(
@@ -252,11 +262,7 @@ struct AppShell: View {
                         }
                     }
                 }
-                .offset(
-                    x:
-                        (menuOpen ? revealOffset : 0)
-                        + sidebarDragTranslation
-                )
+                .offset(x: pageHorizontalOffset)
                 .simultaneousGesture(
                     sidebarDragGesture(
                         revealOffset: revealOffset
