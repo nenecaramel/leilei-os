@@ -255,7 +255,7 @@ test('iMessage alone uses compact spacing with tight native-line bubble wrapping
   const user = read('Chat/MessageSurface/NativeLiveUserMessageRow.swift');
   const rows = read('Chat/MessageSurface/NativeLiveMessageRows.swift');
   const history = read('Chat/MessageSurface/NativeLiveHistoryMessageRow.swift');
-  assert.match(user, /if isIMessage && !user\.isVoiceInput/);
+  assert.match(user, /if isIMessage \{/);
   assert.match(user, /Color\.clear\.frame\(width:leadingClearance\)/);
   assert.match(user, /messageView\.frame\(maxWidth:\.infinity,alignment:\.trailing\)/);
   assert.match(user, /Spacer\(minLength:leadingClearance\)/);
@@ -662,4 +662,47 @@ test('ordinary file and Spotify cards reuse wallpaper-only iMessage glass withou
   assert.match(spotify, /NativeLiveToolDetailSheet\(/);
   assert.match(shared, /if iMessageWallpaperVisible \{/);
   assert.match(shared, /else if originalOpacity > 0 \{\s*content\.background\(/);
+});
+
+test('iMessage voice-to-text uses the identical outgoing text bubble paint, padding, and row width', () => {
+  const user = read('Chat/MessageSurface/NativeLiveUserMessageRow.swift');
+  const shared = read('Chat/MessageSurface/NativeLiveIMessageTextBubbles.swift');
+  const layout = read('Chat/ChatPresentationLayout.swift');
+  const voice = read('Chat/MessageSurface/NativeLiveVoiceBubbleGeometry.swift');
+
+  // Both typed and voice user messages get the same 70pt row-level clearance.
+  assert.match(user, /if isIMessage \{\s*\/\/ Both typed text and voice transcripts/);
+  assert.match(user, /Color\.clear\.frame\(width:leadingClearance\)/);
+  assert.match(user, /messageView\.frame\(maxWidth:\.infinity,alignment:\.trailing\)/);
+  assert.doesNotMatch(user, /if isIMessage && !user\.isVoiceInput/);
+
+  // Voice is nested in the same AppStorage-backed outgoing bubble as text,
+  // so user-chosen color and opacity always update both without duplication.
+  assert.match(user, /if presentation\.isVoiceInput \{\s*iMessageVoiceBubble/);
+  assert.match(user, /private var iMessageVoiceBubble: some View \{\s*NativeLiveIMessageTextBubble\(side: \.outgoing\)/);
+  assert.match(shared, /@AppStorage\(IMessageBubbleAppearance\.outgoingColorKey\)/);
+  assert.match(shared, /@AppStorage\(IMessageBubbleAppearance\.outgoingOpacityKey\)/);
+  assert.match(shared, /\.opacity\(side == \.outgoing \? outgoingOpacity : incomingOpacity\)/);
+  assert.match(shared, /\.padding\(\.horizontal, ChatPresentationLayout\.bubbleHorizontalInset\)/);
+  assert.match(shared, /\.padding\(\.vertical, ChatPresentationLayout\.iMessageUserBubbleVerticalInset\)/);
+  assert.match(shared, /cornerRadius: ChatPresentationLayout\.iMessageUserBubbleRadius/);
+  assert.match(layout, /iMessageUserLeadingClearance: CGFloat = 70/);
+
+  // The symbols and transcript have the regular message text color.
+  const voiceSurface = user.slice(user.indexOf('private var iMessageVoiceBubble: some View'), user.indexOf('private var usesCompactVoiceInsets: Bool'));
+  assert.match(voiceSurface, /Image\(systemName: "waveform"\)/);
+  assert.match(voiceSurface, /"chevron\.up" : "chevron\.down"/);
+  assert.equal((voiceSurface.match(/\.foregroundStyle\(Color\.white\.opacity\(0\.98\)\)/g) || []).length, 2);
+  assert.match(voiceSurface, /NativeLiveVisualNodesView\(nodes: presentation\.textNodes, role: presentation\.role\)/);
+
+  // Do not carry the old 125pt transcript-width cap, 8pt leading padding or
+  // primary/secondary glyph colors into the iMessage variant.
+  assert.doesNotMatch(voiceSurface, /userWidth\(|userMaxContentWidth|\.frame\(width:/);
+  assert.match(voice, /userMaxContentWidth: CGFloat = 125/);
+  assert.match(user, /Spacer\(minLength:leadingClearance\)/);
+  assert.match(user, /usesCompactVoiceInsets \? NativeLiveVoiceBubbleGeometry\.userLeadingInset/);
+  assert.match(user, /Color\.chatSoftFill/);
+  assert.match(user, /cornerRadius:chatTheme == \.iMessage \? ChatPresentationLayout\.iMessageUserBubbleRadius : ChatPresentationLayout\.bubbleRadius/);
+  assert.match(user, /onTap:toggleVoice/);
+  assert.match(user, /isVoiceTranscriptRevealed\.toggle\(\)/);
 });

@@ -16,14 +16,14 @@ import SwiftUI
         set:{ appModel.nativeLiveMessageUIState[row.id].voiceTranscriptExpansion = $0 }),
         onEdit:row.userBacking.map { message in { onEditMessage(message) } },onCopy:onCopyMessage,isDisabled:isTurnInFlight)
     HStack(alignment:.top,spacing:0) {
-        if isIMessage && !user.isVoiceInput {
-            // Reserve exactly 70pt on the left. A flexible Spacer can steal
-            // width from wrapped bubbles, leaving them narrower than the
-            // available area despite the fill-width fallback.
+        if isIMessage {
+            // Both typed text and voice transcripts use the exact same 70pt
+            // leading clearance. The row, not a voice-specific width cap,
+            // determines how wide either outgoing bubble is allowed to grow.
             Color.clear.frame(width:leadingClearance)
             messageView.frame(maxWidth:.infinity,alignment:.trailing)
         } else {
-            // Original theme and voice row geometry stay unchanged.
+            // Original message and voice geometry remain unchanged.
             Spacer(minLength:leadingClearance)
             messageView
         }
@@ -52,7 +52,7 @@ struct NativeLiveUserMessagePresentationView: View {
                     .overlay {
                         if let onEdit {
                             LightweightContextMenuInteraction(title:"Edit",copyText:presentation.copyText,isDisabled:isDisabled,
-                                cornerRadius:chatTheme == .iMessage && !presentation.isVoiceInput ? ChatPresentationLayout.iMessageUserBubbleRadius : ChatPresentationLayout.bubbleRadius,onCopy:onCopy,onTap:toggleVoice,action:onEdit)
+                                cornerRadius:chatTheme == .iMessage ? ChatPresentationLayout.iMessageUserBubbleRadius : ChatPresentationLayout.bubbleRadius,onCopy:onCopy,onTap:toggleVoice,action:onEdit)
                         }
                     }
                     .onTapGesture { if onEdit == nil { toggleVoice() } }
@@ -60,15 +60,49 @@ struct NativeLiveUserMessagePresentationView: View {
         }
     }
     @ViewBuilder private var userTextBubble: some View {
-        if chatTheme == .iMessage && !presentation.isVoiceInput {
-            NativeLiveIMessageTextBubbleList(presentation: presentation, side: .outgoing)
+        if chatTheme == .iMessage {
+            if presentation.isVoiceInput {
+                iMessageVoiceBubble
+            } else {
+                NativeLiveIMessageTextBubbleList(presentation: presentation, side: .outgoing)
+            }
         } else {
-            // Original style and voice playback geometry are unchanged.
+            // Original's compact voice width, inner padding and gray fill
+            // remain unchanged; only iMessage adopts its own text bubble.
             textBubble
                 .padding(.leading, usesCompactVoiceInsets ? NativeLiveVoiceBubbleGeometry.userLeadingInset : ChatPresentationLayout.bubbleHorizontalInset)
                 .padding(.trailing, usesCompactVoiceInsets ? NativeLiveVoiceBubbleGeometry.userTrailingInset : ChatPresentationLayout.bubbleHorizontalInset)
                 .padding(.vertical,ChatPresentationLayout.bubbleVerticalInset)
                 .background(Color.chatSoftFill,in:RoundedRectangle(cornerRadius:ChatPresentationLayout.bubbleRadius,style:.continuous))
+        }
+    }
+
+    // Reusing the regular outgoing bubble is intentional: its AppStorage tint,
+    // opacity, 14pt/10pt text padding and 20pt rounded material are shared
+    // automatically with typed messages. No fixed voice width applies here.
+    private var iMessageVoiceBubble: some View {
+        NativeLiveIMessageTextBubble(side: .outgoing) {
+            VStack(alignment: .trailing, spacing: ChatPresentationLayout.iMessageTextBubbleSpacing) {
+                HStack(spacing: NativeLiveVoiceBubbleGeometry.userClusterSpacing) {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 18, weight: .regular))
+                    Image(systemName: isVoiceTranscriptRevealed ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundStyle(Color.white.opacity(0.98))
+                .frame(height: NativeLiveVoiceBubbleGeometry.contentHeight)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(
+                    isVoiceTranscriptRevealed
+                        ? "Voice message, transcript shown"
+                        : "Voice message, tap to show transcript"
+                )
+
+                if isVoiceTranscriptRevealed {
+                    NativeLiveVisualNodesView(nodes: presentation.textNodes, role: presentation.role)
+                        .foregroundStyle(Color.white.opacity(0.98))
+                }
+            }
         }
     }
 
