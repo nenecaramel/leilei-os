@@ -30,6 +30,13 @@ export type NativeLiveMacPersistentTurnOutput = {
   toolImageHandler?: NativeLiveMacInteractiveTurnOptions["toolImageHandler"];
   sendFileHandler?: NativeLiveMacInteractiveTurnOptions["sendFileHandler"];
 };
+/** A handle belongs to exactly one live SDK process and task appearance. */
+export type NativeLiveMacTaskState = {
+  taskId: string; runId: string | null; handle: string; active: boolean;
+  status: "observed" | "running" | "stop_requested" | "stop_unknown" | "ended" | "completed" | "failed" | "stopped" | "unknown";
+  taskType: string | null; description: string | null; parentTaskId: string | null;
+  ambient: boolean; summary: string | null;
+};
 export type NativeLiveMacPersistentSession = {
   readonly state: string;
   readonly sessionId: string | null;
@@ -39,7 +46,9 @@ export type NativeLiveMacPersistentSession = {
   submit(text: string, options?: { id?: string; source?: NativeLiveMacSessionSource } & NativeLiveMacPersistentTurnOutput): Promise<NativeLiveMacSessionResult>;
   sendUserMessage(text: string, options?: { uuid?: string | null }): Promise<Record<string, unknown>>;
   interruptTurn(): Promise<{ still_queued: string[] } | null>;
-  stopTask(id: string): Promise<void>;
+  /** Optional for legacy/test transports; current persistent SDK hosts expose it. */
+  listTasks?(): NativeLiveMacTaskState[];
+  stopTask(id: string, expected?: { handle: string }): Promise<void>;
   /** The frame's last top-level assistant record, once durable and descended from the parent. */
   verifyCheckpoint(input: { events: Record<string, unknown>[]; parentCheckpointId: string | null; timeoutMs?: number }): Promise<string>;
   close(): Promise<void>;
