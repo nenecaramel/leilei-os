@@ -46,6 +46,30 @@ test("legacy full-history endpoints are retired and cannot reach old writers", a
   }, false);
 });
 
+test("native-history-assets transport rejects copies but leaves regular SessionStore append working", async () => {
+  let calls = 0;
+  await withServer(app => {
+    app.use((request, _response, next) => { request.mcpUserId = userId; next(); });
+    app.use("/store", createNativeLiveProviderSessionStoreInternalRouter({
+      providerSessionStoreService: {
+        append: async () => { calls++; },
+      } as any,
+    }));
+  }, async url => {
+    const send = async (subpath: string) => fetch(url + "/store/append", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: { session_id: sid, subpath },
+        append_batch_id: cp, entries: [{ type: "assistant" }] }),
+    });
+    const blocked = await send("native-history-assets/" + revision);
+    assert.equal(blocked.status, 409);
+    assert.equal((await blocked.json()).error.code, "LEGACY_ASSET_WRITE_DISABLED");
+    assert.equal(calls, 0, "old JSONB image copy must never reach the writer");
+    assert.equal((await send("")).status, 200);
+    assert.equal(calls, 1, "ordinary provider transcript append remains available");
+  });
+});
+
 test("referenced-sessions endpoint binds the authenticated owner and takes no input", async () => {
   await withServer(app => {
     app.use((request, _response, next) => { request.mcpUserId = userId; next(); });
