@@ -1,41 +1,6 @@
 import SwiftUI
 import UIKit
 
-// Wallpaper and navigation content form ONE sliding card. The clip follows
-// the animation's actual visual offset, not menuOpen (which flips before the
-// closing animation finishes and used to uncover wallpaper over the sidebar).
-// When at rest, leave wallpaper unmasked to cover the keyboard safe area.
-private struct ChatCardRevealClip: ViewModifier, Animatable {
-    var visualOffset: CGFloat
-    var cornerRadius: CGFloat
-    let preservesWallpaperAtRest: Bool
-
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(visualOffset, cornerRadius) }
-        set {
-            visualOffset = newValue.first
-            cornerRadius = newValue.second
-        }
-    }
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if preservesWallpaperAtRest && abs(visualOffset) < 0.5 {
-            content
-        } else {
-            content.clipShape(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: cornerRadius,
-                    bottomLeadingRadius: cornerRadius,
-                    bottomTrailingRadius: cornerRadius,
-                    topTrailingRadius: cornerRadius,
-                    style: .continuous
-                )
-            )
-        }
-    }
-}
-
 struct AppShell: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var inheritedColorScheme
@@ -213,8 +178,22 @@ struct AppShell: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .safeAreaPadding()
 
-                // The wallpaper is attached to PageContainer below; it must
-                // never travel or clip as an independent sidebar sibling.
+                // The one fixed wallpaper stays between sidebar and chat.
+                // Move and clip it with the chat card when the sidebar opens;
+                // do not disable it or switch the card back to white.
+                if isWallpaperChatVisible {
+                    rootWallpaperBackdrop
+                        .clipShape(
+                            UnevenRoundedRectangle(
+                                topLeadingRadius: cardCornerRadius,
+                                bottomLeadingRadius: cardCornerRadius,
+                                bottomTrailingRadius: cardCornerRadius,
+                                topTrailingRadius: cardCornerRadius,
+                                style: .continuous
+                            )
+                        )
+                        .offset(x: pageHorizontalOffset)
+                }
 
                 PageContainer(
                     selectedPage: selectedPage,
@@ -257,19 +236,15 @@ struct AppShell: View {
                     }
                 )
                 .frame(width: proxy.size.width, height: proxy.size.height)
-                // Background and conversation share their frame, mask and
-                // horizontal movement as one composited card. No duplicate
-                // wallpaper; the image still reaches the keyboard safe area.
-                .background {
-                    if isWallpaperChatVisible {
-                        rootWallpaperBackdrop
-                    }
-                }
-                .modifier(ChatCardRevealClip(
-                    visualOffset: pageHorizontalOffset,
-                    cornerRadius: cardCornerRadius,
-                    preservesWallpaperAtRest: isWallpaperChatVisible
-                ))
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: cardCornerRadius,
+                        bottomLeadingRadius: cardCornerRadius,
+                        bottomTrailingRadius: cardCornerRadius,
+                        topTrailingRadius: cardCornerRadius,
+                        style: .continuous
+                    )
+                )
                 .shadow(
                     color: .black.opacity(menuOpen ? 0.08 : 0),
                     radius: 12,
