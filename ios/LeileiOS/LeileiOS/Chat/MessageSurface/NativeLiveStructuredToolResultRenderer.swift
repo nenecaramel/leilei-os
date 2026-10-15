@@ -12,7 +12,11 @@ struct NativeLiveStructuredToolResultView: View {
                 // Erase recursive composition; every child still dispatches through the shared registry.
                 AnyView(NativeLiveVisualNodeView(node:child,role:"assistant"))
             }
-        }.padding(12).background(Color.primary.opacity(0.035),in:RoundedRectangle(cornerRadius:12))
+        }.padding(12)
+        .modifier(NativeLiveIMessageContentPanel(
+            originalOpacity: 0.035,
+            originalCornerRadius: 12
+        ))
     }
 }
 struct NativeLiveStructuredJSONView: View {
@@ -24,6 +28,11 @@ struct NativeLiveStructuredJSONView: View {
             if json.truncated { Text("Value is incomplete").font(.caption).foregroundStyle(.secondary) }
             Button("Copy JSON") { UIPasteboard.general.string=json.copyJSON }.font(.caption)
         }
+        .padding(12)
+        .modifier(NativeLiveIMessageContentPanel(
+            originalOpacity: 0,
+            originalCornerRadius: 11
+        ))
     }
     private func tree(_ value:NativeLiveJSONValue) -> AnyView {
         switch value {
