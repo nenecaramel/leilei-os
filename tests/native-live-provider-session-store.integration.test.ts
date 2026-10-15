@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
+import { stageNativeDisplayAssets } from "../src/domains/conversation/native-session-asset-staging.js";
+import { nativeDisplayAssetRevision } from "../src/domains/conversation/native-session-history-repository.js";
 import {
   nativeLiveProviderSessionEntries,
   users,
@@ -318,10 +320,10 @@ test("native display asset bytes are shared across sessions while session receip
   const service = new NativeLiveProviderSessionStoreService(
     new DrizzleNativeLiveProviderSessionStoreRepository(database.db),
   );
-  const revision = "a".repeat(64);
   const entry = { type: "user", uuid: crypto.randomUUID(), message: { content: [
     { type: "image", source: { type: "base64", media_type: "image/png", data: Buffer.alloc(250_000, 7).toString("base64") } },
   ] } };
+  const revision = nativeDisplayAssetRevision([entry]);
   const sessions = [crypto.randomUUID(), crypto.randomUUID()];
   for (const sessionId of sessions) {
     const key = { sessionId, subpath: `native-history-assets/${revision}` };
@@ -330,6 +332,22 @@ test("native display asset bytes are shared across sessions while session receip
     await service.append({ userId: user.id, key, appendBatchId, entries: [entry] });
     assert.deepEqual(await service.load({ userId: user.id, key }), [entry]);
   }
+  const donorTarget = { sessionId: crypto.randomUUID(), subpath: `native-history-assets/${revision}` };
+  const staged = await stageNativeDisplayAssets(database.db, {
+    userId: user.id, sessionId: donorTarget.sessionId, revision,
+    total: 1, offset: 0, entries: [],
+  });
+  assert.deepEqual(staged, { stored: 1, complete: true }, "donor reuse remains valid without copying base64");
+  assert.deepEqual(await service.load({ userId: user.id, key: donorTarget }), [entry]);
+
+  // Legacy snapshots are not rewritten or deleted by the online migration.
+  const legacyKey = { sessionId: crypto.randomUUID(), subpath: `native-history-assets/${"b".repeat(64)}` };
+  await database.db.insert(nativeLiveProviderSessionEntries).values({
+    userId: user.id, providerSessionId: legacyKey.sessionId, subpath: legacyKey.subpath,
+    appendBatchId: crypto.randomUUID(), appendOrdinal: 0, entry,
+  });
+  assert.deepEqual(await service.load({ userId: user.id, key: legacyKey }), [entry]);
+
   const [payload] = await database.db.execute<{ count: string }>(sql`
     SELECT count(*)::text AS count FROM native_live_display_asset_payloads WHERE user_id = ${user.id}::uuid
   `);
@@ -338,6 +356,12 @@ test("native display asset bytes are shared across sessions while session receip
     FROM native_live_provider_session_entries WHERE user_id = ${user.id}::uuid
   `);
   assert.equal(Number(payload?.count), 1, "the second session must reuse the payload bytes");
-  assert.equal(Number(references?.count), 2, "session receipts remain independent and idempotent");
-  assert.equal(references?.small, true, "per-session entries contain only small references");
+  assert.equal(Number(references?.count), 4, "session receipts remain independent and idempotent");
+  const [newReferences] = await database.db.execute<{ count: string; small: boolean }>(sql`
+    SELECT count(*)::text AS count, bool_and(pg_column_size(entry) < 200) AS small
+    FROM native_live_provider_session_entries
+    WHERE user_id = ${user.id}::uuid AND subpath = ${`native-history-assets/${revision}`}
+  `);
+  assert.equal(Number(newReferences?.count), 3);
+  assert.equal(newReferences?.small, true, "new session entries contain only small references");
 });
