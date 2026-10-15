@@ -129,6 +129,13 @@ export function createNativeLiveConversationFromClaudeSessionHandler(
       return;
     }
 
+    if (rawHistorySnapshot !== undefined && rawHistorySnapshot !== null) {
+      response.status(410).json({ success: false, error: {
+        code: "HISTORY_SNAPSHOT_RETIRED",
+        message: "Historical display snapshots are no longer imported.",
+      } });
+      return;
+    }
     let historySnapshot: NativeLiveConversationHistoryUpload | null = null;
     try {
       historySnapshot = parseExternalHistorySnapshotInput(
@@ -188,6 +195,14 @@ export function readNativeLiveConversationHistorySnapshotHandler(
       });
       return;
     }
+
+    // The canonical LeileiOS conversation/current path remains available.
+    // This old Desktop history projection is no longer served or loaded.
+    response.status(410).json({ success: false, error: {
+      code: "HISTORY_SNAPSHOT_RETIRED",
+      message: "Old Desktop history projections are retired.",
+    } });
+    return;
 
     try {
       const snapshot =

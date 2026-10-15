@@ -204,8 +204,7 @@ struct ClaudeSessionForkSheet: View {
             _ = try await appModel
                 .createNativeLiveConversationFromClaudeSession(
                     requestID: requestID,
-                    sourceSessionID: session.sessionId,
-                    historySnapshot: historyUpload
+                    sourceSessionID: session.sessionId
                 )
             onCreated()
             dismiss()

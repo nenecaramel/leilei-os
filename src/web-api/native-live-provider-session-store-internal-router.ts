@@ -28,6 +28,13 @@ export type NativeLiveProviderSessionStoreInternalDependencies = {
   >;
 };
 
+const retiredNativeHistoryHandler: RequestHandler = (_request, response) => {
+  response.status(410).json({ success: false, error: {
+    code: "NATIVE_FULL_HISTORY_RETIRED",
+    message: "Legacy full-history copy/restore is retired; use native continuation.",
+  } });
+};
+
 export function createNativeLiveProviderSessionStoreInternalRouter(
   dependencies: NativeLiveProviderSessionStoreInternalDependencies,
 ): Router {
@@ -39,12 +46,14 @@ export function createNativeLiveProviderSessionStoreInternalRouter(
   router.post("/native-history/continuation-state", nativeContinuationHandler(dependencies, "state"));
   router.post("/native-history/continuation-attach", nativeContinuationHandler(dependencies, "attach"));
   router.post("/native-history/continuation-release", nativeContinuationHandler(dependencies, "release"));
-  router.post("/native-history/restore", nativeHistoryRestoreHandler(dependencies));
-  router.post("/native-history/state", nativeHistoryStateHandler(dependencies));
+  // The former full-history writer and reader are retired. Keep the
+  // continuation-only ownership endpoints and the metadata-only picker.
+  router.post("/native-history/restore", retiredNativeHistoryHandler);
+  router.post("/native-history/state", retiredNativeHistoryHandler);
   router.post("/native-history/choices", nativeHistoryChoicesHandler(dependencies));
-  router.post("/native-history/release", nativeHistoryReleaseHandler(dependencies));
-  router.post("/native-history/asset", nativeHistoryAssetHandler(dependencies));
-  router.post("/native-history/asset-stage", nativeHistoryAssetStageHandler(dependencies));
+  router.post("/native-history/release", retiredNativeHistoryHandler);
+  router.post("/native-history/asset", retiredNativeHistoryHandler);
+  router.post("/native-history/asset-stage", retiredNativeHistoryHandler);
   router.post("/native-history/referenced-sessions", async (request, response) => {
     const userId = requireInternalUser(response, request.mcpUserId);
     if (!userId) return;

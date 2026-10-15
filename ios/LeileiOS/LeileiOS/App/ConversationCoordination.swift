@@ -391,7 +391,9 @@ extension AppModel {
             conversationID.uuidString.lowercased(),
             forKey: Self.activeNativeLiveConversationDefaultsKey
         )
-        await refreshNativeLiveConversationHistorySnapshot()
+        // History comes only from LeileiOS canonical messages now.
+        // Do not request the old 813-message Desktop display snapshot.
+        nativeLiveHistorySnapshot = nil
         await refreshNativeLiveCurrentPath(force: true)
         await refreshActiveNativeLiveRuntimeMetadata()
         beginNativeLiveConversationHeadObservation(
