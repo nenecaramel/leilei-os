@@ -1,6 +1,9 @@
 import { requestNativeSessionDrain } from './native-session-daemon-drain.mjs';
 import { preflightNativeSessionSwitch } from './native-session-switch-preflight.mjs';
-import { readDesktopNativeHistory } from './native-session-inspection.mjs';
+import { readDesktopNativeHistory, inspectNativeCheckpointOnly } from './native-session-inspection.mjs';
+import { readNativeSessionRelease } from './native-session-activity.mjs';
+import { readNativeSession } from './native-session-catalog.mjs';
+import { durableCheckpointPrefix } from './provider-checkpoint-prefix.mjs';
 import { lstat, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { homedir } from 'node:os';
@@ -22,7 +25,7 @@ export const NATIVE_DISPLAY_ASSET_BATCH_BYTES = 2 * 1024 * 1024;
 // The free-plan database restarts about every 10 minutes and the app follows it
 // for ~40 s. Requests whose replay is idempotent wait that out; the rest fail.
 export const NATIVE_RELAY_RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
-const retryOnUnavailable = new Set(['state', 'asset-stage', 'restore', 'release', 'asset', 'choices']);
+const retryOnUnavailable = new Set(['state', 'light-state', 'asset-stage', 'restore', 'release', 'asset', 'choices']);
 // A restore that timed out may still be committing; replaying it only queues
 // behind the same lock, so only short read/bind calls retry after a timeout.
 const retryOnTimeout = new Set(['state', 'asset-stage', 'release', 'asset', 'choices']);
@@ -109,6 +112,81 @@ export function incrementalNativePayload(history, state) {
     nativeSnapshot = { ...nativeSnapshot, entries: nativeSnapshot.entries.slice(base.count), entriesOffset: base.count };
   }
   return { projection, nativeSnapshot };
+}
+
+/**
+ * Opt-in thin handoff for an already-linked LeileiOS conversation.
+ * No native-history/restore, asset-stage, or native JSONL payload request.
+ * Existing official-only sessions first need a LeileiOS conversation binding.
+ */
+export async function switchNativeSessionLight({
+  input, conversationId, relayUrl, relayToken, direction,
+  fetchImpl = fetch, recoveryDirectory = path.join(homedir(), '.leileios'),
+  sleep, retryDelaysMs,
+}) {
+  if (!uuid.test(conversationId ?? '') || !['to_desktop', 'to_leileios'].includes(direction)) {
+    throw fail('INVALID_NATIVE_RESTORE_ENDPOINT');
+  }
+  const request = nativeHistoryRequest({ relayUrl, relayToken, fetchImpl, sleep, retryDelaysMs });
+  if (direction === 'to_desktop') {
+    const drain = await requestNativeSessionDrain({
+      recoveryDirectory, conversationId, providerSessionId: input.expectedSessionId,
+    });
+    if (drain && !drain.ready) throw fail('NATIVE_DAEMON_DRAIN_UNCONFIRMED');
+  }
+  await assertNativeHandoffRecoveryClear(recoveryDirectory);
+  const selected = await inspectNativeCheckpointOnly(input);
+  if (selected.providerSessionId !== input.expectedSessionId || selected.providerCheckpointId !== input.expectedCheckpointId ||
+    selected.nativeRevision !== input.expectedRevision || selected.workingDirectory !== input.expectedWorkingDirectory) {
+    throw fail('STALE_NATIVE_SELECTION');
+  }
+  const release = await readNativeSessionRelease(input.peerDirectory, selected.providerSessionId, {
+    probeProcessStart: input.probeProcessStart,
+  });
+  if (release.state !== 'not_open_observed') {
+    throw fail(release.state === 'still_open' ? 'NATIVE_SESSION_STILL_OPEN' : 'NATIVE_RELEASE_UNCONFIRMED');
+  }
+
+  const state = await request('light-state', { conversationId });
+  if (!state || state.providerSessionId !== selected.providerSessionId ||
+    !uuid.test(state.headMessageId ?? '') || !uuid.test(state.providerCheckpointId ?? '') ||
+    state.effectiveWorkingDirectory !== selected.workingDirectory ||
+    state.owner !== (direction === 'to_desktop' ? 'leileios' : 'desktop')) {
+    throw fail('NATIVE_SOURCE_BINDING_REQUIRED');
+  }
+  if (direction === 'to_desktop' && state.providerCheckpointId !== selected.providerCheckpointId) {
+    throw fail('CANONICAL_CHECKPOINT_CHANGED');
+  }
+  // This must be a descendant of the last backend-committed checkpoint;
+  // never select a sibling branch or merely the newest timestamp. A Compact
+  // that erased this proof needs an explicit branch-selection path.
+  const native = await readNativeSession(input.projectDirectory, selected.providerSessionId);
+  if (native.revision !== selected.nativeRevision ||
+    !durableCheckpointPrefix(native.entries, selected.providerCheckpointId).ancestry.has(state.providerCheckpointId)) {
+    throw fail('EXPLICIT_BRANCH_SELECTION_REQUIRED');
+  }
+  await assertNativeHandoffRecoveryClear(recoveryDirectory);
+  const latest = await inspectNativeCheckpointOnly(input);
+  if (latest.nativeRevision !== selected.nativeRevision ||
+    latest.providerCheckpointId !== selected.providerCheckpointId ||
+    latest.workingDirectory !== selected.workingDirectory) throw fail('NATIVE_INSPECTION_CHANGED');
+  // Do not retry a mutation after an ambiguous HTTP response. Ask for state
+  // before deciding whether the previous switch committed.
+  const switched = await request('light-switch', {
+    conversationId, sessionId: selected.providerSessionId,
+    expectedHeadMessageId: state.headMessageId,
+    expectedProviderCheckpointId: state.providerCheckpointId,
+    selectedCheckpointId: selected.providerCheckpointId,
+    effectiveWorkingDirectory: selected.workingDirectory,
+    nativeRevision: selected.nativeRevision, direction,
+  });
+  if (!switched || switched.conversationId !== conversationId ||
+    switched.providerSessionId !== selected.providerSessionId ||
+    switched.providerCheckpointId !== selected.providerCheckpointId ||
+    switched.owner !== (direction === 'to_desktop' ? 'desktop' : 'leileios')) {
+    throw fail('NATIVE_RESTORE_INVALID_RESPONSE');
+  }
+  return { ...switched, executionAuthorized: false, historyImported: false };
 }
 
 export async function restoreDesktopNativeSession({ input, conversationId, relayUrl, relayToken, fetchImpl = fetch,
