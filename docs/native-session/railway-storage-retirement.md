@@ -13,6 +13,14 @@ unfinished jobs and recovery/outbox evidence, native status preservation
 markers, Mac JSONL / Desktop indexes / archives / backups.
 Keep the separately reported 51 attachment 404s untouched.
 
+Retirement patch: the legacy full-history restore/state/release/asset and
+asset-stage internal routes return HTTP 410. The old external history
+snapshot read API also returns HTTP 410; snapshot uploads are rejected.
+LeileiOS no longer fetches the 813-message display projection or offers
+its JSONL history-upload picker. All native-history-assets SessionStore
+appends are rejected regardless of conversation mode; ordinary session
+transcripts and new LeileiOS canonical messages are untouched.
+
 The runtime's default persistent Mac session registry has no remote
 SessionStore configured, but an explicit old full-history restore can
 still use old stored snapshots. A production cleanup therefore requires

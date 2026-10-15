@@ -59,7 +59,7 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
     await this.db.transaction(async transaction => {
       await transaction.execute(sql`SELECT ${providerSessionOwnershipLock({ providerSessionId: input.key.sessionId, wait: true })}`);
       if ((input.key.subpath ?? "").startsWith("native-history-assets/")) {
-        await assertLegacyAssetWriteAllowed(transaction, { userId: input.userId, sessionId: input.key.sessionId });
+        await assertLegacyAssetWriteAllowed();
       }
       await transaction
       .insert(nativeLiveProviderSessionEntries)

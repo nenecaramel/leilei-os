@@ -30,7 +30,7 @@ export async function stageNativeDisplayAssets(db: Database, input: NativeDispla
   const key = { sessionId: input.sessionId, subpath: nativeDisplayAssetSubpath(input.revision) };
   return db.transaction(async tx => {
     await tx.execute(sql`SELECT ${providerSessionOwnershipLock({ providerSessionId: input.sessionId, wait: true })}`);
-    await assertLegacyAssetWriteAllowed(tx, { userId: input.userId, sessionId: input.sessionId });
+    await assertLegacyAssetWriteAllowed();
     const count = async () => Number((await tx.execute<{ count: string }>(sql`
       SELECT count(*) AS count FROM native_live_provider_session_entries
       WHERE user_id = ${input.userId}::uuid AND provider_session_id = ${input.sessionId} AND subpath = ${key.subpath}`))[0]?.count ?? 0);
