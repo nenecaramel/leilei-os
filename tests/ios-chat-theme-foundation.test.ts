@@ -77,6 +77,20 @@ test('iMessage Composer uses Apple-native controls while retaining existing acti
   for (const value of ['modelSelection', 'thinkingSelection', 'availableEffortLevels', '$effort']) {
     assert.ok(imessageBody.includes(value), value);
   }
+  // iOS 26 displays the native submenu label again as a large heading.
+  // The plus menu keeps its entry; the actual second level is headerless.
+  assert.match(imessageBody, /Button\s*\{\s*isIMessageModelSettingsPresented = true\s*\} label:\s*\{\s*Label\("Model Settings", systemImage:/);
+  assert.match(imessageBody, /\.popover\(\s*isPresented: \$isIMessageModelSettingsPresented/);
+  const secondary = imessageBody.slice(imessageBody.indexOf('private var iMessageModelSettingsPanel: some View'));
+  assert.match(secondary, /ScrollView\s*\{/);
+  assert.match(secondary, /ForEach\(Array\(model\.supportedThinkingModes\.reversed\(\)\)\)/);
+  assert.match(secondary, /ForEach\(availableEffortLevels\)/);
+  assert.match(secondary, /ForEach\(Array\(NativeLiveClaudeModel\.allCases\.reversed\(\)\)\)/);
+  assert.doesNotMatch(secondary, /Text\("Model Settings"\)|Section\("Model Settings"\)/);
+  assert.match(secondary, /thinkingSelection\.wrappedValue = option/);
+  assert.match(secondary, /\$effort\.wrappedValue = option/);
+  assert.match(secondary, /modelSelection\.wrappedValue = option/);
+  assert.match(secondary, /isSelected \? 1 : 0/);
   assert.match(imessageBody, /primaryActionButton/);
   // Move only the plus-to-input gap; keep its 42pt control and the
   // separate 8pt text-field-to-action gap unchanged.
