@@ -1,3 +1,4 @@
+import type { NativeLiveMacActiveTurnController } from "./native-live-mac-claude-transport.js";
 import type { NativeLiveNormalizedEvent } from "../../conversation/native-live-conversation-orchestrator.js";
 import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
@@ -8,11 +9,11 @@ import {
 import type { NativeLiveMacAttachmentMaterializer } from "./native-live-mac-attachment-materializer.js";
 import type { NativeLiveMacOutputAttachmentSender } from "./native-live-mac-output-attachment-sender.js";
 import type { NativeLiveMacPersistentAcknowledgement, NativeLiveMacPersistentTurnRouter } from "./native-live-mac-persistent-turn-router.js";
-import { failure, runtimeFailureCode, terminalFallbackEvents } from "./native-live-mac-runtime-executor.js";
+import { buildNativeLiveRuntimeMetadata, failure, runtimeFailureCode, terminalFallbackEvents } from "./native-live-mac-runtime-executor.js";
 
-type Router = Pick<NativeLiveMacPersistentTurnRouter, "execute" | "close" | "matches" | "workingDirectory">;
+type Router = Pick<NativeLiveMacPersistentTurnRouter, "execute" | "close" | "matches" | "workingDirectory"> & Partial<Pick<NativeLiveMacPersistentTurnRouter, "suspend" | "settle" | "providerSessionId">>;
 type Handler = (request: Record<string, unknown>, context: { signal: AbortSignal | null }) => Promise<Record<string, unknown>>;
-export type NativeLiveMacPersistentCommit = (result: NativeLiveRuntimeExecutionResult) => Promise<{ canonicalOutcome: string | null } | void>;
+export type NativeLiveMacPersistentCommit = (result: NativeLiveRuntimeExecutionResult) => Promise<{ canonicalOutcome: string | null; nativeResumeCheckpointId?: string } | void>;
 /**
  * committed: the result was submitted inside the turn (any server outcome); never resubmit.
  * unknown: submission was attempted and its outcome is unknown.
@@ -28,6 +29,11 @@ export type NativeLiveMacPersistentExecution = Readonly<{
 // cannot continue it (fork, edit, other checkpoint) retires it and goes legacy.
 export class NativeLiveMacPersistentExecutor {
   private readonly routers = new Map<string, Router>();
+  private readonly retiring = new Set<string>();
+  private shutDown = false;
+  private readonly suspended = new Set<string>();
+  suspend(conversationId: string): void { this.suspended.add(conversationId); this.routers.get(conversationId)?.suspend?.(); }
+  assertAccepting(conversationId: string): void { if (this.shutDown || this.suspended.has(conversationId)) throw new Error("Persistent session is fenced for handoff."); }
 
   constructor(private readonly input: {
     createRouter(conversationId: string): Router;
@@ -37,11 +43,13 @@ export class NativeLiveMacPersistentExecutor {
 
   /** A send/wake that a new or the conversation's current writer can run. */
   canRoute(rawCommand: unknown): boolean {
+    if (this.shutDown) return false;
     let command: NativeLiveRuntimeCommand;
     try { command = parseNativeLiveRuntimeCommand(rawCommand); } catch { return false; }
     if (!["send", "wake"].includes(command.operation) || !["new", "resume"].includes(command.runtime_mode)
       || command.parent_provider_checkpoint_id === undefined || command.failed_user_message_uuids?.length) return false;
     if (command.attachments?.length && !this.input.attachmentMaterializer) return false;
+    if (this.retiring.has(command.conversation_id) || this.suspended.has(command.conversation_id)) return false;
     const router = this.routers.get(command.conversation_id);
     return router ? router.matches(command) : true;
   }
@@ -50,14 +58,22 @@ export class NativeLiveMacPersistentExecutor {
   async retire(conversationId: string): Promise<void> {
     const router = this.routers.get(conversationId);
     if (!router) return;
-    this.routers.delete(conversationId);
+    this.retiring.add(conversationId);
     await router.close();
+    await router.settle?.();
+    if (this.routers.get(conversationId) === router) this.routers.delete(conversationId);
+    this.retiring.delete(conversationId);
+  }
+
+  async retireSession(providerSessionId: string): Promise<void> {
+    for (const [id, router] of this.routers) if (router.providerSessionId === providerSessionId) await this.retire(id);
   }
 
   async closeAll(): Promise<void> {
-    const routers = [...this.routers.values()];
-    this.routers.clear();
-    await Promise.allSettled(routers.map(router => router.close()));
+    this.shutDown = true;
+    const results = await Promise.allSettled([...this.routers.keys()].map(id => this.retire(id)));
+    const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (failures.length) throw new AggregateError(failures.map(r => r.reason), "Persistent writers could not all close.");
   }
 
   async execute(rawCommand: unknown, options: {
@@ -65,8 +81,10 @@ export class NativeLiveMacPersistentExecutor {
     onNormalizedEvent?: (event: NativeLiveNormalizedEvent) => void | Promise<void>;
     permissionHandler?: Handler;
     questionHandler?: Handler;
+    controlPump?: (controller: NativeLiveMacActiveTurnController, context: { signal: AbortSignal }) => Promise<void>;
   }): Promise<NativeLiveMacPersistentExecution> {
     const command = parseNativeLiveRuntimeCommand(rawCommand);
+    this.assertAccepting(command.conversation_id);
     if (!this.canRoute(command)) throw new Error("Command cannot use the persistent writer.");
     let router = this.routers.get(command.conversation_id);
     if (!router) { router = this.input.createRouter(command.conversation_id); this.routers.set(command.conversation_id, router); }
@@ -92,6 +110,7 @@ export class NativeLiveMacPersistentExecutor {
         ...(options.onNormalizedEvent ? { onNormalizedEvent: options.onNormalizedEvent } : {}),
         ...(options.permissionHandler ? { permissionHandler: options.permissionHandler } : {}),
         ...(options.questionHandler ? { questionHandler: options.questionHandler } : {}),
+        ...(options.controlPump ? { controlPump: options.controlPump } : {}),
         ...(outputs?.sendInlineImage ? { toolImageHandler: async (image: { data: string; mimeType: string }, context: { signal: AbortSignal }) => {
           context.signal.throwIfAborted();
           return sendOutput(() => outputs.sendInlineImage!({ ...image, signal: context.signal }), value => value.attachmentId,
@@ -106,11 +125,13 @@ export class NativeLiveMacPersistentExecutor {
           return attachment;
         } } : {}),
         onResult: async ({ result, providerCheckpointId }): Promise<NativeLiveMacPersistentAcknowledgement> => {
+          const metadata = buildNativeLiveRuntimeMetadata(result);
           const success: NativeLiveRuntimeExecutionResult = {
             protocol_version: command.protocol_version, prepare_id: command.prepare_id, request_id: command.request_id,
             conversation_id: command.conversation_id, status: "success", provider_session_id: result.providerSessionId,
             effective_working_directory: router!.workingDirectory!, provider_checkpoint_id: providerCheckpointId,
             normalized_events: terminalFallbackEvents(result.normalizedEvents),
+            ...(metadata ? { runtime_metadata: metadata } : {}),
             ...(outputIds.length ? { output_attachment_ids: [...outputIds] } : {}),
             ...(outputMetadata.length ? { output_attachment_metadata: [...outputMetadata] } : {}),
           };
@@ -118,17 +139,19 @@ export class NativeLiveMacPersistentExecutor {
           delivery = "unknown"; // From here a lost response is not the same as "not submitted".
           const receipt = await options.commit(success);
           delivery = "committed"; canonicalOutcome = receipt?.canonicalOutcome ?? null;
-          // Only a canonical success advances the writer. Wake outcomes (quiet,
-          // stale, discarded) do not commit this checkpoint yet: retire.
-          return canonicalOutcome === "completed" || canonicalOutcome === "idempotent"
-            ? { status: canonicalOutcome === "completed" ? "applied" : "idempotent", providerCheckpointId }
+          // A quiet resume has no visible canonical turn. Only its explicit,
+          // exact server-committed continuation cursor may keep this writer.
+          const quiet = command.operation === "wake" && command.runtime_mode === "resume"
+            && canonicalOutcome === "wake_quiet" && receipt?.nativeResumeCheckpointId === providerCheckpointId;
+          return canonicalOutcome === "completed" || canonicalOutcome === "idempotent" || quiet
+            ? { status: canonicalOutcome === "idempotent" ? "idempotent" : "applied", providerCheckpointId, ...(quiet ? { continuationOnly: true } : {}) }
             : { status: "rejected" };
         },
       });
       return { result: submitted!, delivery: "committed", canonicalOutcome };
     } catch (error) {
       // The router has already closed its writer; never replay the turn.
-      this.routers.delete(command.conversation_id);
+      try { await this.retire(command.conversation_id); } catch { /* Keep ownership until a verified close. */ }
       if (delivery !== "pending") return { result: submitted!, delivery, ...(delivery === "committed" ? { canonicalOutcome } : {}) };
       return { result: failure(command, runtimeFailureCode(error)), delivery };
     } finally {

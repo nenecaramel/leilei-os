@@ -1,3 +1,4 @@
+import { NativeLiveMacExecutionLease } from "./native-live-mac-execution-lease.js";
 import { isDeepStrictEqual } from "node:util";
 import {
   parseNativeLiveRuntimeCommand,
@@ -7,6 +8,7 @@ import {
   type NativeLiveMacPersistentSessionOptions,
   type NativeLiveMacPersistentTurnOutput,
   type NativeLiveMacSessionResult,
+  type NativeLiveMacActiveTurnController,
 } from "./native-live-mac-claude-transport.js";
 import type { NativeLiveMacDaemonRelayClient } from "./native-live-mac-daemon-loop.js";
 import { createNativeLiveMacExecutionAdmission } from "./native-live-mac-execution-admission.js";
@@ -16,8 +18,14 @@ import {
 } from "./native-live-mac-session-registry.js";
 import { resolveNativeLiveMacWorkingDirectory } from "./native-live-mac-working-directory-runtime.js";
 
+export type NativeLiveMacPersistentBackgroundOwner = Readonly<{
+  conversationId: string; generationId: string;
+  source: Readonly<{ prepareId: string; requestId: string }> | null;
+  providerSessionId: string; parentProviderCheckpointId: string | null; workingDirectory: string;
+}>;
+
 export type NativeLiveMacPersistentAcknowledgement =
-  | Readonly<{ status: "applied" | "idempotent"; providerCheckpointId: string }>
+  | Readonly<{ status: "applied" | "idempotent"; providerCheckpointId: string; continuationOnly?: boolean }>
   | Readonly<{ status: "rejected" }>;
 type TurnInput = {
   command: NativeLiveRuntimeCommand;
@@ -28,11 +36,17 @@ type TurnInput = {
   onResult(frame: { command: NativeLiveRuntimeCommand; result: NativeLiveMacSessionResult; providerCheckpointId: string }): Promise<NativeLiveMacPersistentAcknowledgement>;
   permissionHandler?: NativeLiveMacPersistentSessionOptions["permissionHandler"];
   questionHandler?: NativeLiveMacPersistentSessionOptions["questionHandler"];
+  controlPump?: (controller: NativeLiveMacActiveTurnController, context: { signal: AbortSignal }) => Promise<void>;
 } & NativeLiveMacPersistentTurnOutput;
 type Slot = TurnInput & {
   inputId: string;
   phase: "executing" | "acknowledging";
   authorize: NativeLiveMacPersistentSessionOptions["authorize"];
+  lease?: NativeLiveMacExecutionLease;
+  controlAbort?: AbortController;
+  resultReady: boolean;
+  finished: Promise<void>;
+  finish(): void;
 };
 
 // Explicit opt-in adapter. No daemon dispatch path selects this yet. A single
@@ -43,18 +57,20 @@ export class NativeLiveMacPersistentTurnRouter {
   private initialCommand: NativeLiveRuntimeCommand | null = null;
   private active: Slot | null = null;
   private retired = false;
+  private suspended = false;
   private closing: Promise<void> | null = null;
   private acknowledgement = Promise.resolve();
   private providerCheckpointId: string | null = null;
+  private backgroundSource: NativeLiveMacPersistentBackgroundOwner["source"] = null;
 
   constructor(private readonly input: {
     registry: NativeLiveMacSessionRegistry;
     listenerInstanceId: string;
-    relay: Pick<NativeLiveMacDaemonRelayClient, "checkExecutionAdmission">;
+    relay: Pick<NativeLiveMacDaemonRelayClient, "checkExecutionAdmission" | "renewExecutionLease">;
     // Autonomous results deliberately have no foreground command. They require
     // their own durable preparation/branch fence, not the active turn's sink.
     onBackgroundResult(
-      owner: Readonly<{ conversationId: string; generationId: string }>,
+      owner: NativeLiveMacPersistentBackgroundOwner,
       frame: Parameters<NativeLiveMacPersistentSessionOptions["onBackgroundResult"]>[0] & { providerCheckpointId: string },
     ): Promise<NativeLiveMacPersistentAcknowledgement>;
   }) {
@@ -64,6 +80,7 @@ export class NativeLiveMacPersistentTurnRouter {
 
   async execute(input: TurnInput): Promise<NativeLiveMacSessionResult> {
     this.assertLive();
+    if (this.suspended) throw new Error("Persistent session is draining for handoff.");
     if (this.active) throw new Error("Persistent turn is active or awaiting durable acknowledgement.");
     const command = freezeCommand(parseNativeLiveRuntimeCommand(input.command));
     if (!["send", "wake"].includes(command.operation) || !["new", "resume"].includes(command.runtime_mode)
@@ -73,8 +90,10 @@ export class NativeLiveMacPersistentTurnRouter {
     if (this.initialCommand && command.conversation_id !== this.initialCommand.conversation_id) throw new Error("Persistent router belongs to a different conversation.");
     if (this.binding && (command.runtime_mode !== "resume" || command.parent_provider_session_id !== this.binding.session.sessionId)) throw new Error("Persistent command changed session identity.");
     if (this.binding && command.parent_provider_checkpoint_id !== this.providerCheckpointId) throw new Error("Persistent command changed checkpoint; retire before branching.");
-    if (this.initialCommand && !isDeepStrictEqual(command.execution_selection, this.initialCommand.execution_selection)) throw new Error("Execution selection changes are not supported by the persistent router yet.");
-    const slot: Slot = { ...input, command, inputId: command.canonical_user_message_id ?? command.prepare_id,
+    if (this.initialCommand && !this.selectionMatches(command)) throw new Error("Execution selection changes are not supported by the persistent router yet.");
+    let finish!: () => void;
+    const finished = new Promise<void>(resolve => { finish = resolve; });
+    const slot: Slot = { ...input, resultReady: false, finished, finish, command, inputId: command.canonical_user_message_id ?? command.prepare_id,
       phase: "executing", authorize: createNativeLiveMacExecutionAdmission({ listenerInstanceId: this.input.listenerInstanceId, command, relay: this.input.relay }) };
     // Reserve before the first await, including path resolution and SDK startup.
     this.active = slot;
@@ -86,17 +105,52 @@ export class NativeLiveMacPersistentTurnRouter {
       }
       if (!this.binding) await this.open(slot);
       this.assertSlot(slot);
-      const result = await this.binding!.session.submit(input.prompt ?? command.prompt, { id: slot.inputId, source: command.operation === "wake" ? "task-notification" : "human", ...this.output(slot) });
+      if (this.input.relay.renewExecutionLease) {
+        slot.lease = new NativeLiveMacExecutionLease({
+          renew: () => this.input.relay.renewExecutionLease!({ listenerInstanceId: this.input.listenerInstanceId, command }),
+          onRevoked: async () => { if (this.active === slot && slot.phase === "executing") await this.close(); },
+        });
+        await slot.lease.start(); this.assertSlot(slot);
+      }
+      const resultPromise = this.binding!.session.submit(input.prompt ?? command.prompt, { id: slot.inputId, source: command.operation === "wake" ? "task-notification" : "human", ...this.output(slot) });
+      let controls: Promise<void> | null = null;
+      if (input.controlPump) {
+        slot.controlAbort = new AbortController();
+        const session = this.binding!.session;
+        const control = async <T>(call: () => Promise<T>): Promise<T> => {
+          this.assertSlot(slot);
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            const receipt = await Promise.race([call(), new Promise<never>((_, reject) => {
+              timer = setTimeout(() => { void this.close().catch(() => {}); reject(new Error("Control receipt deadline expired; provider outcome unknown.")); }, 2_000);
+            })]);
+            this.assertSlot(slot); return receipt;
+          } finally { clearTimeout(timer); }
+        };
+        const controller: NativeLiveMacActiveTurnController = {
+          sendUserMessage: (text, options) => control(() => session.sendUserMessage(text, options)),
+          interrupt: async () => { const receipt = await control(() => session.interruptTurn()); if (!receipt) throw new Error("No active input can be interrupted."); return receipt; },
+        };
+        controls = Promise.resolve().then(() => input.controlPump!(controller, { signal: slot.controlAbort!.signal }));
+        controls.catch(() => {});
+      }
+      let result: NativeLiveMacSessionResult;
+      try { result = await resultPromise; }
+      finally { slot.controlAbort?.abort(); await controls?.catch(() => {}); }
       this.assertSlot(slot);
       if (result.inputId !== slot.inputId || result.providerSessionId !== this.binding!.session.sessionId) throw new Error("Persistent result changed input/session identity.");
       slot.phase = "acknowledging"; // Revoke execution before awaiting the sink.
+      slot.lease?.stop();
       await this.acknowledge(async () => {
         this.assertSlot(slot, "acknowledging");
         const providerCheckpointId = await this.binding!.session.verifyCheckpoint({ events: result.events, parentCheckpointId: this.providerCheckpointId });
         this.assertSlot(slot, "acknowledging");
         const outcome = await slot.onResult({ command, result, providerCheckpointId });
         this.assertSlot(slot, "acknowledging");
+        const continuationOnly = outcome.status !== "rejected" && outcome.continuationOnly === true;
+        if (continuationOnly && command.operation !== "wake") throw new Error("Only a quiet wake can acknowledge continuation without a visible source.");
         this.applyAcknowledgement(outcome, "turn", providerCheckpointId);
+        if (!continuationOnly) this.backgroundSource = Object.freeze({ prepareId: command.prepare_id, requestId: command.request_id });
       });
       this.assertSlot(slot, "acknowledging");
       return result;
@@ -105,24 +159,33 @@ export class NativeLiveMacPersistentTurnRouter {
       // replay, open a replacement query, or let a later turn consume this slot.
       try { await this.close(); } catch { /* Retain failed-close registry owner. */ }
       throw error;
-    } finally { if (this.active === slot) this.active = null; }
+    } finally { slot.controlAbort?.abort(); slot.lease?.stop(); if (this.active === slot) this.active = null; slot.finish(); }
   }
 
   /** Whether this command can continue this writer: same session and committed checkpoint. */
   matches(rawCommand: NativeLiveRuntimeCommand): boolean {
-    if (this.retired || this.active) return false;
+    if (this.retired || this.suspended || this.active) return false;
     let command: NativeLiveRuntimeCommand;
     try { command = parseNativeLiveRuntimeCommand(rawCommand); } catch { return false; }
     if (!this.binding) return this.initialCommand === null;
     return command.conversation_id === this.binding.conversationId && command.runtime_mode === "resume"
       && command.parent_provider_session_id === this.binding.session.sessionId
       && command.parent_provider_checkpoint_id === this.providerCheckpointId
-      && isDeepStrictEqual(command.execution_selection, this.initialCommand?.execution_selection);
+      && this.selectionMatches(command);
   }
+  private selectionMatches(command: NativeLiveRuntimeCommand): boolean {
+    return (command.operation === "wake" && command.execution_selection == null)
+      || isDeepStrictEqual(command.execution_selection, this.initialCommand?.execution_selection);
+  }
+  get providerSessionId(): string | null { return this.binding?.session.sessionId ?? null; }
+  async settle(): Promise<void> { await this.acknowledgement; }
+  suspend(): void { this.suspended = true; this.active?.controlAbort?.abort(); }
   get workingDirectory(): string | null { return this.binding?.workingDirectory ?? null; }
 
   async close(): Promise<void> {
     this.retired = true; // Fence all callbacks synchronously before closing.
+    this.active?.lease?.stop();
+    this.active?.controlAbort?.abort();
     if (this.closing) return this.closing;
     const conversationId = this.initialCommand?.conversation_id;
     if (!conversationId || !this.generationId) return;
@@ -141,7 +204,7 @@ export class NativeLiveMacPersistentTurnRouter {
   }
   private async authorize(context: Parameters<NativeLiveMacPersistentSessionOptions["authorize"]>[0]): Promise<boolean> {
     const slot = this.active;
-    if (!slot || slot.phase !== "executing" || context.inputId !== slot.inputId) return false;
+    if (this.suspended || !slot || slot.phase !== "executing" || context.inputId !== slot.inputId) return false;
     try {
       this.assertSlot(slot);
       if (context.phase === "input" && this.binding && slot.command.parent_provider_checkpoint_id !== this.providerCheckpointId) return false;
@@ -207,12 +270,16 @@ export class NativeLiveMacPersistentTurnRouter {
       questionHandler: this.handler("questionHandler"),
       onBackgroundResult: async frame => {
         this.assertLive();
+        const foreground = this.active;
+        if (foreground?.resultReady) { await foreground.finished; this.assertLive(); }
         if (!this.generationId) throw new Error("Persistent background generation is unavailable.");
-        const owner = Object.freeze({ conversationId: command.conversation_id, generationId: this.generationId });
         await this.acknowledge(async () => {
           this.assertLive();
           const providerCheckpointId = await this.binding!.session.verifyCheckpoint({ events: frame.events, parentCheckpointId: this.providerCheckpointId });
           this.assertLive();
+          const owner: NativeLiveMacPersistentBackgroundOwner = Object.freeze({ conversationId: command.conversation_id,
+            generationId: this.generationId!, source: this.backgroundSource, providerSessionId: this.binding!.session.sessionId!,
+            parentProviderCheckpointId: this.providerCheckpointId, workingDirectory: this.binding!.workingDirectory });
           const outcome = await this.input.onBackgroundResult(owner, { ...frame, providerCheckpointId });
           this.assertLive();
           this.applyAcknowledgement(outcome, "background", providerCheckpointId);
@@ -226,6 +293,9 @@ export class NativeLiveMacPersistentTurnRouter {
     } });
     this.generationId = this.input.registry.getGenerationId(command.conversation_id);
     this.binding = await opening;
+    this.binding.session.events.on("turn-result", (frame: { inputId: string }) => {
+      if (!this.retired && this.active?.inputId === frame.inputId) this.active.resultReady = true;
+    });
     this.assertSlot(slot);
   }
 }

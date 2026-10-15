@@ -385,11 +385,7 @@ export class NativeLiveMacRuntimeExecutor {
     if (command.parent_provider_checkpoint_id !== undefined && !runtimeResult.providerCheckpointId) {
       return failure(command, "NO_PROVIDER_SESSION");
     }
-    const runtimeMetadata = await this.buildRuntimeMetadata(
-      command,
-      runtimeResult,
-      binding.runtime,
-    );
+    const runtimeMetadata = buildNativeLiveRuntimeMetadata(runtimeResult);
 
     return {
       protocol_version: command.protocol_version,
@@ -410,85 +406,6 @@ export class NativeLiveMacRuntimeExecutor {
         : {}),
       ...(runtimeMetadata
         ? { runtime_metadata: runtimeMetadata }
-        : {}),
-    };
-  }
-
-  private async buildRuntimeMetadata(
-    _command: NativeLiveRuntimeCommand,
-    runtimeResult: NativeLiveForegroundRuntimeResult,
-    _runtime: NativeLiveForegroundRuntime,
-  ): Promise<NativeLiveRuntimeMetadata | null> {
-    const contextUsage = runtimeResult.contextUsage ?? null;
-    const execution =
-      runtimeResult.executionReadback
-        ? {
-            readback: {
-              requested:
-                runtimeResult.executionReadback.requested,
-              applied:
-                runtimeResult.executionReadback.applied,
-              capability:
-                runtimeResult.executionReadback.capability,
-            },
-            readback_error:
-              runtimeResult.executionReadbackError
-                ? "READBACK_UNAVAILABLE" as const
-                : null,
-          }
-        : null;
-    const environment =
-      runtimeEnvironmentFromNormalizedEvents(
-        runtimeResult.normalizedEvents,
-      );
-    const result =
-      runtimeResultTelemetryFromNormalizedEvents(
-        runtimeResult.normalizedEvents,
-      );
-    const outputResources =
-      runtimeOutputResourcesFromNormalizedEvents(
-        runtimeResult.normalizedEvents,
-      );
-    const vcsChanges =
-      runtimeVcsChangesFromNormalizedEvents(
-        runtimeResult.normalizedEvents,
-      );
-    const sessionStore =
-      runtimeResult.sessionStoreObservability
-        ? (() => {
-            try {
-              return parseNativeLiveRuntimeSessionStoreHealth(
-                runtimeResult.sessionStoreObservability,
-              );
-            } catch {
-              return null;
-            }
-          })()
-        : null;
-
-    if (
-      !contextUsage
-      && !execution
-      && !environment
-      && !result
-      && outputResources.length === 0
-      && vcsChanges.length === 0
-      && !sessionStore
-    ) return null;
-
-    return {
-      context_usage: contextUsage,
-      ...(execution ? { execution } : {}),
-      ...(environment ? { environment } : {}),
-      ...(result ? { result } : {}),
-      ...(outputResources.length > 0
-        ? { output_resources: outputResources }
-        : {}),
-      ...(vcsChanges.length > 0
-        ? { vcs_changes: vcsChanges }
-        : {}),
-      ...(sessionStore
-        ? { session_store: sessionStore }
         : {}),
     };
   }
@@ -1007,4 +924,79 @@ function isRuntimeFailureCode(
     || value === "ATTACHMENT_UNAVAILABLE"
     || value === "RUNTIME_UNAVAILABLE"
   );
+}
+
+export function buildNativeLiveRuntimeMetadata(runtimeResult: Pick<NativeLiveForegroundRuntimeResult, "normalizedEvents" | "contextUsage" | "executionReadback" | "executionReadbackError" | "sessionStoreObservability">): NativeLiveRuntimeMetadata | null {
+    const contextUsage = runtimeResult.contextUsage ?? null;
+    const execution =
+      runtimeResult.executionReadback
+        ? {
+            readback: {
+              requested:
+                runtimeResult.executionReadback.requested,
+              applied:
+                runtimeResult.executionReadback.applied,
+              capability:
+                runtimeResult.executionReadback.capability,
+            },
+            readback_error:
+              runtimeResult.executionReadbackError
+                ? "READBACK_UNAVAILABLE" as const
+                : null,
+          }
+        : null;
+    const environment =
+      runtimeEnvironmentFromNormalizedEvents(
+        runtimeResult.normalizedEvents,
+      );
+    const result =
+      runtimeResultTelemetryFromNormalizedEvents(
+        runtimeResult.normalizedEvents,
+      );
+    const outputResources =
+      runtimeOutputResourcesFromNormalizedEvents(
+        runtimeResult.normalizedEvents,
+      );
+    const vcsChanges =
+      runtimeVcsChangesFromNormalizedEvents(
+        runtimeResult.normalizedEvents,
+      );
+    const sessionStore =
+      runtimeResult.sessionStoreObservability
+        ? (() => {
+            try {
+              return parseNativeLiveRuntimeSessionStoreHealth(
+                runtimeResult.sessionStoreObservability,
+              );
+            } catch {
+              return null;
+            }
+          })()
+        : null;
+
+    if (
+      !contextUsage
+      && !execution
+      && !environment
+      && !result
+      && outputResources.length === 0
+      && vcsChanges.length === 0
+      && !sessionStore
+    ) return null;
+
+    return {
+      context_usage: contextUsage,
+      ...(execution ? { execution } : {}),
+      ...(environment ? { environment } : {}),
+      ...(result ? { result } : {}),
+      ...(outputResources.length > 0
+        ? { output_resources: outputResources }
+        : {}),
+      ...(vcsChanges.length > 0
+        ? { vcs_changes: vcsChanges }
+        : {}),
+      ...(sessionStore
+        ? { session_store: sessionStore }
+        : {}),
+    };
 }

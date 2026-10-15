@@ -170,3 +170,16 @@ test("retirement during real SDK loading cancels startup before any late query i
   loading.resolve(() => { queries++; return { close() {}, async *[Symbol.asyncIterator]() {} }; });
   await closing; await rejected; assert.equal(queries, 0); assert.equal(registry.size, 0);
 });
+
+test("a close RPC cannot release ownership before the SDK output stream actually finishes",async t=>{
+ const root=await realpath(await mkdtemp(join(tmpdir(),"registry-drain-")));t.after(()=>rm(root,{recursive:true,force:true}));
+ const closed=deferred(),stream=deferred();const session={state:"idle",sessionId:"synthetic",tasks:new Map(),events:new EventEmitter(),completion:stream.promise};
+ const registry=new NativeLiveMacSessionRegistry({},root,async()=>({kind:"agent_sdk",runtime:{abort(){},async openPersistentSession(){return session;},async closePersistentSession(){closed.resolve();}}}) as never);
+ t.after(()=>registry.closeAll());
+ const binding=await registry.openNew({conversationId:"a",expectedWorkingDirectory:null,options:options()});
+ const closing=registry.close("a",binding.generationId);await closed.promise;
+ await new Promise(resolve=>setImmediate(resolve));
+ try {assert.equal(registry.size,1);await assert.rejects(registry.openNew({conversationId:"a",expectedWorkingDirectory:null,options:options()}),/already/);}
+ finally {stream.resolve();await closing;}
+ assert.equal(registry.size,0);
+});

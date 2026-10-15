@@ -28,6 +28,33 @@ test("execution admission PostgreSQL snapshot fences", { skip: process.env.RUN_N
     await db.transaction(async tx => { await tx.execute(sql`SET TRANSACTION READ ONLY`); await tx.execute(sql`SET LOCAL statement_timeout = '5s'`); assert.equal(await new DrizzleNativeLiveBackendRelayRepository(tx as typeof db).checkExecutionAdmission(input), true); });
     assert.deepEqual(await db.select().from(preparations).where(eq(preparations.id, reservationId)), before);
   });
+  await t.test("renewal extends only the live executing reservation and its exact listener", async () => {
+    const short = new Date(Date.now() + 10_000);
+    await db.update(preparations).set({ reservationExpiresAt: short }).where(eq(preparations.id, reservationId));
+    await db.update(leases).set({ leaseExpiresAt: short }).where(eq(leases.userId, userId));
+    const before = (await db.select().from(preparations).where(eq(preparations.id, reservationId)))[0]!;
+    assert.equal(await repository.renewExecutionLease(input), true);
+    const after = (await db.select().from(preparations).where(eq(preparations.id, reservationId)))[0]!;
+    assert.ok(after.reservationExpiresAt!.getTime() > short.getTime() + 40_000);
+    assert.deepEqual({ ...after, reservationExpiresAt: before.reservationExpiresAt, updatedAt: before.updatedAt }, before);
+    assert.ok((await db.select().from(leases).where(eq(leases.userId,userId)))[0]!.leaseExpiresAt.getTime() > short.getTime() + 40_000);
+  });
+  await t.test("renewal cannot resurrect expired execution/listener or adopt a replacement head", async () => {
+    for (const invalid of ["reservation", "listener", "head", "owner"] as const) {
+      if (invalid === "reservation") await db.update(preparations).set({ reservationExpiresAt: earlier }).where(eq(preparations.id,reservationId));
+      if (invalid === "listener") await db.update(leases).set({ leaseExpiresAt: earlier }).where(eq(leases.userId,userId));
+      if (invalid === "head") await db.update(conversations).set({ currentHeadMessageId: null }).where(eq(conversations.id,conversationId));
+      if (invalid === "owner") await db.update(preparations).set({ reservedBy: crypto.randomUUID() }).where(eq(preparations.id,reservationId));
+      const before = await db.select().from(preparations).where(eq(preparations.id,reservationId));
+      const leaseBefore = await db.select().from(leases).where(eq(leases.userId,userId));
+      assert.equal(await repository.renewExecutionLease(input), false);
+      assert.deepEqual(await db.select().from(preparations).where(eq(preparations.id,reservationId)), before);
+      assert.deepEqual(await db.select().from(leases).where(eq(leases.userId,userId)), leaseBefore);
+      await db.update(preparations).set({ reservedBy:listenerInstanceId,reservationExpiresAt:later }).where(eq(preparations.id,reservationId));
+      await db.update(leases).set({ leaseExpiresAt:later }).where(eq(leases.userId,userId));
+      await db.update(conversations).set({ currentHeadMessageId:canonicalUserMessageId }).where(eq(conversations.id,conversationId));
+    }
+  });
   await t.test("wrong user, listener, request and conversation cannot authorize", async () => {
     for (const key of ["userId", "listenerInstanceId", "requestId", "conversationId", "reservationId"] as const) assert.equal(await repository.checkExecutionAdmission({ ...input, [key]: crypto.randomUUID() }), false);
   });

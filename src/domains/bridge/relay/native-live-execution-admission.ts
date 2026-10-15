@@ -6,7 +6,7 @@ import type { NativeLiveExecutionAdmission } from "../protocol/native-live-execu
 type Database = ReturnType<typeof createDatabase>["db"];
 // A single SELECT observes reservation, live listener, canonical surface and
 // checkpoint binding together. This grants no lasting lease and mutates nothing.
-export async function checkNativeLiveExecutionAdmission(db: Database, input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {
+export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "execute">, input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {
   const [row] = await db.execute<{ admitted: boolean }>(sql`
     SELECT EXISTS (
       SELECT 1 FROM native_live_turn_preparations p

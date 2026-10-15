@@ -1,3 +1,4 @@
+import type { NativeLiveMacPersistentExecutor, NativeLiveMacPersistentExecution } from "./native-live-mac-persistent-executor.js";
 import type { NativeLiveMacResultOutbox } from "./native-live-mac-result-outbox.js";
 import type {
   NativeLiveRuntimeCommand,
@@ -55,6 +56,7 @@ export type NativeLiveDaemonRejectCode =
 
 export type NativeLiveResultSubmissionReceipt = {
   canonicalOutcome: string | null;
+  nativeResumeCheckpointId?: string;
 };
 
 export type NativeLiveDaemonRunOutcome =
@@ -248,9 +250,11 @@ export interface NativeLiveMacDaemonRelayClient {
   reserveNext(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
+    persistentSessions?: boolean;
   }): Promise<NativeLiveDaemonReservation | null>;
 
   checkExecutionAdmission?(input: { listenerInstanceId: string; command: NativeLiveRuntimeCommand }): Promise<boolean>;
+  renewExecutionLease?(input: { listenerInstanceId: string; command: NativeLiveRuntimeCommand }): Promise<boolean>;
 
   markExecutionStarted(input: {
     listenerInstanceId: string;
@@ -404,6 +408,7 @@ export class NativeLiveMacDaemonLoop {
     private readonly externalSessionExecutor:
       NativeLiveExternalSessionExecutor | null = null,
     private readonly resultOutbox: NativeLiveMacResultOutbox | null = null,
+    private readonly persistentExecutor: (Pick<NativeLiveMacPersistentExecutor, "canRoute" | "execute" | "retire"> & Partial<Pick<NativeLiveMacPersistentExecutor, "assertAccepting" | "retireSession">>) | null = null,
   ) {}
 
   async runOnce(): Promise<NativeLiveDaemonRunOutcome> {
@@ -490,6 +495,7 @@ export class NativeLiveMacDaemonLoop {
       const reservation = await this.relay.reserveNext({
         listenerInstanceId: this.listenerInstanceId,
         dispatchTarget: "claude_code",
+        ...(this.persistentExecutor ? { persistentSessions: true } : {}),
       });
       if (!reservation) {
         if (semanticReservationId) {
@@ -575,6 +581,7 @@ export class NativeLiveMacDaemonLoop {
           if (compact) {
             let result;
             try {
+              await this.persistentExecutor?.retireSession?.(compact.providerSessionId);
               result =
                 await this.manualCompactExecutor.compactSession(
                   compact.providerSessionId,
@@ -656,6 +663,7 @@ export class NativeLiveMacDaemonLoop {
             });
           if (cleanup) {
             try {
+              await this.persistentExecutor?.retireSession?.(cleanup.providerSessionId);
               await this.providerSessionCleanupExecutor.deleteSession(
                 cleanup.providerSessionId,
                 cleanup.effectiveWorkingDirectory,
@@ -811,8 +819,26 @@ export class NativeLiveMacDaemonLoop {
           runtimeEventFlush = null;
         }
       };
+      let persistentRun: NativeLiveMacPersistentExecution | null = null;
+      const commit = async (value: NativeLiveRuntimeExecutionResult) => {
+        const entry = { listenerInstanceId: this.listenerInstanceId, reservationId: reservation.reservationId, result: value };
+        await this.resultOutbox?.save(entry);
+        await flushRuntimeEvents();
+        const receipt = await this.relay.submitResult(entry);
+        await this.resultOutbox?.acknowledge(entry);
+        return receipt;
+      };
+      const execute = async (command: NativeLiveRuntimeCommand, options: Parameters<NativeLivePreparedCommandExecutor["execute"]>[1]) => {
+        this.persistentExecutor?.assertAccepting?.(command.conversation_id);
+        if (this.persistentExecutor?.canRoute(command)) {
+          persistentRun = await this.persistentExecutor.execute(command, { ...options, commit });
+          return persistentRun.result;
+        }
+        await this.persistentExecutor?.retire(command.conversation_id);
+        return this.executor.execute(command, options);
+      };
       try {
-        result = await this.executor.execute(
+        result = await execute(
           reservation.command,
           {
             ...(this.relay.appendRuntimeEvents
@@ -889,6 +915,14 @@ export class NativeLiveMacDaemonLoop {
         };
       }
 
+      const persistent = persistentRun as NativeLiveMacPersistentExecution | null;
+      if (persistent && persistent.delivery !== "pending") {
+        if (persistent.delivery === "unknown") await this.bestEffortDeliveryUnknown(reservation.reservationId);
+        return { outcome: persistent.delivery === "unknown" ? "delivery_unknown" : "completed",
+          reservationId: reservation.reservationId, result,
+          ...(persistent.canonicalOutcome ? { canonicalOutcome: persistent.canonicalOutcome } : {}),
+          ...(eventDeliveryFailures ? { eventDeliveryFailures } : {}) };
+      }
       const pendingResult = {
         listenerInstanceId: this.listenerInstanceId,
         reservationId: reservation.reservationId,
@@ -976,7 +1010,7 @@ export class NativeLiveMacDaemonLoop {
               { controlCode: "INVALID_CONTROL_PAYLOAD" },
             );
           }
-          receipt = controller.sendUserMessage(text, {
+          receipt = await controller.sendUserMessage(text, {
             uuid: control.controlId,
           });
         } else {

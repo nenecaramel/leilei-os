@@ -90,3 +90,40 @@ test("attachments are materialized into the prompt and cleaned up; outputs are c
   assert.deepEqual(cleaned, [id(1)]); assert.equal(sent[0], "/work:f0");
   assert.equal((commitBody as { output_attachment_ids?: string[] } | null)?.output_attachment_ids?.length, 8);
 });
+
+test("verified quiet resume commits its exact cursor without retiring the same-session writer", async () => {
+  const f = fixture(async input => { const ack = await frame(input); assert.deepEqual(ack,{status:"applied",providerCheckpointId:id(9),...(input.command.operation === "wake" ? {continuationOnly:true} : {})}); return {}; });
+  const run=await f.executor.execute(command({operation:"wake",canonical_user_message_id:null}),{async commit(){return {canonicalOutcome:"wake_quiet",nativeResumeCheckpointId:id(9)};}});
+  assert.equal(run.delivery,"committed");assert.equal(run.canonicalOutcome,"wake_quiet");
+  assert.equal(f.routers[0]!.closed,0);
+  const next=await f.executor.execute(command(),{async commit(){return {canonicalOutcome:"completed"};}});
+  assert.equal(next.result.status,"success"); assert.equal(next.canonicalOutcome,"completed");
+  assert.equal(f.routers.length,1,"next foreground turn must retain this writer");
+});
+
+test("failed retirement retains ownership and retries close before another writer can route", async () => {
+  let closes = 0;
+  const executor = new NativeLiveMacPersistentExecutor({ attachmentMaterializer: null, outputAttachmentSender: null,
+    createRouter: () => ({ workingDirectory: "/work", matches: () => false,
+      async execute(input: TurnInput) { await frame(input); return {} as never; },
+      async close() { if (++closes === 1) throw new Error("close unknown"); },
+    }) as never });
+  await executor.execute(command(), { async commit() { return { canonicalOutcome: "completed" }; } });
+  await assert.rejects(executor.retire(id(3)), /close unknown/);
+  assert.equal(executor.canRoute(command()), false, "failed close must not free ownership");
+  await executor.retire(id(3));
+  assert.equal(closes, 2); assert.equal(executor.canRoute(command()), true);
+});
+
+test("shutdown reports failed writers and allows a later close retry", async () => {
+  let closes = 0;
+  const executor = new NativeLiveMacPersistentExecutor({ attachmentMaterializer: null, outputAttachmentSender: null,
+    createRouter: () => ({ workingDirectory: "/work", matches: () => true,
+      async execute(input: TurnInput) { await frame(input); return {} as never; },
+      async close() { if (++closes === 1) throw new Error("close unknown"); },
+    }) as never });
+  await executor.execute(command(), { async commit() { return { canonicalOutcome: "completed" }; } });
+  await assert.rejects(executor.closeAll(), /could not all close/);
+  assert.equal(executor.canRoute(command()), false, "shutdown never accepts new work");
+  await executor.closeAll(); assert.equal(closes, 2);
+});

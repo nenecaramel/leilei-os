@@ -1,3 +1,5 @@
+import { backgroundIdentity, backgroundResult, type NativeLiveBackgroundPrepare, type NativeLiveBackgroundSubmit, type NativeLiveBackgroundPrepared, type NativeLiveBackgroundAck } from "../protocol/native-live-background-result.js";
+import { requireUuid } from "../protocol/runtime-protocol/parsing.js";
 import { parseNativeLiveExecutionAdmissionBody } from "../protocol/native-live-execution-admission.js";
 import { randomUUID } from "node:crypto";
 import type {
@@ -610,10 +612,12 @@ implements NativeLiveMacDaemonRelayClient {
   async reserveNext(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
+    persistentSessions?: boolean;
   }): Promise<NativeLiveDaemonReservation | null> {
     const data = await this.post("/reserve", {
       listener_instance_id: input.listenerInstanceId,
       dispatch_target: input.dispatchTarget,
+      ...(input.persistentSessions === true ? { persistent_sessions: true } : {}),
     });
     if (data === null) return null;
     const record = readRecord(data);
@@ -642,6 +646,17 @@ implements NativeLiveMacDaemonRelayClient {
     ));
     if (typeof data.admitted !== "boolean") throw new Error("Native live execution admission response is invalid.");
     return data.admitted;
+  }
+
+  async renewExecutionLease(input: { listenerInstanceId: string; command: import("../protocol/native-live-runtime-protocol.js").NativeLiveRuntimeCommand }): Promise<boolean> {
+    const c = input.command;
+    const body = { listener_instance_id: input.listenerInstanceId, request_id: c.request_id, conversation_id: c.conversation_id,
+      runtime_mode: c.runtime_mode, canonical_user_message_id: c.canonical_user_message_id,
+      parent_provider_session_id: c.parent_provider_session_id, parent_provider_checkpoint_id: c.parent_provider_checkpoint_id };
+    if (!parseNativeLiveExecutionAdmissionBody(body)) return false;
+    const data = readRecord(await this.post(`/reservations/${encodeURIComponent(c.prepare_id)}/execution-lease/renew`, body, AbortSignal.timeout(2_000)));
+    if (typeof data.renewed !== "boolean") throw new Error("Native execution renewal response is invalid.");
+    return data.renewed;
   }
 
   async markExecutionStarted(input: {
@@ -837,7 +852,41 @@ implements NativeLiveMacDaemonRelayClient {
         listener_instance_id: input.listenerInstanceId,
         outcome: input.outcome,
       },
+      AbortSignal.timeout(2_000),
     );
+  }
+
+  async prepareBackgroundResult(input: NativeLiveBackgroundPrepare): Promise<NativeLiveBackgroundPrepared> {
+    const identity = backgroundIdentity(input);
+    const parent = requireUuid(input.parentProviderCheckpointId, "parentProviderCheckpointId");
+    const data = readRecord(await this.postRetryableBounded(
+      `/reservations/${identity.sourcePrepareId}/background-results/prepare`,
+      { receipt_id: identity.receiptId, listener_instance_id: identity.listenerInstanceId,
+        generation_id: identity.generationId, parent_provider_checkpoint_id: parent }, 3, AbortSignal.timeout(5_000),
+    ));
+    if (data.receiptId !== identity.receiptId || data.parentProviderCheckpointId !== parent
+      || typeof data.providerSessionId !== "string" || !data.providerSessionId.trim() || data.providerSessionId.length > 1024
+      || typeof data.expiresAt !== "string" || !Number.isFinite(Date.parse(data.expiresAt))) {
+      throw new Error("Native background preparation response is invalid.");
+    }
+    return { receiptId: identity.receiptId, providerSessionId: data.providerSessionId,
+      parentProviderCheckpointId: parent, expiresAt: data.expiresAt };
+  }
+
+  async submitBackgroundResult(input: NativeLiveBackgroundSubmit): Promise<NativeLiveBackgroundAck> {
+    const identity = backgroundIdentity(input), result = backgroundResult(input.result);
+    const data = readRecord(await this.postRetryableBounded(
+      `/reservations/${identity.sourcePrepareId}/background-results/${identity.receiptId}/result`,
+      { listener_instance_id: identity.listenerInstanceId, generation_id: identity.generationId, result }, 3, AbortSignal.timeout(5_000),
+    ));
+    const outcome = data.outcome;
+    if (!["committed", "failed", "stale"].includes(String(outcome)) || typeof data.duplicate !== "boolean"
+      || (outcome === "committed" ? result.status !== "success" || data.providerCheckpointId !== result.provider_checkpoint_id
+        : data.providerCheckpointId !== null || (outcome === "failed" && result.status !== "failure"))) {
+      throw new Error("Native background submission response is invalid.");
+    }
+    return { outcome: outcome as NativeLiveBackgroundAck["outcome"], duplicate: data.duplicate,
+      providerCheckpointId: outcome === "committed" ? requireUuid(data.providerCheckpointId, "providerCheckpointId") : null };
   }
 
   async submitResult(input: {
@@ -846,6 +895,7 @@ implements NativeLiveMacDaemonRelayClient {
     result: NativeLiveRuntimeExecutionResult;
   }): Promise<{
     canonicalOutcome: string | null;
+    nativeResumeCheckpointId?: string;
   }> {
     const data = readRecord(
       await this.postRetryableBounded(
@@ -855,9 +905,15 @@ implements NativeLiveMacDaemonRelayClient {
           result: input.result,
         },
         3,
+        AbortSignal.timeout(5_000),
       ),
     );
+    if (data.nativeResumeCheckpointId !== undefined
+      && (data.canonicalOutcome !== "wake_quiet" || !requireUuid(data.nativeResumeCheckpointId, "nativeResumeCheckpointId"))) {
+      throw new Error("Native quiet acknowledgement is invalid.");
+    }
     return {
+      ...(data.nativeResumeCheckpointId !== undefined ? { nativeResumeCheckpointId: data.nativeResumeCheckpointId as string } : {}),
       canonicalOutcome:
         typeof data.canonicalOutcome === "string"
           ? data.canonicalOutcome
@@ -893,20 +949,21 @@ implements NativeLiveMacDaemonRelayClient {
     path: string,
     body: unknown,
     maxAttempts: number,
+    signal: AbortSignal | null = null,
   ): Promise<unknown> {
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        return await this.post(path, body);
+        return await this.post(path, body, signal);
       } catch (error) {
         if (
-          !isTransientRelayWaitError(error)
+          signal?.aborted || !isTransientRelayWaitError(error)
           || attempt >= maxAttempts
         ) {
           throw error;
         }
         await delayRelayRetry(
           Math.min(250 * 2 ** (attempt - 1), 1_000),
-          null,
+          signal,
         );
       }
     }
