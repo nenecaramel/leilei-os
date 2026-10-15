@@ -75,6 +75,36 @@ async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirec
     nativeSnapshot: { sessionId: snapshot.sessionId, revision: snapshot.revision, entries: snapshot.entries, ...(displayAssets ? { displayAssets } : {}) } };
 }
 
+// Fast, source-only checkpoint inspection for a metadata-only handoff.
+// Does not reconstruct pre-Compact display history, stage assets, or upload JSONL.
+// This is an observation, not proof that Desktop has stopped writing.
+export async function inspectNativeCheckpointOnly(input) {
+  const { indexFile, projectDirectory, peerDirectory, probeProcessStart, expectedSessionId } = input;
+  if (indexFile === null && !sessionPattern.test(expectedSessionId ?? '')) throw fail('INVALID_SESSION_ID');
+  const index = indexFile === null ? null : await readIndex(indexFile);
+  const sessionId = index ? index.metadata.cliSessionId : expectedSessionId;
+  const snapshot = await readNativeSession(projectDirectory, sessionId);
+  const identity = index
+    ? resolveDesktopSession(index.metadata, new Map([[snapshot.sessionId, snapshot]]))
+    : resolveLocalNativeSession(snapshot);
+  const activity = await readNativeSessionActivity(peerDirectory, snapshot.sessionId, { probeProcessStart });
+  const [currentIndex, currentSource] = await Promise.all([
+    index ? readOnlyFileSnapshot(indexFile, 4 * 1024 * 1024) : null,
+    readNativeSession(projectDirectory, snapshot.sessionId),
+  ]);
+  if ((index && currentIndex.revision !== index.revision)
+    || currentSource.revision !== snapshot.revision) throw fail('NATIVE_INSPECTION_CHANGED');
+  return {
+    readOnly: true, executionAuthorized: false,
+    providerSessionId: identity.providerSessionId,
+    providerCheckpointId: identity.providerCheckpointId,
+    workingDirectory: identity.workingDirectory,
+    nativeRevision: snapshot.revision,
+    activity,
+    historyImported: false,
+  };
+}
+
 export async function inspectDesktopNativeSession(input) {
   return (await loadDesktopNativeSession(input)).inspection;
 }
