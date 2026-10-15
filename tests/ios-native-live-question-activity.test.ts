@@ -28,3 +28,39 @@ test("question presentation preserves the interactive card and uses Question / R
   assert.match(source, /sectionTitle: "Question"/);
   assert.match(source, /secondarySectionTitle: "Response"/);
 });
+
+
+test("pending permission and question cards share wallpaper-only native glass without changing their actions", () => {
+  const source = fs.readFileSync(surface + "NativeLiveInteractions.swift", "utf8");
+  const originalPanel = source.slice(
+    source.indexOf("private struct NativeLiveInteractionCardBackground: ViewModifier"),
+    source.indexOf("struct NativeLivePermissionInteractionCard: View")
+  );
+  const permission = source.slice(
+    source.indexOf("struct NativeLivePermissionInteractionCard: View"),
+    source.indexOf("struct NativeLiveQuestionInteractionCard: View")
+  );
+  const question = source.slice(source.indexOf("struct NativeLiveQuestionInteractionCard: View"));
+
+  // Wallpaper-backed iMessage gets the same 11pt regular glass as Tool rows.
+  assert.match(originalPanel, /@Environment\(\\\.iMessageWallpaperVisible\) private var iMessageWallpaperVisible/);
+  assert.match(originalPanel, /if iMessageWallpaperVisible \{/);
+  assert.match(originalPanel, /\.glassEffect\(\s*\.regular,\s*in: RoundedRectangle\(cornerRadius: 11, style: \.continuous\)/);
+  assert.match(originalPanel, /\.foregroundStyle\(Color\(red: 0\.17, green: 0\.20, blue: 0\.23\)\)/);
+  // Without the wallpaper, Original and plain iMessage keep their old paint.
+  assert.match(originalPanel, /else \{\s*content\.background\(\s*Color\.primary\.opacity\(0\.055\),\s*in: RoundedRectangle\(cornerRadius: 14, style: \.continuous\)/);
+  for (const card of [permission, question]) {
+    assert.match(card, /\.padding\(14\)\s*\.modifier\(NativeLiveInteractionCardBackground\(\)\)/);
+    assert.doesNotMatch(card, /\.background\(\s*Color\.primary\.opacity\(0\.055\)/);
+    assert.match(card, /\.disabled\(isSubmitting\)/);
+    assert.match(card, /try await onResolve\(/);
+    assert.match(card, /errorMessage = error\.localizedDescription/);
+  }
+  assert.match(permission, /Button\("Deny", role: \.destructive\)/);
+  assert.match(permission, /Button\("Allow"\)/);
+  assert.match(question, /selectedOptions\[question\.text\] = \[option\]/);
+  assert.match(question, /TextField\(/);
+  assert.match(question, /Button\("Cancel"\)/);
+  assert.match(question, /Button\("Submit"\)/);
+  assert.match(question, /"answers": \.object\(answers\)/);
+});
