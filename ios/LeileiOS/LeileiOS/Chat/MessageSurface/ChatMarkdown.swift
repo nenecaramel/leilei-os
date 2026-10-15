@@ -1,5 +1,23 @@
 import SwiftUI
 
+// Only iMessage text bubbles use these colors. Keep the parsed Markdown,
+// link URLs, underline styles, and Original's native accent colors intact.
+enum NativeLiveIMessageMarkdownPalette {
+    static let body = Color.white.opacity(0.98)
+    static let quote = Color.white.opacity(0.86)
+
+    static func inline(_ source: AttributedString, isQuote: Bool) -> AttributedString {
+        var styled = source
+        let linkRanges = source.runs.compactMap { run in
+            run.link == nil ? nil : run.range
+        }
+        for range in linkRanges {
+            styled[range].foregroundColor = isQuote ? quote : body
+        }
+        return styled
+    }
+}
+
 // Shared inline primitive. Classification belongs to the presentation projector.
 struct ChatMarkdownView: View {
     private let inline: AttributedString
@@ -39,8 +57,14 @@ struct NativeLiveMarkdownRenderer: View {
                 Text(marker); inline
             }.padding(.leading, CGFloat(depth)*12)
         case .quote(let depth):
-            inline.foregroundStyle(.secondary).padding(.leading, CGFloat(depth)*12)
-                .overlay(alignment: .leading) { Rectangle().fill(Color.primary.opacity(0.2)).frame(width: 2) }
+            if isIMessageBubbleText {
+                inline.foregroundStyle(NativeLiveIMessageMarkdownPalette.quote)
+                    .padding(.leading, CGFloat(depth)*12)
+                    .overlay(alignment: .leading) { Rectangle().fill(Color.primary.opacity(0.2)).frame(width: 2) }
+            } else {
+                inline.foregroundStyle(.secondary).padding(.leading, CGFloat(depth)*12)
+                    .overlay(alignment: .leading) { Rectangle().fill(Color.primary.opacity(0.2)).frame(width: 2) }
+            }
         case .divider: Divider()
         }
     }
@@ -49,8 +73,17 @@ struct NativeLiveMarkdownRenderer: View {
         chatTheme == .iMessage && (role == "user" || role == "assistant")
     }
 
+    private var isQuote: Bool {
+        if case .quote(_) = model.style { return true }
+        return false
+    }
+
     private var inline: some View {
-        Text(model.inline).textSelection(.enabled).lineSpacing(isIMessageBubbleText ? 0 : (role == "user" ? 5 : 6))
+        Text(
+            isIMessageBubbleText
+                ? NativeLiveIMessageMarkdownPalette.inline(model.inline, isQuote: isQuote)
+                : model.inline
+        ).textSelection(.enabled).lineSpacing(isIMessageBubbleText ? 0 : (role == "user" ? 5 : 6))
             .environment(\.openURL, OpenURLAction { url in
                 NativeLiveLinkCapability.openableURL(url.absoluteString) == nil ? .discarded : .systemAction
             })

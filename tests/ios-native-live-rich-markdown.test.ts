@@ -178,3 +178,40 @@ test("all special-card top-right copy glyphs rotate in place across both chat th
   assert.doesNotMatch(source, /chatTheme == \.iMessage[\s\S]*?rotationEffect/);
   assert.doesNotMatch(visual, /chatTheme == \.iMessage[\s\S]*?rotationEffect/);
 });
+
+test("iMessage Markdown bubble links match ordinary white message text and quotes use softer white", () => {
+  const root = "ios/LeileiOS/LeileiOS/Chat/MessageSurface/";
+  const markdown = fs.readFileSync(root + "ChatMarkdown.swift", "utf8");
+  const math = fs.readFileSync(root + "NativeLiveMathRenderer.swift", "utf8");
+  const model = fs.readFileSync(root + "NativeLiveMarkdownModel.swift", "utf8");
+  const bubble = fs.readFileSync(root + "NativeLiveIMessageTextBubbles.swift", "utf8");
+
+  // The palette follows the same 98%-white as the bubble's ordinary body text.
+  assert.match(bubble, /\.foregroundStyle\(Color\.white\.opacity\(0\.98\)\)/);
+  assert.match(markdown, /static let body = Color\.white\.opacity\(0\.98\)/);
+  assert.match(markdown, /static let quote = Color\.white\.opacity\(0\.86\)/);
+  assert.match(markdown, /static func inline\(_ source: AttributedString, isQuote: Bool\) -> AttributedString/);
+  assert.match(markdown, /let linkRanges = source\.runs\.compactMap/);
+  assert.match(markdown, /run\.link == nil \? nil : run\.range/);
+  assert.match(markdown, /styled\[range\]\.foregroundColor = isQuote \? quote : body/);
+  assert.doesNotMatch(markdown, /styled\[range\]\.link = nil/);
+
+  // Only actual iMessage user/assistant bubbles recolor link runs.
+  for (const renderer of [markdown, math]) {
+    assert.match(renderer, /chatTheme == \.iMessage && \(role == "user" \|\| role == "assistant"\)/);
+    assert.match(renderer, /isIMessageBubbleText\s*\? NativeLiveIMessageMarkdownPalette\.inline\(/);
+    assert.match(renderer, /: model\.inline|: markdown\.inline/);
+    assert.match(renderer, /if isIMessageBubbleText \{\s*(?:inline|flow)\.foregroundStyle\(NativeLiveIMessageMarkdownPalette\.quote\)/);
+    assert.match(renderer, /else \{\s*(?:inline\.foregroundStyle\(\.secondary\)|flow\s*\.foregroundStyle\(\.secondary\))/);
+    assert.match(renderer, /if case \.quote\(_\) = model\.style/);
+  }
+
+  // Original link parsing, security checks and underline/tap behaviors remain.
+  assert.match(model, /value\[run\.range\]\.foregroundColor = \.accentColor/);
+  assert.match(model, /value\[run\.range\]\.underlineStyle = \.single/);
+  assert.match(model, /NativeLiveLinkCapability\.openableURL/);
+  assert.match(markdown, /NativeLiveLinkCapability\.openableURL\(url\.absoluteString\)/);
+  assert.match(math, /NativeLiveLinkCapability\.openableURL\(/);
+  assert.match(markdown, /Text\(\s*isIMessageBubbleText/);
+  assert.match(math, /Text\(\s*isIMessageBubbleText/);
+});

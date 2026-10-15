@@ -809,3 +809,20 @@ test('sidebar-closing animation cannot unmask wallpaper early or move it over si
   // Original still passes through the same 50pt/0pt corner radius clip.
   assert.match(mask, /else \{\s*content\.clipShape\(/);
 });
+
+test('iMessage text link and quote coloring follows ordinary bubble text without recoloring Original', () => {
+  const markdown = read('Chat/MessageSurface/ChatMarkdown.swift');
+  const math = read('Chat/MessageSurface/NativeLiveMathRenderer.swift');
+  const model = read('Chat/MessageSurface/NativeLiveMarkdownModel.swift');
+  assert.match(markdown, /static let body = Color\.white\.opacity\(0\.98\)/);
+  assert.match(markdown, /static let quote = Color\.white\.opacity\(0\.86\)/);
+  assert.match(markdown, /styled\[range\]\.foregroundColor = isQuote \? quote : body/);
+  assert.match(markdown, /Text\(\s*isIMessageBubbleText\s*\? NativeLiveIMessageMarkdownPalette\.inline\(model\.inline, isQuote: isQuote\)\s*: model\.inline/);
+  assert.match(math, /NativeLiveIMessageMarkdownPalette\.inline\(markdown\.inline, isQuote: isQuote\)/);
+  for (const source of [markdown, math]) {
+    assert.match(source, /if isIMessageBubbleText \{\s*(?:inline|flow)\.foregroundStyle\(NativeLiveIMessageMarkdownPalette\.quote\)/);
+    assert.match(source, /chatTheme == \.iMessage && \(role == "user" \|\| role == "assistant"\)/);
+  }
+  assert.match(model, /foregroundColor = \.accentColor/);
+  assert.match(model, /underlineStyle = \.single/);
+});

@@ -58,14 +58,25 @@ struct NativeLiveInlineMathParagraphRenderer: View {
             .padding(.leading, CGFloat(depth) * 12)
 
         case .quote(let depth):
-            flow
-                .foregroundStyle(.secondary)
-                .padding(.leading, CGFloat(depth) * 12)
-                .overlay(alignment: .leading) {
-                    Rectangle()
-                        .fill(Color.primary.opacity(0.2))
-                        .frame(width: 2)
-                }
+            if isIMessageBubbleText {
+                flow
+                    .foregroundStyle(NativeLiveIMessageMarkdownPalette.quote)
+                    .padding(.leading, CGFloat(depth) * 12)
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.2))
+                            .frame(width: 2)
+                    }
+            } else {
+                flow
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, CGFloat(depth) * 12)
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.2))
+                            .frame(width: 2)
+                    }
+            }
 
         case .divider:
             Divider()
@@ -74,6 +85,11 @@ struct NativeLiveInlineMathParagraphRenderer: View {
 
     private var isIMessageBubbleText: Bool {
         chatTheme == .iMessage && (role == "user" || role == "assistant")
+    }
+
+    private var isQuote: Bool {
+        if case .quote(_) = model.style { return true }
+        return false
     }
 
     private var flow: some View {
@@ -85,7 +101,11 @@ struct NativeLiveInlineMathParagraphRenderer: View {
                 if let math = child.math {
                     NativeLiveInlineMathVisualRenderer(model: math)
                 } else if let markdown = child.markdown {
-                    Text(markdown.inline)
+                    Text(
+                        isIMessageBubbleText
+                            ? NativeLiveIMessageMarkdownPalette.inline(markdown.inline, isQuote: isQuote)
+                            : markdown.inline
+                    )
                         .font(isIMessageBubbleText ? .body : .system(size: 17))
                         .textSelection(.enabled)
                         .lineSpacing(isIMessageBubbleText ? 0 : (role == "user" ? 5 : 6))
