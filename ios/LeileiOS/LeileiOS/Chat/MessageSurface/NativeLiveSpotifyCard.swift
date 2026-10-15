@@ -37,7 +37,10 @@ struct NativeLiveSpotifyCard: View {
         }
         .padding(.horizontal, 11)
         .padding(.vertical, 9)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .modifier(NativeLiveIMessageContentPanel(
+            originalOpacity: 0.045,
+            originalCornerRadius: 11
+        ))
         .frame(maxWidth: .infinity, alignment: .leading)
         .sheet(isPresented: $isShowingDetails) {
             NativeLiveToolDetailSheet(
