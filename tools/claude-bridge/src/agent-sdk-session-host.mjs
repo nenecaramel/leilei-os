@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { normalizeAgentSdkInterruptReceipt } from './agent-sdk-interrupt.mjs';
+import { ClaudeEventNormalizer } from './normalized-events.mjs';
+import { createToolImageForwarder } from './tool-images.mjs';
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
 // Session host used by the explicit transport API; not enabled by the daemon.
@@ -24,7 +26,7 @@ class SessionHost {
     this.beforeSubmit = beforeSubmit; this.onBackgroundResult = onBackgroundResult;
     this.events = new EventEmitter(); this.tasks = new Map(); this.ids = new Set();
     this.pending = []; this.active = null; this.state = 'starting'; this.sessionId = null;
-    this.turnEvents = [];
+    this.segment = newSegment();
     this.queryClosed = false;
     this.backgroundPending = false;
     this.backgroundAcknowledgement = null;
@@ -33,14 +35,22 @@ class SessionHost {
     // Consumers may attach after startup failure. Preserve rejection for awaiters.
     this.completion.catch(() => {});
   }
-  submit(text, { id = randomUUID(), source = 'unclassified' } = {}) {
+  // Live output is routed to a turn only after the SDK stamps that turn's input
+  // UUID on a reply frame. Unstamped output stays background, never guessed.
+  ownedInputId() {
+    return this.segment.owner === 'turn' && this.active?.id === this.segment.ownerId ? this.active.id : null;
+  }
+  submit(text, { id = randomUUID(), source = 'unclassified', onNormalizedEvent = null, toolImageHandler = null } = {}) {
     if (this.state === 'closed' || this.state === 'failed') return Promise.reject(new Error('Session host is closed.'));
     if (typeof text !== 'string' || !text.trim() || typeof id !== 'string' || !id.trim()) return Promise.reject(new Error('Nonblank input/id required.'));
     if (id === ZERO_UUID) return Promise.reject(new Error('Zero input id cannot establish correlation.'));
     if (this.ids.has(id)) return Promise.reject(new Error('Duplicate session input id.'));
     if (!['human', 'task-notification', 'unclassified'].includes(source)) return Promise.reject(new Error('Invalid session input source.'));
+    if ((onNormalizedEvent !== null && typeof onNormalizedEvent !== 'function') || (toolImageHandler !== null && typeof toolImageHandler !== 'function')) return Promise.reject(new Error('Invalid turn output handler.'));
     this.ids.add(id);
-    const completion = new Promise((resolve, reject) => this.pending.push({ text, id, source, resolve, reject }));
+    const completion = new Promise((resolve, reject) => this.pending.push({ text, id, source, resolve, reject,
+      onNormalizedEvent, forwardImages: createToolImageForwarder(toolImageHandler), images: new AbortController(), delivery: Promise.resolve(),
+      normalizedEvents: [], rawEvents: [], stampedReply: false }));
     this.pump(); return completion;
   }
   async pump() {
@@ -77,8 +87,47 @@ class SessionHost {
     // The authoritative SDK task snapshot, not this response, owns membership.
   }
   rejectWork(error) {
-    this.active?.reject(error); this.active = null;
+    this.active?.images.abort(); this.active?.reject(error); this.active = null;
     for (const item of this.pending.splice(0)) item.reject(error);
+  }
+  async route(message) {
+    if (!['assistant', 'user', 'result', 'stream_event', 'system'].includes(message?.type)) return;
+    // Init identifies the session; it is not a reply or a background turn.
+    if (message.type === 'system' && message.subtype === 'init') return;
+    const segment = this.segment;
+    const stamps = message.parent_tool_use_id || message.parent_agent_id
+      ? [] : [message.user_message_uuid, ...(Array.isArray(message.user_message_uuids) ? message.user_message_uuids : [])];
+    // Only a top-level reply can establish ownership, not a user echo or ping.
+    const isReply = message.type === 'assistant'
+      || (message.type === 'stream_event' && message.event?.type !== 'ping');
+    if (isReply && stamps.some(id => typeof id === 'string' && id && id !== ZERO_UUID)) {
+      const turn = this.active && stamps.includes(this.active.id) ? this.active : null;
+      segment.owner = turn ? 'turn' : 'background'; segment.ownerId = turn?.id ?? null;
+      if (turn) turn.stampedReply = true;
+    }
+    const isOwnedResult = message.type === 'result'
+      && this.active?.stampedReply
+      && stamps.includes(this.active.id);
+    const turn = isOwnedResult ? this.active
+      : message.type === 'result' ? null
+      : this.ownedInputId() ? this.active : null;
+    const next = segment.normalizer.normalize(message);
+    if (turn && !next.some(event => event.type === 'error')) {
+      for (const diagnostic of await turn.forwardImages(message, turn.images.signal)) next.push(...segment.normalizer.normalize({ type: 'system', subtype: 'tool_image_delivery', ...diagnostic }));
+    }
+    if (turn) {
+      // Keep owned output across an interleaved autonomous result boundary.
+      // A foreign result must not steal it or be streamed to this turn.
+      turn.normalizedEvents.push(...next);
+      if (['assistant', 'user', 'result', 'stream_event'].includes(message.type)) turn.rawEvents.push(message);
+      if (turn.onNormalizedEvent) for (const event of next) {
+        // Best effort and ordered: a failed live delivery cannot change the durable result.
+        turn.delivery = turn.delivery.then(() => turn.onNormalizedEvent(event)).catch(() => {});
+      }
+    } else {
+      segment.background.push(...next);
+      if (['assistant', 'user', 'result', 'stream_event'].includes(message.type)) segment.rawBackground.push(message);
+    }
   }
   async close() {
     if (this.queryClosed) return;
@@ -111,28 +160,37 @@ class SessionHost {
         // out of order; never use their bookends to mutate the live task set.
         // Only the current turn owns conversation output. Idle/background events
         // remain session events; canonical backend attribution is stage-2 work.
-        if (['assistant', 'user', 'result', 'stream_event'].includes(message?.type)) this.turnEvents.push(message);
+        await this.route(message);
+        if (this.state === 'closed') break;
         if (message?.type === 'result') {
-          const frame = this.turnEvents; this.turnEvents = [];
+          const segment = this.segment; this.segment = newSegment();
           const consumed = [message.user_message_uuid, ...(Array.isArray(message.user_message_uuids) ? message.user_message_uuids : [])].filter(id => id !== ZERO_UUID);
           if (this.active && !consumed.some(id => typeof id === 'string' && id.trim())) throw new Error('SDK input correlation is unavailable.');
           if (!this.active || !consumed.includes(this.active.id)) {
             if (this.onBackgroundResult) {
               this.backgroundGeneration++;
               this.backgroundPending = true;
-              this.backgroundAcknowledgement = Promise.resolve().then(() => this.onBackgroundResult({ result: message, events: frame }));
+              this.backgroundAcknowledgement = Promise.resolve().then(() => this.onBackgroundResult({ result: message, events: segment.rawBackground, normalizedEvents: segment.background }));
               try { await this.backgroundAcknowledgement; }
               finally { this.backgroundPending = false; this.backgroundAcknowledgement = null; }
             }
             if (this.state === 'closed') break;
-            this.events.emit('background-result', { result: message, events: frame });
+            this.events.emit('background-result', { result: message, events: segment.rawBackground, normalizedEvents: segment.background });
             this.events.emit('event', message);
             void this.pump();
             continue;
           }
           const turn = this.active; this.active = null; this.state = 'idle';
+          turn.images.abort();
+          // Without a live stamp (older producer) the result alone proves the
+          // whole frame is this turn's; it was just not streamed early.
+          // Older producers may omit reply stamps. A matching result then
+          // attributes the unstamped frame without streaming it early.
+          const events = turn.stampedReply ? turn.rawEvents : segment.rawBackground;
+          const normalizedEvents = turn.stampedReply ? turn.normalizedEvents : segment.background;
+          await turn.delivery;
           if (message.subtype !== 'success' || message.is_error) turn.reject(new Error('SDK turn failed.'));
-          else turn.resolve({ providerSessionId: this.sessionId, inputId: turn.id, result: message, events: frame });
+          else turn.resolve({ providerSessionId: this.sessionId, inputId: turn.id, result: message, events, normalizedEvents });
           this.pump();
         }
         this.events.emit('event', message);
@@ -145,6 +203,11 @@ class SessionHost {
       throw error;
     }
   }
+}
+
+function newSegment() {
+  return { owner: null, ownerId: null, background: [], rawBackground: [],
+    normalizer: new ClaudeEventNormalizer({ logicalConversationId: null, mode: 'resume' }) };
 }
 
 function createInputQueue() {
