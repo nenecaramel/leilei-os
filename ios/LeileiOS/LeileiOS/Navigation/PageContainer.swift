@@ -4,6 +4,14 @@ import UIKit
 struct PageContainer: View {
     @EnvironmentObject private var appModel: AppModel
 
+    // Own the wallpaper at the navigation-page root, which continues behind
+    // the keyboard's rounded corners and the chat's bottom safe-area inset.
+    // ChatView owns only message/composer layout and contrast signals.
+    @AppStorage(ChatTheme.storageKey) private var chatThemeRawValue =
+        ChatTheme.original.rawValue
+    @AppStorage(IMessageWallpaper.revisionKey) private var wallpaperRevision = ""
+    @State private var chatWallpaperImage: UIImage?
+
     @State private var renameTitle = ""
     @State private var showingRenameAlert = false
     @State private var renameErrorMessage: String?
@@ -63,7 +71,30 @@ struct PageContainer: View {
             }
             .toolbarBackground(.hidden, for: .navigationBar)
         }
-        .background(pageBackground.ignoresSafeArea())
+        .background {
+            if selectedPage == .chat,
+               chatThemeRawValue == ChatTheme.iMessage.rawValue,
+               let chatWallpaperImage {
+                GeometryReader { geometry in
+                    Image(uiImage: chatWallpaperImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped()
+                }
+                // Background only: the navigation stack and composer still
+                // respond normally to keyboard avoidance and focus.
+                .ignoresSafeArea(.container)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+            } else {
+                pageBackground.ignoresSafeArea()
+            }
+        }
+        .task(id: wallpaperRevision) {
+            chatWallpaperImage = IMessageWallpaper.load()
+        }
         .sheet(isPresented: $showingContext) {
             ContextOverviewSheet()
         }
