@@ -159,7 +159,7 @@ struct ChatView: View {
         // Native safe-area placement without a toolbar's opaque bar backdrop.
         // Original keeps its existing geometry; only the iMessage
         // presentation uses the requested visual placement and fixed gutters.
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        .safeAreaInset(edge: .bottom, spacing: selectedChatTheme == .iMessage ? 0 : nil) {
             if selectedChatTheme == .original {
                 chatComposer
                     .padding(.horizontal, ChatPresentationLayout.composerOuterHorizontal)
