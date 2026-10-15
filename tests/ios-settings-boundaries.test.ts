@@ -68,7 +68,7 @@ test("Notifications are global and precede Appearance; bubble colors have no tra
   const home = read("Settings/SettingsHomeContent.swift");
   const preferences = home.slice(
     home.indexOf('Section("Preferences")'),
-    home.indexOf('if chatThemeRawValue == ChatTheme.iMessage.rawValue {\\n                Section("iMessage Bubble Colors")')
+    home.indexOf('Section("iMessage Bubble Colors")')
   );
   const notifications = preferences.indexOf('Label("Notifications", systemImage: "bell")');
   const appearance = preferences.indexOf('Label("Appearance", systemImage: "circle.lefthalf.filled")');
