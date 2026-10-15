@@ -38,6 +38,13 @@ struct PageContainer: View {
         // Universe extends its map beneath the transparent navigation bar.
         NavigationStack {
             pageContent
+            // NavigationStack has its own container surface. Clearing just
+            // .background below it is insufficient: the navigation canvas
+            // can hide the one wallpaper painted by AppShell.
+            .containerBackground(
+                iMessageWallpaperVisible ? Color.clear : pageBackground,
+                for: .navigation
+            )
             .navigationTitle(selectedPage == .chat || selectedPage == .universe ? "" : pageTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
