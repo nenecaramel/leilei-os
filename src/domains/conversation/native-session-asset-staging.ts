@@ -45,12 +45,14 @@ export async function stageNativeDisplayAssets(db: Database, input: NativeDispla
         WHERE user_id = ${input.userId}::uuid AND subpath = ${key.subpath} AND provider_session_id <> ${input.sessionId}
         GROUP BY provider_session_id HAVING count(*) = ${input.total} LIMIT 1`);
       if (donor) {
-        await tx.execute(sql`INSERT INTO native_live_provider_session_entries
-          (user_id, provider_session_id, subpath, append_batch_id, append_ordinal, entry)
-          SELECT user_id, ${input.sessionId}, subpath, ${randomUUID()}::uuid, row_number() OVER (ORDER BY id) - 1, entry
-          FROM native_live_provider_session_entries
-          WHERE user_id = ${input.userId}::uuid AND provider_session_id = ${donor.provider_session_id} AND subpath = ${key.subpath}
-          ORDER BY id`);
+        // Do not copy raw JSONB (including base64 bytes) into another session.
+        // Load legacy or content-addressed entries transparently, then append
+        // only small per-session references through the deduplicating store.
+        const donorEntries = await store.load({ userId: input.userId, key: {
+          sessionId: donor.provider_session_id, subpath: key.subpath,
+        } });
+        if (donorEntries?.length !== input.total) throw fail("INVALID_NATIVE_SNAPSHOT");
+        await store.append({ userId: input.userId, key, appendBatchId: randomUUID(), entries: donorEntries });
         stored = await count();
       }
     }
