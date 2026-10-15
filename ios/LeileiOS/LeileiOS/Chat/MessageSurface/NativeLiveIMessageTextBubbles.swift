@@ -88,22 +88,6 @@ struct NativeLiveIMessageTextBubble<Content: View>: View {
     let side: NativeLiveIMessageBubbleSide
     let content: Content
 
-    @AppStorage(IMessageBubbleAppearance.outgoingColorKey)
-    private var outgoingColorHex = IMessageBubbleAppearance.defaultOutgoingColorHex
-    @AppStorage(IMessageBubbleAppearance.incomingColorKey)
-    private var incomingColorHex = IMessageBubbleAppearance.defaultIncomingColorHex
-    @AppStorage(IMessageBubbleAppearance.outgoingOpacityKey)
-    private var outgoingOpacity = IMessageBubbleAppearance.defaultOutgoingOpacity
-    @AppStorage(IMessageBubbleAppearance.incomingOpacityKey)
-    private var incomingOpacity = IMessageBubbleAppearance.defaultIncomingOpacity
-
-    private var tintColor: Color {
-        IMessageBubbleAppearance.color(
-            hex: side == .outgoing ? outgoingColorHex : incomingColorHex
-        )
-        .opacity(side == .outgoing ? outgoingOpacity : incomingOpacity)
-    }
-
     init(side: NativeLiveIMessageBubbleSide, @ViewBuilder content: () -> Content) {
         self.side = side
         self.content = content()
@@ -127,26 +111,74 @@ struct NativeLiveIMessageTextBubble<Content: View>: View {
             .padding(.vertical, ChatPresentationLayout.iMessageUserBubbleVerticalInset)
             .foregroundStyle(Color.white.opacity(0.98))
             .background {
-                // Real system backdrop blur, not a translucent solid fill.
-                // Restrict dark appearance to the material so the assistant
-                // keeps readable white text on photographic backgrounds.
-                ZStack {
-                    RoundedRectangle(
-                        cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
-                        style: .continuous
-                    )
-                    .fill(.ultraThinMaterial)
-                    .environment(\.colorScheme, .dark)
-
-                    // Flat color tint only: no gradient, border or highlight.
-                    RoundedRectangle(
-                        cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
-                        style: .continuous
-                    )
-                    .fill(tintColor)
-                }
-                .allowsHitTesting(false)
+                NativeLiveIMessageBubbleBackdrop(side: side)
             }
+    }
+}
+
+// Shared by ordinary text bubbles and the two assistant audio surfaces.
+// One settings authority means both color and opacity change together.
+struct NativeLiveIMessageBubbleBackdrop: View {
+    let side: NativeLiveIMessageBubbleSide
+    @AppStorage(IMessageBubbleAppearance.outgoingColorKey)
+    private var outgoingColorHex = IMessageBubbleAppearance.defaultOutgoingColorHex
+    @AppStorage(IMessageBubbleAppearance.incomingColorKey)
+    private var incomingColorHex = IMessageBubbleAppearance.defaultIncomingColorHex
+    @AppStorage(IMessageBubbleAppearance.outgoingOpacityKey)
+    private var outgoingOpacity = IMessageBubbleAppearance.defaultOutgoingOpacity
+    @AppStorage(IMessageBubbleAppearance.incomingOpacityKey)
+    private var incomingOpacity = IMessageBubbleAppearance.defaultIncomingOpacity
+
+    private var tintColor: Color {
+        IMessageBubbleAppearance.color(
+            hex: side == .outgoing ? outgoingColorHex : incomingColorHex
+        )
+        .opacity(side == .outgoing ? outgoingOpacity : incomingOpacity)
+    }
+
+
+    var body: some View {
+        ZStack {
+            // Real system blur; dark mode is confined to the material layer.
+            RoundedRectangle(
+                cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
+                style: .continuous
+            )
+            .fill(.ultraThinMaterial)
+            .environment(\.colorScheme, .dark)
+
+            RoundedRectangle(
+                cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
+                style: .continuous
+            )
+            .fill(tintColor)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+// Keep the Original audio-card paint verbatim when the iMessage theme is off.
+// The iMessage branch uses the exact same incoming material and tint as text.
+struct NativeLiveAssistantAudioBubbleBackground: ViewModifier {
+    @Environment(\.chatTheme) private var chatTheme
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if chatTheme == .iMessage {
+            content
+                .foregroundStyle(Color.white.opacity(0.98))
+                .tint(Color.white.opacity(0.98))
+                .background {
+                    NativeLiveIMessageBubbleBackdrop(side: .incoming)
+                }
+        } else {
+            content.background(
+                Color.chatSoftFill,
+                in: RoundedRectangle(
+                    cornerRadius: ChatPresentationLayout.bubbleRadius,
+                    style: .continuous
+                )
+            )
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct NativeLiveAudioAttachmentBubble: View {
+    @Environment(\.chatTheme) private var chatTheme
     @EnvironmentObject private var appModel: AppModel
     let input: NativeLiveAttachmentPresentationInput
     @StateObject private var playback = NativeLiveAudioPlaybackState()
@@ -45,7 +46,11 @@ struct NativeLiveAudioAttachmentBubble: View {
                             else { Text(durationLabel).lineLimit(1).fixedSize() }
                         }
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(
+                            chatTheme == .iMessage
+                                ? AnyShapeStyle(Color.white.opacity(0.98))
+                                : AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                        )
                         .frame(width: labelWidth, alignment: .trailing)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -58,16 +63,30 @@ struct NativeLiveAudioAttachmentBubble: View {
             }
             .frame(height: NativeLiveVoiceBubbleGeometry.contentHeight)
             if let failure {
-                Text(failure).font(.caption).foregroundStyle(.secondary)
+                Text(failure).font(.caption).foregroundStyle(
+                    chatTheme == .iMessage
+                        ? AnyShapeStyle(Color.white.opacity(0.98))
+                        : AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                )
                 Button("Retry") { retry() }.font(.caption).buttonStyle(.borderless)
                     .disabled(uploading || isOpening || playback.phase == .loading)
             }
         }
         .padding(.horizontal, NativeLiveVoiceBubbleGeometry.horizontalInset)
-        .padding(.vertical, NativeLiveVoiceBubbleGeometry.verticalInset)
+        .padding(
+            .vertical,
+            chatTheme == .iMessage
+                ? ChatPresentationLayout.iMessageUserBubbleVerticalInset
+                : NativeLiveVoiceBubbleGeometry.verticalInset
+        )
         .frame(width: bubbleWidth, alignment: .leading)
         .animation(.easeInOut(duration: 0.16), value: bubbleWidth)
-        .background(Color.chatSoftFill, in: RoundedRectangle(cornerRadius: ChatPresentationLayout.bubbleRadius, style: .continuous))
+        .modifier(NativeLiveAssistantAudioBubbleBackground())
+        // Mirror the 70pt clearance on the right of incoming text bubbles.
+        .padding(
+            .trailing,
+            chatTheme == .iMessage ? ChatPresentationLayout.iMessageUserLeadingClearance : 0
+        )
         .onDisappear { playback.deactivate() }
         .sheet(item: $lease, onDismiss: { lease?.cleanup(); lease = nil }) {
             NativeLiveFileOpenView(lease: $0)
@@ -126,6 +145,7 @@ struct NativeLiveAudioAttachmentBubble: View {
 }
 
 private struct NativeLiveAudioWaveform: View {
+    @Environment(\.chatTheme) private var chatTheme
     let progress: Double
     let identity: String
     var body: some View {
@@ -133,7 +153,11 @@ private struct NativeLiveAudioWaveform: View {
             let heights = NativeLiveVoiceBubbleGeometry.waveform(identity: identity, width: geometry.size.width)
             HStack(alignment: .center, spacing: NativeLiveVoiceBubbleGeometry.waveformBarSpacing) {
                 ForEach(heights.indices, id: \.self) { index in
-                    Capsule().fill(Color.primary.opacity(NativeLiveVoiceBubbleGeometry.isFilled(index: index, count: heights.count, progress: progress) ? 0.75 : 0.2))
+                    Capsule().fill(
+                        chatTheme == .iMessage
+                            ? Color.white.opacity(NativeLiveVoiceBubbleGeometry.isFilled(index: index, count: heights.count, progress: progress) ? 0.98 : 0.30)
+                            : Color.primary.opacity(NativeLiveVoiceBubbleGeometry.isFilled(index: index, count: heights.count, progress: progress) ? 0.75 : 0.2)
+                    )
                         .frame(width: NativeLiveVoiceBubbleGeometry.waveformBarWidth, height: heights[index])
                 }
             }
