@@ -56,6 +56,7 @@ struct NativeLiveSourcePanel<Content: View>: View {
                                 : "square.on.square"
                     )
                     .font(.system(size: 15))
+                    .rotationEffect(.degrees(isCopied ? 0 : 180))
                     .frame(width: 24, height: 24)
                 }
                 .foregroundStyle(.secondary)
