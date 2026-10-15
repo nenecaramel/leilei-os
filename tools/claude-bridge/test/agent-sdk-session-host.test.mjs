@@ -120,7 +120,8 @@ test('foreign result cannot steal stamped foreground output or its durable norma
  assert.equal(background.length,1);
  assert.equal(texts(background[0].normalizedEvents).includes('foreground-before'),false);
  assert.equal(texts(background[0].events).includes('foreground-before'),false);
- await f.event(delta('foreground-after'));
+ // After a foreign result boundary, a fresh SDK reply stamp reclaims the turn.
+ await f.event(stamped('owned','foreground-after'));
  await f.event({...result(),user_message_uuid:'owned'});
  const owned=await pending;
  assert.deepEqual(owned.normalizedEvents.map(e=>e.event_id),live.map(e=>e.event_id));
