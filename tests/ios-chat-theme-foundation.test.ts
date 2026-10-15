@@ -559,3 +559,38 @@ test('custom wallpaper stays visibly inside navigation chat after keyboard focus
   assert.match(chat, /\.padding\(\.bottom, isSystemKeyboardVisible \? 12 : 8\)/);
   assert.match(composer, /HStack\(alignment: \.bottom, spacing: 10\) \{\s*iMessagePlusMenu/);
 });
+
+
+test('iPhone shell paints wallpaper beneath keyboard rounded corners without changing composer avoidance', () => {
+  const shell = read('Navigation/AppShell.swift');
+  const chat = read('Chat/ChatView.swift');
+  const page = read('Navigation/PageContainer.swift');
+  const composer = read('Chat/ChatComposer.swift');
+
+  // The keyboard's rounded corners expose AppShell beneath the clipped
+  // NavigationStack card. No near-white sidebar backdrop there in iMessage.
+  const iphone = shell.slice(
+    shell.indexOf('    private var iPhoneLayout: some View {'),
+    shell.indexOf('    private func sidebarDragGesture(')
+  );
+  assert.match(shell, /@AppStorage\(ChatTheme\.storageKey\) private var chatThemeRawValue/);
+  assert.match(shell, /@AppStorage\(IMessageWallpaper\.revisionKey\) private var wallpaperRevision/);
+  assert.match(shell, /\.task\(id: wallpaperRevision\) \{\s*shellWallpaperImage = IMessageWallpaper\.load\(\)/);
+  assert.match(iphone, /ZStack\(alignment: \.leading\) \{/);
+  assert.match(iphone, /if selectedPage == \.chat,\s*!menuOpen,\s*sidebarDragTranslation == 0,\s*chatThemeRawValue == ChatTheme\.iMessage\.rawValue,\s*let shellWallpaperImage/);
+  assert.match(iphone, /Image\(uiImage: shellWallpaperImage\)/);
+  assert.match(iphone, /\.scaledToFill\(\)/);
+  assert.match(iphone, /\.ignoresSafeArea\(\.all\)/);
+  assert.match(iphone, /else \{\s*Rectangle\(\)\s*\.fill\(sidebarBackground\)/);
+  assert.match(iphone, /PageContainer\(/);
+  assert.match(iphone, /\.clipShape\(/);
+
+  // The background ignores keyboard; the foreground does not. Preserve the
+  // original chat layout, editing focus, and the already fixed arrow offset.
+  assert.match(chat, /\.padding\(\.bottom, isSystemKeyboardVisible \? 12 : 8\)/);
+  assert.match(chat, /\.offset\(y: isSystemKeyboardVisible \? 0 : 10\)/);
+  assert.match(chat, /Image\(uiImage: wallpaperImage\)/);
+  assert.match(page, /\.background\(pageBackground\.ignoresSafeArea\(\)\)/);
+  assert.match(composer, /\.frame\(width: 42, height: 42\)/);
+  assert.doesNotMatch(iphone, /\.ignoresSafeArea\(\.keyboard\).*PageContainer/);
+});
