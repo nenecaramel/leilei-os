@@ -124,5 +124,5 @@ test('abort in query creation retains failed-close ownership until retry',async(
  f.transport.queryImpl=args=>{const result=query(args);queueMicrotask(()=>f.transport.abort());return result;};
  await assert.rejects(f.open(),/close failure/);assert.equal(f.calls,1);
  await assert.rejects(f.open(),/active/);assert.equal(f.calls,1);
- await f.transport.activeSessionHost.close();assert.equal(f.transport.activeSessionHost,null);
+ await f.transport.closePersistentSession();assert.equal(f.transport.activeSessionHost,null);
 });

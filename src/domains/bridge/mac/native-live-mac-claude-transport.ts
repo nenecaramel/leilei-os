@@ -95,6 +95,7 @@ export type NativeLiveMacInteractiveTurnOptions = {
 
 export type NativeLiveMacClaudeTransport =
   NativeLiveClaudeRuntime & {
+    closePersistentSession?(): Promise<void>;
     openPersistentSession?(options: NativeLiveMacPersistentSessionOptions): Promise<NativeLiveMacPersistentSession>;
     abort(): void;
     deleteSession(sessionId: string): Promise<void>;

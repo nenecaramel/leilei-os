@@ -2,6 +2,18 @@ import { realpath, stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { createNativeLiveMacClaudeTransport, type NativeLiveMacClaudeTransport, type NativeLiveMacMcpServerConfig } from "./native-live-mac-claude-transport.js";
 
+export async function resolveNativeLiveMacWorkingDirectory(candidate: string): Promise<string> {
+  let workingDirectory: string;
+  try {
+    if (!isAbsolute(candidate)) throw new Error("not absolute");
+    workingDirectory = await realpath(candidate);
+    if (!(await stat(workingDirectory)).isDirectory()) throw new Error("not directory");
+  } catch {
+    throw Object.assign(new Error("Native Live working directory must resolve to an existing absolute directory."), { runtimeCode: "WORKING_DIRECTORY_UNAVAILABLE" });
+  }
+  return workingDirectory;
+}
+
 export type NativeLiveWorkingDirectoryRuntimeBinding = { runtime: NativeLiveMacClaudeTransport; workingDirectory: string };
 export interface NativeLiveWorkingDirectoryRuntimeResolver {
   resolveWorkingDirectoryRuntime(input: { expectedWorkingDirectory: string | null }): Promise<NativeLiveWorkingDirectoryRuntimeBinding>;
@@ -20,14 +32,7 @@ export class NativeLiveMacWorkingDirectoryRuntimePool implements NativeLiveWorki
 
   async resolveWorkingDirectoryRuntime(input: { expectedWorkingDirectory: string | null }): Promise<NativeLiveWorkingDirectoryRuntimeBinding> {
     const candidate = input.expectedWorkingDirectory ?? this.defaultWorkingDirectory;
-    let workingDirectory: string;
-    try {
-      if (!isAbsolute(candidate)) throw new Error("not absolute");
-      workingDirectory = await realpath(candidate);
-      if (!(await stat(workingDirectory)).isDirectory()) throw new Error("not directory");
-    } catch {
-      throw Object.assign(new Error("Native Live working directory must resolve to an existing absolute directory."), { runtimeCode: "WORKING_DIRECTORY_UNAVAILABLE" });
-    }
+    const workingDirectory = await resolveNativeLiveMacWorkingDirectory(candidate);
     let pending = this.pending.get(workingDirectory);
     if (!pending) {
       pending = this.createTransport(this.environment, workingDirectory, this.createSessionStore(), this.mcpServerConfig).then(({ runtime }) => { this.resolved.add(runtime); return runtime; });

@@ -544,6 +544,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     }
   }
 
+  // Call after openPersistentSession settles; failed startup may still own a
+  // live query whose failed close must be explicitly retried.
+  async closePersistentSession() {
+    await this.activeSessionHost?.close();
+  }
+
   sendNew(prompt, execution = null) {
     return this.#run(prompt, {
       mode: "new",
