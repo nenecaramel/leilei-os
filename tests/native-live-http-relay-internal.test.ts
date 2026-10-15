@@ -1099,3 +1099,26 @@ test("execution admission is authenticated, metadata-only, strict and non-cachea
     assert.deepEqual(relayService.calls, [], "must not reserve, renew, mark started or submit anything");
   });
 });
+
+for (const outcome of ["wake_quiet", "wake_stale"] as const) test(`quiet native checkpoint receipt is exposed only for a committed quiet outcome (${outcome})`, async () => {
+  const relayService = new FakeRelayService();
+  const checkpoint = "77777777-7777-4777-8777-777777777777";
+  relayService.submitResult = async () => ({ ok: true, outcome, requestId, operation: "wake", conversationId, providerSessionId: "synthetic-session", nativeResumeCheckpointId: checkpoint });
+  await withServer(app => {
+    app.use((request, _response, next) => { request.mcpUserId = userId; next(); });
+    app.use("/internal/native-live-relay", createNativeLiveRelayInternalRouter({ relayService }));
+  }, async baseUrl => {
+    const response = await fetch(`${baseUrl}/internal/native-live-relay/reservations/${prepareId}/result`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ listener_instance_id: listenerId, result: {
+        protocol_version: 4, prepare_id: prepareId, request_id: requestId, conversation_id: conversationId,
+        status: "success", provider_session_id: "synthetic-session", provider_checkpoint_id: checkpoint,
+        normalized_events: [{ type: "text", payload: { text: "<quiet />" } }],
+      } }),
+    });
+    assert.equal(response.status, 200);
+    const data = (await response.json() as { data: Record<string, unknown> }).data;
+    assert.equal(data.canonicalOutcome, outcome);
+    assert.equal(data.nativeResumeCheckpointId, outcome === "wake_quiet" ? checkpoint : undefined);
+  });
+});

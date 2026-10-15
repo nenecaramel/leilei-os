@@ -1,3 +1,4 @@
+import { nativeResumeCheckpointSql } from "./native-live-resume-checkpoint.js";
 import { createHash } from "node:crypto";
 import { and, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
@@ -188,6 +189,8 @@ type SilenceWakeSource = {
   providerSessionId: string;
   effectiveWorkingDirectory: string | null;
   providerCheckpointId: string | null;
+  presentationOwnerId: string | null;
+  nativeSourceRevision: string | null;
 };
 
 export class NativeLiveSilenceWakeService {
@@ -371,6 +374,7 @@ export class NativeLiveSilenceWakeService {
             source_user_message_id: input.epochId,
             source_head_message_id:
               source.currentHeadMessageId,
+            runtime_generation: { presentation_owner_id: source.presentationOwnerId, source_revision: source.nativeSourceRevision },
           },
           runtimeMode: "fork",
           parentProviderSessionId: source.providerSessionId,
@@ -443,6 +447,8 @@ export class NativeLiveSilenceWakeService {
       provider_session_id: string;
       effective_working_directory: string | null;
       provider_checkpoint_id: string | null;
+      presentation_owner_id: string | null;
+      source_revision: string | null;
     }>(sql`
       WITH RECURSIVE latest_user AS (
         SELECT
@@ -520,8 +526,11 @@ export class NativeLiveSilenceWakeService {
         path.current_head_message_id,
         checkpoint.provider_session_id,
         checkpoint.effective_working_directory,
-        checkpoint.provider_checkpoint_id
+        ${nativeResumeCheckpointSql("checkpoint", "tail_surface")} AS provider_checkpoint_id,
+        tail_surface.provider_metadata->'native_live_presentation_owner'->>'prepareId' AS presentation_owner_id,
+        tail_surface.provider_metadata->'nativeSessionSource'->>'revision' AS source_revision
       FROM latest_user AS source
+      JOIN conversations tail_surface ON tail_surface.id = source.conversation_id AND tail_surface.user_id = ${userId}::uuid
       JOIN direct_reply AS reply ON TRUE
       JOIN current_path AS path
         ON path.id = path.current_head_message_id
@@ -552,6 +561,8 @@ export class NativeLiveSilenceWakeService {
           providerSessionId: row.provider_session_id,
           effectiveWorkingDirectory: row.effective_working_directory,
           providerCheckpointId: row.provider_checkpoint_id,
+          presentationOwnerId: row.presentation_owner_id ?? null,
+          nativeSourceRevision: row.source_revision ?? null,
         }
       : null;
   }
