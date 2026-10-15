@@ -5,6 +5,13 @@ struct AppShell: View {
     @Environment(\.colorScheme) private var inheritedColorScheme
     @EnvironmentObject private var appModel: AppModel
 
+    // The iPhone shell is the final backdrop exposed by the system keyboard's
+    // rounded top corners, outside PageContainer's clipped navigation card.
+    @AppStorage(ChatTheme.storageKey) private var chatThemeRawValue =
+        ChatTheme.original.rawValue
+    @AppStorage(IMessageWallpaper.revisionKey) private var wallpaperRevision = ""
+    @State private var shellWallpaperImage: UIImage?
+
     @State private var selectedPage: AppPage = .chat
     @State private var diaryTarget: DiaryNavigationTarget?
     @State private var daySpaceTarget: DaySpaceNavigationTarget?
@@ -26,6 +33,9 @@ struct AppShell: View {
         }
         .environment(\.colorScheme, shellColorScheme)
         .tint(.primary)
+        .task(id: wallpaperRevision) {
+            shellWallpaperImage = IMessageWallpaper.load()
+        }
         .onPreferenceChange(FloatingControlCenterPreferenceKey.self) { centers in
             guard selectedPage == .chat,
                   let centerY = centers[FloatingControlCenter.menu]
@@ -102,9 +112,34 @@ struct AppShell: View {
             let cardCornerRadius: CGFloat = menuOpen ? 50 : 0
 
             ZStack(alignment: .leading) {
-                Rectangle()
-                    .fill(sidebarBackground)
-                    .ignoresSafeArea()
+                // Keyboard top corners reveal the shell *outside* the page
+                // card's clipShape. Fill that last exposed layer with the same
+                // wallpaper instead of the sidebar's near-white background.
+                // Only the backdrop ignores the keyboard; the composer still
+                // uses the normal keyboard-safe navigation layout.
+                if selectedPage == .chat,
+                   !menuOpen,
+                   sidebarDragTranslation == 0,
+                   chatThemeRawValue == ChatTheme.iMessage.rawValue,
+                   let shellWallpaperImage {
+                    GeometryReader { geometry in
+                        Image(uiImage: shellWallpaperImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(
+                                width: geometry.size.width,
+                                height: geometry.size.height
+                            )
+                            .clipped()
+                    }
+                    .ignoresSafeArea(.all)
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(false)
+                } else {
+                    Rectangle()
+                        .fill(sidebarBackground)
+                        .ignoresSafeArea()
+                }
 
                 SidebarView(
                     selectedPage: $selectedPage,
