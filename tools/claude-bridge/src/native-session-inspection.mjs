@@ -105,6 +105,43 @@ export async function inspectNativeCheckpointOnly(input) {
   };
 }
 
+// Pin exactly one native Session without scanning unrelated pre-Compact archives.
+// Prefer the selected Desktop window when entering LeileiOS; handoff to Desktop
+// uses the local native tip, which must match the backend's committed checkpoint.
+export async function resolveNativeCheckpointOnlySelection({
+  sessionId, projectsDirectory, desktopSessionsDirectory, peerDirectory,
+  probeProcessStart, direction = 'to_leileios',
+}) {
+  if (!sessionPattern.test(sessionId)) throw fail('INVALID_SESSION_ID');
+  const locations = (await nativeSessionLocations(projectsDirectory)).get(sessionId) ?? [];
+  if (locations.length !== 1) throw fail(locations.length ? 'AMBIGUOUS_NATIVE_SESSION_LOCATION' : 'NATIVE_SELECTION_NOT_FOUND');
+  let indexFile = null;
+  if (direction === 'to_leileios') {
+    const found = [];
+    const accounts = await sortedEntries(desktopSessionsDirectory).catch(() => []);
+    for (const account of accounts) {
+      if (!account.isDirectory()) continue;
+      for (const org of await sortedEntries(path.join(desktopSessionsDirectory, account.name))) {
+        if (!org.isDirectory()) continue;
+        const directory = path.join(desktopSessionsDirectory, account.name, org.name);
+        for (const file of await sortedEntries(directory)) {
+          if (!file.isFile() || !/^local_[0-9a-f-]{36}\.json$/i.test(file.name)) continue;
+          const candidate = path.join(directory, file.name);
+          const index = await readIndex(candidate);
+          if (index.metadata.cliSessionId !== sessionId) continue;
+          if (index.metadata.sessionId !== file.name.slice(0, -5)) throw fail('DESKTOP_INDEX_IDENTITY_MISMATCH');
+          found.push(candidate);
+          if (found.length > 1) throw fail('AMBIGUOUS_NATIVE_SELECTION');
+        }
+      }
+    }
+    indexFile = found[0] ?? null;
+  }
+  const input = { indexFile, projectDirectory: locations[0], peerDirectory, expectedSessionId: sessionId, probeProcessStart };
+  const selection = await inspectNativeCheckpointOnly(input);
+  return { input, selection };
+}
+
 export async function inspectDesktopNativeSession(input) {
   return (await loadDesktopNativeSession(input)).inspection;
 }
