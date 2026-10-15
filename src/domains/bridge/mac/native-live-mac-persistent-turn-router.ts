@@ -23,7 +23,7 @@ type TurnInput = {
   command: NativeLiveRuntimeCommand;
   // The sink must use the existing transactional reservation/head fences. An
   // execution-admission snapshot cannot make finalization safe on its own.
-  onResult(frame: { command: NativeLiveRuntimeCommand; result: NativeLiveMacSessionResult }): Promise<NativeLiveMacPersistentAcknowledgement>;
+  onResult(frame: { command: NativeLiveRuntimeCommand; result: NativeLiveMacSessionResult; providerCheckpointId: string }): Promise<NativeLiveMacPersistentAcknowledgement>;
   permissionHandler?: NativeLiveMacPersistentSessionOptions["permissionHandler"];
   questionHandler?: NativeLiveMacPersistentSessionOptions["questionHandler"];
 } & NativeLiveMacPersistentTurnOutput;
@@ -53,7 +53,7 @@ export class NativeLiveMacPersistentTurnRouter {
     // their own durable preparation/branch fence, not the active turn's sink.
     onBackgroundResult(
       owner: Readonly<{ conversationId: string; generationId: string }>,
-      frame: Parameters<NativeLiveMacPersistentSessionOptions["onBackgroundResult"]>[0],
+      frame: Parameters<NativeLiveMacPersistentSessionOptions["onBackgroundResult"]>[0] & { providerCheckpointId: string },
     ): Promise<NativeLiveMacPersistentAcknowledgement>;
   }) {
     if (!input.listenerInstanceId.trim() || typeof input.onBackgroundResult !== "function") throw new Error("Listener and durable background sink are required.");
@@ -90,9 +90,11 @@ export class NativeLiveMacPersistentTurnRouter {
       slot.phase = "acknowledging"; // Revoke execution before awaiting the sink.
       await this.acknowledge(async () => {
         this.assertSlot(slot, "acknowledging");
-        const outcome = await slot.onResult({ command, result });
+        const providerCheckpointId = await this.binding!.session.verifyCheckpoint({ events: result.events, parentCheckpointId: this.providerCheckpointId });
         this.assertSlot(slot, "acknowledging");
-        this.applyAcknowledgement(outcome, "turn");
+        const outcome = await slot.onResult({ command, result, providerCheckpointId });
+        this.assertSlot(slot, "acknowledging");
+        this.applyAcknowledgement(outcome, "turn", providerCheckpointId);
       });
       this.assertSlot(slot, "acknowledging");
       return result;
@@ -164,10 +166,11 @@ export class NativeLiveMacPersistentTurnRouter {
     };
   }
 
-  private applyAcknowledgement(outcome: NativeLiveMacPersistentAcknowledgement, kind: string): void {
+  private applyAcknowledgement(outcome: NativeLiveMacPersistentAcknowledgement, kind: string, verified: string): void {
     if (!outcome || (outcome.status !== "applied" && outcome.status !== "idempotent")) throw new Error(`Persistent ${kind} finalization was rejected.`);
     if (typeof outcome.providerCheckpointId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(outcome.providerCheckpointId)
       || outcome.providerCheckpointId === "00000000-0000-0000-0000-000000000000") throw new Error("Persistent acknowledgement requires its committed provider checkpoint.");
+    if (outcome.providerCheckpointId !== verified) throw new Error(`Persistent ${kind} acknowledgement named a different checkpoint than the verified one.`);
     this.providerCheckpointId = outcome.providerCheckpointId;
   }
 
@@ -193,9 +196,11 @@ export class NativeLiveMacPersistentTurnRouter {
         const owner = Object.freeze({ conversationId: command.conversation_id, generationId: this.generationId });
         await this.acknowledge(async () => {
           this.assertLive();
-          const outcome = await this.input.onBackgroundResult(owner, frame);
+          const providerCheckpointId = await this.binding!.session.verifyCheckpoint({ events: frame.events, parentCheckpointId: this.providerCheckpointId });
           this.assertLive();
-          this.applyAcknowledgement(outcome, "background");
+          const outcome = await this.input.onBackgroundResult(owner, { ...frame, providerCheckpointId });
+          this.assertLive();
+          this.applyAcknowledgement(outcome, "background", providerCheckpointId);
         });
         this.assertLive();
       },

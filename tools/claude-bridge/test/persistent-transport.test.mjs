@@ -177,3 +177,27 @@ test('send_file reaches only the turn that owns the live reply, never background
  await step({type:'result',subtype:'success',session_id:'s',result:'done',user_message_uuid:'owned'});await pending;
  await assert.rejects(send(),/send_file/i);
 });
+
+test('a turn checkpoint is accepted only once durable and descended from the committed one',async t=>{
+ const transcript=[];const output=queue();
+ const queryImpl=({prompt})=>{(async()=>{for await(const input of prompt){output.push({type:'system',subtype:'init',session_id:'s'});}})();return {close(){output.end();},async interrupt(){return {still_queued:[]};},async stopTask(){},async *[Symbol.asyncIterator](){yield* output;}};};
+ const transport=new AgentSdkClaudeTransport({environment:{},cwd:'/synthetic',toolPermissionPolicy:'auto_allow',queryImpl,createSendFileMcpServerImpl:async()=>({type:'sdk'}),
+  importSessionToStoreImpl:async(id,store)=>store.append({sessionId:id},transcript.map(e=>({...e})))});
+ const host=await transport.openPersistentSession({authorize:async()=>true,onBackgroundResult:async()=>{}});t.after(()=>host.close());
+ const pending=host.submit('first',{id:'a'});await new Promise(r=>setTimeout(r,0));
+ const said=uuid=>({type:'assistant',uuid,session_id:'s',parent_tool_use_id:null,message:{content:[{type:'text',text:'x'}]}});
+ const events=[{type:'assistant',uuid:'sub',session_id:'s',parent_tool_use_id:'tool',message:{content:[]}},said('a1')];
+ // Not yet written: a bounded wait, then refused.
+ await assert.rejects(host.verifyCheckpoint({events,timeoutMs:30,pollMs:5}),/durably/);
+ transcript.push({type:'user',uuid:'u1',parentUuid:null},{type:'assistant',uuid:'a1',parentUuid:'u1'});
+ assert.equal(await host.verifyCheckpoint({events,timeoutMs:30,pollMs:5}),'a1','top-level assistant, not the subagent record');
+ // Written while we wait.
+ setTimeout(()=>transcript.push({type:'user',uuid:'u2',parentUuid:'a1'},{type:'assistant',uuid:'a2',parentUuid:'u2'}),10);
+ assert.equal(await host.verifyCheckpoint({events:[said('a2')],parentCheckpointId:'a1',timeoutMs:500,pollMs:5}),'a2');
+ // A record on another branch does not continue the committed checkpoint.
+ transcript.push({type:'assistant',uuid:'b1',parentUuid:'u1'});
+ await assert.rejects(host.verifyCheckpoint({events:[said('b1')],parentCheckpointId:'a2',timeoutMs:30,pollMs:5}),/continue/);
+ await assert.rejects(host.verifyCheckpoint({events:[said('a2')],parentCheckpointId:'a2'}),/no new/);
+ await assert.rejects(host.verifyCheckpoint({events:[]}),/no new/);
+ output.push({type:'result',subtype:'success',session_id:'s',user_message_uuid:'a'});await pending;
+});

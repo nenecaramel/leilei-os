@@ -29,6 +29,9 @@ async function fixture(t: test.TestContext) {
   const output = queue<Record<string, unknown>>(), inputs = queue<{ uuid: string; origin: { kind: string } }>();
   const backgroundObserved = queue<string>();
   let launches = 0, closes = 0, nextCheckpoint = 101;
+  const restored = [{ type: "user", uuid: id(500), parentUuid: null, sessionId: sid }, { type: "assistant", uuid: id(102), parentUuid: id(500), sessionId: sid }];
+  let transcript: Array<Record<string, unknown>> | null = null;
+  let writeTranscript = true;
   const resumes: unknown[] = [], submitted: string[] = [];
   let sdk!: { canUseTool: (name: string, input: unknown, context: unknown) => Promise<unknown> };
   const registry = new NativeLiveMacSessionRegistry({}, root, async (...args) => {
@@ -40,11 +43,10 @@ async function fixture(t: test.TestContext) {
     } });
     Object.assign(configured.runtime, {
       sessionMessagesImpl: async () => [{}],
-      importSessionToStoreImpl: async (_id: string, store: { append(key: unknown, entries: unknown[]): Promise<void> }) => store.append({ sessionId: sid }, [
-        { type: "user", uuid: id(500), parentUuid: null, sessionId: sid },
-        { type: "assistant", uuid: id(102), parentUuid: id(500), sessionId: sid },
-      ]), queryImpl: ({ prompt, options }: { prompt: AsyncIterable<{ uuid: string; origin: { kind: string } }>; options: typeof sdk }) => {
+      importSessionToStoreImpl: async (_id: string, store: { append(key: unknown, entries: unknown[]): Promise<void> }) => store.append({ sessionId: sid }, (transcript ?? restored).map(entry => ({ ...entry }))),
+      queryImpl: ({ prompt, options }: { prompt: AsyncIterable<{ uuid: string; origin: { kind: string } }>; options: typeof sdk }) => {
       launches++; sdk = options; resumes.push((options as { resume?: string }).resume ?? null); if ((options as { resume?: string }).resume) nextCheckpoint = 103;
+      transcript = (options as { resume?: string }).resume ? [...restored] : [];
       void (async () => { for await (const item of prompt) { submitted.push(item.uuid); inputs.push(item); } })();
       output.push({ type: "system", subtype: "init", session_id: sid });
       return { [Symbol.asyncIterator]: () => output, close() { closes++; output.end(); inputs.end(); }, async interrupt() { return { still_queued: [] }; } };
@@ -59,11 +61,13 @@ async function fixture(t: test.TestContext) {
     async onBackgroundResult(owner, frame) { assert.equal(owner.conversationId, conversation); assert.ok(owner.generationId); background.push(frame.result.user_message_uuid as string); return backgroundSink ? backgroundSink() : acknowledged(frame.events.findLast(event => event.type === "assistant")?.uuid as string); } });
   const run = (c: NativeLiveRuntimeCommand, extra = {}) => router.execute({ command: c, async onResult(frame) { results.push(frame.command.prepare_id); return acknowledged(frame.result.events.findLast(event => event.type === "assistant")?.uuid as string); }, ...extra });
   const finish = (uuid: string) => {
-    output.push({ type: "assistant", session_id: sid, uuid: id(nextCheckpoint++), message: { role: "assistant", content: [{ type: "text", text: "synthetic" }] } });
+    const checkpoint = id(nextCheckpoint++);
+    if (writeTranscript) transcript?.push({ type: "assistant", uuid: checkpoint, parentUuid: transcript.at(-1)?.uuid ?? null, sessionId: sid });
+    output.push({ type: "assistant", session_id: sid, uuid: checkpoint, message: { role: "assistant", content: [{ type: "text", text: "synthetic" }] } });
     output.push({ type: "result", subtype: "success", session_id: sid, user_message_uuid: uuid });
   };
   t.after(async () => { await router.close(); await registry.closeAll(); await rm(root, { recursive: true, force: true }); });
-  return { router, registry, run, finish, output, inputs, admissions, background, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
+  return { router, registry, run, finish, output, inputs, admissions, background, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
 }
 
 test("two reservations and wake reuse one SDK query and rotate execution admission", async t => {
@@ -262,4 +266,15 @@ test("output attachment handlers require explicit capability opt-in", async t =>
   await running;
   assert.deepEqual(forwarded, enabled === true ? ["image/png"] : []);
  });
+});
+
+test("only a durably verified checkpoint reaches the sink, and the acknowledgement must name it", async t => {
+  const f = await fixture(t); const seen: Array<string | undefined> = [];
+  const one = f.run(command(1), { async onResult(frame: { providerCheckpointId?: string }) { seen.push(frame.providerCheckpointId); return acknowledged(id(999)); } });
+  const rejected = assert.rejects(one, /checkpoint/i); f.finish((await f.inputs.next()).value!.uuid); await rejected;
+  assert.deepEqual(seen, [id(101)]);
+  const g = await fixture(t); g.holdTranscript(); let reached = false;
+  const two = g.run(command(1), { async onResult() { reached = true; return acknowledged(); } });
+  const refused = assert.rejects(two, /durably/i); g.finish((await g.inputs.next()).value!.uuid); await refused;
+  assert.equal(reached, false, "an unwritten checkpoint is never committed");
 });
