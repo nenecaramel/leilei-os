@@ -1,6 +1,30 @@
 import SwiftUI
 import UIKit
 
+// Keep the full-screen keyboard underlay intact when the sidebar is closed.
+// Only the revealed/sliding chat card needs matching rounded wallpaper edges.
+private struct ChatWallpaperRevealClip: ViewModifier {
+    let enabled: Bool
+    let cornerRadius: CGFloat
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            content.clipShape(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: cornerRadius,
+                    bottomLeadingRadius: cornerRadius,
+                    bottomTrailingRadius: cornerRadius,
+                    topTrailingRadius: cornerRadius,
+                    style: .continuous
+                )
+            )
+        } else {
+            content
+        }
+    }
+}
+
 struct AppShell: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var inheritedColorScheme
@@ -183,15 +207,13 @@ struct AppShell: View {
                 // do not disable it or switch the card back to white.
                 if isWallpaperChatVisible {
                     rootWallpaperBackdrop
-                        .clipShape(
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: cardCornerRadius,
-                                bottomLeadingRadius: cardCornerRadius,
-                                bottomTrailingRadius: cardCornerRadius,
-                                topTrailingRadius: cardCornerRadius,
-                                style: .continuous
-                            )
-                        )
+                        // At rest, leave the all-safe-area wallpaper unmasked.
+                        // Even a zero-radius clip can expose the sidebar's
+                        // light base near the keyboard's rounded top corners.
+                        .modifier(ChatWallpaperRevealClip(
+                            enabled: menuOpen || sidebarDragTranslation != 0,
+                            cornerRadius: cardCornerRadius
+                        ))
                         .offset(x: pageHorizontalOffset)
                 }
 
