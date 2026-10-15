@@ -567,3 +567,79 @@ test('sidebar gestures slide the one wallpaper with the chat instead of hiding o
   assert.equal((iphone.match(/rootWallpaperBackdrop/g) ?? []).length, 1);
   assert.match(iphone, /Rectangle\(\)\s*\.fill\(sidebarBackground\)/);
 });
+
+
+test('iMessage rich structured content shares native Tool-list glass across renderers', () => {
+  const source = read('Chat/MessageSurface/NativeLiveCodeRenderer.swift');
+  const visual = read('Chat/MessageSurface/NativeLiveVisualSurface.swift');
+  const svg = read('Chat/MessageSurface/NativeLiveSVGRenderer.swift');
+  const structured = read('Chat/MessageSurface/NativeLiveStructuredToolResultRenderer.swift');
+  const search = read('Chat/MessageSurface/NativeLiveSearchCitationRenderer.swift');
+  const blocks = read('Chat/MessageSurface/NativeLiveMessageBlocks.swift');
+  const table = read('Chat/MessageSurface/NativeLiveTableRenderer.swift');
+  const diff = read('Chat/MessageSurface/NativeLiveDiffRenderer.swift');
+  const math = read('Chat/MessageSurface/NativeLiveMathRenderer.swift');
+  const tool = read('Chat/MessageSurface/NativeLiveToolActivity.swift');
+  const composer = read('Chat/ChatComposer.swift');
+
+  // The same iOS native .regular glass and 11pt round rectangle as Tool list.
+  assert.match(composer, /\.glassEffect\(\.regular, in: Capsule\(\)\)/);
+  assert.match(tool, /NativeLiveToolWallpaperGlass: ViewModifier/);
+  assert.match(source, /struct NativeLiveIMessageContentPanel: ViewModifier/);
+  assert.match(source, /@Environment\(\\\.iMessageWallpaperVisible\) private var iMessageWallpaperVisible/);
+  assert.match(source, /if iMessageWallpaperVisible \{/);
+  assert.match(source, /\.glassEffect\(\s*\.regular,\s*in: RoundedRectangle\(cornerRadius: 11, style: \.continuous\)/);
+  assert.match(source, /\.foregroundStyle\(Color\(red: 0\.17, green: 0\.20, blue: 0\.23\)\)/);
+  assert.match(source, /\.tint\(Color\(red: 0\.17, green: 0\.20, blue: 0\.23\)\)/);
+
+  // Old theme/colorless iMessage: each panel keeps exactly its original fill.
+  assert.match(source, /else if originalOpacity > 0 \{\s*content\.background\(\s*Color\.primary\.opacity\(originalOpacity\)/);
+  assert.match(source, /originalOpacity: 0\.055,\s*originalCornerRadius: 10/);
+  assert.match(visual, /originalOpacity: 0\.045,\s*originalCornerRadius: 10/);
+  assert.match(svg, /originalOpacity: 0\.045,\s*originalCornerRadius: 12/);
+  assert.match(blocks, /originalOpacity: 0\.045,\s*originalCornerRadius: 11/);
+  assert.match(search, /originalOpacity: 0\.045,\s*originalCornerRadius: 11/);
+  assert.match(structured, /originalOpacity: 0\.035,\s*originalCornerRadius: 12/);
+  assert.match(structured, /\.padding\(iMessageWallpaperVisible \? 12 : 0\)/);
+
+  // Code, table, diff and LaTeX fallback share one source panel. Keep bounded
+  // scroll, copy, alignment, semantic change colors and source text.
+  assert.match(source, /struct NativeLiveSourcePanel<Content: View>: View/);
+  assert.match(source, /\.modifier\(NativeLiveIMessageContentPanel\(/);
+  assert.match(source, /ScrollView\(\[\.horizontal, \.vertical\]\)/);
+  assert.match(source, /\.frame\(maxHeight: 360\)/);
+  assert.match(source, /UIPasteboard\.general\.string = copyText/);
+  assert.match(table, /NativeLiveSourcePanel\(label: "Table"/);
+  assert.match(table, /alignment\(column\)/);
+  assert.match(diff, /NativeLiveSourcePanel\(label: "Diff"/);
+  assert.match(diff, /color\(line\.kind\)\.opacity\(0\.12\)/);
+  assert.match(math, /NativeLiveSourcePanel\(/);
+
+  // Display math and Mermaid use one regular native glass visual panel; their
+  // WebKit renderer stays transparent to let the glass show through.
+  assert.match(visual, /private var regularSurface: some View/);
+  assert.match(visual, /\.modifier\(NativeLiveIMessageContentPanel\(/);
+  assert.match(visual, /NativeLiveVisualSandbox\(/);
+  assert.match(visual, /var embeddedInParentPanel = false/);
+  assert.match(visual, /embeddedInGlass: embeddedInParentPanel/);
+  assert.match(svg, /embeddedInParentPanel:true/);
+  assert.match(svg, /\.modifier\(NativeLiveIMessageContentPanel\(/);
+
+  // JSON/structured result/search/future unknown nodes use the same panel.
+  assert.match(structured, /struct NativeLiveStructuredToolResultView: View/);
+  assert.match(structured, /struct NativeLiveStructuredJSONView: View/);
+  assert.equal((structured.match(/\.modifier\(NativeLiveIMessageContentPanel\(/g) ?? []).length, 2);
+  assert.match(search, /NativeLiveSearchResultView: View/);
+  assert.match(search, /\.modifier\(NativeLiveIMessageContentPanel\(/);
+  assert.match(blocks, /private struct NativeLiveVisualFallbackView: View/);
+  assert.match(blocks, /\.modifier\(NativeLiveIMessageContentPanel\(/);
+
+  // Plain message text, image galleries, media and the existing Tool-list UI
+  // aren't wrapped in an extra glass panel.
+  const visualNode = blocks.slice(
+    blocks.indexOf('struct NativeLiveVisualNodeView: View'),
+    blocks.indexOf('private struct NativeLiveVisualFallbackView: View')
+  );
+  assert.doesNotMatch(visualNode, /\.glassEffect\(|\.modifier\(NativeLiveIMessageContentPanel/);
+  assert.match(tool, /private struct NativeLiveToolWallpaperGlass: ViewModifier/);
+});
