@@ -176,3 +176,14 @@ test('daily switching selects continuation mode and does not run archive even wi
     assert.ok(calls[0][0].endsWith('native-session-switch.mjs'));
   });
 });
+
+
+test('standalone archive preview explains protection reasons and unresolved execution without changing mode',async()=>{
+ const {afterSwitchArchive}=await import('../../../scripts/native-session-local.mjs');
+ const text=afterSwitchArchive({autoApply:false,env:{},execute(_command,args){
+  assert.equal(args.includes('--apply'),false);
+  return JSON.stringify({mode:'plan',results:[{folder:'-fixture',keep:4,archive:3,keepMB:8,archiveMB:12,applied:null,protectionCounts:{window:2,referenced:1,recent:1,open:0},unverified:1,archiveDetails:[{sessionId:'old',reasons:['history_only_source']}]}]});
+ }});
+ assert.match(text,/官端窗口 2/);assert.match(text,/checkpoint 等引用 1/);assert.match(text,/无法验证 1/);
+ assert.match(text,/历史展示旧源 1/);
+});

@@ -17,9 +17,16 @@ export function afterSwitchArchive({ execute = execFileSync, env, autoApply = ex
       { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10 * 60_000, maxBuffer: 1024 * 1024 });
     const { mode, results } = JSON.parse(out);
     if (!Array.isArray(results)) throw new Error();
-    return results.map(r => mode === 'apply' && r.applied
-      ? `已归档 ${r.archive} 个旧会话文件（${r.archiveMB} MB）→ ${r.applied}；保留 ${r.keep} 个（${r.keepMB} MB）\n`
-      : `归档预演 ${r.folder}：可归档 ${r.archive} 个（${r.archiveMB} MB），保留 ${r.keep} 个（${r.keepMB} MB）\n`).join('');
+    return results.map(r => {
+      const summary = mode === 'apply' && r.applied
+        ? `已归档 ${r.archive} 个旧会话文件（${r.archiveMB} MB）→ ${r.applied}；保留 ${r.keep} 个（${r.keepMB} MB）\n`
+        : `归档预演 ${r.folder}：可归档 ${r.archive} 个（${r.archiveMB} MB），保留 ${r.keep} 个（${r.keepMB} MB）\n`;
+      if (!r.protectionCounts) return summary;
+      const counts = r.protectionCounts;
+      const historySources = (r.archiveDetails ?? []).filter(item => item.reasons.includes('history_only_source')).length;
+      return summary + `  保留理由（可重叠）：官端窗口 ${counts.window}，checkpoint 等引用 ${counts.referenced}，最近修改 ${counts.recent}，运行或状态未知 ${counts.open}，原生文件依赖 ${r.nativeFileDependencies ?? 0}；原生链无法验证 ${r.unverified}\n`
+        + `  候选中有明确来源标记的历史展示旧源 ${historySources} 个；不再要求重建压缩前全部历史。\n`;
+    }).join('');
   } catch (error) {
     const reason = String(error?.stderr ?? '').trim();
     return `归档${autoApply ? '' : '预演'}跳过：${/^[A-Z][A-Z_]+$/.test(reason) ? reason : 'ARCHIVE_FAILED'}\n`;
