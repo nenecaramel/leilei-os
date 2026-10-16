@@ -98,5 +98,20 @@ test('Full router and assistant body recompose to the original ordered blocks',(
  equal(composed,withoutRetiredAlbum(block(old('NativeLiveAssistantTurnRow.swift'),'var body:')),'assistant entire ordered body and task except retired album');
 });
 test('UIKit context menu and tap coordinator implementation remains byte identical',()=>{
- assert.equal(read('NativeLiveMessageActions.swift'),old('NativeLiveMessageActions.swift'));
+ const current = read('NativeLiveMessageActions.swift');
+ const start = current.indexOf('// The same UIKit context-menu interaction used by user bubbles');
+ const end = current.indexOf('private struct NativeLiveCopyFeedbackActionKey:', start);
+ assert.ok(start > 0 && end > start, 'Theme-specific assistant context menu boundary');
+ // Adding the incoming iMessage context menu must not mutate the existing
+ // user bubble coordinator, preview, or copy-feedback action owner.
+ assert.equal(current.slice(0, start) + current.slice(end), old('NativeLiveMessageActions.swift'));
+ const assistantMenu = current.slice(start, end);
+ for (const contract of [
+  /UIContextMenuInteraction\(delegate: context\.coordinator\)/,
+  /self\?\.onCopy\(original\)/,
+  /attributes: self\.isRetryDisabled \? \[\.disabled\] : \[\]/,
+  /self\?\.onRetry\?\(\)/,
+  /self\?\.onTranslate\(\)/,
+  /UIMenu\(title: stamp, options: \.displayInline, children: actions\)/,
+ ]) assert.match(assistantMenu, contract);
 });
