@@ -68,7 +68,7 @@ test('duplicate stop requests share one RPC and wait for authoritative membershi
   await f.event(snapshot([task()])); const { handle } = f.host.listTasks()[0];
   const first = f.host.stopTask('task', { handle }); const second = f.host.stopTask('task', { handle });
   assert.deepEqual(f.stopped, ['task']); reply.resolve(); await Promise.all([first, second]);
-  assert.equal(f.host.listTasks()[0].status, 'stop_requested'); assert.equal(f.host.tasks.size, 1);
+  assert.equal(f.host.listTasks()[0].status, 'running'); assert.equal(f.host.listTasks()[0].stopStatus, 'requested'); assert.equal(f.host.tasks.size, 1);
   await f.event({ subtype: 'task_notification', task_id: 'task', run_id: '002', status: 'stopped' });
   assert.equal(f.host.listTasks()[0].status, 'stopped'); assert.equal(f.host.tasks.size, 1);
   await f.event(snapshot([])); assert.equal(f.host.tasks.size, 0);
@@ -112,7 +112,7 @@ test('stop timeout and RPC failure remain uncertain and are never automatically 
   const f = await fixture(t, () => new Promise(() => {})); await f.event(snapshot([task()]));
   const timedOut = assert.rejects(f.host.stopTask('task'), /unknown/i);
   t.mock.timers.tick(2_000); await timedOut;
-  assert.equal(f.host.listTasks()[0].status, 'stop_unknown');
+  assert.equal(f.host.listTasks()[0].status, 'running'); assert.equal(f.host.listTasks()[0].stopStatus, 'unknown');
   await assert.rejects(f.host.stopTask('task'), /unknown/i); assert.deepEqual(f.stopped, ['task']);
   const bad = await fixture(t, async () => { throw new Error('synthetic disconnect'); }); await bad.event(snapshot([task()]));
   await assert.rejects(bad.host.stopTask('task'), /unknown/i);
@@ -180,7 +180,7 @@ test('matching task_updated patch updates bounded description without changing m
   const f = await fixture(t); await f.event(snapshot([task()]));
   await f.event({ subtype: 'task_updated', task_id: 'task', run_id: '002', patch: { description: 'x'.repeat(2500), status: 'completed' } });
   const [state] = f.host.listTasks(); assert.equal(state.description, 'x'.repeat(2000));
-  assert.equal(state.active, true); assert.equal(state.status, 'running'); assert.equal(f.host.tasks.size, 1);
+  assert.equal(state.active, true); assert.equal(state.status, 'completed'); assert.equal(f.host.tasks.size, 1);
   await f.event({ subtype: 'task_updated', task_id: 'task', run_id: '001', patch: { description: 'old run' } });
   assert.equal(f.host.listTasks().find(x => x.active).description, 'x'.repeat(2000));
 });
@@ -190,4 +190,51 @@ test('whole-session interrupt does not resend a previously uncertain task stop',
   const turn = assert.rejects(f.host.submit('synthetic'), error => error.runtimeCode === 'INTERRUPTED'); turn.catch(() => {});
   const receipt = await f.host.interruptTurn(); await turn;
   assert.deepEqual(f.stopped, ['task']); assert.equal(receipt.session_closed, true); assert.equal(f.closes, 1);
+});
+
+test('SDK status patches preserve paused and killed independently from live membership', async t => {
+  const f = await fixture(t); await f.event(snapshot([task()]));
+  await f.event({ subtype: 'task_updated', task_id: 'task', run_id: '002', patch: { status: 'paused' } });
+  assert.equal(f.host.listTasks()[0].status, 'paused'); assert.equal(f.host.tasks.size, 1);
+  await f.event({ subtype: 'task_updated', task_id: 'task', run_id: '001', patch: { status: 'running' } });
+  assert.equal(f.host.listTasks().find(x => x.active).status, 'paused');
+  await f.event({ subtype: 'task_updated', task_id: 'task', run_id: '002', patch: { status: 'killed' } });
+  assert.equal(f.host.listTasks().find(x => x.active).status, 'killed'); assert.equal(f.host.tasks.size, 1);
+  await assert.rejects(f.host.stopTask('task'), /ended/i); assert.deepEqual(f.stopped, []);
+});
+test('a stop request does not replace the SDK task status with a client control state', async t => {
+  const reply = deferred(); const f = await fixture(t, () => reply.promise); await f.event(snapshot([task()]));
+  const stopping = f.host.stopTask('task'); stopping.catch(() => {}); t.after(() => reply.resolve());
+  assert.equal(f.host.listTasks()[0].status, 'running'); assert.equal(f.host.listTasks()[0].stopStatus, 'requested');
+  reply.resolve(); await stopping;
+  await f.event({ subtype: 'task_updated', task_id: 'task', run_id: '002', patch: { status: 'paused' } });
+  assert.equal(f.host.listTasks()[0].status, 'paused'); assert.equal(f.host.listTasks()[0].stopStatus, 'requested');
+});
+test('closed writer retains unconfirmed SDK membership for handoff while reporting inactive unknown tasks', async t => {
+  const f = await fixture(t); await f.event(snapshot([task()])); await f.host.close();
+  assert.equal(f.host.tasks.size, 1); assert.equal(f.host.listTasks()[0].active, false); assert.equal(f.host.listTasks()[0].status, 'unknown');
+});
+
+test('task output is bounded and belongs to the exact registered task appearance', async t => {
+  const f = await fixture(t); await f.event(snapshot([task()])); const handle=f.host.listTasks()[0].handle; const requests=[];
+  f.host.query.request=async (request,options)=>{requests.push(request);assert.ok(options.signal);return {response:{output:'synthetic stdout',total_bytes:16,truncated:false}};};
+  const output=await f.host.readTaskOutput('task',{handle});
+  assert.deepEqual(output,{output:'synthetic stdout',totalBytes:16,truncated:false});
+  assert.deepEqual(requests,[{subtype:'get_task_output',task_id:'task'}]);
+  await f.event(snapshot([task('003')]));
+  await assert.rejects(f.host.readTaskOutput('task',{handle}),/stale/i); assert.equal(requests.length,1);
+});
+test('task output returning after ID reuse is rejected rather than attributed to the replacement run', async t => {
+  const f=await fixture(t);await f.event(snapshot([task()]));const handle=f.host.listTasks()[0].handle,reply=deferred(),entered=deferred();
+  f.host.query.request=()=>{entered.resolve();return reply.promise;};
+  const pending=f.host.readTaskOutput('task',{handle});pending.catch(()=>{});await entered.promise;
+  await f.event(snapshot([task('003')]));reply.resolve({response:{output:'old output',total_bytes:10,truncated:false}});
+  await assert.rejects(pending,/stale/i);
+});
+test('malformed or oversized task output fails closed without guessing file paths', async t => {
+  const f=await fixture(t);await f.event(snapshot([task()]));const handle=f.host.listTasks()[0].handle;
+  for(const body of [{output:'x',total_bytes:-1,truncated:false},{output:'x'.repeat(8193),total_bytes:8193,truncated:true},{output:'x',total_bytes:1,truncated:'yes'}]){
+    f.host.query.request=async()=>({response:body});await assert.rejects(f.host.readTaskOutput('task',{handle}),/output/i);
+  }
+  delete f.host.query.request;await assert.rejects(f.host.readTaskOutput('task',{handle}),/unavailable/i);
 });

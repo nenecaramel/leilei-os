@@ -45,7 +45,8 @@ export type NativeLiveRuntimeInteractionStatus =
   | "cancelled";
 export type NativeLiveRuntimeControlKind =
   | "mid_turn_input"
-  | "interrupt";
+  | "interrupt"
+  | "task";
 export type NativeLiveRuntimeControlStatus =
   | "pending"
   | "reserved"
@@ -225,7 +226,7 @@ export const nativeLiveRuntimeControls = pgTable(
     ),
     check(
       "native_live_runtime_controls_kind_allowed",
-      sql`${table.kind} IN ('mid_turn_input', 'interrupt')`,
+      sql`${table.kind} IN ('mid_turn_input', 'interrupt', 'task')`,
     ),
     check(
       "native_live_runtime_controls_payload_object",

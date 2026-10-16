@@ -1,3 +1,4 @@
+import { runNativeLiveMacTaskControls, type NativeLiveMacTaskRelay } from "./native-live-mac-task-controls.js";
 import { NativeLiveMacExecutionLease } from "./native-live-mac-execution-lease.js";
 import { drainNativeLiveMacSession } from "./native-live-mac-session-drain.js";
 import { NativeLiveMacSessionRegistry } from "./native-live-mac-session-registry.js";
@@ -16,10 +17,12 @@ export class NativeLiveMacPersistentRuntime {
   readonly executor: NativeLiveMacPersistentExecutor;
   private watchdog: NativeLiveMacExecutionLease | null = null;
   private stopped = false;
+  private readonly taskAbort = new AbortController();
+  private readonly taskControls: Promise<void>;
   constructor(input: {
     sessionLeaseScheduler?: ConstructorParameters<typeof NativeLiveMacExecutionLease>[0]["scheduler"];
     environment: NodeJS.ProcessEnv; defaultWorkingDirectory: string; listenerInstanceId: string;
-    relay: Pick<NativeLiveMacHttpRelayClient, "checkExecutionAdmission" | "renewExecutionLease" | "renewSessionLease" | "prepareBackgroundResult" | "submitBackgroundResult">;
+    relay: Pick<NativeLiveMacHttpRelayClient, "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission" | "renewSessionLease" | "prepareBackgroundResult" | "submitBackgroundResult"> & Partial<NativeLiveMacTaskRelay>;
     outboxDirectory: string; mcpServerConfig?: NativeLiveMacMcpServerConfig | null;
     attachmentMaterializer: NativeLiveMacAttachmentMaterializer | null;
     outputAttachmentSender: NativeLiveMacOutputAttachmentSender | null;
@@ -32,6 +35,13 @@ export class NativeLiveMacPersistentRuntime {
       onRecoveryBlocked:async conversationId=>{this.executor.suspend(conversationId,"recovery");await this.executor.retire(conversationId);},
       onRecovered:conversationId=>this.executor.recovered(conversationId),
     });
+    // Capability is version support, never authorization. Older/unreachable
+    // servers keep the safe interrupt fallback and do not enter a retry loop.
+    const taskControlsAvailable = input.relay.waitTaskControl && input.relay.completeRuntimeControl && input.relay.supportsTaskControls
+      ? input.relay.supportsTaskControls().catch(()=>false) : Promise.resolve(false);
+    this.taskControls = taskControlsAvailable.then(available=>available && !this.taskAbort.signal.aborted
+      ? runNativeLiveMacTaskControls({ registry:this.registry,relay:input.relay as typeof input.relay & NativeLiveMacTaskRelay,listenerInstanceId:input.listenerInstanceId,signal:this.taskAbort.signal })
+      : undefined);
     const startWatchdog = () => {
       if(this.stopped || this.watchdog)return;
       let captured: ReturnType<NativeLiveMacSessionRegistry["snapshot"]> = [];
@@ -48,6 +58,7 @@ export class NativeLiveMacPersistentRuntime {
     };
     this.executor = new NativeLiveMacPersistentExecutor({ hasCapacity: () => this.registry.size < 4, attachmentMaterializer: input.attachmentMaterializer, outputAttachmentSender: input.outputAttachmentSender, onRuntimeFailure: input.onRuntimeFailure ?? null,
       createRouter: () => { startWatchdog(); return new NativeLiveMacPersistentTurnRouter({ registry: this.registry, listenerInstanceId: input.listenerInstanceId,
+        taskControlsAvailable: () => taskControlsAvailable,
         relay: input.relay, onBackgroundResult: (owner, frame) => this.backgroundResults.commit(owner, frame) }); } });
   }
   async drain(conversationId: string, providerSessionId: string) {
@@ -69,6 +80,7 @@ export class NativeLiveMacPersistentRuntime {
     this.executor.resumeHandoff(conversationId);
   }
   async closeAll(): Promise<void> {
+    this.taskAbort.abort();await this.taskControls;
     this.stopped=true;this.watchdog?.stop();this.watchdog=null;
     await this.executor.closeAll();
     // Registry retains failed closes; its shutdown reports rather than hides them.

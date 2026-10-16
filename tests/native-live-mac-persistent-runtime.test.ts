@@ -12,17 +12,20 @@ function queue<T>(){const values:T[]=[];let wake:((value:IteratorResult<T>)=>voi
 
 test("composed persistent runtime keeps one SDK writer across foreground, autonomous result and quiet wake",async t=>{
  const root=await realpath(await mkdtemp(join(tmpdir(),"persistent-runtime-")));t.after(()=>rm(root,{recursive:true,force:true}));
- const frames=queue<any>(),inputs=queue<any>(),calls:any[]=[];let launches=0,closes=0,next=100,quiet=false;
+ const frames=queue<any>(),inputs=queue<any>(),calls:any[]=[];let launches=0,closes=0,next=100,quiet=false;let taskAffordance:unknown;
  let leaseAlive=true,leaseTick:(()=>Promise<void>)|null=null;
  const transcript:any[]=[];
  let releaseReadback!:()=>void,enteredReadback!:()=>void;const readbackEntered=new Promise<void>(r=>enteredReadback=r),readbackReleased=new Promise<void>(r=>releaseReadback=r);let sampled=false;
  const relay=new NativeLiveMacHttpRelayClient("https://relay.invalid","synthetic",async(url,init)=>{
   const body=JSON.parse(String(init?.body));calls.push({url:String(url),body});
-  const data=String(url).endsWith("session-lease/renew")?{renewed:leaseAlive}:String(url).endsWith("execution-admission")?{admitted:true}:String(url).endsWith("execution-lease/renew")?{renewed:true}:String(url).endsWith("/background-results/prepare")?{receiptId:body.receipt_id,providerSessionId:id(90),parentProviderCheckpointId:body.parent_provider_checkpoint_id,expiresAt:new Date(Date.now()+600000).toISOString()}:String(url).includes("background-results")?{outcome:"committed",duplicate:false,providerCheckpointId:body.result.provider_checkpoint_id}:{canonicalOutcome:quiet?"wake_quiet":"completed",...(quiet?{nativeResumeCheckpointId:body.result.provider_checkpoint_id}:{})};
+  if(String(url).endsWith("/task-controls/wait"))return await new Promise<Response>((_resolve,reject)=>{
+   const cancel=()=>reject(new DOMException("Aborted","AbortError"));init?.signal?.addEventListener("abort",cancel,{once:true});if(init?.signal?.aborted)cancel();
+  });
+  const data=String(url).endsWith("/task-controls/capabilities")?{version:1}:String(url).endsWith("session-lease/renew")?{renewed:leaseAlive}:String(url).endsWith("execution-admission")?{admitted:true}:String(url).endsWith("execution-lease/renew")?{renewed:true}:String(url).endsWith("/background-results/prepare")?{receiptId:body.receipt_id,providerSessionId:id(90),parentProviderCheckpointId:body.parent_provider_checkpoint_id,expiresAt:new Date(Date.now()+600000).toISOString()}:String(url).includes("background-results")?{outcome:"committed",duplicate:false,providerCheckpointId:body.result.provider_checkpoint_id}:{canonicalOutcome:quiet?"wake_quiet":"completed",...(quiet?{nativeResumeCheckpointId:body.result.provider_checkpoint_id}:{})};
   return new Response(JSON.stringify({success:true,data}),{headers:{"content-type":"application/json"}});
  });
  const runtime=new NativeLiveMacPersistentRuntime({sessionLeaseScheduler:{schedule(work:()=>Promise<void>){leaseTick=work;return work;},cancel(){leaseTick=null;}},environment:{},defaultWorkingDirectory:root,listenerInstanceId:id(91),relay,outboxDirectory:join(root,"outbox"),attachmentMaterializer:null,outputAttachmentSender:null,async createTransport(...args){
-  const value=await createNativeLiveMacClaudeTransport(...args);Object.assign(value.runtime,{sessionMessagesImpl:async()=>[{}],importSessionToStoreImpl:async(_sid:string,store:any)=>store.append({sessionId:id(90)},transcript.map(r=>({...r}))),queryImpl:({prompt}:any)=>{
+  const value=await createNativeLiveMacClaudeTransport(...args);Object.assign(value.runtime,{sessionMessagesImpl:async()=>[{}],importSessionToStoreImpl:async(_sid:string,store:any)=>store.append({sessionId:id(90)},transcript.map(r=>({...r}))),queryImpl:({prompt,options}:any)=>{taskAffordance=options.perTaskStopAffordance;
    launches++;void(async()=>{for await(const item of prompt)inputs.push(item);})();frames.push({type:"system",subtype:"init",session_id:id(90)});return {async getContextUsage(){if(!sampled){sampled=true;enteredReadback();await readbackReleased;}return {model:"claude-opus-5-5",totalTokens:100,maxTokens:1000,rawMaxTokens:1000,percentage:10,categories:[]};},[Symbol.asyncIterator]:()=>frames,close(){closes++;frames.end();inputs.end();}};
   }});return value;
  }});t.after(()=>runtime.closeAll());
@@ -37,6 +40,6 @@ test("composed persistent runtime keeps one SDK writer across foreground, autono
  const submission=calls.find(c=>c.url.includes("background-results")&&c.url.endsWith("/result"));assert.equal(submission.body.result.prepare_id,id(1));assert.equal(submission.body.result.provider_checkpoint_id,id(101));
  quiet=true;const wake=run(command(2,id(101),true));finish((await inputs.next()).value.uuid);assert.equal((await wake).canonicalOutcome,"wake_quiet");
  quiet=false;const second=run(command(3,id(102)));finish((await inputs.next()).value.uuid);assert.equal((await second).canonicalOutcome,"completed");
- assert.equal(launches,1);assert.equal(closes,0);assert.equal((await runtime.backgroundResults.flush()),0);
+ assert.equal(launches,1);assert.equal(closes,0);assert.equal(taskAffordance,true);assert.equal((await runtime.backgroundResults.flush()),0);
  assert.ok(leaseTick,"idle writers require an ownership watchdog");leaseAlive=false;await (leaseTick as ()=>Promise<void>)();assert.equal(closes,1);assert.equal(runtime.registry.size,0);
 });

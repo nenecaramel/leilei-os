@@ -24,7 +24,7 @@ function command(n: number, wake = false): NativeLiveRuntimeCommand {
     operation: wake ? "wake" : "send", runtime_mode: n === 1 ? "new" : "resume", canonical_user_message_id: wake ? null : id(n + 20),
     parent_provider_session_id: n === 1 ? null : sid, parent_provider_checkpoint_id: n === 1 ? null : id(99 + n), expected_working_directory: null, prompt: "synthetic" };
 }
-async function fixture(t: test.TestContext) {
+async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolean>) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "persistent-turn-router-")));
   const output = queue<Record<string, unknown>>(), inputs = queue<{ uuid: string; origin: { kind: string } }>();
   const backgroundObserved = queue<string>();
@@ -57,7 +57,7 @@ async function fixture(t: test.TestContext) {
   let backgroundSink: (() => Promise<NativeLiveMacPersistentAcknowledgement>) | null = null;
   let allow = true;
   let admissionSink: ((command: NativeLiveRuntimeCommand) => Promise<boolean>) | null = null;
-  const router = new NativeLiveMacPersistentTurnRouter({ registry, listenerInstanceId: "listener", relay: { async checkExecutionAdmission(input) { admissions.push(input.command.prepare_id); return admissionSink ? admissionSink(input.command) : allow; } },
+  const router = new NativeLiveMacPersistentTurnRouter({ registry, listenerInstanceId: "listener", relay: { ...(idleAdmission ? { checkTaskAdmission:idleAdmission } : {}), async checkExecutionAdmission(input) { admissions.push(input.command.prepare_id); return admissionSink ? admissionSink(input.command) : allow; } },
     async onBackgroundResult(owner, frame) { backgroundOwners.push(structuredClone(owner)); assert.equal(owner.conversationId, conversation); assert.ok(owner.generationId); background.push(frame.result.user_message_uuid as string); return backgroundSink ? backgroundSink() : acknowledged(frame.events.findLast(event => event.type === "assistant")?.uuid as string); } });
   const run = (c: NativeLiveRuntimeCommand, extra = {}) => router.execute({ command: c, async onResult(frame) { results.push(frame.command.prepare_id); return acknowledged(frame.result.events.findLast(event => event.type === "assistant")?.uuid as string); }, ...extra });
   const finish = (uuid: string) => {
@@ -340,4 +340,39 @@ test("foreground stop with background work closes the owned session and returns 
  await f.inputs.next();const host=f.registry.get(conversation,f.registry.getGenerationId(conversation)!)!.session;const seen=new Promise<void>(resolve=>host.events.once("event",()=>resolve()));
  f.output.push({type:"system",subtype:"background_tasks_changed",session_id:sid,tasks:[{task_id:"background",run_id:"r1"}]});await seen;stop.resolve();
  await assert.rejects(running,(error:any)=>error.runtimeCode==="INTERRUPTED");assert.equal((await receipt.promise).session_closed,true);assert.equal(f.closes,1);
+});
+
+test('background commit cannot block task observation or be overtaken by a later foreground commit', async t => {
+  const f = await fixture(t);
+  const first = f.run(command(1)); f.finish((await f.inputs.next()).value!.uuid); await first;
+  const entered = deferred<void>(), release = deferred<NativeLiveMacPersistentAcknowledgement>();
+  t.after(() => release.resolve(acknowledged(id(102))));
+  f.setBackground(async () => { entered.resolve(); return release.promise; });
+  const second = f.run(command(2)); second.catch(() => {});
+  const input = (await f.inputs.next()).value!;
+  f.finish(id(88)); await entered.promise;
+  f.finish(input.uuid);
+  const session = f.registry.snapshot()[0].session;
+  let observed = false;
+  const update = new Promise<void>(resolve => {
+    const listen = (event: Record<string, unknown>) => { if (event.subtype === 'task_progress') { observed = true; session.events.off('event', listen); resolve(); } };
+    session.events.on('event', listen);
+  });
+  f.output.push({ type: 'system', subtype: 'task_progress', session_id: sid, task_id: 'synthetic-task', run_id: '001' });
+  await new Promise(setImmediate);
+  const before = { observed, commits: [...f.results] };
+  release.resolve(acknowledged(id(102))); await update; await second;
+  assert.deepEqual(before, { observed: true, commits: [id(1)] });
+  assert.deepEqual(f.results, [id(1), id(2)]); assert.deepEqual(f.background, [id(88)]); assert.equal(f.closes, 0);
+});
+
+test("idle background tools use a fresh session fence and cannot borrow permission across a new turn",async t=>{
+ const gate=deferred<boolean>();let held=false;
+ const f=await fixture(t,async()=>held?gate.promise:true);
+ const one=f.run(command(1));f.finish((await f.inputs.next()).value!.uuid);await one;
+ const tool=()=>f.sdk.canUseTool("Read",{file_path:"/synthetic"},{signal:new AbortController().signal,toolUseID:id(5000)});
+ assert.equal((await tool() as {behavior:string}).behavior,"allow");
+ held=true;const late=tool();const two=f.run(command(2));await f.inputs.next();gate.resolve(true);
+ assert.equal((await late as {behavior:string}).behavior,"deny");
+ f.finish(id(22));await two;
 });

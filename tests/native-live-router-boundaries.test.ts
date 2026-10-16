@@ -6,7 +6,7 @@ import { createNativeLiveApiRouter, type NativeLiveApiDependencies } from "../sr
 const allServices = {
   coordinator: {}, relayService: {}, turnReader: {}, turnWaitService: {},
   currentPathReader: {}, conversationRuntimeMetadataReader: {}, conversationService: {},
-  runtimeEventService: {}, runtimeInteractionService: {}, runtimeControlService: {},
+  runtimeEventService: {}, runtimeInteractionService: {}, runtimeControlService: { readTaskForUser() {}, waitTaskForListener() {}, checkTaskAdmission() {} },
   manualCompactService: {}, externalSessionBridgeService: {}, attachmentService: {},
 } as unknown as NativeLiveApiDependencies;
 
@@ -58,6 +58,7 @@ test("Native Live public route methods and registration order remain stable", ()
     "post",
     "/turns/:prepareId/interactions/:interactionId/respond"
   ],
+  ["get", "/turns/:prepareId/task-controls/:controlId"],
   [
     "get",
     "/turns/:prepareId/controls"
@@ -152,7 +153,7 @@ test("Native Live internal route methods and registration order remain stable", 
   const {createNativeLiveRelayInternalRouter} = await import("../src/web-api/native-live-relay-internal-router.js");
   const dependencies = {
     relayService: {}, semanticService: {}, backgroundModelService: {}, backgroundModelCoordinator: {},
-    runtimeEventService: {}, runtimeInteractionService: {}, runtimeControlService: {},
+    runtimeEventService: {}, runtimeInteractionService: {}, runtimeControlService: { readTaskForUser() {}, waitTaskForListener() {}, checkTaskAdmission() {} },
     companionBackgroundOpportunity: {}, workWaitService: {}, providerSessionCleanupService: {},
     manualCompactService: {}, externalSessionBridgeService: {}, attachmentService: {},
   } as any;
@@ -251,6 +252,9 @@ test("Native Live internal route methods and registration order remain stable", 
     "post",
     "/reservations/:reservationId/interactions/:interactionId/cancel"
   ],
+  ["post", "/task-controls/capabilities"],
+  ["post", "/reservations/:reservationId/task-admission"],
+  ["post", "/task-controls/wait"],
   [
     "post",
     "/reservations/:reservationId/controls/wait"

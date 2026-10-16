@@ -42,7 +42,7 @@ test("Mind scoring queue capacity preserves 256 candidates across config, schema
   const journal = JSON.parse(
     readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"),
   ) as { entries: Array<{ idx: number; tag: string }> };
-  assert.deepEqual(journal.entries.slice(-2).map(({ idx, tag }) => ({ idx, tag })), [
+  assert.deepEqual(journal.entries.filter(({ idx }) => idx === 107 || idx === 108).map(({ idx, tag }) => ({ idx, tag })), [
     { idx: 107, tag: "0107_native_session_preservation" },
     { idx: 108, tag: "0108_native_live_semantic_candidates_256" },
   ]);

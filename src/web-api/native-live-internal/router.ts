@@ -1,3 +1,4 @@
+import { waitTaskControlHandler, taskAdmissionHandler, taskCapabilitiesHandler } from "./task-controls.js";
 import { prepareBackgroundResultHandler, submitBackgroundResultHandler } from "./background-results.js";
 import { Router } from "express";
 import type { NativeLiveRelayInternalDependencies } from "./dependencies.js";
@@ -179,7 +180,10 @@ export function createNativeLiveRelayInternalRouter(
       cancelRuntimeInteractionHandler(dependencies),
     );
   }
+  router.post("/task-controls/capabilities", taskCapabilitiesHandler(dependencies));
   if (dependencies.runtimeControlService) {
+    if (dependencies.runtimeControlService.checkTaskAdmission) router.post("/reservations/:reservationId/task-admission", taskAdmissionHandler(dependencies));
+    if (dependencies.runtimeControlService.waitTaskForListener) router.post("/task-controls/wait", waitTaskControlHandler(dependencies));
     router.post(
       "/reservations/:reservationId/controls/wait",
       waitRuntimeControlHandler(dependencies),

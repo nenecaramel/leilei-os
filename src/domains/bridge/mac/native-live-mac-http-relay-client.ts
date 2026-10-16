@@ -796,6 +796,24 @@ implements NativeLiveMacDaemonRelayClient {
     }
   }
 
+  async supportsTaskControls():Promise<boolean> {
+    try {
+      const data=readRecord(await this.post("/task-controls/capabilities",{},AbortSignal.timeout(2_000)));
+      return data.version===1;
+    } catch {return false;}
+  }
+  async checkTaskAdmission(input:{listenerInstanceId:string;prepareId:string;providerSessionId:string}):Promise<boolean> {
+    const data=readRecord(await this.post(`/reservations/${encodeURIComponent(input.prepareId)}/task-admission`,{listener_instance_id:input.listenerInstanceId,provider_session_id:input.providerSessionId},AbortSignal.timeout(2_000)));
+    return data.admitted===true;
+  }
+  async waitTaskControl(input: { listenerInstanceId:string; bindings:import("../runtime-interaction/native-live-task-control-repository.js").NativeLiveTaskBinding[]; signal:AbortSignal }):Promise<import("./native-live-mac-task-controls.js").NativeLiveMacTaskControl|null> {
+    const result=readRecord(await this.postWait("/task-controls/wait",{listener_instance_id:input.listenerInstanceId,bindings:input.bindings},input.signal));
+    if(result.outcome==="timeout")return null;
+    const control=readRecord(result.control);
+    if(result.outcome!=="reserved" || control.kind!=="task" || typeof control.controlId!=="string" || typeof control.prepareId!=="string")throw Error("Task control response invalid.");
+    return {controlId:control.controlId,prepareId:control.prepareId,payload:readRecord(control.payload)};
+  }
+
   async waitRuntimeControl(input: {
     listenerInstanceId: string;
     reservationId: string;

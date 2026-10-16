@@ -1,8 +1,10 @@
+import { createTaskControl, readTaskControl, reserveTaskControl, taskSource, validateTaskReceipt, type NativeLiveTaskBinding } from "./native-live-task-control-repository.js";
 import { isDeepStrictEqual } from "node:util";
 import {
   and,
   asc,
   eq,
+  inArray,
 } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import type {
@@ -60,6 +62,7 @@ export class DrizzleNativeLiveRuntimeControlRepository {
     outcome: "created" | "idempotent";
     control: NativeLiveRuntimeControlRecord;
   }> {
+    if (input.kind === "task") return createTaskControl(this.db, input);
     const payload = normalizePayload(input.kind, input.payload);
 
     return this.db.transaction(async (transaction) => {
@@ -135,6 +138,12 @@ export class DrizzleNativeLiveRuntimeControlRepository {
     });
   }
 
+  async checkTaskAdmission(input: { userId:string;prepareId:string;listenerInstanceId:string;providerSessionId:string }):Promise<boolean> {
+    return this.db.transaction(async tx=>{const source=await taskSource(tx,input);return source?.providerSessionId===input.providerSessionId;});
+  }
+  readTaskForUser(input: { userId: string; prepareId: string; controlId: string }) { return readTaskControl(this.db, input); }
+  reserveTaskForListener(input: { userId: string; listenerInstanceId: string; bindings: NativeLiveTaskBinding[] }) { return reserveTaskControl(this.db, input); }
+
   async reserveNextForListener(input: {
     userId: string;
     listenerInstanceId: string;
@@ -177,6 +186,7 @@ export class DrizzleNativeLiveRuntimeControlRepository {
             eq(nativeLiveRuntimeControls.userId, input.userId),
             eq(nativeLiveRuntimeControls.prepareId, input.reservationId),
             eq(nativeLiveRuntimeControls.status, "pending"),
+            inArray(nativeLiveRuntimeControls.kind, ["mid_turn_input", "interrupt"]),
           ),
         )
         .orderBy(
@@ -229,6 +239,8 @@ export class DrizzleNativeLiveRuntimeControlRepository {
         };
   }): Promise<"applied" | "failed" | "idempotent"> {
     return this.db.transaction(async (transaction) => {
+      const [kind] = await transaction.select({ kind: nativeLiveRuntimeControls.kind }).from(nativeLiveRuntimeControls).where(and(eq(nativeLiveRuntimeControls.id,input.controlId),eq(nativeLiveRuntimeControls.userId,input.userId),eq(nativeLiveRuntimeControls.prepareId,input.reservationId)));
+      if (kind?.kind === "task" && !await taskSource(transaction,{ ...input,prepareId:input.reservationId })) throw new NativeLiveRuntimeControlError("TURN_NOT_ACTIVE", "Task session ownership changed.");
       const [row] = await transaction
         .select()
         .from(nativeLiveRuntimeControls)
@@ -273,7 +285,7 @@ export class DrizzleNativeLiveRuntimeControlRepository {
 
       const now = new Date();
       if (input.outcome.status === "applied") {
-        const receipt = normalizeReceipt(input.outcome.receipt);
+        const receipt = row.kind === "task" ? validateTaskReceipt(row.payload, input.outcome.receipt) : normalizeReceipt(input.outcome.receipt);
         await transaction
           .update(nativeLiveRuntimeControls)
           .set({
@@ -331,6 +343,7 @@ export class DrizzleNativeLiveRuntimeControlRepository {
         and(
           eq(nativeLiveRuntimeControls.userId, input.userId),
           eq(nativeLiveRuntimeControls.prepareId, input.prepareId),
+          inArray(nativeLiveRuntimeControls.kind, ["mid_turn_input", "interrupt"]),
         ),
       )
       .orderBy(
@@ -352,7 +365,7 @@ export class NativeLiveRuntimeControlService {
       Pick<
         NativeLiveWorkWakeBroker,
         "start" | "controlVersion" | "waitForControlChange"
-      > & {
+      > & Partial<Pick<NativeLiveWorkWakeBroker, "version" | "waitForChange">> & {
         release?: () => Promise<void>;
       },
   ) {}
@@ -367,14 +380,33 @@ export class NativeLiveRuntimeControlService {
       try {
         await this.wakePublisher?.notify({
           userId: input.userId,
-          kind: "runtime_control",
-          reservationId: input.prepareId,
+          ...(input.kind === "task" ? { kind: "foreground" as const } : { kind: "runtime_control" as const, reservationId: input.prepareId }),
         });
       } catch {
         // Durable control state is authoritative; notification is advisory.
       }
     }
     return result;
+  }
+
+  checkTaskAdmission(input: Parameters<DrizzleNativeLiveRuntimeControlRepository["checkTaskAdmission"]>[0]) {return this.repository.checkTaskAdmission(input);}
+  readTaskForUser(input: Parameters<DrizzleNativeLiveRuntimeControlRepository["readTaskForUser"]>[0]) { return this.repository.readTaskForUser(input); }
+
+  async waitTaskForListener(input: Parameters<DrizzleNativeLiveRuntimeControlRepository["reserveTaskForListener"]>[0] & { timeoutMs: number; signal?: AbortSignal | null }) {
+    const take = () => this.repository.reserveTaskForListener(input);
+    const immediate = await take();
+    if (immediate) return { outcome: "reserved" as const, control: immediate };
+    const broker = this.wakeBroker;
+    if (!broker?.version || !broker.waitForChange || input.signal?.aborted) return { outcome: "timeout" as const };
+    await broker.start();
+    try {
+      const version = broker.version(input.userId);
+      const raced = await take();
+      if (raced) return { outcome: "reserved" as const, control: raced };
+      const wake = await broker.waitForChange({ userId: input.userId, afterVersion: version, timeoutMs: input.timeoutMs, signal: input.signal });
+      const control = wake.outcome === "ready" ? await take() : null;
+      return control ? { outcome: "reserved" as const, control } : { outcome: "timeout" as const };
+    } finally { await broker.release?.(); }
   }
 
   reserveNextForListener(
@@ -548,7 +580,7 @@ function normalizeFailureCode(value: string): string {
   return normalized;
 }
 
-function mapControl(
+export function mapControl(
   row: typeof nativeLiveRuntimeControls.$inferSelect,
 ): NativeLiveRuntimeControlRecord {
   return {
