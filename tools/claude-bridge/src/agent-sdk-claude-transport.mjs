@@ -13,7 +13,6 @@ import { createAgentSdkSessionHost } from "./agent-sdk-session-host.mjs";
 import { createScheduledInputGuard } from "./agent-sdk-scheduled-input.mjs";
 import { createAgentSdkQuestionCallback } from "./agent-sdk-question.mjs";
 import { createAgentSdkPermissionCallback, normalizeAgentSdkToolPermissionPolicy } from "./agent-sdk-permission.mjs";
-import { LEILEIOS_MIND_SYSTEM_PROMPT } from "./leileios-mind-system-prompt.mjs";
 import { LEILEIOS_WAKE_SYSTEM_PROMPT } from "./leileios-wake-system-prompt.mjs";
 import { LEILEIOS_MURMUR_SYSTEM_PROMPT } from "./leileios-murmur-system-prompt.mjs";
 import {
@@ -29,7 +28,8 @@ import {
   prepareLocalCheckpointFork,
 } from "./local-checkpoint-fork.mjs";
 
-const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = [LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT].join("\n\n");
+// A custom string replaces the Claude Code preset; only LeileiOS guidance is sent.
+const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = [LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT].join("\n\n");
 
 function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
@@ -581,7 +581,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           // Only a human /loop opts into native dispatch on its own message.
           // Composed prompts retain literal delivery via client_composed.
           verbatimPrompts: false,
-          systemPrompt: { type: "preset", preset: "claude_code", append: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT },
+          systemPrompt: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT,
           ...executionOptions,
           // Request the same provider displayable summary as the interactive
           // one-shot path, without changing explicit disabled/between_tools.
@@ -975,11 +975,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         ...(this.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
         ...(this.chromeEnabled ? { extraArgs: { chrome: null } } : {}),
         verbatimPrompts: !nativeScheduleCommand,
-        systemPrompt: {
-          type: "preset",
-          preset: "claude_code",
-          append: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT,
-        },
+        systemPrompt: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT,
         ...executionOptions,
         // Newer Claude models default to omitted thinking (empty text + signature).
         // Request the provider's displayable summary only for interactive turns;
@@ -2061,10 +2057,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       ...(this.chromeEnabled ? { extraArgs: { chrome: null } } : {}),
       settingSources: ["user", "project", "local"],
       ...(this.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
-      systemPrompt: {
-        type: "preset",
-        preset: "claude_code",
-      },
       verbatimPrompts,
       ...executionOptions,
       ...leileiosMcpQueryOptions(this.mcpServerConfig),
