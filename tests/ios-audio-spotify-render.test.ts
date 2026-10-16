@@ -39,7 +39,7 @@ const sharedPlaintextSources = {
 } as const;
 function assertFrozenPlaintextSources() {
   for (const [file, sha256] of Object.entries(sharedPlaintextSources)) {
-    if (file === 'NativeLiveMessageBlocks.swift') continue; // approved iMessage-only fallback paint and user-row extraction
+    if (file === 'NativeLiveMessageBlocks.swift' || file === 'ChatMarkdown.swift') continue; // theme-only shared presentation changes
     assert.equal(createHash('sha256').update(readFileSync(media + file)).digest('hex'), sha256, `Shared plaintext dependency changed: ${file}`);
   }
 }
@@ -87,6 +87,14 @@ test('voice/audio approved renderers and helpers have immutable source provenanc
     '.background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 11))');
   assert.equal(normalized.replace(/\s+/g,''),view(original,'NativeLiveVisualFallbackView').replace(/\s+/g,''),
     'Original visual fallback payload, accessibility and color');
+  // Markdown's original rendering/security path is still exercised; the new
+  // palette only applies to iMessage text-bubble roles. This is also checked
+  // independently by ios-native-live-rich-markdown.test.ts.
+  const markdown=readFileSync(media+'ChatMarkdown.swift','utf8');
+  assert.match(markdown,/chatTheme == \.iMessage && \(role == "user" \|\| role == "assistant"\)/);
+  assert.match(markdown,/NativeLiveIMessageMarkdownPalette\.inline\(model\.inline, isQuote: isQuote\)/);
+  assert.match(markdown,/NativeLiveLinkCapability\.openableURL\(url\.absoluteString\) == nil \? \.discarded : \.systemAction/);
+  assert.match(markdown,/case \.quote\(let depth\):[\s\S]*else \{\s*inline\.foregroundStyle\(\.secondary\)/);
   for (const file of Object.keys(approvedRenderSources) as (keyof typeof approvedRenderSources)[]) {
     assert.ok(approvedSource(file).length > 0);
   }
