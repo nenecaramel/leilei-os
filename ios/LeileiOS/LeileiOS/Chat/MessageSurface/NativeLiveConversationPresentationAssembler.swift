@@ -86,7 +86,29 @@ struct NativeLiveConversationPresentationAssembler {
             messages.filter { $0.role == "user" }.map(\.id)
         )
         var consumedPrepare = Set<String>()
+        // Receipt identity is stable across reopen, delta fetches and lost-ACK
+        // replay. Interleave deliveries by their server timestamps without
+        // manufacturing canonical messages or changing provider lineage.
+        let backgroundResults = (pendingOperation?.isDraftConversation == true
+            ? [] : snapshot?.backgroundResults ?? [])
+            .sorted { left, right in
+                left.createdAt == right.createdAt
+                    ? left.id < right.id
+                    : left.createdAt < right.createdAt
+            }
+        var backgroundIndex = 0
         for message in messages {
+            while backgroundIndex < backgroundResults.count,
+                  backgroundResults[backgroundIndex].createdAt <= message.createdAt {
+                let result = backgroundResults[backgroundIndex]
+                var row = NativeLiveConversationRowPresentation(
+                    id: "background:\(result.id)", user: nil,
+                    userBacking: nil, assistant: nil
+                )
+                row.backgroundResult = result
+                rows.append(row)
+                backgroundIndex += 1
+            }
             if message.role == "user" {
                 var source = NativeLiveMessagePresentationSource.canonical(message)
                 var stable = identities.userID(message.id)
@@ -110,6 +132,16 @@ struct NativeLiveConversationPresentationAssembler {
                 rows.append(.init(id:stable,user:nil,userBacking:nil,assistant:turn))
                 if let prepare { consumedPrepare.insert(prepare) }
             }
+        }
+        while backgroundIndex < backgroundResults.count {
+            let result = backgroundResults[backgroundIndex]
+            var row = NativeLiveConversationRowPresentation(
+                id: "background:\(result.id)", user: nil,
+                userBacking: nil, assistant: nil
+            )
+            row.backgroundResult = result
+            rows.append(row)
+            backgroundIndex += 1
         }
         if let operation = pendingOperation {
             let ids = pendingIDs!
