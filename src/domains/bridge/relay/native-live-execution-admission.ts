@@ -27,10 +27,11 @@ export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "exec
         AND c.origin = 'native_live' AND c.lifecycle_status = 'active'
         AND coalesce(c.provider_metadata->'nativeSessionSource'->>'owner', 'leileios') = 'leileios'
         AND (
+          -- Preparation leaves the head at the user message's parent until the
+          -- turn commits; the presentation owner below pins that anchor.
           (p.operation = 'send' AND u.role = 'user'
-            AND (c.current_head_message_id = u.id OR (
-              c.provider_metadata->'nativeSessionSource'->>'mode' = 'continuation'
-              AND c.current_head_message_id IS NOT DISTINCT FROM u.parent_message_id))
+            AND (c.current_head_message_id = u.id
+              OR c.current_head_message_id IS NOT DISTINCT FROM u.parent_message_id)
             AND c.provider_metadata->'native_live_presentation_owner'->>'prepareId' = p.id::text
             AND (c.provider_metadata->'native_live_presentation_owner' ? 'anchorHeadMessageId')
             AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM c.current_head_message_id::text)

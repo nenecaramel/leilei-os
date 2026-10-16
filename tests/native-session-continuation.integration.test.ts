@@ -153,3 +153,26 @@ test('lost release response cannot reclaim ownership after a newer attach with a
   await assert.rejects(f.api.attachNativeContinuation(f.db, reacquire), { code: 'STALE_NATIVE_PROJECTION' });
   assert.equal((await f.state()).owner, 'desktop');
 }));
+
+test('an ordinary new conversation admits and renews its first send while the head still waits at the parent', { skip: !enabled }, async () => fixture(async f => {
+  const { DrizzleNativeLiveConversationRepository } = await import('../src/domains/conversation/native-live-conversation-repository.js');
+  const { checkNativeLiveExecutionAdmission } = await import('../src/domains/bridge/relay/native-live-execution-admission.js');
+  const { renewNativeLiveExecutionLease } = await import('../src/domains/bridge/relay/native-live-execution-lease.js');
+  const conversation = await new DrizzleNativeLiveConversationRepository(f.db).createConversation({ userId: f.input.userId });
+  const port = new DrizzleNativeLiveBackendTurnPort(f.db);
+  const listener = randomUUID(), later = new Date(Date.now() + 600_000);
+  await f.db.insert(nativeLiveRuntimeListenerLeases).values({ userId: f.input.userId, dispatchTarget: 'claude_code', listenerInstanceId: listener, leaseExpiresAt: later });
+  const prepared = await port.prepareSend({ prepareId: randomUUID(), userId: f.input.userId, requestId: randomUUID(), conversationId: conversation.id, expectedHeadMessageId: null, text: 'synthetic first input', attachmentIds: [], executionSelection: null });
+  assert.equal(prepared.ok, true, JSON.stringify(prepared));
+  const [p] = await f.db.execute(sql`SELECT * FROM native_live_turn_preparations WHERE conversation_id = ${conversation.id}::uuid`);
+  assert.equal(p.runtime_mode, 'new');
+  await f.db.update(nativeLiveTurnPreparations).set({ dispatchStatus: 'executing', executionStartedAt: new Date(), reservedBy: listener,
+    reservedAt: new Date(), reservationExpiresAt: later }).where(eq(nativeLiveTurnPreparations.id, p.id));
+  const admission = { userId: f.input.userId, listenerInstanceId: listener, reservationId: p.id, requestId: p.request_id,
+    conversationId: conversation.id, runtimeMode: 'new' as const, canonicalUserMessageId: p.canonical_user_message_id,
+    parentProviderSessionId: null, parentProviderCheckpointId: null };
+  assert.equal(await checkNativeLiveExecutionAdmission(f.db, admission), true);
+  assert.equal(await renewNativeLiveExecutionLease(f.db, admission), true);
+  // Another conversation's message is never this turn's canonical input.
+  assert.equal(await checkNativeLiveExecutionAdmission(f.db, { ...admission, canonicalUserMessageId: randomUUID() }), false);
+}));
