@@ -18,6 +18,8 @@ struct NativeLiveMessageRow: View {
             NativeLiveHistoryForkDivider()
         } else if let history = row.historyMessage {
             NativeLiveHistorySnapshotRow(message:history,timeZone:row.historyTimeZone ?? "UTC")
+        } else if let result = row.backgroundResult {
+            NativeLiveBackgroundResultRow(result: result, onCopy: onCopyMessage)
         } else if let turn = row.assistant {
             NativeLiveAssistantTurnRow(turn:turn,isCurrentHead:isCurrentHead,isTurnInFlight:isTurnInFlight,isCopied:isCopied,
                 onCopyMessage:onCopyMessage,onRetryMessage:onRetryMessage,onResolveInteraction:onResolveInteraction)
@@ -27,5 +29,39 @@ struct NativeLiveMessageRow: View {
                 isIMessage: chatTheme == .iMessage,
                 onCopyMessage:onCopyMessage,onEditMessage:onEditMessage)
         }
+    }
+}
+
+ 
+// The receipt is a read-only delivery, not an editable/retryable provider turn.
+private struct NativeLiveBackgroundResultRow: View {
+    @Environment(\.chatTheme) private var chatTheme
+    let result: NativeLiveBackgroundResultSnapshot
+    let onCopy: (String) -> Void
+
+    var body: some View {
+        let presentation = NativeLiveMessagePresentationProjector.project(
+            .streaming(result.text),
+            presentationNamespace: "background:\(result.id)"
+        )
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Background result")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if chatTheme == .iMessage {
+                NativeLiveIMessageTextBubbleList(
+                    presentation: presentation,
+                    side: .incoming,
+                    timestamp: MessageTimestampFormatter.string(from: result.createdAt),
+                    onCopy: onCopy,
+                    onRetry: nil,
+                    isRetryDisabled: true
+                )
+            } else {
+                NativeLiveMessagePresentationView(presentation: presentation)
+                    .textSelection(.enabled)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
