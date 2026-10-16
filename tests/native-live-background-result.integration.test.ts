@@ -59,10 +59,10 @@ test("committed background reply reaches current-path reads exactly once across 
     "older pages do not replay latest background deliveries");
   assert.deepEqual((await f.repository.submitBackgroundResult(f.submit)).duplicate, true);
   assert.deepEqual((await read())?.backgroundResults, first?.backgroundResults, "reopened chat does not double-deliver");
-  const [sourceUser] = await f.database.db.select({ id: conversationMessages.id })
-    .from(conversationMessages).where(eq(conversationMessages.conversationId, f.conversation.id))
-    .orderBy(conversationMessages.createdAt).limit(1);
-  await f.database.db.update(conversations).set({ currentHeadMessageId: sourceUser!.id })
+  const [sourceAssistant] = await f.database.db.select({ parentId: conversationMessages.parentMessageId })
+    .from(conversationMessages).where(eq(conversationMessages.id, f.completed.assistantMessageId));
+  assert.ok(sourceAssistant?.parentId);
+  await f.database.db.update(conversations).set({ currentHeadMessageId: sourceAssistant!.parentId })
     .where(eq(conversations.id, f.conversation.id));
   assert.deepEqual((await read())?.backgroundResults, [], "retired assistant branch cannot leak the receipt");
 });
