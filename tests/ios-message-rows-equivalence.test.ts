@@ -49,14 +49,6 @@ test('User row and history/divider moves retain complete presentation and intera
   }
   equal(block(read(name==='NativeLiveHistorySnapshotRow'?'NativeLiveHistoryMessageRow.swift':'NativeLiveHistoryDivider.swift'),'struct '+name+':'),expected,name);
  }
- // Compact voice geometry changed intentionally; normalize only that presentation seam.
- const normalized=user
-   .replace(
-     '.padding(.leading, usesCompactVoiceInsets ? NativeLiveVoiceBubbleGeometry.userLeadingInset : ChatPresentationLayout.bubbleHorizontalInset)\n                    .padding(.trailing, usesCompactVoiceInsets ? NativeLiveVoiceBubbleGeometry.userTrailingInset : ChatPresentationLayout.bubbleHorizontalInset)\n                    .padding(.vertical,ChatPresentationLayout.bubbleVerticalInset)',
-     '.padding(.horizontal,ChatPresentationLayout.bubbleHorizontalInset).padding(.vertical,ChatPresentationLayout.bubbleVerticalInset)',
-   )
-   .replace(/\n    private var usesCompactVoiceInsets: Bool \{[\s\S]*?\n    \}\n\n    @ViewBuilder private var textBubble:/, '\n    @ViewBuilder private var textBubble:')
-   .replace('VStack(alignment:.trailing,spacing:10) {\n                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed, transcript:presentation.copyText)', 'VStack(alignment:.leading,spacing:10) {\n                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed)');
  // The Original body and iMessage text/voice paths now live behind the same
  // message presentation. Verify critical actions instead of raw enclosing bytes.
  assert.match(user, /if chatTheme == \.iMessage \{[\s\S]*?NativeLiveIMessageTextBubbleList\(presentation: presentation, side: \.outgoing\)/);
