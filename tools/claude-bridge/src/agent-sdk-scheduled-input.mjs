@@ -5,7 +5,10 @@ export function createScheduledInputGuard({ getHost, admit, now = () => Date.now
   const seen = new Set();
   let stampedProducer = false;
   let lastAttemptAt = null;
-  const block = () => ({ decision: 'block', reason: 'LeileiOS scheduled input rejected.',
+  let autonomousAttempts = 0;
+  let admissionPending = false;
+  let unclassifiedProducer = false;
+  const block = code => ({ decision: 'block', reason: `LeileiOS scheduled input rejected. [${code}]`,
     hookSpecificOutput: { hookEventName: 'UserPromptSubmit', suppressOriginalPrompt: true } });
   const hook = async input => {
     const host = getHost();
@@ -30,19 +33,27 @@ export function createScheduledInputGuard({ getHost, admit, now = () => Date.now
     if (['system', 'poll_event'].includes(input?.source)) return {};
     // Older CLIs omit source. Keep one exact literal hook per admitted input,
     // but do not enable new native schedules on that unsupported producer.
+    if (input?.source === undefined && host && input.session_id === host.sessionId && !input.agent_id) unclassifiedProducer = true;
     if (input?.source === undefined && consumeForeground()) return {};
     if (!host || host.queryClosed || ['closed', 'failed'].includes(host.state)
-      || input?.session_id !== host.sessionId || input.agent_id) return block();
-    // Never infer a trigger from prompt text or admit an unclassified producer.
-    if (!['loop_wakeup', 'schedule_wakeup'].includes(input.source)) return block();
+      || input?.session_id !== host.sessionId || input.agent_id) return block('SESSION_UNAVAILABLE_OR_FOREIGN');
+    // source is optional independently of prompt_id (generic correlation).
+    // Do not mistake its absence for a native timer or inspect prompt text.
+    const unclassified = input.source === undefined;
+    if (!unclassified && !['loop_wakeup', 'schedule_wakeup'].includes(input.source)) return block('UNSUPPORTED_SOURCE');
+    if (unclassified) unclassifiedProducer = true;
     const id = input.prompt_id;
     const at = now();
-    if (host.backgroundPending || typeof id !== 'string' || !id.trim() || id.length > 512
-      || seen.has(id) || seen.size >= 64 || at < createdAt || at - createdAt >= 7 * 24 * 60 * 60 * 1_000
-      || (lastAttemptAt !== null && at - lastAttemptAt < 60_000)) return block();
-    // Reserve synchronously. Duplicate/concurrent callbacks cannot borrow an
-    // in-flight authorization, and an uncertain admission is never retried.
-    seen.add(id); lastAttemptAt = at;
+    if (host.backgroundPending) return block('BACKGROUND_COMMIT_PENDING');
+    if (admissionPending) return block('ADMISSION_PENDING');
+    if (autonomousAttempts >= 64) return block('ATTEMPT_BUDGET');
+    if (at < createdAt || at - createdAt >= 7 * 24 * 60 * 60 * 1_000) return block('WRITER_LIFETIME');
+    if (!unclassified && (typeof id !== 'string' || !id.trim() || id.length > 512
+      || seen.has(id) || (lastAttemptAt !== null && at - lastAttemptAt < 60_000))) return block('TIMER_ID_OR_CADENCE');
+    // Reserve before awaiting admission. Unknown-source notifications may burst,
+    // but share the finite attempt/lifetime budget and cannot overlap admission.
+    autonomousAttempts++; admissionPending = true;
+    if (!unclassified) { seen.add(id); lastAttemptAt = at; }
     const generation = host.backgroundGeneration;
     const abort = new AbortController();
     let timer;
@@ -57,13 +68,13 @@ export function createScheduledInputGuard({ getHost, admit, now = () => Date.now
         timer = setTimeout(() => { abort.abort(); reject(new Error('Scheduled admission timed out.')); }, 2_000);
       })]);
       if (getHost() !== host || host.queryClosed || ['closed', 'failed'].includes(host.state)
-        || host.active || host.backgroundPending || host.backgroundGeneration !== generation) return block();
-      stampedProducer = true;
+        || host.active || host.backgroundPending || host.backgroundGeneration !== generation) return block('STALE_ADMISSION');
+      if (!unclassified) stampedProducer = true;
       return {};
-    } catch { return block(); }
-    finally { clearTimeout(timer); abort.abort(); }
+    } catch { return block(abort.signal.aborted ? 'ADMISSION_TIMEOUT' : 'ADMISSION_DENIED'); }
+    finally { clearTimeout(timer); abort.abort(); admissionPending = false; }
   };
-  hook.allowsTool = (name, input) => stampedProducer || !['CronCreate', 'ScheduleWakeup'].includes(name)
+  hook.allowsTool = (name, input) => (stampedProducer && !unclassifiedProducer) || !['CronCreate', 'ScheduleWakeup'].includes(name)
     || (name === 'ScheduleWakeup' && input?.stop === true);
   return hook;
 }

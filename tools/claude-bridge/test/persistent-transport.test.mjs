@@ -278,7 +278,7 @@ test('native scheduled input gets fresh admission before inference, not just bef
 test('scheduled admission fails closed for malformed, foreign and repeated deliveries', async t => {
  const f=fixture();const host=await f.open();t.after(()=>host.close());await host.submit('first');
  const hook=f.options.hooks.UserPromptSubmit?.[0].hooks[0];assert.equal(typeof hook,'function');
- for(const extra of [{session_id:'foreign'},{prompt_id:undefined},{agent_id:'child'},{source:undefined}]) assert.equal(isBlocked(await hook(scheduledInput('bad',extra))),true);
+ for(const extra of [{session_id:'foreign'},{prompt_id:undefined},{agent_id:'child'},{source:'unrecognized'}]) assert.equal(isBlocked(await hook(scheduledInput('bad',extra))),true);
  assert.equal(isBlocked(await hook(scheduledInput('once'))),false);
  assert.equal(isBlocked(await hook(scheduledInput('once'))),true);
 });
@@ -346,5 +346,83 @@ test('legacy unstamped literal foreground hooks and mid-turn input remain usable
  assert.deepEqual(await hook({...legacy,prompt:'supplement'}),{});
  for(const [name,input] of [['CronList',{}],['CronDelete',{id:'synthetic'}],['ScheduleWakeup',{stop:true}]]) assert.equal((await f.options.canUseTool(name,input,{})).behavior,'allow');
  f.output.push({type:'result',subtype:'success',session_id:'s',user_message_uuids:['legacy','supplement']});await pending;
- assert.equal(isBlocked(await hook({...legacy,prompt_id:'unknown-idle'})),true);
+ assert.equal(isBlocked(await hook({...legacy,prompt_id:'unknown-idle'})),false);
+ assert.equal((await f.options.canUseTool('CronCreate',{prompt:'synthetic'},{})).behavior,'deny');
+});
+
+
+test('legacy idle task notification without source retains durable admission without enabling native schedules', async t => {
+ let admitted=true;const contexts=[];
+ const f=fixture();const host=await f.open({authorize:async c=>{contexts.push(c);return c.phase!=='scheduled'||admitted;}});t.after(()=>host.close());
+ await host.submit('first');
+ const hook=f.options.hooks.UserPromptSubmit[0].hooks[0];
+ const notification={hook_event_name:'UserPromptSubmit',session_id:'s',prompt:'synthetic task notification'};
+ assert.deepEqual(await hook(notification),{});
+ assert.deepEqual(await hook({...notification,prompt_id:'generic-correlation'}),{});
+ assert.equal(contexts.at(-1).phase,'scheduled','legacy autonomous inference still checks durable ownership');
+ assert.equal((await f.options.canUseTool('CronCreate',{prompt:'synthetic'},{})).behavior,'deny');
+ assert.equal((await f.options.canUseTool('ScheduleWakeup',{wake_at:'synthetic'},{})).behavior,'deny');
+ admitted=false;assert.equal(isBlocked(await hook(notification)),true);
+ for(const extra of [{session_id:'foreign'},{agent_id:'child'},{source:'unknown'},{source:'schedule_wakeup'}]) assert.equal(isBlocked(await hook({...notification,...extra})),true);
+ await host.close();assert.equal(isBlocked(await hook(notification)),true);
+});
+
+
+test('unstamped autonomous admission is bounded and cannot borrow a later foreground turn', async t => {
+ let entered,release;const barrier=new Promise(r=>{release=r;}),started=new Promise(r=>{entered=r;});
+ const f=fixture({manualResults:true});const host=await f.open({authorize:async c=>{if(c.phase==='scheduled'){entered();await barrier;}return true;}});t.after(()=>host.close());
+ const boot=host.submit('boot',{id:'boot'});await new Promise(r=>host.events.once('event',r));
+ f.output.push({type:'result',subtype:'success',session_id:'s',user_message_uuid:'boot'});await boot;
+ const hook=f.options.hooks.UserPromptSubmit[0].hooks[0];
+ const pending=hook({session_id:'s',prompt:'synthetic notification'});await started;
+ const next=host.submit('next',{id:'next'});next.catch(()=>{});release();
+ assert.equal(isBlocked(await pending),true);
+ f.output.push({type:'result',subtype:'success',session_id:'s',user_message_uuid:'next'});await next;
+});
+
+
+test('unclassified autonomous input has finite attempts, lifetime, and synchronous concurrency fencing', async t => {
+ const {createScheduledInputGuard}=await import('../src/agent-sdk-scheduled-input.mjs');
+ const {EventEmitter}=await import('node:events');let now=1000,calls=0,release;
+ const host={state:'idle',sessionId:'s',events:new EventEmitter(),backgroundGeneration:0};
+ let gate=new Promise(r=>{release=r;});
+ const guard=createScheduledInputGuard({getHost:()=>host,now:()=>now,admit:async()=>{calls++;await gate;}});
+ const input={session_id:'s',prompt:'synthetic',prompt_id:'generic-reused-correlation'};
+ const one=guard(input);assert.equal(isBlocked(await guard(input)),true);assert.equal(calls,1);
+ release();await one;gate=Promise.resolve();
+ for(let n=1;n<64;n++)assert.deepEqual(await guard(input),{});
+ assert.equal(isBlocked(await guard(input)),true);assert.equal(calls,64);
+ const lifetime=createScheduledInputGuard({getHost:()=>host,now:()=>now,admit:async()=>{calls++;}});
+ now+=7*24*60*60*1000;assert.equal(isBlocked(await lifetime(input)),true);assert.equal(calls,64);
+});
+
+test('partially stamped producer loses new schedule capability after an unclassified autonomous hook', async t => {
+ const f=fixture({onInput:input=>{void f.options.hooks.UserPromptSubmit[0].hooks[0]({source:'sdk',session_id:'s',prompt:input.message.content[0].text});}});
+ const host=await f.open();t.after(()=>host.close());await host.submit('synthetic');
+ assert.equal((await f.options.canUseTool('CronCreate',{},{})).behavior,'allow');
+ assert.deepEqual(await f.options.hooks.UserPromptSubmit[0].hooks[0]({session_id:'s',prompt:'synthetic notification',prompt_id:'correlation'}),{});
+ assert.equal((await f.options.canUseTool('CronCreate',{},{})).behavior,'deny');
+ assert.equal((await f.options.canUseTool('ScheduleWakeup',{},{})).behavior,'deny');
+ assert.equal((await f.options.canUseTool('CronDelete',{},{})).behavior,'allow');
+});
+
+
+test('unstamped autonomous authorization times out without enabling timers or holding the input pump', async t => {
+ t.mock.timers.enable({apis:['setTimeout']});let calls=0;
+ const f=fixture();const host=await f.open({authorize:async c=>{if(c.phase==='scheduled'){calls++;return new Promise(()=>{});}return true;}});t.after(()=>host.close());await host.submit('first');
+ const hook=f.options.hooks.UserPromptSubmit[0].hooks[0];
+ const pending=hook({session_id:'s',prompt_id:'correlation',prompt:'synthetic notification'});
+ t.mock.timers.tick(2000);const verdict=await pending;
+ assert.equal(isBlocked(verdict),true);assert.match(verdict.reason,/ADMISSION_TIMEOUT/);assert.equal(calls,1);
+ await host.submit('foreground after timeout',{source:'human'});
+ assert.equal((await f.options.canUseTool('CronCreate',{},{})).behavior,'deny');
+});
+
+test('missing source on a later exact foreground hook also revokes new timers', async t => {
+ let n=0;
+ const f=fixture({onInput:input=>{void f.options.hooks.UserPromptSubmit[0].hooks[0]({...(n++===0?{source:'sdk'}:{}),session_id:'s',prompt:input.message.content[0].text,prompt_id:'correlation'});}});
+ const host=await f.open();t.after(()=>host.close());await host.submit('first');
+ assert.equal((await f.options.canUseTool('CronCreate',{},{})).behavior,'allow');
+ await host.submit('second');
+ assert.equal((await f.options.canUseTool('CronCreate',{},{})).behavior,'deny');
 });

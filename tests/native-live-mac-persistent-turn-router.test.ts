@@ -413,3 +413,12 @@ test("scheduled prompt waits for the preceding durable foreground acknowledgemen
  release.resolve(acknowledged());await one;
  assert.notEqual((await pending).decision,"block");assert.equal(checks,1);
 });
+
+
+test("closed SDK writer is not eligible for another persistent reservation", async t => {
+ const f=await fixture(t);
+ const first=f.run(command(1));f.finish((await f.inputs.next()).value!.uuid);await first;
+ const binding=f.registry.snapshot()[0]!;
+ await binding.session.close();
+ assert.equal(f.router.matches(command(2)),false);
+});
