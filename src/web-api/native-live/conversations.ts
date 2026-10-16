@@ -663,9 +663,9 @@ export function readNativeLiveCurrentPathHandler(
         return;
       }
 
-      const backgroundRevision = snapshot.backgroundResults.length
+      const backgroundRevision = (snapshot.backgroundResults ?? []).length
         ? createHash("sha256")
-            .update(snapshot.backgroundResults.map(row => row.id).join("|"))
+            .update((snapshot.backgroundResults ?? []).map(row => row.id).join("|"))
             .digest("hex").slice(0, 16)
         : null;
       const normalRevision = snapshot.failedTurn
@@ -696,7 +696,7 @@ export function readNativeLiveCurrentPathHandler(
           olderCursor: snapshot.olderCursor,
           resetRequired: snapshot.resetRequired,
           messages: snapshot.messages,
-          backgroundResults: snapshot.backgroundResults,
+          backgroundResults: snapshot.backgroundResults ?? [],
           failedTurn: snapshot.failedTurn ?? null,
         },
       });
