@@ -51,7 +51,7 @@ export type NativeLiveApiDependencies = {
   runtimeControlService?: Pick<
     NativeLiveRuntimeControlService,
     "createForUser" | "listForUser"
-  >;
+  > & Partial<Pick<NativeLiveRuntimeControlService, "readTaskForUser">>;
   manualCompactService?: Pick<
     NativeLiveManualCompactService,
     "create" | "read"

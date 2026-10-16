@@ -148,6 +148,7 @@ struct NativeLiveTurnActivityView: View {
                     ForEach(projection.tasks) { task in
                         NativeLiveTaskActivityRow(
                             task: task,
+                            prepareID: projection.prepareID,
                             childTools:
                                 projection.childTools(for: task),
                             childQuestions: projection.childQuestions(for: task),

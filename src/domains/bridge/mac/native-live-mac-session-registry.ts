@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import {
   createNativeLiveMacClaudeTransport,
@@ -38,6 +39,14 @@ type OpenInput = {
 export class NativeLiveMacSessionRegistry {
   private readonly entries = new Map<string, Entry>();
   private shutDown = false;
+  private readonly changes = new EventEmitter();
+  waitForChange(signal: AbortSignal): Promise<void> {
+    return new Promise(resolve=>{
+      const finish=()=>{this.changes.off("change",finish);signal.removeEventListener("abort",finish);resolve();};
+      this.changes.once("change",finish);signal.addEventListener("abort",finish,{once:true});
+      if(signal.aborted)finish();
+    });
+  }
   constructor(
     private readonly environment: NodeJS.ProcessEnv,
     private readonly defaultWorkingDirectory: string,
@@ -118,6 +127,7 @@ export class NativeLiveMacSessionRegistry {
   private retire(entry: Entry): void {
     const wasRetired = entry.retired;
     entry.retired = true;
+    this.changes.emit("change");
     // Startup may still await the SDK loader. Cancel its transport claim now;
     // waiting only for open() would permit a late process launch after retire.
     if (!wasRetired && !entry.binding) entry.runtime?.abort();
@@ -173,6 +183,7 @@ export class NativeLiveMacSessionRegistry {
     session.events.on("event", entry.observeEvent);
     const binding = Object.freeze({ conversationId: entry.conversationId, generationId: entry.generationId, workingDirectory, session });
     entry.binding = binding;
+    this.changes.emit("change");
     return binding;
   }
   private async dispose(entry: Entry): Promise<void> {

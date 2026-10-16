@@ -166,7 +166,7 @@ function parseRuntimeControlCompletionBody(
   return null;
 }
 
-function sendRuntimeControlError(
+export function sendRuntimeControlError(
   response: Response,
   error: unknown,
 ): void {

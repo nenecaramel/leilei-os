@@ -66,7 +66,8 @@ export class NativeLiveMacPersistentTurnRouter {
   constructor(private readonly input: {
     registry: NativeLiveMacSessionRegistry;
     listenerInstanceId: string;
-    relay: Pick<NativeLiveMacDaemonRelayClient, "checkExecutionAdmission" | "renewExecutionLease">;
+    perTaskStopAffordance?: boolean;
+    relay: Pick<NativeLiveMacDaemonRelayClient, "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission">;
     // Autonomous results deliberately have no foreground command. They require
     // their own durable preparation/branch fence, not the active turn's sink.
     onBackgroundResult(
@@ -205,6 +206,15 @@ export class NativeLiveMacPersistentTurnRouter {
   }
   private async authorize(context: Parameters<NativeLiveMacPersistentSessionOptions["authorize"]>[0]): Promise<boolean> {
     const slot = this.active;
+    if (!slot && !this.suspended && context.phase === "tool" && context.inputId === null && this.binding?.session.sessionId && this.backgroundSource && this.input.relay.checkTaskAdmission) {
+      const source=this.backgroundSource, binding=this.binding, checkpoint=this.providerCheckpointId;
+      try {
+        this.assertLive();
+        const admitted=await this.input.relay.checkTaskAdmission({listenerInstanceId:this.input.listenerInstanceId,prepareId:source.prepareId,providerSessionId:binding.session.sessionId!});
+        this.assertLive();
+        return admitted && !this.suspended && this.active===null && this.binding===binding && this.backgroundSource===source && this.providerCheckpointId===checkpoint;
+      } catch {return false;}
+    }
     if (this.suspended || !slot || slot.phase !== "executing" || context.inputId !== slot.inputId) return false;
     try {
       this.assertSlot(slot);
@@ -267,6 +277,7 @@ export class NativeLiveMacPersistentTurnRouter {
     this.providerCheckpointId = command.parent_provider_checkpoint_id ?? null;
     const options: NativeLiveMacPersistentSessionOptions = {
       execution: command.execution_selection,
+      perTaskStopAffordance: this.input.perTaskStopAffordance === true,
       authorize: context => this.authorize(context),
       permissionHandler: this.handler("permissionHandler"),
       questionHandler: this.handler("questionHandler"),

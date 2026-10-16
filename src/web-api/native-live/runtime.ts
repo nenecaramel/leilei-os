@@ -90,6 +90,7 @@ export function createNativeLiveRuntimeControlHandler(
       || (
         body.kind !== "mid_turn_input"
         && body.kind !== "interrupt"
+        && body.kind !== "task"
       )
       || !body.payload
       || typeof body.payload !== "object"
@@ -394,4 +395,20 @@ function parsePositiveInteger(
   )
     ? parsed
     : null;
+}
+
+export function readNativeLiveTaskControlHandler(dependencies: NativeLiveApiDependencies): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+    const prepareId=routeParam(request.params.prepareId), controlId=routeParam(request.params.controlId);
+    if (!UUID_PATTERN.test(prepareId) || !UUID_PATTERN.test(controlId)) { response.status(400).json({ success:false }); return; }
+    try {
+      const control=await dependencies.runtimeControlService!.readTaskForUser!({ userId:request.webUserId,prepareId,controlId });
+      response.setHeader("Cache-Control","private, no-store");
+      if (!control) { response.status(404).json({success:false}); return; }
+      response.json({success:true,data:control});
+    } catch(error) {
+      response.status(error instanceof NativeLiveRuntimeControlError ? 409 : 503).json({success:false,error:{code:error instanceof NativeLiveRuntimeControlError?error.code:"CONTROL_UNAVAILABLE"}});
+    }
+  };
 }

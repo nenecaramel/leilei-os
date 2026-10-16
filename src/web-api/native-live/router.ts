@@ -17,6 +17,7 @@ import {
   resolveNativeLiveRuntimeInteractionHandler,
   readNativeLiveRuntimeControlsHandler,
   createNativeLiveRuntimeControlHandler,
+  readNativeLiveTaskControlHandler,
 } from "./runtime.js";
 import {
   listNativeLiveConversationsHandler,
@@ -87,6 +88,7 @@ export function createNativeLiveApiRouter(
     );
   }
   if (dependencies.runtimeControlService) {
+    if (dependencies.runtimeControlService.readTaskForUser) router.get("/turns/:prepareId/task-controls/:controlId", readNativeLiveTaskControlHandler(dependencies));
     router.get(
       "/turns/:prepareId/controls",
       readNativeLiveRuntimeControlsHandler(dependencies),

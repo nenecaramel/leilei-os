@@ -83,6 +83,8 @@ struct NativeLiveLifecycleActivityRow: View {
 struct NativeLiveTaskActivityRow: View {
     @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     let task: NativeLiveTurnActivityProjection.TaskActivity
+    var prepareID: String? = nil
+    @State private var showingTasks = false
     let childTools:
         [NativeLiveTurnActivityProjection.ToolActivity]
     let childQuestions:
@@ -141,6 +143,13 @@ struct NativeLiveTaskActivityRow: View {
             }
             // Only the task header gets glass. Nested Tool, Question and
             // Resources keep their own independent surfaces and tap targets.
+            .contentShape(Rectangle())
+            .onTapGesture { if prepareID != nil { showingTasks = true } }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { if prepareID != nil { showingTasks = true } }
+            .sheet(isPresented: $showingTasks) {
+                if let prepareID { NativeLiveTasksSheet(prepareID: prepareID) }
+            }
             .modifier(NativeLiveActivityGlassRow())
 
             ForEach(childTools) { tool in
