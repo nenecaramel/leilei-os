@@ -30,9 +30,6 @@ export async function startMindRecallSemanticServer(scorer: BreathSemanticScorer
     if (request.method !== "POST" || request.url !== "/score") { response.writeHead(404).end(); return; }
     if (busy) { response.writeHead(503).end(); return; }
     busy = true;
-    const abortController = new AbortController();
-    const abort = () => abortController.abort();
-    response.once("close", abort);
     try {
       let size = 0;
       const chunks: Buffer[] = [];
@@ -43,14 +40,13 @@ export async function startMindRecallSemanticServer(scorer: BreathSemanticScorer
       }
       const input = schema.parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
       if (response.destroyed) return;
-      if (abortController.signal.aborted) return;
-      const scores = await scorer.score({...input, signal: abortController.signal});
-      if (!response.destroyed && !abortController.signal.aborted) {
+      const scores = await scorer.score(input);
+      if (!response.destroyed) {
         response.setHeader("Content-Type", "application/json");
         response.end(JSON.stringify({scores: Object.fromEntries(scores)}));
       }
     } catch { if (!response.destroyed) response.writeHead(503).end(); }
-    finally { response.off("close", abort); busy = false; }
+    finally { busy = false; }
   });
   server.requestTimeout = 2000;
   server.headersTimeout = 2000;
