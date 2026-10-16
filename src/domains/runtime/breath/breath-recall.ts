@@ -422,13 +422,14 @@ export function recallBreath(
         ? rawSemanticScore
         : null;
 
-    const candidateSemanticWeight =
-      semanticScore === null ? 0 : semanticWeight;
     const semanticStrength =
-      candidateSemanticWeight > 0
+      semanticWeight > 0
         ? semanticEvidence(semanticScore, semanticFloor)
         : 0;
     const semanticEligible = semanticStrength > 0;
+    // An unusable/below-floor semantic score is not negative evidence.
+    // Keep the full lexical channel instead of silently attenuating it.
+    const candidateSemanticWeight = semanticEligible ? semanticWeight : 0;
     if (lexicalScore <= 0 && !semanticEligible) continue;
 
     const lexicalWeight = 1 - candidateSemanticWeight;
