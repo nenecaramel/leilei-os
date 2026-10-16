@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +11,8 @@ import type {
 const TRANSFORMERS_PACKAGE = "@huggingface/transformers";
 const TRANSFORMERS_VERSION = "4.3.0";
 const MODEL_ID = "Xenova/multilingual-e5-small";
+const PASSAGE_CACHE_LIMIT = 512;
+const INTERRUPTIBLE_BATCH_SIZE = 32;
 
 export type LocalE5Options = {
   runtimeRoot?: string;
@@ -76,45 +79,97 @@ export function localE5ModelId(): string {
 
 export class LocalE5BreathSemanticScorer implements BreathSemanticScorer {
   private extractorPromise: Promise<Extractor> | null = null;
+  // Hash keys avoid retaining raw Memory text in the cache index.
+  // Vectors are process-local, bounded, and tied to this model instance.
+  private readonly passageVectors = new Map<string, number[]>();
 
   constructor(private readonly options: LocalE5Options = {}) {}
 
   async score(input: {
     query: string;
     candidates: readonly BreathSemanticCandidate[];
+    signal?: AbortSignal;
   }): Promise<ReadonlyMap<string, number>> {
     const query = input.query.trim();
     if (!query || input.candidates.length === 0) return new Map();
+    if (input.signal?.aborted) throw new Error("E5 scoring aborted.");
+
+    const texts = input.candidates.map((candidate) => candidate.text.trim());
+    const keys = texts.map((text) => createHash("sha256").update(text).digest("hex"));
+    const missing = new Map<string, string>();
+    keys.forEach((key, index) => {
+      if (!this.passageVectors.has(key) && !missing.has(key)) {
+        missing.set(key, texts[index]!);
+      }
+    });
 
     const extractor = await this.getExtractor();
-    const texts = [
-      `query: ${query}`,
-      ...input.candidates.map((candidate) => `passage: ${candidate.text.trim()}`),
-    ];
+    const uncached = [...missing];
+    const batchSize = input.signal
+      ? INTERRUPTIBLE_BATCH_SIZE
+      : Math.max(1, uncached.length);
+    const computed = new Map<string, number[]>();
+    let queryVector: number[] | null = null;
 
-    let raw: unknown;
-    try {
-      raw = (await extractor(texts, {
-        pooling: "mean",
-        normalize: true,
-      })).tolist();
-    } catch (error) {
-      throw new LocalE5ProviderError(
-        "PROVIDER_LOAD_FAILED",
-        error instanceof Error ? error.message : String(error),
-      );
+    // The socket passes an AbortSignal: split expensive cold requests so a
+    // disconnected caller cannot keep the daemon busy for the remaining batches.
+    // Direct local callers retain full batching throughput.
+    for (let offset = 0; offset < Math.max(1, uncached.length); offset += batchSize) {
+      if (input.signal?.aborted) throw new Error("E5 scoring aborted.");
+      const batch = uncached.slice(offset, offset + batchSize);
+      const batchTexts = [
+        ...(queryVector === null ? [`query: ${query}`] : []),
+        ...batch.map(([, text]) => `passage: ${text}`),
+      ];
+      let raw: unknown;
+      try {
+        raw = (await extractor(batchTexts, {
+          pooling: "mean",
+          normalize: true,
+        })).tolist();
+      } catch (error) {
+        throw new LocalE5ProviderError(
+          "PROVIDER_LOAD_FAILED",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      const vectors = parseEmbeddingMatrix(raw, batchTexts.length);
+      const firstPassage = queryVector === null ? 1 : 0;
+      if (queryVector === null) queryVector = vectors[0]!;
+      batch.forEach(([key], index) => {
+        computed.set(key, vectors[index + firstPassage]!);
+      });
     }
 
-    const vectors = parseEmbeddingMatrix(raw, texts.length);
-    const queryVector = vectors[0]!;
+    if (input.signal?.aborted) throw new Error("E5 scoring aborted.");
     const scores = new Map<string, number>();
-
     input.candidates.forEach((candidate, index) => {
-      const candidateVector = vectors[index + 1]!;
+      const key = keys[index]!;
+      const candidateVector = computed.get(key) ?? this.passageVectors.get(key);
+      if (!candidateVector || !queryVector) {
+        throw new LocalE5ProviderError(
+          "INVALID_EMBEDDING_OUTPUT", "E5 candidate vector is missing.",
+        );
+      }
       scores.set(candidate.stateId, clamp01(dot(queryVector, candidateVector)));
     });
 
+    // Commit only fully successful requests; edits naturally miss the hash key.
+    for (const [key, vector] of computed) this.rememberPassage(key, vector);
+    for (const key of keys) {
+      const vector = this.passageVectors.get(key);
+      if (vector) this.rememberPassage(key, vector);
+    }
     return scores;
+  }
+
+  private rememberPassage(key: string, vector: number[]): void {
+    this.passageVectors.delete(key);
+    this.passageVectors.set(key, vector);
+    if (this.passageVectors.size > PASSAGE_CACHE_LIMIT) {
+      const oldest = this.passageVectors.keys().next().value;
+      if (oldest !== undefined) this.passageVectors.delete(oldest);
+    }
   }
 
   private getExtractor(): Promise<Extractor> {
