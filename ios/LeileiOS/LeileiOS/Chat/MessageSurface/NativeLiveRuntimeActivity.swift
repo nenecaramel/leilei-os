@@ -51,17 +51,6 @@ struct NativeLiveTurnActivityView: View {
                         alignment: chatTheme == .iMessage ? .center : .firstTextBaseline,
                         spacing: chatTheme == .iMessage ? 8 : 12
                     ) {
-                        if chatTheme == .iMessage && !header.isEmpty {
-                            NativeLiveThoughtProcessIcon()
-                                .frame(width: 14, height: 14)
-                                .scaleEffect(1.1)
-                                .padding(.trailing, 1)
-                                .foregroundStyle(
-                                    iMessageWallpaperVisible ? Color.white : Color.secondary
-                                )
-                                .accessibilityHidden(true)
-                        }
-
                         if let timestampText {
                             Text(timestampText)
                                 .font(.system(size: 12))
@@ -84,6 +73,8 @@ struct NativeLiveTurnActivityView: View {
                     .frame(
                         alignment: .leading
                     )
+                    // iMessage Work text starts at the Thought process icon's
+                    // left edge (2pt inset), without reserving space for a glyph.
                     .padding(.leading, chatTheme == .iMessage && !header.isEmpty ? 2 : 0)
                     .contentShape(Rectangle())
                 }
