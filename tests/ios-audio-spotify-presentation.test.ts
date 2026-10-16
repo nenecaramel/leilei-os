@@ -65,7 +65,15 @@ test('presentation seams preserve ordinary cards, tool permission order, project
   assert.equal(withoutAcceptedFileLabel,previous,
     'Media loader, gallery, playback routing, retries and non-file renderers remain immutable');
   const tool=readFileSync(media+'NativeLiveToolActivity.swift','utf8');
-  assert.equal(tool.replace(/            if tool.state != \.running,[\s\S]*?            \} else \{\n/, '').replace(/\n            \}\n\n            ForEach/, '\n\n            ForEach'),baseline(media+'NativeLiveToolActivity.swift'));
+  const toolBaseline=baseline(media+'NativeLiveToolActivity.swift');
+  const stableToolActivity=(source:string)=>source.slice(source.indexOf('struct NativeLiveToolActivityRow: View'),source.indexOf('enum NativeLiveToolCallState: Equatable'));
+  assert.equal(stableToolActivity(tool),stableToolActivity(toolBaseline),
+    'Tool permission order, provider result routing and async callback target are unchanged');
+  assert.match(tool,/\.modifier\(NativeLiveToolWallpaperGlass\(enabled: iMessageWallpaperVisible\)\)/);
+  assert.match(tool,/if enabled \{\s*content\.glassEffect\(/);
+  assert.match(tool,/else \{\s*content\s*\}/);
+  for(const label of ['Running','Done','Failed','No result']) assert.ok(tool.includes('"'+label+'"'),'Status label: '+label);
+  assert.match(tool,/\.sheet\(isPresented: \$isShowingDetails\)/);
   for (const file of ['NativeLiveTurnActivityProjection.swift','NativeLiveTurnActivityProjection+Tools.swift','NativeLiveStructuredToolResult.swift']) assert.equal(blob(media+file),manifest.files[media+file],file);
   const originalInteractions=readFileSync('tests/fixtures/runtime-activity-main-8efd5977/NativeLiveInteractions.swift','utf8');
   assert.equal(blob('tests/fixtures/runtime-activity-main-8efd5977/NativeLiveInteractions.swift'),
