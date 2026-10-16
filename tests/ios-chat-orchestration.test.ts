@@ -117,7 +117,7 @@ test('page retains state wrappers, lifecycle installation and exact UI/scroll wi
   assert.equal(lifecycleChain(expandedBody), lifecycleChain(block(baseline, 'var body:')),
     'Lifecycle Tasks, notifications, focus and pending-operation guards');
   const currentSuffix = compact(expandedBody.slice(expandedBody.indexOf('.photosPicker(')))
-    .replace('.environment(\\\\.chatTheme,selectedChatTheme)', '');
+    .replace('.environment(\\.chatTheme,selectedChatTheme)', '');
   assert.equal(currentSuffix, expectedBody.slice(expectedBody.indexOf('.photosPicker(')),
     'Unmodified photo, file, camera, keyboard and failure-alert callback chain');
   assert.match(current, /if !iMessageWallpaperVisible \{/);
