@@ -68,7 +68,7 @@ export type NativeLiveCurrentPathSnapshot = {
   olderCursor: string | null;
   resetRequired: boolean;
   messages: NativeLiveMessage[];
-  backgroundResults: NativeLiveVisibleBackgroundResult[];
+  backgroundResults?: NativeLiveVisibleBackgroundResult[];
 };
 
 type CurrentPathIdRow = {
