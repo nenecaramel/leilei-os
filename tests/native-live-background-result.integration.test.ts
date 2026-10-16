@@ -241,3 +241,45 @@ for (const competitor of ["lease takeover", "head rotation", "second receipt"] a
     await Promise.allSettled([commit, competingWork].filter((value): value is Promise<unknown> => Boolean(value)));
   }
 });
+
+// Durable-delivery acceptance: an overlay sourced from operational events cannot
+// satisfy these checks. Exercise the real write and current-path readers.
+test("background reply is a permanent latest canonical message and next send inherits it", { skip: !enabled }, async t => {
+  const f = await fixture(t);
+  await f.repository.prepareBackgroundResult(f.prepare);
+  assert.equal((await f.repository.submitBackgroundResult(f.submit)).outcome, "committed");
+  const reader = new DrizzleNativeLiveCurrentPathReader(f.database.db);
+  const read = () => reader.readCurrentPath({ userId: f.user.id, conversationId: f.conversation.id, limit: 100 });
+  const snapshot = (await read())!;
+  assert.equal(snapshot.messages.length, 3, "background output must be a real message, not a display overlay");
+  const reply = snapshot.messages.at(-1)!;
+  assert.equal(reply.role, "assistant");
+  assert.equal(reply.parentMessageId, f.completed.assistantMessageId);
+  assert.equal(snapshot.currentHeadMessageId, reply.id);
+  assert.equal(reply.blocks.filter(b => b.kind === "text").map(b => b.text).join(""), "background synthetic");
+  const nextSend = await f.coordinator.prepare(f.user.id, { dispatch_target: "claude_code", request_id: crypto.randomUUID(), conversation_id: f.conversation.id,
+    operation: "send", expected_head_message_id: reply.id, text: "next synthetic" });
+  assert.ok(nextSend.ok);
+  if (!nextSend.ok) throw Error("next send failed");
+  assert.equal(nextSend.command.parent_provider_checkpoint_id, f.next);
+  // Operational retention is allowed to remove old preparations/events. Actual
+  // chat history and its continuation checkpoint must be independent of them.
+  await f.database.db.delete(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.id, f.prepare.sourcePrepareId));
+  assert.deepEqual((await read())!.messages.map(m => [m.id, m.blocks]), snapshot.messages.map(m => [m.id, m.blocks]));
+  assert.deepEqual(await f.repository.submitBackgroundResult(f.submit), { outcome: "committed", duplicate: true, providerCheckpointId: f.next });
+});
+
+test("consecutive autonomous replies advance durable history in commit order", { skip: !enabled }, async t => {
+  const f = await fixture(t);
+  await f.repository.prepareBackgroundResult(f.prepare);
+  await f.repository.submitBackgroundResult(f.submit);
+  const secondId = crypto.randomUUID(), secondCheckpoint = crypto.randomUUID();
+  await f.repository.prepareBackgroundResult({ ...f.prepare, receiptId: secondId, parentProviderCheckpointId: f.next });
+  const second = { ...f.submit, receiptId: secondId, result: { ...f.submit.result, provider_checkpoint_id: secondCheckpoint,
+    normalized_events: [{ type: "text", payload: { text: "second background synthetic" } }] } };
+  assert.equal((await f.repository.submitBackgroundResult(second)).outcome, "committed");
+  const snapshot = (await new DrizzleNativeLiveCurrentPathReader(f.database.db).readCurrentPath({ userId: f.user.id, conversationId: f.conversation.id, limit: 100 }))!;
+  assert.equal(snapshot.messages.length, 4);
+  assert.equal(snapshot.messages.at(-1)!.parentMessageId, snapshot.messages.at(-2)!.id);
+  assert.equal(snapshot.currentHeadMessageId, snapshot.messages.at(-1)!.id);
+});
