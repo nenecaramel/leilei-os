@@ -29,7 +29,15 @@ test('Message row baseline fixtures are exact main Git blobs',()=>{
 });
 test('User row and history/divider moves retain complete presentation and interaction blocks',()=>{
  const baseline=old('NativeLiveMessageRows.swift');const user=read('NativeLiveUserMessageRow.swift');
- equal(block(user,'func nativeLiveUserMessageRow('),block(baseline.slice(baseline.indexOf('} else if let user = row.user')), 'HStack(').replace(/^/,'HStack(alignment:.top,spacing:0) {')+'}', 'user outer HStack');
+ // The accepted iMessage branch has a fixed 70pt clearance; Original keeps
+ // the historical spacer. Preserve identity, edit/copy actions and state owner.
+ const userRow = block(user,'func nativeLiveUserMessageRow(');
+ assert.match(userRow, /let messageView = NativeLiveUserMessagePresentationView\(presentation:user/);
+ assert.match(userRow, /appModel\.nativeLiveMessageUIState\[row\.id\]\.voiceTranscriptExpansion/);
+ assert.match(userRow, /onEdit:row\.userBacking\.map \{ message in \{ onEditMessage\(message\) \} \}/);
+ assert.match(userRow, /onCopy:onCopyMessage,isDisabled:isTurnInFlight/);
+ assert.match(userRow, /if isIMessage \{[\s\S]*?Color\.clear\.frame\(width:leadingClearance\)[\s\S]*?messageView\.frame\(maxWidth:\.infinity,alignment:\.trailing\)/);
+ assert.match(userRow, /else \{[\s\S]*?Spacer\(minLength:leadingClearance\)\s*messageView/);
  for(const name of ['NativeLiveHistorySnapshotRow','NativeLiveHistoryForkDivider']) {
   let expected=block(baseline,'struct '+name+':');
   if(name==='NativeLiveHistorySnapshotRow') {
@@ -49,7 +57,13 @@ test('User row and history/divider moves retain complete presentation and intera
    )
    .replace(/\n    private var usesCompactVoiceInsets: Bool \{[\s\S]*?\n    \}\n\n    @ViewBuilder private var textBubble:/, '\n    @ViewBuilder private var textBubble:')
    .replace('VStack(alignment:.trailing,spacing:10) {\n                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed, transcript:presentation.copyText)', 'VStack(alignment:.leading,spacing:10) {\n                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed)');
- equal(block(normalized,'struct NativeLiveUserMessagePresentationView:'),block(old('NativeLiveMessageBlocks.swift'),'struct NativeLiveUserMessagePresentationView:'),'entire user presentation except compact voice geometry');
+ // The Original body and iMessage text/voice paths now live behind the same
+ // message presentation. Verify critical actions instead of raw enclosing bytes.
+ assert.match(user, /if chatTheme == \.iMessage \{[\s\S]*?NativeLiveIMessageTextBubbleList\(presentation: presentation, side: \.outgoing\)/);
+ assert.match(user, /else \{[\s\S]*?textBubble[\s\S]*?\.background\(Color\.chatSoftFill,in:RoundedRectangle/);
+ assert.match(user, /LightweightContextMenuInteraction\(title:"Edit",copyText:presentation\.copyText,isDisabled:isDisabled/);
+ assert.match(user, /onCopy:onCopy,onTap:toggleVoice,action:onEdit\)/);
+ assert.match(user, /guard presentation\.isVoiceInput, presentation\.copyText != nil else \{ return \}/);
 });
 test('Assistant organization conserves activity bindings, refresh owner, indicators and action routes',()=>{
  const baseline=old('NativeLiveAssistantTurnRow.swift'),current=read('NativeLiveAssistantTurnRow.swift');
@@ -70,7 +84,8 @@ test('Assistant organization conserves activity bindings, refresh owner, indicat
  for(const exact of ['NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)','MindWriteIndicator(items:mindWrites)']) assert.ok(compact(current).includes(compact(exact)),exact);
  assert.doesNotMatch(current, /AlbumSaveIndicator|refreshAlbumSaves/);
  const route=read('NativeLiveMessageRows.swift');
- assert.ok(compact(route).includes(compact('nativeLiveUserMessageRow(row:row,user:user,appModel:appModel,isTurnInFlight:isTurnInFlight,onCopyMessage:onCopyMessage,onEditMessage:onEditMessage)')));
+ assert.ok(compact(route).includes(compact('nativeLiveUserMessageRow(row:row,user:user,appModel:appModel,isTurnInFlight:isTurnInFlight,leadingClearance: chatTheme == .iMessage ? ChatPresentationLayout.iMessageUserLeadingClearance : ChatPresentationLayout.userLeadingClearance,isIMessage: chatTheme == .iMessage,onCopyMessage:onCopyMessage,onEditMessage:onEditMessage)')),
+  'Theme-aware user row must preserve edit and copy callback routing');
 });
 test('Inner renderer remains unchanged and wrong retry target is rejected by conservation',()=>{
  const baseline=old('NativeLiveMessageBlocks.swift'),current=read('NativeLiveMessageBlocks.swift');
