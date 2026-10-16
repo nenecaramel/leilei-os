@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +11,7 @@ import type {
 const TRANSFORMERS_PACKAGE = "@huggingface/transformers";
 const TRANSFORMERS_VERSION = "4.3.0";
 const MODEL_ID = "Xenova/multilingual-e5-small";
+const PASSAGE_CACHE_LIMIT = 512;
 
 export type LocalE5Options = {
   runtimeRoot?: string;
@@ -76,6 +78,7 @@ export function localE5ModelId(): string {
 
 export class LocalE5BreathSemanticScorer implements BreathSemanticScorer {
   private extractorPromise: Promise<Extractor> | null = null;
+  private readonly passageVectors = new Map<string, number[]>();
 
   constructor(private readonly options: LocalE5Options = {}) {}
 
@@ -87,11 +90,24 @@ export class LocalE5BreathSemanticScorer implements BreathSemanticScorer {
     if (!query || input.candidates.length === 0) return new Map();
 
     const extractor = await this.getExtractor();
+    const keys = input.candidates.map(candidate =>
+      createHash("sha256").update(candidate.text.trim()).digest("hex"),
+    );
+    const uncached = new Map<string, string>();
+    input.candidates.forEach((candidate, index) => {
+      const key = keys[index]!;
+      if (!this.passageVectors.has(key) && !uncached.has(key)) {
+        uncached.set(key, candidate.text.trim());
+      }
+    });
+
+    // Keep the existing single inference batch and pooling/normalization.
+    // Only unseen passages need encoding; the query is encoded each turn.
+    const newPassages = [...uncached];
     const texts = [
       `query: ${query}`,
-      ...input.candidates.map((candidate) => `passage: ${candidate.text.trim()}`),
+      ...newPassages.map(([, text]) => `passage: ${text}`),
     ];
-
     let raw: unknown;
     try {
       raw = (await extractor(texts, {
@@ -107,14 +123,41 @@ export class LocalE5BreathSemanticScorer implements BreathSemanticScorer {
 
     const vectors = parseEmbeddingMatrix(raw, texts.length);
     const queryVector = vectors[0]!;
+    const newlyComputed = new Map<string, number[]>();
+    newPassages.forEach(([key], index) => {
+      newlyComputed.set(key, vectors[index + 1]!);
+    });
     const scores = new Map<string, number>();
 
     input.candidates.forEach((candidate, index) => {
-      const candidateVector = vectors[index + 1]!;
+      const key = keys[index]!;
+      const candidateVector =
+        newlyComputed.get(key) ?? this.passageVectors.get(key);
+      if (!candidateVector) {
+        throw new LocalE5ProviderError(
+          "INVALID_EMBEDDING_OUTPUT",
+          "E5 passage vector is unavailable.",
+        );
+      }
       scores.set(candidate.stateId, clamp01(dot(queryVector, candidateVector)));
     });
 
+    // Only cache vectors after the entire score operation succeeds.
+    for (const [key, vector] of newlyComputed) this.rememberPassage(key, vector);
+    for (const key of keys) {
+      const vector = this.passageVectors.get(key);
+      if (vector) this.rememberPassage(key, vector);
+    }
     return scores;
+  }
+
+  private rememberPassage(key: string, vector: number[]): void {
+    this.passageVectors.delete(key);
+    this.passageVectors.set(key, vector);
+    if (this.passageVectors.size > PASSAGE_CACHE_LIMIT) {
+      const oldest = this.passageVectors.keys().next().value;
+      if (oldest !== undefined) this.passageVectors.delete(oldest);
+    }
   }
 
   private getExtractor(): Promise<Extractor> {
