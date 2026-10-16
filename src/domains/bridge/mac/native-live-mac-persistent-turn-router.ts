@@ -66,7 +66,7 @@ export class NativeLiveMacPersistentTurnRouter {
   constructor(private readonly input: {
     registry: NativeLiveMacSessionRegistry;
     listenerInstanceId: string;
-    perTaskStopAffordance?: boolean;
+    taskControlsAvailable?: () => Promise<boolean>;
     relay: Pick<NativeLiveMacDaemonRelayClient, "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission">;
     // Autonomous results deliberately have no foreground command. They require
     // their own durable preparation/branch fence, not the active turn's sink.
@@ -275,9 +275,11 @@ export class NativeLiveMacPersistentTurnRouter {
     if (this.input.registry.getGenerationId(command.conversation_id)) throw new Error("Conversation already owns a persistent writer.");
     this.initialCommand = command;
     this.providerCheckpointId = command.parent_provider_checkpoint_id ?? null;
+    const taskControlsAvailable = await this.input.taskControlsAvailable?.() === true;
+    this.assertSlot(slot);
     const options: NativeLiveMacPersistentSessionOptions = {
       execution: command.execution_selection,
-      perTaskStopAffordance: this.input.perTaskStopAffordance === true,
+      perTaskStopAffordance: taskControlsAvailable,
       authorize: context => this.authorize(context),
       permissionHandler: this.handler("permissionHandler"),
       questionHandler: this.handler("questionHandler"),

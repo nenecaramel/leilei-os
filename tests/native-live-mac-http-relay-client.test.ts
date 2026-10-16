@@ -1343,3 +1343,13 @@ test("execution admission timeout aborts one request without retry or cached app
   try { await assert.rejects(client.checkExecutionAdmission({ listenerInstanceId: listenerId, command: { ...command(), parent_provider_checkpoint_id: null } }), error => error instanceof Error && error.name === "TimeoutError"); assert.equal(calls, 1); }
   finally { clearTimeout(keepAlive); }
 });
+
+test("separate task stopping is advertised only by the matching authenticated backend",async()=>{
+ for(const [status,version,expected] of [[404,null,false],[200,0,false],[200,1,true]] as const){
+  const client=new NativeLiveMacHttpRelayClient("https://relay.invalid","synthetic",async(url,init)=>{
+   assert.match(String(url),/\/task-controls\/capabilities$/);assert.equal(init?.method,"POST");
+   return new Response(JSON.stringify(status===200?{success:true,data:{version}}:{success:false}),{status,headers:{"content-type":"application/json"}});
+  });
+  assert.equal(await client.supportsTaskControls(),expected);
+ }
+});

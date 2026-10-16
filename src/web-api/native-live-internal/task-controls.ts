@@ -31,3 +31,11 @@ export function taskAdmissionHandler(dependencies: NativeLiveRelayInternalDepend
   catch{response.status(503).json({success:false,error:{code:"TASK_ADMISSION_UNAVAILABLE"}});}
  };
 }
+
+export function taskCapabilitiesHandler(dependencies:NativeLiveRelayInternalDependencies):RequestHandler {
+ return (request,response)=>{
+  if(!requireInternalUser(response,request.mcpUserId))return;
+  if(!exactRecord(request.body,[])){sendInvalid(response);return;}
+  response.json({success:true,data:{version:dependencies.runtimeControlService?.waitTaskForListener && dependencies.runtimeControlService.checkTaskAdmission ? 1 : 0}});
+ };
+}

@@ -113,6 +113,7 @@ test("task commands cross the authenticated HTTP boundary without creating a Cla
   const headers={"content-type":"application/json","x-test-owner":"yes"};
   assert.equal((await fetch(`${base}/user/turns/${f.prepare.sourcePrepareId}/task-controls/${controlId}`)).status,401);
   assert.equal((await fetch(`${base}/internal/task-controls/wait`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({listener_instance_id:f.prepare.listenerInstanceId,bindings:[]})})).status,401);
+  const capability=await fetch(`${base}/internal/task-controls/capabilities`,{method:"POST",headers,body:"{}"});assert.equal(capability.status,200);assert.equal((await capability.json() as any).data.version,1);
   const before=await f.database.db.select().from(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.userId,f.user.id));
   const posted=await fetch(`${base}/user/turns/${f.prepare.sourcePrepareId}/controls`,{method:"POST",headers,body:JSON.stringify({control_id:controlId,kind:"task",payload:{action:"list"}})});assert.equal(posted.status,201);
   const admitted=await fetch(`${base}/internal/reservations/${f.prepare.sourcePrepareId}/task-admission`,{method:"POST",headers,body:JSON.stringify({listener_instance_id:f.prepare.listenerInstanceId,provider_session_id:"synthetic-session"})});assert.equal(admitted.status,200);assert.equal((await admitted.json() as any).data.admitted,true);

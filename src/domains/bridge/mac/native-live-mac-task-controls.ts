@@ -3,6 +3,7 @@ import type { NativeLiveMacSessionRegistry } from "./native-live-mac-session-reg
 import type { NativeLiveTaskBinding } from "../runtime-interaction/native-live-task-control-repository.js";
 export type NativeLiveMacTaskControl = { controlId: string; prepareId: string; payload: Record<string, unknown> };
 export type NativeLiveMacTaskRelay = {
+  supportsTaskControls?():Promise<boolean>;
   waitTaskControl(input:{listenerInstanceId:string;bindings:NativeLiveTaskBinding[];signal:AbortSignal}):Promise<NativeLiveMacTaskControl|null>;
   completeRuntimeControl(input:{listenerInstanceId:string;reservationId:string;controlId:string;outcome:{status:"applied";receipt:Record<string,unknown>}|{status:"failed";failureCode:string}}):Promise<void>;
 };

@@ -178,7 +178,13 @@ export class NativeLiveMacSessionRegistry {
     this.assertLive(entry);
     this.claimProviderIdentity(entry, session.sessionId);
     entry.observeEvent = event => {
-      if (typeof event.session_id === "string") this.claimProviderIdentity(entry, event.session_id);
+      if (typeof event.session_id === "string") {
+        const previous = entry.providerSessionId;
+        this.claimProviderIdentity(entry, event.session_id);
+        // Input admission can claim identity synchronously during init's pump,
+        // before this observer runs. Init must still wake a waiting task pump.
+        if (entry.providerSessionId !== previous || (event.type === "system" && event.subtype === "init")) this.changes.emit("change");
+      }
     };
     session.events.on("event", entry.observeEvent);
     const binding = Object.freeze({ conversationId: entry.conversationId, generationId: entry.generationId, workingDirectory, session });

@@ -16,6 +16,7 @@ struct PageContainer: View {
     @State private var showingContext = false
     @State private var showingClaudeUsage = false
     @State private var showingClaudeSessions = false
+    @State private var showingTasks = false
 
     let selectedPage: AppPage
     let diaryTarget: DiaryNavigationTarget?
@@ -84,6 +85,9 @@ struct PageContainer: View {
         }
         .sheet(isPresented: $showingContext) {
             ContextOverviewSheet()
+        }
+        .sheet(isPresented: $showingTasks) {
+            if let taskPrepareID { NativeLiveTasksSheet(prepareID: taskPrepareID) }
         }
         .sheet(isPresented: $showingClaudeUsage) {
             ClaudeUsageSheet(api: appModel.api)
@@ -170,8 +174,24 @@ struct PageContainer: View {
         .accessibilityLabel("Conversation menu")
     }
 
+    private var taskPrepareID: String? {
+        guard !isDraftConversation, let conversationID = appModel.activeNativeLiveConversationID else { return nil }
+        if let surface = appModel.nativeLiveRuntimeSurface, surface.conversationID == conversationID {
+            return surface.prepareID
+        }
+        guard let path = appModel.nativeLiveCurrentPath, UUID(uuidString: path.conversationId) == conversationID else { return nil }
+        return path.messages.reversed().compactMap { $0.activity?.prepareId }.first
+    }
+
     @ViewBuilder
     private var conversationMenuContent: some View {
+        Button {
+            showingTasks = true
+        } label: {
+            Label("Tasks", systemImage: "list.bullet")
+        }
+        .disabled(taskPrepareID == nil)
+
         Button {
             showingClaudeUsage = true
         } label: {

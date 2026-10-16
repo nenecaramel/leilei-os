@@ -796,6 +796,12 @@ implements NativeLiveMacDaemonRelayClient {
     }
   }
 
+  async supportsTaskControls():Promise<boolean> {
+    try {
+      const data=readRecord(await this.post("/task-controls/capabilities",{},AbortSignal.timeout(2_000)));
+      return data.version===1;
+    } catch {return false;}
+  }
   async checkTaskAdmission(input:{listenerInstanceId:string;prepareId:string;providerSessionId:string}):Promise<boolean> {
     const data=readRecord(await this.post(`/reservations/${encodeURIComponent(input.prepareId)}/task-admission`,{listener_instance_id:input.listenerInstanceId,provider_session_id:input.providerSessionId},AbortSignal.timeout(2_000)));
     return data.admitted===true;

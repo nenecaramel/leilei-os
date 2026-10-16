@@ -15,7 +15,7 @@ function deferred<T = void>() {
 const options = (): NativeLiveMacPersistentSessionOptions => ({
   authorize: async () => true, onBackgroundResult: async () => {},
 });
-async function fixture(t: test.TestContext, config: { limit?: number; opening?: ReturnType<typeof deferred>; failClose?: boolean; rejectOpen?: boolean; reuseRuntime?: boolean } = {}) {
+async function fixture(t: test.TestContext, config: { limit?: number; opening?: ReturnType<typeof deferred>; failClose?: boolean; rejectOpen?: boolean; reuseRuntime?: boolean; delayedInit?: boolean } = {}) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "session-registry-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const transports: NativeLiveMacClaudeTransport[] = [];
@@ -25,7 +25,7 @@ async function fixture(t: test.TestContext, config: { limit?: number; opening?: 
     const call = { cwd: cwd!, closed: 0, inputs: [] as string[], options: undefined as NativeLiveMacPersistentSessionOptions | undefined };
     calls.push(call);
     const completion = deferred();
-    const host = { state: "idle", sessionId: `session-${calls.length}`, tasks: new Map(), events: new EventEmitter(), completion: completion.promise,
+    const host = { state: "idle", sessionId: config.delayedInit ? null : `session-${calls.length}`, tasks: new Map(), events: new EventEmitter(), completion: completion.promise,
       async submit(text: string) { if (!await call.options!.authorize({ phase: "input", inputId: "input", source: "human", providerSessionId: this.sessionId })) throw Error("denied"); call.inputs.push(text); return { providerSessionId: this.sessionId, inputId: "input", result: {}, events: [] }; },
       async interruptTurn() { return null; }, async stopTask() {},
       async close() { call.closed++; if (config.failClose) { config.failClose = false; throw Error("close failed"); } this.state = "closed"; completion.resolve(); },
@@ -182,4 +182,20 @@ test("a close RPC cannot release ownership before the SDK output stream actually
  try {assert.equal(registry.size,1);await assert.rejects(registry.openNew({conversationId:"a",expectedWorkingDirectory:null,options:options()}),/already/);}
  finally {stream.resolve();await closing;}
  assert.equal(registry.size,0);
+});
+
+for (const preclaimed of [false,true]) test(`task control pump wakes after delayed init (identity preclaimed=${preclaimed})`,async t=>{
+ const f=await fixture(t,{delayedInit:true});
+ const {runNativeLiveMacTaskControls}=await import("../src/domains/bridge/mac/native-live-mac-task-controls.js");
+ const cancel=new AbortController(),empty=deferred();let waits=0,emptyWaits=0;
+ const wait=f.registry.waitForChange.bind(f.registry);
+ f.registry.waitForChange=signal=>{const result=wait(signal);if(++emptyWaits===2)empty.resolve();return result;};
+ const pump=runNativeLiveMacTaskControls({registry:f.registry,listenerInstanceId:"listener",signal:cancel.signal,relay:{async waitTaskControl(){waits++;cancel.abort();return null;},async completeRuntimeControl(){}}});
+ t.after(async()=>{cancel.abort();await pump;});
+ const binding=await f.registry.openNew({conversationId:"a",expectedWorkingDirectory:null,options:options()});
+ await empty.promise;
+ (binding.session as {sessionId:string|null}).sessionId="delayed-session";
+ if(preclaimed)await f.calls[0]!.options!.authorize({phase:"input",inputId:"synthetic",source:"human",providerSessionId:"delayed-session"});
+ (binding.session.events as EventEmitter).emit("event",{type:"system",subtype:"init",session_id:"delayed-session"});
+ await new Promise(setImmediate);assert.equal(waits,1);
 });

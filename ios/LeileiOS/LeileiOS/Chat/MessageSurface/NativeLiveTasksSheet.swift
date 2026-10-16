@@ -8,6 +8,7 @@ struct NativeLiveTasksSheet: View {
     @State private var generationID: String?
     @State private var loading = true
     @State private var unavailable = false
+    @State private var refreshing = false
 
     var body: some View {
         NavigationStack {
@@ -41,18 +42,21 @@ struct NativeLiveTasksSheet: View {
             .refreshable { await refresh() }
             .task {
                 await refresh()
-                while !Task.isCancelled && !unavailable {
+                while !Task.isCancelled {
                     do { try await Task.sleep(for: .seconds(3)) } catch { return }
-                    await refresh()
+                    // Stay alive after failure; Retry restores polling, while
+                    // an unavailable sheet causes no automatic network retries.
+                    if !unavailable { await refresh() }
                 }
             }
         }
     }
 
     private func refresh() async {
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, !refreshing else { return }
+        refreshing = true
         loading = true
-        defer { loading = false }
+        defer { loading = false; refreshing = false }
         do {
             let receipt = try await appModel.api.nativeLiveTaskControl(prepareID: prepareID, action: "list")
             try Task.checkCancellation()
