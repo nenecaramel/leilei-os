@@ -35,9 +35,13 @@ test("murmur is a separate activity-row bubble that opens a sheet", () => {
   assert.match(activity, /\.presentationDetents\(\[\.medium\]\)/u);
   assert.match(activity, /\.presentationDragIndicator\(\.visible\)/u);
 
-  const header = activity.match(
-    /HStack\(\s*alignment: \.firstTextBaseline,\s*spacing: 8\s*\) \{([\s\S]*?)\n            if effectiveExpanded/u,
-  )?.[1] ?? "";
+  // iMessage changes the HStack's alignment; inspect the header contents
+  // without depending on the Original-only alignment expression.
+  const header = activity.slice(
+    activity.indexOf("    var body: some View {"),
+    activity.indexOf("            if effectiveExpanded {"),
+  );
+  assert.ok(header.length > 0, "Activity header must be present");
   assert.ok(header.indexOf('Image(systemName: "bubble.left")') >= 0);
   // de3bd060 places disclosure next to its label, before the independent murmur button.
   assert.ok(header.indexOf('"chevron.right"') >= 0);
