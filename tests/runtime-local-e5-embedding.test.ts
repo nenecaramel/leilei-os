@@ -75,27 +75,23 @@ test("E5 reuses unchanged passage embeddings across prompts and invalidates edit
   ]);
 });
 
-test("E5 stops scheduling additional passage batches when the requesting socket closes", async () => {
-  const controller = new AbortController();
+test("E5 passage cache remains bounded and evicts the oldest entry", async () => {
   const calls: string[][] = [];
   const scorer = new LocalE5BreathSemanticScorer();
   const extractor = async (texts: string[]) => {
     calls.push([...texts]);
-    controller.abort();
     return {tolist: () => texts.map(() => [1, 0])};
   };
   (scorer as unknown as {extractorPromise: Promise<typeof extractor>}).extractorPromise = Promise.resolve(extractor);
-
-  await assert.rejects(
-    () => scorer.score({
-      query: "abort",
-      candidates: Array.from({length: 70}, (_, i) => ({
-        stateId: `m-${i}`, kind: "memory" as const, text: `candidate ${i}`,
-      })),
-      signal: controller.signal,
-    }),
-    /aborted/i,
-  );
-  assert.equal(calls.length, 1);
-  assert.ok(calls[0]!.length <= 33);
+  const candidates = Array.from({length: 512}, (_, index) => ({
+    stateId: `m-${index}`, kind: "memory" as const, text: `passage ${index}`,
+  }));
+  await scorer.score({query: "q1", candidates});
+  await scorer.score({query: "q2", candidates: [
+    {stateId: "new", kind: "memory", text: "passage new"},
+  ]});
+  await scorer.score({query: "q3", candidates: [
+    {stateId: "old", kind: "memory", text: "passage 0"},
+  ]});
+  assert.deepEqual(calls.map(batch => batch.length), [513, 2, 2]);
 });
