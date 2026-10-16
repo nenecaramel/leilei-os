@@ -44,7 +44,7 @@ test('assistant audio is one 45pt row with total-seconds label and no time text;
  assert.match(audio,/guard let duration = effectiveDuration else \{ return "—" \}/);
  assert.match(geometry,/u\{2033\}/);
  assert.match(geometry,/contentHeight: CGFloat = 21/);assert.match(geometry,/verticalInset: CGFloat = 12/);
- assert.match(audio,/\.padding\(\.vertical, NativeLiveVoiceBubbleGeometry\.verticalInset\)/);
+ assert.match(audio,/\.padding\(\s*\.vertical,\s*chatTheme == \.iMessage\s*\? ChatPresentationLayout\.iMessageUserBubbleVerticalInset\s*: NativeLiveVoiceBubbleGeometry\.verticalInset\s*\)/);
  assert.match(user,/frame\(height: NativeLiveVoiceBubbleGeometry\.contentHeight/);
  assert.match(geometry,/waveformMinimumHeight: CGFloat = 4/);assert.match(geometry,/waveformMaximumHeight: CGFloat = 15/);
  assert.match(geometry,/waveformBarWidth: CGFloat = 2/);
