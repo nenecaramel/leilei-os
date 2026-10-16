@@ -54,7 +54,7 @@ test('page retains state wrappers, lifecycle installation and exact UI/scroll wi
     .replace('@StateObjectvarvoiceInput=VoiceInputController()', '@StateObjectvarvoiceInput=VoiceInputController()@StatevarisNativeCallPresented=false')
     .replace('@StatevarmessageText=""', '@StatevarmessageText=""@StatevarsendFailureMessage:String?')
     // Approved theme state is additive; retain exact ownership of every other field.
-    .replace('@StatevarsendFailureMessage:String?', '@AppStorage(ChatTheme.storageKey)varchatThemeRawValue=ChatTheme.original.rawValue@Environment(\.iMessageWallpaperVisible)variMessageWallpaperVisiblevarselectedChatTheme:ChatTheme{ChatTheme(rawValue:chatThemeRawValue)??.original}@StatevarsendFailureMessage:String?')
+    .replace('@StatevarsendFailureMessage:String?', '@AppStorage(ChatTheme.storageKey)varchatThemeRawValue=ChatTheme.original.rawValue@Environment(\\.iMessageWallpaperVisible)variMessageWallpaperVisiblevarselectedChatTheme:ChatTheme{ChatTheme(rawValue:chatThemeRawValue)??.original}@StatevarsendFailureMessage:String?')
     // Composer selections persist across page recreation; other ownership stays exact.
     .replace('@Statevarmodel:NativeLiveClaudeModel=.opus55', '@AppStorage("nativeLive.model")varmodel:NativeLiveClaudeModel=.opus55')
     .replace('@Statevareffort:NativeLiveEffortLevel=.high', '@AppStorage("nativeLive.effort")vareffort:NativeLiveEffortLevel=.high');
@@ -117,7 +117,7 @@ test('page retains state wrappers, lifecycle installation and exact UI/scroll wi
   assert.equal(lifecycleChain(expandedBody), lifecycleChain(block(baseline, 'var body:')),
     'Lifecycle Tasks, notifications, focus and pending-operation guards');
   const currentSuffix = compact(expandedBody.slice(expandedBody.indexOf('.photosPicker(')))
-    .replace('.environment(\\.chatTheme,selectedChatTheme)', '');
+    .replace('.environment(\\\\.chatTheme,selectedChatTheme)', '');
   assert.equal(currentSuffix, expectedBody.slice(expectedBody.indexOf('.photosPicker(')),
     'Unmodified photo, file, camera, keyboard and failure-alert callback chain');
   assert.match(current, /if !iMessageWallpaperVisible \{/);
