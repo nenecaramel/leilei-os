@@ -1619,7 +1619,7 @@ test("interactive native schedule commands use Claude slash-command parsing", as
     assert.equal(call.prompt, command);
     assert.equal(call.options.verbatimPrompts, false);
     assert.equal(call.options.systemPrompt, LEILEIOS_INTERACTIVE_SYSTEM_PROMPT);
-  assert.doesNotMatch(call.options.systemPrompt, /write_memory|Memory persistence/u);
+    assert.doesNotMatch(call.options.systemPrompt, /write_memory|Memory persistence/u);
     assert.equal(call.options.includePartialMessages, true);
     assert.equal(result.providerSessionId, "provider-schedule");
   }
