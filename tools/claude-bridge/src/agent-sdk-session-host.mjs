@@ -5,6 +5,7 @@ import { ClaudeEventNormalizer } from './normalized-events.mjs';
 import { createToolImageForwarder } from './tool-images.mjs';
 import { AgentSdkTaskState } from './agent-sdk-task-state.mjs';
 import { readAgentSdkTaskOutput } from './agent-sdk-task-output.mjs';
+import { isNativeLoopInput } from './agent-sdk-scheduled-input.mjs';
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
 // Persistent session host used by the Mac daemon transport.
@@ -81,7 +82,7 @@ class SessionHost {
     this.ids.add(id);
     const completion = new Promise((resolve, reject) => this.pending.push({ text, id, source, resolve, reject,
       onNormalizedEvent, forwardImages: createToolImageForwarder(toolImageHandler), images: new AbortController(), delivery: Promise.resolve(),
-      normalizedEvents: [], rawEvents: [], stampedReply: false, commandIds: new Set([id]), remainingIds: new Set([id]), dispatched: false }));
+      normalizedEvents: [], rawEvents: [], promptHooks: [text], stampedReply: false, commandIds: new Set([id]), remainingIds: new Set([id]), dispatched: false }));
     this.pump(); return completion;
   }
   async pump() {
@@ -101,6 +102,7 @@ class SessionHost {
       if (this.active !== turn || ['closed', 'failed'].includes(this.state)) return;
       turn.dispatched = true;
       this.input.push({ type: 'user', uuid: turn.id, parent_tool_use_id: null, origin: { kind: turn.source },
+        ...(!isNativeLoopInput(turn.text, turn.source) ? { client_composed: true } : {}),
         message: { role: 'user', content: [{ type: 'text', text: turn.text }] } });
     } catch (error) {
       if (this.active !== turn) return;
@@ -119,7 +121,8 @@ class SessionHost {
     if (this.active !== turn || this.state !== 'running' || this.backgroundPending || generation !== this.backgroundGeneration) throw new Error('Session input ownership changed.');
     if (this.ids.has(uuid)) throw new Error('Duplicate session input id.');
     this.ids.add(uuid); turn.commandIds.add(uuid); turn.remainingIds.add(uuid);
-    this.input.push({ type: 'user', uuid, parent_tool_use_id: null, origin: { kind: turn.source }, message: { role: 'user', content: [{ type: 'text', text }] } });
+    turn.promptHooks.push(text);
+    this.input.push({ type: 'user', uuid, parent_tool_use_id: null, origin: { kind: turn.source }, client_composed: true, message: { role: 'user', content: [{ type: 'text', text }] } });
     const receipt = { status: 'queued', command_uuid: uuid };
     this.events.emit('mid-turn-input', receipt);
     return receipt;
@@ -141,7 +144,10 @@ class SessionHost {
     const expected = new Set([...turn.commandIds, ...this.pending.flatMap(item => [...item.commandIds])]);
     turn.interruptRequested = true;
     const receipt = normalizeAgentSdkInterruptReceipt(await this.query.interrupt());
-    if (new Set(receipt.still_queued).size !== receipt.still_queued.length || receipt.still_queued.some(id => !expected.has(id))) throw new Error('Interrupt queued command identity is invalid.');
+    if (new Set(receipt.still_queued).size !== receipt.still_queued.length) throw new Error('Interrupt queued command identity is invalid.');
+    // The SDK also reports internally enqueued cron/auto-resume commands. They
+    // are not this client's queued user input and must never be attributed to it.
+    receipt.still_queued = receipt.still_queued.filter(id => expected.has(id));
     turn.interruptReceipt = receipt;
     return receipt;
   }
@@ -230,7 +236,7 @@ class SessionHost {
         // SDK membership snapshots are authoritative. Notifications can arrive
         // out of order; never use their bookends to mutate the live task set.
         // Only the current turn owns conversation output. Idle/background events
-        // remain session events; canonical backend attribution is stage-2 work.
+        // remain session events and use the independent durable background sink.
         await this.route(message);
         if (this.state === 'closed') break;
         if (message?.type === 'result') {

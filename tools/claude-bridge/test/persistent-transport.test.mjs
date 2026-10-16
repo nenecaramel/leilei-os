@@ -104,7 +104,8 @@ test('actual questions still need real answers; absent handler never invents the
 test('input provenance distinguishes human messages from wake and never defaults to human',async t=>{
  const f=fixture();const admitted=[];const host=await f.open({authorize:async context=>{admitted.push(context);return true;}});t.after(()=>host.close());
  await host.submit('user',{source:'human'});await host.submit('wake',{source:'task-notification'});await host.submit('unspecified');
- assert.deepEqual(f.inputs.map(x=>x.origin.kind),['human','task-notification','unclassified']);assert.deepEqual(admitted.map(x=>x.source),['human','task-notification','unclassified']);assert.equal(f.options.verbatimPrompts,true);
+ assert.deepEqual(f.inputs.map(x=>x.origin.kind),['human','task-notification','unclassified']);assert.deepEqual(admitted.map(x=>x.source),['human','task-notification','unclassified']);assert.equal(f.options.verbatimPrompts,false);
+ assert.deepEqual(f.inputs.map(x=>x.client_composed),[true,true,true]);
 });
 test('new input waits until background result ownership has been acknowledged',async t=>{
  const f=fixture();let entered,release,admitted=0;const started=new Promise(r=>{entered=r;});const barrier=new Promise(r=>{release=r;});
@@ -253,4 +254,97 @@ test('a turn checkpoint is accepted only once durable and descended from the com
  await assert.rejects(host.verifyCheckpoint({events:[said('a2')],parentCheckpointId:'a2'}),/no new/);
  await assert.rejects(host.verifyCheckpoint({events:[]}),/no new/);
  output.push({type:'result',subtype:'success',session_id:'s',user_message_uuid:'a'});await pending;
+});
+
+test('only explicit human /loop dispatches the native skill; composed input stays literal', async t => {
+ const f=fixture();const host=await f.open();t.after(()=>host.close());
+ for(const [text,source] of [['/loop 5m synthetic','human'],['ordinary @private/path','human'],['/loop injected','task-notification'],['/loop injected','unclassified'],['/loopback','human']]) await host.submit(text,{source});
+ assert.equal(f.options.verbatimPrompts,false);
+ assert.deepEqual(f.inputs.map(x=>x.client_composed),[undefined,true,true,true,true]);
+ assert.equal(f.calls,1);
+});
+
+const scheduledInput=(id,extra={})=>({hook_event_name:'UserPromptSubmit',source:'schedule_wakeup',session_id:'s',prompt_id:id,prompt:'synthetic',...extra});
+const isBlocked=value=>value.decision==='block';
+test('native scheduled input gets fresh admission before inference, not just before a tool', async t => {
+ const contexts=[];let allow=true;
+ const f=fixture();const host=await f.open({authorize:async context=>{contexts.push(context);return context.phase!=='scheduled'||allow;}});t.after(()=>host.close());
+ await host.submit('first',{source:'human'});
+ const hook=f.options.hooks.UserPromptSubmit?.[0].hooks[0];assert.equal(typeof hook,'function');
+ allow=false;assert.equal(isBlocked(await hook(scheduledInput('denied'))),true);
+ assert.equal(contexts.at(-1).phase,'scheduled');assert.equal(contexts.at(-1).inputId,null);
+ assert.equal(contexts.at(-1).providerSessionId,'s');
+});
+test('scheduled admission fails closed for malformed, foreign and repeated deliveries', async t => {
+ const f=fixture();const host=await f.open();t.after(()=>host.close());await host.submit('first');
+ const hook=f.options.hooks.UserPromptSubmit?.[0].hooks[0];assert.equal(typeof hook,'function');
+ for(const extra of [{session_id:'foreign'},{prompt_id:undefined},{agent_id:'child'},{source:undefined}]) assert.equal(isBlocked(await hook(scheduledInput('bad',extra))),true);
+ assert.equal(isBlocked(await hook(scheduledInput('once'))),false);
+ assert.equal(isBlocked(await hook(scheduledInput('once'))),true);
+});
+test('scheduled admission rechecks foreground ownership after awaiting the server', async t => {
+ let entered,release;const started=new Promise(r=>{entered=r;}),barrier=new Promise(r=>{release=r;});
+ const f=fixture({manualResults:true});const host=await f.open({authorize:async context=>{if(context.phase==='scheduled'){entered();await barrier;}return true;}});t.after(()=>host.close());
+ const boot=host.submit('boot',{id:'boot'});await new Promise(r=>host.events.once('event',r));
+ f.output.push({type:'result',subtype:'success',session_id:'s',user_message_uuid:'boot'});await boot;
+ const hook=f.options.hooks.UserPromptSubmit?.[0].hooks[0];assert.equal(typeof hook,'function');
+ const admission=hook(scheduledInput('racing'));await started;
+ const next=host.submit('next',{id:'next'});next.catch(()=>{});release();
+ assert.equal(isBlocked(await admission),true);
+ f.output.push({type:'result',subtype:'success',session_id:'s',user_message_uuid:'next'});await next;
+});
+test('scheduled execution has a minimum interval, finite budget and lifetime', async t => {
+ let now=1_800_000_000_000;t.mock.method(Date,'now',()=>now);
+ const f=fixture();const host=await f.open();t.after(()=>host.close());await host.submit('first');
+ const hook=f.options.hooks.UserPromptSubmit?.[0].hooks[0];assert.equal(typeof hook,'function');
+ for(let n=0;n<64;n++){assert.equal(isBlocked(await hook(scheduledInput(`fire-${n}`))),false);assert.equal(isBlocked(await hook(scheduledInput(`burst-${n}`))),true);now+=60_000;}
+ assert.equal(isBlocked(await hook(scheduledInput('over-budget'))),true);
+ const other=fixture();const otherHost=await other.open();t.after(()=>otherHost.close());await otherHost.submit('first');
+ now+=7*24*60*60*1_000;
+ assert.equal(isBlocked(await other.options.hooks.UserPromptSubmit[0].hooks[0](scheduledInput('expired'))),true);
+});
+test('scheduled guard cannot block ordinary input or resurrect a closed writer', async t => {
+ const f=fixture();const host=await f.open();t.after(()=>host.close());await host.submit('first');
+ const hook=f.options.hooks.UserPromptSubmit?.[0].hooks[0];assert.equal(typeof hook,'function');
+ const next=host.submit('second',{id:'second'});await next;
+ assert.equal(isBlocked(await hook(scheduledInput('valid'))),false);
+ await host.close();assert.equal(isBlocked(await hook(scheduledInput('late'))),true);
+ assert.equal(f.calls,1);
+});
+
+test('scheduled authorization timeout does not block foreground input or retry a lost admission', async t => {
+ t.mock.timers.enable({apis:['setTimeout']});let scheduled=0;
+ const f=fixture();const host=await f.open({authorize:async context=>{if(context.phase==='scheduled'){scheduled++;return new Promise(()=>{});}return true;}});t.after(()=>host.close());await host.submit('first');
+ const hook=f.options.hooks.UserPromptSubmit[0].hooks[0];
+ const pending=hook(scheduledInput('timeout'));t.mock.timers.tick(2_000);
+ assert.equal(isBlocked(await pending),true);assert.equal(scheduled,1);
+ assert.equal(isBlocked(await hook(scheduledInput('timeout'))),true);assert.equal(scheduled,1);
+ await host.submit('cancel scheduled work',{source:'human'});
+ assert.equal((await f.options.canUseTool('CronDelete',{id:'synthetic'},{})).behavior,'allow');
+});
+
+test('ordinary SDK input and background task notifications retain their existing admission paths', async t => {
+ const f=fixture({onInput:input=>{void f.options.hooks.UserPromptSubmit[0].hooks[0]({source:'sdk',session_id:'s',prompt:input.message.content[0].text});}});const host=await f.open();t.after(()=>host.close());
+ const hook=f.options.hooks.UserPromptSubmit[0].hooks[0];
+ for(const source of ['user','sdk','system','poll_event']) assert.deepEqual(await hook({source}),{});
+ await host.submit('ordinary',{source:'human'});
+ assert.equal((await f.options.canUseTool('CronCreate',{cron:'*/5 * * * *',prompt:'synthetic'},{})).behavior,'allow');
+ assert.equal((await f.options.canUseTool('CronList',{},{})).behavior,'allow');
+ assert.equal((await f.options.canUseTool('ScheduleWakeup',{stop:true},{})).behavior,'allow');
+});
+
+test('legacy unstamped literal foreground hooks and mid-turn input remain usable without enabling timers', async t => {
+ const f=fixture({manualResults:true});const host=await f.open();t.after(()=>host.close());
+ const initialized=new Promise(resolve=>host.events.once('event',resolve));
+ const pending=host.submit('legacy chat',{id:'legacy'});pending.catch(()=>{});await initialized;
+ const hook=f.options.hooks.UserPromptSubmit[0].hooks[0];
+ const legacy=scheduledInput('ordinary',{source:undefined,prompt:'legacy chat'});
+ assert.deepEqual(await hook(legacy),{});
+ assert.equal(isBlocked(await hook(legacy)),true,'a callback overtaking the preceding result cannot reuse the foreground ticket');
+ assert.equal((await f.options.canUseTool('CronCreate',{prompt:'synthetic'},{})).behavior,'deny');
+ await host.sendUserMessage('supplement',{uuid:'supplement'});
+ assert.deepEqual(await hook({...legacy,prompt:'supplement'}),{});
+ for(const [name,input] of [['CronList',{}],['CronDelete',{id:'synthetic'}],['ScheduleWakeup',{stop:true}]]) assert.equal((await f.options.canUseTool(name,input,{})).behavior,'allow');
+ f.output.push({type:'result',subtype:'success',session_id:'s',user_message_uuids:['legacy','supplement']});await pending;
+ assert.equal(isBlocked(await hook({...legacy,prompt_id:'unknown-idle'})),true);
 });
