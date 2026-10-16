@@ -3,11 +3,9 @@
 export function createScheduledInputGuard({ getHost, admit, now = () => Date.now() }) {
   const createdAt = now();
   const seen = new Set();
-  let stampedProducer = false;
   let lastAttemptAt = null;
   let autonomousAttempts = 0;
   let admissionPending = false;
-  let unclassifiedProducer = false;
   const block = code => ({ decision: 'block', reason: `LeileiOS scheduled input rejected. [${code}]`,
     hookSpecificOutput: { hookEventName: 'UserPromptSubmit', suppressOriginalPrompt: true } });
   const hook = async input => {
@@ -25,15 +23,12 @@ export function createScheduledInputGuard({ getHost, admit, now = () => Date.now
       // Stamped expansion may change the text; consume its oldest input ticket.
       const matched = consumeForeground();
       if (!matched && host?.active?.dispatched && !input.agent_id) host.active.promptHooks.shift();
-      if (host?.active?.dispatched && !input.agent_id) stampedProducer = true;
       return {};
     }
     // Task notifications and poll events retain their existing lifecycle. This
     // guard does not turn every autonomous event into a scheduled invocation.
     if (['system', 'poll_event'].includes(input?.source)) return {};
-    // Older CLIs omit source. Keep one exact literal hook per admitted input,
-    // but do not enable new native schedules on that unsupported producer.
-    if (input?.source === undefined && host && input.session_id === host.sessionId && !input.agent_id) unclassifiedProducer = true;
+    // source is optional. Keep one exact literal hook per admitted input.
     if (input?.source === undefined && consumeForeground()) return {};
     if (!host || host.queryClosed || ['closed', 'failed'].includes(host.state)
       || input?.session_id !== host.sessionId || input.agent_id) return block('SESSION_UNAVAILABLE_OR_FOREIGN');
@@ -41,7 +36,6 @@ export function createScheduledInputGuard({ getHost, admit, now = () => Date.now
     // Do not mistake its absence for a native timer or inspect prompt text.
     const unclassified = input.source === undefined;
     if (!unclassified && !['loop_wakeup', 'schedule_wakeup'].includes(input.source)) return block('UNSUPPORTED_SOURCE');
-    if (unclassified) unclassifiedProducer = true;
     const id = input.prompt_id;
     const at = now();
     if (host.backgroundPending) return block('BACKGROUND_COMMIT_PENDING');
@@ -69,13 +63,10 @@ export function createScheduledInputGuard({ getHost, admit, now = () => Date.now
       })]);
       if (getHost() !== host || host.queryClosed || ['closed', 'failed'].includes(host.state)
         || host.active || host.backgroundPending || host.backgroundGeneration !== generation) return block('STALE_ADMISSION');
-      if (!unclassified) stampedProducer = true;
       return {};
     } catch { return block(abort.signal.aborted ? 'ADMISSION_TIMEOUT' : 'ADMISSION_DENIED'); }
     finally { clearTimeout(timer); abort.abort(); admissionPending = false; }
   };
-  hook.allowsTool = (name, input) => (stampedProducer && !unclassifiedProducer) || !['CronCreate', 'ScheduleWakeup'].includes(name)
-    || (name === 'ScheduleWakeup' && input?.stop === true);
   return hook;
 }
 

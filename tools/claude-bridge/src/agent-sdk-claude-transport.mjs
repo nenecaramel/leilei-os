@@ -546,6 +546,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       // One-use admission from this tool's PreToolUse, scoped to its exact turn.
       // The post-permission check remains fresh; this is never a session grant.
       const toolAdmissions = new Map();
+      // CLI hook source is optional, not a tool capability. Scheduling tools
+      // use the same fresh durable admission before/after permission as all tools.
       const scheduledInput = createScheduledInputGuard({ getHost: () => host,
         admit: () => admit("scheduled", null, null) });
       const permission = createAgentSdkPermissionCallback({
@@ -596,7 +598,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
             }] }] } },
           } : {}),
           canUseTool: async (name, input, context) => {
-            if (!scheduledInput.allowsTool(name, input)) return { behavior: "deny", message: "Native scheduling requires stamped hook provenance from this CLI.", interrupt: false };
             // A delayed tool callback belongs to the turn that invoked it, not
             // whichever turn happens to be active when authorization returns.
             const turn = host?.active ?? null;
@@ -617,7 +618,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
             return verdict;
           },
           hooks: { UserPromptSubmit: [{ hooks: [scheduledInput] }], PreToolUse: [{ hooks: [async input => {
-            if (!scheduledInput.allowsTool(input?.tool_name, input?.tool_input)) return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "Native scheduling requires stamped hook provenance from this CLI." } };
             const turn = host?.active ?? null;
             try {
               await admit("tool", turn?.id ?? null);
