@@ -9,7 +9,7 @@ import {
 import type { NativeLiveMacAttachmentMaterializer } from "./native-live-mac-attachment-materializer.js";
 import type { NativeLiveMacOutputAttachmentSender } from "./native-live-mac-output-attachment-sender.js";
 import type { NativeLiveMacPersistentAcknowledgement, NativeLiveMacPersistentTurnRouter } from "./native-live-mac-persistent-turn-router.js";
-import { buildNativeLiveRuntimeMetadata, failure, runtimeFailureCode, terminalFallbackEvents } from "./native-live-mac-runtime-executor.js";
+import { buildNativeLiveRuntimeMetadata, failure, runtimeFailureCode, runtimeFailureDiagnostics, terminalFallbackEvents, type NativeLiveMacRuntimeFailureDiagnostics } from "./native-live-mac-runtime-executor.js";
 
 type Router = Pick<NativeLiveMacPersistentTurnRouter, "execute" | "close" | "matches" | "workingDirectory"> & Partial<Pick<NativeLiveMacPersistentTurnRouter, "suspend" | "settle" | "providerSessionId">>;
 type Handler = (request: Record<string, unknown>, context: { signal: AbortSignal | null }) => Promise<Record<string, unknown>>;
@@ -51,6 +51,8 @@ export class NativeLiveMacPersistentExecutor {
     hasCapacity?(): boolean;
     attachmentMaterializer: NativeLiveMacAttachmentMaterializer | null;
     outputAttachmentSender: Pick<NativeLiveMacOutputAttachmentSender, "sendFile"> & Partial<Pick<NativeLiveMacOutputAttachmentSender, "sendInlineImage">> | null;
+    /** Local daemon diagnostics only: bounded error identity, never prompt or output. */
+    onRuntimeFailure?: ((diagnostics: NativeLiveMacRuntimeFailureDiagnostics) => void) | null;
   }) {}
 
   /** A send/wake that a new or the conversation's current writer can run. */
@@ -169,7 +171,9 @@ export class NativeLiveMacPersistentExecutor {
       // The router has already closed its writer; never replay the turn.
       try { await this.retire(command.conversation_id); } catch { /* Keep ownership until a verified close. */ }
       if (delivery !== "pending") return { result: submitted!, delivery, ...(delivery === "committed" ? { canonicalOutcome } : {}) };
-      return { result: failure(command, runtimeFailureCode(error)), delivery };
+      const code = runtimeFailureCode(error);
+      try { this.input.onRuntimeFailure?.(runtimeFailureDiagnostics(command.prepare_id, code, error)); } catch { /* Diagnostics never change the outcome. */ }
+      return { result: failure(command, code), delivery };
     } finally {
       await this.input.attachmentMaterializer?.cleanup(command).catch(() => undefined);
     }

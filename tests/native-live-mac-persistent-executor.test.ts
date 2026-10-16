@@ -147,3 +147,23 @@ test("handoff suspension lifts when the conversation is attached back, but recov
   executor.resumeHandoff(id(3));
   assert.equal(executor.canRoute(command()), false);
 });
+
+test("a persistent turn failure reports the same bounded diagnostics as the legacy executor, never the prompt", async () => {
+  const reports: Array<Record<string, unknown>> = [];
+  const executor = new NativeLiveMacPersistentExecutor({
+    attachmentMaterializer: null, outputAttachmentSender: null,
+    onRuntimeFailure: diagnostics => { reports.push({ ...diagnostics }); },
+    createRouter() {
+      return { workingDirectory: "/work", matches: () => true, async close() {},
+        async execute() { throw Object.assign(new Error("Claude Code process exited with code 1"), { cause: Object.assign(new Error("spawn failed"), { code: "ENOENT" }) }); } } as never;
+    },
+  });
+  const run = await executor.execute(command({ prompt: "PRIVATE_PROMPT" }), { commit: async () => assert.fail("must not commit") });
+  assert.equal(run.result.status, "failure");
+  assert.equal(reports.length, 1);
+  assert.equal(reports[0]!.prepareId, id(1));
+  assert.equal(reports[0]!.runtimeCode, "RUNTIME_UNAVAILABLE");
+  assert.equal(reports[0]!.errorMessage, "Claude Code process exited with code 1");
+  assert.equal(reports[0]!.causeCode, "ENOENT");
+  assert.doesNotMatch(JSON.stringify(reports), /PRIVATE_PROMPT/);
+});
