@@ -12,7 +12,6 @@ const TRANSFORMERS_PACKAGE = "@huggingface/transformers";
 const TRANSFORMERS_VERSION = "4.3.0";
 const MODEL_ID = "Xenova/multilingual-e5-small";
 const PASSAGE_CACHE_LIMIT = 512;
-const INTERRUPTIBLE_BATCH_SIZE = 32;
 
 export type LocalE5Options = {
   runtimeRoot?: string;
@@ -79,8 +78,6 @@ export function localE5ModelId(): string {
 
 export class LocalE5BreathSemanticScorer implements BreathSemanticScorer {
   private extractorPromise: Promise<Extractor> | null = null;
-  // Hash keys avoid retaining raw Memory text in the cache index.
-  // Vectors are process-local, bounded, and tied to this model instance.
   private readonly passageVectors = new Map<string, number[]>();
 
   constructor(private readonly options: LocalE5Options = {}) {}
@@ -88,74 +85,65 @@ export class LocalE5BreathSemanticScorer implements BreathSemanticScorer {
   async score(input: {
     query: string;
     candidates: readonly BreathSemanticCandidate[];
-    signal?: AbortSignal;
   }): Promise<ReadonlyMap<string, number>> {
     const query = input.query.trim();
     if (!query || input.candidates.length === 0) return new Map();
-    if (input.signal?.aborted) throw new Error("E5 scoring aborted.");
 
-    const texts = input.candidates.map((candidate) => candidate.text.trim());
-    const keys = texts.map((text) => createHash("sha256").update(text).digest("hex"));
-    const missing = new Map<string, string>();
-    keys.forEach((key, index) => {
-      if (!this.passageVectors.has(key) && !missing.has(key)) {
-        missing.set(key, texts[index]!);
+    const extractor = await this.getExtractor();
+    const keys = input.candidates.map(candidate =>
+      createHash("sha256").update(candidate.text.trim()).digest("hex"),
+    );
+    const uncached = new Map<string, string>();
+    input.candidates.forEach((candidate, index) => {
+      const key = keys[index]!;
+      if (!this.passageVectors.has(key) && !uncached.has(key)) {
+        uncached.set(key, candidate.text.trim());
       }
     });
 
-    const extractor = await this.getExtractor();
-    const uncached = [...missing];
-    const batchSize = input.signal
-      ? INTERRUPTIBLE_BATCH_SIZE
-      : Math.max(1, uncached.length);
-    const computed = new Map<string, number[]>();
-    let queryVector: number[] | null = null;
-
-    // The socket passes an AbortSignal: split expensive cold requests so a
-    // disconnected caller cannot keep the daemon busy for the remaining batches.
-    // Direct local callers retain full batching throughput.
-    for (let offset = 0; offset < Math.max(1, uncached.length); offset += batchSize) {
-      if (input.signal?.aborted) throw new Error("E5 scoring aborted.");
-      const batch = uncached.slice(offset, offset + batchSize);
-      const batchTexts = [
-        ...(queryVector === null ? [`query: ${query}`] : []),
-        ...batch.map(([, text]) => `passage: ${text}`),
-      ];
-      let raw: unknown;
-      try {
-        raw = (await extractor(batchTexts, {
-          pooling: "mean",
-          normalize: true,
-        })).tolist();
-      } catch (error) {
-        throw new LocalE5ProviderError(
-          "PROVIDER_LOAD_FAILED",
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-      const vectors = parseEmbeddingMatrix(raw, batchTexts.length);
-      const firstPassage = queryVector === null ? 1 : 0;
-      if (queryVector === null) queryVector = vectors[0]!;
-      batch.forEach(([key], index) => {
-        computed.set(key, vectors[index + firstPassage]!);
-      });
+    // Keep the existing single inference batch and pooling/normalization.
+    // Only unseen passages need encoding; the query is encoded each turn.
+    const newPassages = [...uncached];
+    const texts = [
+      `query: ${query}`,
+      ...newPassages.map(([, text]) => `passage: ${text}`),
+    ];
+    let raw: unknown;
+    try {
+      raw = (await extractor(texts, {
+        pooling: "mean",
+        normalize: true,
+      })).tolist();
+    } catch (error) {
+      throw new LocalE5ProviderError(
+        "PROVIDER_LOAD_FAILED",
+        error instanceof Error ? error.message : String(error),
+      );
     }
 
-    if (input.signal?.aborted) throw new Error("E5 scoring aborted.");
+    const vectors = parseEmbeddingMatrix(raw, texts.length);
+    const queryVector = vectors[0]!;
+    const newlyComputed = new Map<string, number[]>();
+    newPassages.forEach(([key], index) => {
+      newlyComputed.set(key, vectors[index + 1]!);
+    });
     const scores = new Map<string, number>();
+
     input.candidates.forEach((candidate, index) => {
       const key = keys[index]!;
-      const candidateVector = computed.get(key) ?? this.passageVectors.get(key);
-      if (!candidateVector || !queryVector) {
+      const candidateVector =
+        newlyComputed.get(key) ?? this.passageVectors.get(key);
+      if (!candidateVector) {
         throw new LocalE5ProviderError(
-          "INVALID_EMBEDDING_OUTPUT", "E5 candidate vector is missing.",
+          "INVALID_EMBEDDING_OUTPUT",
+          "E5 passage vector is unavailable.",
         );
       }
       scores.set(candidate.stateId, clamp01(dot(queryVector, candidateVector)));
     });
 
-    // Commit only fully successful requests; edits naturally miss the hash key.
-    for (const [key, vector] of computed) this.rememberPassage(key, vector);
+    // Only cache vectors after the entire score operation succeeds.
+    for (const [key, vector] of newlyComputed) this.rememberPassage(key, vector);
     for (const key of keys) {
       const vector = this.passageVectors.get(key);
       if (vector) this.rememberPassage(key, vector);
