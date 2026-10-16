@@ -13,12 +13,10 @@ import { join } from "node:path";
 import {
   AgentSdkClaudeTransport,
 } from "../src/agent-sdk-claude-transport.mjs";
-import { LEILEIOS_MIND_SYSTEM_PROMPT } from "../src/leileios-mind-system-prompt.mjs";
 import { LEILEIOS_WAKE_SYSTEM_PROMPT } from "../src/leileios-wake-system-prompt.mjs";
 import { LEILEIOS_MURMUR_SYSTEM_PROMPT } from "../src/leileios-murmur-system-prompt.mjs";
 
 const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = [
-  LEILEIOS_MIND_SYSTEM_PROMPT,
   LEILEIOS_WAKE_SYSTEM_PROMPT,
   LEILEIOS_MURMUR_SYSTEM_PROMPT,
 ].join("\n\n");
@@ -128,7 +126,7 @@ test("invalid Chrome switch fails before starting an SDK query", () => {
   assert.equal(called, false);
 });
 
-test("sendNew preserves Claude Code settings and normalized event parity", async () => {
+test("sendNew omits the Claude Code preset and preserves normalized event parity", async () => {
   let call;
   const transport = new AgentSdkClaudeTransport({
     environment: { HOME: "/Users/leilei" },
@@ -157,10 +155,6 @@ test("sendNew preserves Claude Code settings and normalized event parity", async
         CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
       },
       settingSources: ["user", "project", "local"],
-      systemPrompt: {
-        type: "preset",
-        preset: "claude_code",
-      },
       verbatimPrompts: true,
     },
   });
@@ -1247,11 +1241,8 @@ test("interactive foreground execution uses the dedicated turn handle with verba
   assert.equal(call.options.resume, "provider-parent");
   assert.equal(call.options.forkSession, true);
   assert.equal(call.options.verbatimPrompts, true);
-  assert.deepEqual(call.options.systemPrompt, {
-    type: "preset",
-    preset: "claude_code",
-    append: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT,
-  });
+  assert.equal(call.options.systemPrompt, LEILEIOS_INTERACTIVE_SYSTEM_PROMPT);
+  assert.doesNotMatch(call.options.systemPrompt, /write_memory|Memory persistence/u);
   assert.equal(call.options.includePartialMessages, true);
   assert.equal(
     result.providerSessionId,
@@ -1627,11 +1618,8 @@ test("interactive native schedule commands use Claude slash-command parsing", as
 
     assert.equal(call.prompt, command);
     assert.equal(call.options.verbatimPrompts, false);
-    assert.deepEqual(call.options.systemPrompt, {
-      type: "preset",
-      preset: "claude_code",
-      append: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT,
-    });
+    assert.equal(call.options.systemPrompt, LEILEIOS_INTERACTIVE_SYSTEM_PROMPT);
+    assert.doesNotMatch(call.options.systemPrompt, /write_memory|Memory persistence/u);
     assert.equal(call.options.includePartialMessages, true);
     assert.equal(result.providerSessionId, "provider-schedule");
   }
@@ -1663,11 +1651,8 @@ test("ordinary interactive turns keep verbatim streaming input", async () => {
   );
   assert.equal(call.options.verbatimPrompts, true);
   assert.deepEqual(call.options.thinking, { type: "adaptive", display: "summarized" });
-  assert.deepEqual(call.options.systemPrompt, {
-    type: "preset",
-    preset: "claude_code",
-    append: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT,
-  });
+  assert.equal(call.options.systemPrompt, LEILEIOS_INTERACTIVE_SYSTEM_PROMPT);
+  assert.doesNotMatch(call.options.systemPrompt, /write_memory|Memory persistence/u);
 });
 
 test("interactive provider failure retains SessionStore mirror health", async () => {
@@ -2573,9 +2558,9 @@ test("retired meme options cannot register a server or inject a hint; send_file 
   });
   assert.equal(retiredFactoryCalls, 0);
   assert.deepEqual(call.options.mcpServers, {leileios_local: fileServer});
-  assert.equal(call.options.systemPrompt.append.includes("send_meme"), false);
-  assert.equal(call.options.systemPrompt.append.includes("leileios-album"), false);
-  assert.match(call.options.systemPrompt.append, /To pass this wake without sending anything to the user, output exactly <quiet \/> and nothing else\./);
+  assert.equal(call.options.systemPrompt.includes("send_meme"), false);
+  assert.equal(call.options.systemPrompt.includes("leileios-album"), false);
+  assert.match(call.options.systemPrompt, /To pass this wake without sending anything to the user, output exactly <quiet \/> and nothing else\./);
 });
 
  test("all-directory listing preserves SDK cwd and never invents a default for unknown directories", async () => {
