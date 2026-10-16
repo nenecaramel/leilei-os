@@ -7,6 +7,7 @@ import { NativeLiveBackendTurnCoordinator } from "../src/domains/bridge/turn/nat
 import { DrizzleNativeLiveBackendTurnPort } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 import { DrizzleNativeLiveBackendRelayRepository } from "../src/domains/bridge/relay/native-live-backend-relay.js";
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
+import { DrizzleNativeLiveCurrentPathReader } from "../src/domains/conversation/native-live-current-path-read-repository.js";
 
 const enabled = process.env.RUN_NATIVE_LIVE_RELAY_DATABASE_TEST === "1";
 async function fixture(t: test.TestContext) {
@@ -37,6 +38,34 @@ async function fixture(t: test.TestContext) {
   };
   return { database, user, canonical, coordinator, conversation, repository, source, completed, base, next, prepare, submit, parent };
 }
+
+
+test("committed background reply reaches current-path reads exactly once across reopen, delta and pagination", { skip: !enabled }, async t => {
+  const f = await fixture(t);
+  const reader = new DrizzleNativeLiveCurrentPathReader(f.database.db);
+  const read = (options: { afterMessageId?: string; beforeMessageId?: string } = {}) =>
+    reader.readCurrentPath({ userId: f.user.id, conversationId: f.conversation.id, limit: 100, ...options });
+  await f.repository.prepareBackgroundResult(f.prepare);
+  assert.deepEqual((await read())?.backgroundResults, [], "prepared result is never published");
+  assert.deepEqual((await f.repository.submitBackgroundResult(f.submit)).outcome, "committed");
+  const first = await read();
+  assert.equal(first?.messages.length, 2, "background receipt is not a canonical provider turn");
+  assert.deepEqual(first?.backgroundResults.map(row => [row.id, row.sourceMessageId, row.text]),
+    [[f.prepare.receiptId, f.completed.assistantMessageId, "background synthetic"]]);
+  const delta = await read({ afterMessageId: f.completed.assistantMessageId });
+  assert.deepEqual(delta?.messages, [], "unchanged head has no new canonical messages");
+  assert.deepEqual(delta?.backgroundResults, first?.backgroundResults, "background result still reaches unchanged-head delta reads");
+  assert.deepEqual((await read({ beforeMessageId: f.completed.assistantMessageId }))?.backgroundResults, [],
+    "older pages do not replay latest background deliveries");
+  assert.deepEqual((await f.repository.submitBackgroundResult(f.submit)).duplicate, true);
+  assert.deepEqual((await read())?.backgroundResults, first?.backgroundResults, "reopened chat does not double-deliver");
+  const [sourceUser] = await f.database.db.select({ id: conversationMessages.id })
+    .from(conversationMessages).where(eq(conversationMessages.conversationId, f.conversation.id))
+    .orderBy(conversationMessages.createdAt).limit(1);
+  await f.database.db.update(conversations).set({ currentHeadMessageId: sourceUser!.id })
+    .where(eq(conversations.id, f.conversation.id));
+  assert.deepEqual((await read())?.backgroundResults, [], "retired assistant branch cannot leak the receipt");
+});
 
 test("background commit has its own durable receipt and does not rewrite canonical foreground history", { skip: !enabled }, async t => {
   const f = await fixture(t);
