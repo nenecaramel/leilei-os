@@ -558,6 +558,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         return handler(input);
       });
       if (this.activeSessionHost !== claim || claim.cancelled) throw runtimeError("Persistent session startup was aborted.", { runtimeCode: "ABORTED" });
+      const executionOptions = normalizeAgentSdkExecutionSelection(execution);
       host = await createAgentSdkSessionHost({ queryImpl,
         expectedSessionId: restore?.sessionId ?? null,
         observeOutput: startup ? message => observeNativeSessionStartup(startup, message) : null,
@@ -571,7 +572,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           permissionMode: "default", includePartialMessages: true, perTaskStopAffordance,
           verbatimPrompts: true,
           systemPrompt: { type: "preset", preset: "claude_code", append: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT },
-          ...normalizeAgentSdkExecutionSelection(execution),
+          ...executionOptions,
+          // Request the same provider displayable summary as the interactive
+          // one-shot path, without changing explicit disabled/between_tools.
+          ...(!executionOptions.thinking || executionOptions.thinking.type === "adaptive"
+            ? { thinking: { type: "adaptive", display: "summarized" } }
+            : {}),
           ...(this.chromeEnabled ? { extraArgs: { chrome: null } } : {}),
           ...(this.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
           ...leileiosMcpQueryOptions(this.mcpServerConfig, sendFileServer),
