@@ -30,15 +30,6 @@ import {
 
 const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = [LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT].join("\n\n");
 
-// Request displayable thinking summaries on both interactive execution paths.
-// Explicit disabled/between_tools settings and non-interactive commands retain their behavior.
-function interactiveSummarizedThinkingOptions(executionOptions, enabled = true) {
-  if (!enabled) return {};
-  const selectedMode = executionOptions.thinking?.type;
-  if (selectedMode !== undefined && selectedMode !== "adaptive") return {};
-  return { thinking: { type: "adaptive", display: "summarized" } };
-}
-
 function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
 }
@@ -567,7 +558,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         return handler(input);
       });
       if (this.activeSessionHost !== claim || claim.cancelled) throw runtimeError("Persistent session startup was aborted.", { runtimeCode: "ABORTED" });
-      const executionOptions = normalizeAgentSdkExecutionSelection(execution);
       host = await createAgentSdkSessionHost({ queryImpl,
         expectedSessionId: restore?.sessionId ?? null,
         observeOutput: startup ? message => observeNativeSessionStartup(startup, message) : null,
@@ -581,8 +571,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           permissionMode: "default", includePartialMessages: true, perTaskStopAffordance,
           verbatimPrompts: true,
           systemPrompt: { type: "preset", preset: "claude_code", append: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT },
-          ...executionOptions,
-          ...interactiveSummarizedThinkingOptions(executionOptions),
+          ...normalizeAgentSdkExecutionSelection(execution),
           ...(this.chromeEnabled ? { extraArgs: { chrome: null } } : {}),
           ...(this.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
           ...leileiosMcpQueryOptions(this.mcpServerConfig, sendFileServer),
@@ -969,7 +958,14 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           append: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT,
         },
         ...executionOptions,
-        ...interactiveSummarizedThinkingOptions(executionOptions, !nativeScheduleCommand),
+        // Newer Claude models default to omitted thinking (empty text + signature).
+        // Request the provider's displayable summary only for interactive turns;
+        // respect explicit disabled and between_tools modes.
+        ...(!nativeScheduleCommand
+          && (executionOptions.thinking === undefined
+            || executionOptions.thinking.type === "adaptive")
+          ? { thinking: { type: "adaptive", display: "summarized" } }
+          : {}),
         ...leileiosMcpQueryOptions(
           this.mcpServerConfig,
           localSendFileServer,
