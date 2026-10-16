@@ -390,9 +390,13 @@ export class NativeLiveExternalSessionBridgeService {
     title?: string | null;
     historySnapshot?: NativeLiveConversationHistoryUpload | null;
   }): Promise<NativeLiveExternalSessionConversation> {
-    const historySnapshot = normalizeHistorySnapshotInput(
-      input.historySnapshot,
-    );
+    if (input.historySnapshot !== undefined && input.historySnapshot !== null) {
+      throw new NativeLiveExternalSessionBridgeError(
+        "INVALID_HISTORY_SNAPSHOT",
+        "Legacy Desktop history snapshot ingestion is retired.",
+      );
+    }
+    const historySnapshot = normalizeHistorySnapshotInput(input.historySnapshot);
     return this.db.transaction(async (tx) => {
       const requestRows = await tx.execute<{
         status: NativeLiveExternalSessionRequestStatus;

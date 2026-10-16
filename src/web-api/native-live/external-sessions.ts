@@ -4,7 +4,6 @@ import type {
 } from "express";
 import {
   NativeLiveExternalSessionBridgeError,
-  type NativeLiveConversationHistoryUpload,
 } from "../../domains/bridge/provider-session/native-live-external-session-bridge.js";
 import type { NativeLiveApiDependencies } from "./dependencies.js";
 import {
@@ -101,8 +100,7 @@ export function createNativeLiveConversationFromClaudeSessionHandler(
     const sourceSessionId =
       validKeys ? body.source_session_id : undefined;
     const title = validKeys ? body.title : undefined;
-    const rawHistorySnapshot =
-      validKeys ? body.history_snapshot : undefined;
+    const requestedHistorySnapshot = Boolean(bodyKeys.includes("history_snapshot"));
     if (
       typeof requestId !== "string"
       || !UUID_PATTERN.test(requestId)
@@ -129,22 +127,13 @@ export function createNativeLiveConversationFromClaudeSessionHandler(
       return;
     }
 
-    let historySnapshot: NativeLiveConversationHistoryUpload | null = null;
-    try {
-      historySnapshot = parseExternalHistorySnapshotInput(
-        rawHistorySnapshot,
-      );
-    } catch {
-      response.status(400).json({
-        success: false,
-        error: {
-          code: "INVALID_HISTORY_SNAPSHOT",
-          message: "Conversation history snapshot is invalid.",
-        },
-      });
+    if (requestedHistorySnapshot) {
+      response.status(410).json({ success: false, error: {
+        code: "HISTORY_SNAPSHOT_RETIRED",
+        message: "Historical display snapshots are no longer imported.",
+      } });
       return;
     }
-
     try {
       const conversation =
         await dependencies.externalSessionBridgeService!
@@ -154,9 +143,6 @@ export function createNativeLiveConversationFromClaudeSessionHandler(
             sourceSessionId: sourceSessionId.trim(),
             ...(typeof title === "string"
               ? { title: title.trim() }
-              : {}),
-            ...(historySnapshot
-              ? { historySnapshot }
               : {}),
           });
       response.status(201).json({
@@ -170,140 +156,21 @@ export function createNativeLiveConversationFromClaudeSessionHandler(
 }
 
 export function readNativeLiveConversationHistorySnapshotHandler(
-  dependencies: NativeLiveApiDependencies,
+  _dependencies: NativeLiveApiDependencies,
 ): RequestHandler {
-  return async (request, response) => {
+  return (request, response) => {
     if (!requireWebUser(response, request.webUserId)) return;
-    const conversationId = request.params.conversationId;
-    if (
-      typeof conversationId !== "string"
-      || !UUID_PATTERN.test(conversationId)
-    ) {
-      response.status(400).json({
-        success: false,
-        error: {
-          code: "INVALID_NATIVE_LIVE_CONVERSATION_ID",
-          message: "Conversation id is invalid.",
-        },
-      });
+    if (typeof request.params.conversationId !== "string"
+      || !UUID_PATTERN.test(request.params.conversationId)) {
+      response.status(400).json({ success: false, error: {
+        code: "INVALID_NATIVE_LIVE_CONVERSATION_ID", message: "Conversation id is invalid.",
+      } });
       return;
     }
-
-    try {
-      const snapshot =
-        await dependencies.externalSessionBridgeService!
-          .readConversationHistorySnapshot({
-            userId: request.webUserId!,
-            conversationId,
-          });
-      if (!snapshot) {
-        response.status(404).json({
-          success: false,
-          error: {
-            code: "HISTORY_SNAPSHOT_NOT_FOUND",
-            message: "Conversation history snapshot was not found.",
-          },
-        });
-        return;
-      }
-      response.json({
-        success: true,
-        data: snapshot,
-      });
-    } catch (error) {
-      sendExternalSessionBridgeError(response, error);
-    }
-  };
-}
-
-function parseExternalHistorySnapshotInput(
-  value: unknown,
-): NativeLiveConversationHistoryUpload | null {
-  if (value === undefined || value === null) return null;
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("invalid history snapshot");
-  }
-  const row = value as Record<string, unknown>;
-  const keys = Object.keys(row);
-  if (
-    !keys.includes("messages")
-    || !keys.every((key) =>
-      key === "source_label"
-      || key === "time_zone"
-      || key === "messages"
-    )
-  ) {
-    throw new Error("invalid history snapshot");
-  }
-  const sourceLabel = row.source_label;
-  const timeZone = row.time_zone;
-  if (
-    !(
-      sourceLabel === undefined
-      || sourceLabel === null
-      || (
-        typeof sourceLabel === "string"
-        && sourceLabel.trim().length > 0
-        && [...sourceLabel.trim()].length <= 255
-      )
-    )
-    || !(
-      timeZone === undefined
-      || timeZone === null
-      || (
-        typeof timeZone === "string"
-        && timeZone.trim().length > 0
-        && [...timeZone.trim()].length <= 64
-      )
-    )
-    || !Array.isArray(row.messages)
-    || row.messages.length < 1
-    || row.messages.length > 5_000
-  ) {
-    throw new Error("invalid history snapshot");
-  }
-
-  let totalChars = 0;
-  const messages = row.messages.map((value) => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new Error("invalid history snapshot message");
-    }
-    const message = value as Record<string, unknown>;
-    const messageKeys = Object.keys(message);
-    if (
-      messageKeys.length !== 3
-      || !messageKeys.includes("role")
-      || !messageKeys.includes("time")
-      || !messageKeys.includes("content")
-      || (message.role !== "user" && message.role !== "assistant")
-      || typeof message.time !== "string"
-      || !message.time.trim()
-      || Number.isNaN(Date.parse(message.time))
-      || typeof message.content !== "string"
-      || !message.content.trim()
-      || [...message.content].length > 100_000
-    ) {
-      throw new Error("invalid history snapshot message");
-    }
-    totalChars += [...message.content].length;
-    if (totalChars > 700_000) {
-      throw new Error("history snapshot too large");
-    }
-    return {
-      role: message.role as "user" | "assistant",
-      time: message.time.trim(),
-      content: message.content,
-    };
-  });
-
-  return {
-    ...(typeof sourceLabel === "string"
-      ? { sourceLabel: sourceLabel.trim() }
-      : {}),
-    ...(typeof timeZone === "string"
-      ? { timeZone: timeZone.trim() }
-      : {}),
-    messages,
+    response.status(410).json({ success: false, error: {
+      code: "HISTORY_SNAPSHOT_RETIRED",
+      message: "Old Desktop display history is no longer served by LeileiOS.",
+    } });
   };
 }
 

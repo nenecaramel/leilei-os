@@ -65,6 +65,19 @@ printf 'fake custom dump' > "$output"
     join(bin, "psql"),
     `#!/usr/bin/env bash
 set -euo pipefail
+# psql treats a positional URI alongside --dbname as a username. The
+# original fake accepted both and hid the real local-restore failure.
+has_positional_database=false
+has_dbname=false
+for argument in "$@"; do
+  case "$argument" in
+    postgresql://*|postgres://*) has_positional_database=true ;;
+    --dbname=*) has_dbname=true ;;
+  esac
+done
+if [[ "$has_positional_database" == true && "$has_dbname" == true ]]; then
+  exit 2
+fi
 query=""
 while [[ "$#" -gt 0 ]]; do
   if [[ "$1" == "-c" ]]; then shift; query="$1"; fi

@@ -14,8 +14,9 @@ test("current-path transformations are pure and coordination stays byte-for-byte
   assert.ok(existsSync(helper));
   const source = readFileSync(helper, "utf8");
   assert.doesNotMatch(source.replace(/\/\/[^\n]*/g, ""), /AppModel|@State|Task|UserDefaults|api\./);
-  // Fixed main@43bd21d3 owner, minus only the two moved methods and qualified call sites.
-  assert.equal(createHash("sha256").update(readFileSync(ownerPath)).digest("hex"), "af0bcb0563a6f40cba93b8c130b963caaae2002607b44a9a33fd3f91cb446dea");
+  // Conserved owner plus explicit legacy display-snapshot retirement.
+  // All current-path request, state and coordination code remains pinned.
+  assert.equal(createHash("sha256").update(readFileSync(ownerPath)).digest("hex"), "7d2a242130a0a4e4b3391efea623ac10a579efc481a96305971344a25eaa1840");
 });
 
 test("actual Swift current-path transforms preserve refresh, delta, anchors and metadata", { skip: process.platform !== "darwin" }, () => {

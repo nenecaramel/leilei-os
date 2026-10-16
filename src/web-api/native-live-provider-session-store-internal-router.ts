@@ -28,6 +28,14 @@ export type NativeLiveProviderSessionStoreInternalDependencies = {
   >;
 };
 
+const retiredNativeHistoryHandler: RequestHandler = (request, response) => {
+  if (!requireInternalUser(response, request.mcpUserId)) return;
+  response.status(410).json({ success: false, error: {
+    code: "NATIVE_FULL_HISTORY_RETIRED",
+    message: "Legacy full-history copy/restore is retired; use native continuation.",
+  } });
+};
+
 export function createNativeLiveProviderSessionStoreInternalRouter(
   dependencies: NativeLiveProviderSessionStoreInternalDependencies,
 ): Router {
@@ -39,12 +47,14 @@ export function createNativeLiveProviderSessionStoreInternalRouter(
   router.post("/native-history/continuation-state", nativeContinuationHandler(dependencies, "state"));
   router.post("/native-history/continuation-attach", nativeContinuationHandler(dependencies, "attach"));
   router.post("/native-history/continuation-release", nativeContinuationHandler(dependencies, "release"));
-  router.post("/native-history/restore", nativeHistoryRestoreHandler(dependencies));
-  router.post("/native-history/state", nativeHistoryStateHandler(dependencies));
+  // The former full-history writer and reader are retired. Keep the
+  // continuation-only ownership endpoints and the metadata-only picker.
+  router.post("/native-history/restore", retiredNativeHistoryHandler);
+  router.post("/native-history/state", retiredNativeHistoryHandler);
   router.post("/native-history/choices", nativeHistoryChoicesHandler(dependencies));
-  router.post("/native-history/release", nativeHistoryReleaseHandler(dependencies));
-  router.post("/native-history/asset", nativeHistoryAssetHandler(dependencies));
-  router.post("/native-history/asset-stage", nativeHistoryAssetStageHandler(dependencies));
+  router.post("/native-history/release", retiredNativeHistoryHandler);
+  router.post("/native-history/asset", retiredNativeHistoryHandler);
+  router.post("/native-history/asset-stage", retiredNativeHistoryHandler);
   router.post("/native-history/referenced-sessions", async (request, response) => {
     const userId = requireInternalUser(response, request.mcpUserId);
     if (!userId) return;
@@ -83,6 +93,15 @@ function appendHandler(
         : null;
     if (!key || !entries || !appendBatchId) {
       sendInvalid(response);
+      return;
+    }
+    // Stop the obsolete resource-copy transport without changing ordinary
+    // SDK SessionStore transcripts, subagents or recovery operations.
+    if ((key.subpath ?? "").startsWith("native-history-assets/")) {
+      response.status(409).json({ success: false, error: {
+        code: "LEGACY_ASSET_WRITE_DISABLED",
+        message: "Legacy historical display asset uploads are retired.",
+      } });
       return;
     }
     try {
@@ -441,7 +460,7 @@ function nativeHistoryAssetStageHandler(dependencies: NativeLiveProviderSessionS
 }
 function sendNativeHistoryError(response: Response, error: unknown) {
   const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
-  const conflicts = new Set(["NATIVE_CONVERSATION_BUSY", "STALE_NATIVE_PROJECTION", "CANONICAL_HEAD_CHANGED", "CANONICAL_HISTORY_CHANGED", "CANONICAL_CHECKPOINT_CHANGED", "NATIVE_SOURCE_BINDING_REQUIRED", "EXPLICIT_BRANCH_SELECTION_REQUIRED", "NATIVE_HISTORY_REWRITTEN", "NATIVE_TRANSCRIPT_DIVERGED", "NATIVE_SESSION_RECOVERY_REQUIRED", "CLEANUP_IN_PROGRESS", "NATIVE_CONVERSATION_NOT_FOUND", "NATIVE_SESSION_ALREADY_ATTACHED", "NATIVE_SYNC_BASE_CHANGED"]);
+  const conflicts = new Set(["NATIVE_CONVERSATION_BUSY", "STALE_NATIVE_PROJECTION", "CANONICAL_HEAD_CHANGED", "CANONICAL_HISTORY_CHANGED", "CANONICAL_CHECKPOINT_CHANGED", "NATIVE_SOURCE_BINDING_REQUIRED", "EXPLICIT_BRANCH_SELECTION_REQUIRED", "NATIVE_HISTORY_REWRITTEN", "NATIVE_TRANSCRIPT_DIVERGED", "NATIVE_SESSION_RECOVERY_REQUIRED", "CLEANUP_IN_PROGRESS", "NATIVE_CONVERSATION_NOT_FOUND", "NATIVE_SESSION_ALREADY_ATTACHED", "NATIVE_SYNC_BASE_CHANGED", "LEGACY_ASSET_WRITE_DISABLED"]);
   const invalid = new Set(["INVALID_NATIVE_PROJECTION", "INVALID_NATIVE_SNAPSHOT", "INVALID_KEY", "INVALID_ENTRY", "BATCH_TOO_LARGE", "INVALID_NATIVE_ASSET", "NATIVE_ASSET_UNAVAILABLE", "NATIVE_ASSET_MISMATCH"]);
   response.status(conflicts.has(code) ? 409 : invalid.has(code) ? 400 : 503).json({ success: false, error: {
     code: conflicts.has(code) || invalid.has(code) ? code : "NATIVE_HISTORY_UNAVAILABLE",
