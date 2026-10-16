@@ -526,7 +526,10 @@ test('iMessage wallpaper and navigation compose in a single full-height sliding 
   assert.match(page, /if !iMessageWallpaperVisible \{\s*pageBackground\.ignoresSafeArea\(\)/);
   assert.match(chat, /if !iMessageWallpaperVisible \{\s*Color\(\.systemBackground\)/);
   assert.doesNotMatch(iphone.slice(0, composite), /rootWallpaperBackdrop\s*\.offset/);
-  assert.doesNotMatch(page, /Image\(uiImage:|IMessageWallpaper\.load/);
+  // The unrelated destructive trash icon uses Image(uiImage:); scope the wallpaper
+  // ownership check to the navigation canvas, not every helper in the file.
+  const pageCanvas = page.slice(page.indexOf('    var body: some View {'), page.indexOf('    private var conversationMenu: some View {'));
+  assert.doesNotMatch(pageCanvas, /Image\(uiImage:|IMessageWallpaper\.load/);
   assert.doesNotMatch(chat, /Image\(uiImage:|IMessageWallpaper\.load/);
 });
 
@@ -748,7 +751,7 @@ test('iMessage text link and quote coloring follows ordinary bubble text without
   assert.match(markdown, /Text\(\s*isIMessageBubbleText\s*\? NativeLiveIMessageMarkdownPalette\.inline\(model\.inline, isQuote: isQuote\)\s*: model\.inline/);
   assert.match(math, /NativeLiveIMessageMarkdownPalette\.inline\(markdown\.inline, isQuote: isQuote\)/);
   for (const source of [markdown, math]) {
-    assert.match(source, /if isIMessageBubbleText \{\s*(?:inline|flow)\.foregroundStyle\(NativeLiveIMessageMarkdownPalette\.quote\)/);
+    assert.match(source, /if isIMessageBubbleText \{\s*(?:inline|flow)\s*\.foregroundStyle\(NativeLiveIMessageMarkdownPalette\.quote\)/);
     assert.match(source, /chatTheme == \.iMessage && \(role == "user" \|\| role == "assistant"\)/);
   }
   assert.match(model, /foregroundColor = \.accentColor/);
