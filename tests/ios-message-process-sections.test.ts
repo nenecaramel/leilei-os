@@ -124,7 +124,7 @@ test('clock paint and thought inset are refined while action icons return to reg
   assert.match(surface, /\.padding\(\.trailing, 1\)/);
 });
 
-test('iMessage loading and work headers adopt Thought process typography, glyph, and contrast without fake actions', () => {
+test('iMessage loading has its glyph while Worked for is text-only at the Thought icon leading edge', () => {
   const row = readFileSync(root + 'NativeLiveAssistantTurnRow.swift', 'utf8');
   const thinking = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
   const activity = readFileSync(root + 'NativeLiveRuntimeActivity.swift', 'utf8');
@@ -142,7 +142,9 @@ test('iMessage loading and work headers adopt Thought process typography, glyph,
   assert.doesNotMatch(idle, /Button|Image\(systemName: "chevron/);
 
   assert.match(activity, /@Environment\(\\\.chatTheme\) private var chatTheme/);
-  assert.match(activity, /if chatTheme == \.iMessage && !header\.isEmpty \{\s*NativeLiveThoughtProcessIcon\(\)/);
+  const workHeader = activity.slice(activity.indexOf('    var body: some View {'), activity.indexOf('            if effectiveExpanded {'));
+  assert.doesNotMatch(workHeader, /NativeLiveThoughtProcessIcon\(\)|Image\(systemName:\s*"clock"\)/);
+  assert.match(thinking, /NativeLiveThoughtProcessIcon\(\)/);
   assert.match(activity, /spacing: chatTheme == \.iMessage \? 8 : 12/);
   assert.match(activity, /\.padding\(\.leading, chatTheme == \.iMessage && !header\.isEmpty \? 2 : 0\)/);
   assert.match(activity, /expansion\.toggleActivity\(\)/);
