@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
+import { assertInteractionThemePreservesOriginal } from './ios-theme-interaction-assertions.js';
 
 const root = 'ios/LeileiOS/LeileiOS/Chat/MessageSurface/';
 const fixture = 'tests/fixtures/runtime-activity-main-8efd5977/';
@@ -44,8 +45,16 @@ function conserve(file: string, source: string) {
     // every expanded subtree, lifecycle, interaction dispatch and sheet exact.
     const body='    var body: some View {';
     const content='            if effectiveExpanded {';
-    assert.equal(source.slice(0,source.indexOf(body)), baseline.slice(0,baseline.indexOf(body)), 'activity inputs/init');
-    assert.equal(normalize(source.slice(source.indexOf(content))), normalize(baseline.slice(baseline.indexOf(content))), 'expanded activity and sheets');
+    const themeDeclaration = /^\s*@Environment\(\\\.(?:chatTheme|iMessageWallpaperVisible)\) private var [^\n]+/gm;
+    assert.match(source, /@Environment\(\\\.chatTheme\) private var chatTheme/);
+    assert.match(source, /@Environment\(\\\.iMessageWallpaperVisible\) private var iMessageWallpaperVisible/);
+    assert.equal(normalize(source.slice(0,source.indexOf(body)).replace(themeDeclaration, '')),
+      normalize(baseline.slice(0,baseline.indexOf(body))), 'Activity inputs, state and initializer');
+    // prepareID was intentionally added to Task rows. Every other expanded
+    // subtree and interaction dispatch remains pinned to the historical code.
+    assert.match(source, /prepareID: projection\.prepareID/);
+    assert.equal(normalize(source.slice(source.indexOf(content)).replace('prepareID: projection.prepareID,', '')),
+      normalize(baseline.slice(baseline.indexOf(content))), 'Expanded Activity, callbacks and sheets');
     const header=source.slice(source.indexOf(body),source.indexOf(content));
     assert.equal((header.match(/expansion\.toggleActivity\(\)/g)??[]).length,2);
     assert.match(header,/\.disabled\(header\.isEmpty\)/);
@@ -68,7 +77,11 @@ test('All six Activity presentation boundaries conserve complete original blocks
 test('Projection, interaction state/submit/answers and history semantics remain byte identical', () => {
   const manifest = JSON.parse(readFileSync(fixture + 'blobs.json', 'utf8'));
   for (const file of Object.keys(manifest.files)) {
-    if (file !== 'NativeLiveRuntimeActivity.swift') assert.equal(read(file), old(file), file);
+    if (file === 'NativeLiveInteractions.swift') {
+      assertInteractionThemePreservesOriginal(read(file), old(file));
+    } else if (file !== 'NativeLiveRuntimeActivity.swift') {
+      assert.equal(read(file), old(file), file);
+    }
   }
 });
 test('Conservation rejects wrong pending-question dispatch and changed JSON string whitespace', () => {
