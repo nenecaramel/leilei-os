@@ -15,7 +15,30 @@ test('configured transport uses one SDK query for two turns and retains default 
  assert.deepEqual(f.options.settingSources,['user','project','local']);assert.equal(f.options.permissionMode,'default');assert.equal(f.options.env.ANTHROPIC_API_KEY,undefined);
  assert.deepEqual(await f.options.canUseTool('Write',{synthetic:true},{}),{behavior:'allow'});
  assert.equal(f.options.perTaskStopAffordance,false);
+ assert.deepEqual(f.options.thinking,{type:'adaptive',display:'summarized'});
 });
+test('persistent SDK enables summarized thinking across new and continued turns, respecting explicit modes',async t=>{
+  const cases=[
+    ['provider default',null,{type:'adaptive',display:'summarized'}],
+    ['explicit adaptive',{model:'claude-opus-5-5',thinking:'adaptive',effort:'high'},{type:'adaptive',display:'summarized'}],
+    ['explicit disabled',{model:'claude-opus-5',thinking:'disabled',effort:'high'},{type:'disabled'}],
+    ['between tools',{model:'claude-sonnet-5-5',thinking:'between_tools',effort:'high'},{type:'between_tools'}],
+  ];
+  for(const [name,execution,expected] of cases){
+    await t.test(name,async t=>{
+      const f=fixture();
+      const host=await f.open({execution});
+      t.after(()=>host.close());
+      assert.deepEqual(f.options.thinking,expected);
+      assert.equal(f.options.model,execution?.model);
+      assert.equal(f.options.effort,execution?.effort);
+      await host.submit('first',{id:'first'});
+      await host.submit('second',{id:'second'});
+      assert.equal(f.calls,1,'continued chat must keep the configured SDK session');
+    });
+  }
+});
+
 test('input admission is awaited and rejection never sends prompt to SDK',async t=>{
  const f=fixture();let release;const barrier=new Promise(r=>{release=r;});const host=await f.open({authorize:async context=>{assert.equal(context.phase,'input');await barrier;return false;}});t.after(()=>host.close());
  const pending=host.submit('blocked');const rejected=assert.rejects(pending,/admission/i);assert.equal(f.inputs.length,0);release();await rejected;assert.equal(f.inputs.length,0);
