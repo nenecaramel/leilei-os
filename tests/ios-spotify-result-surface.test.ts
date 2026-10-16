@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync, readdirSync } from 'n
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { assertInteractionThemePreservesOriginal } from './ios-theme-interaction-assertions.js';
 const root = 'ios/LeileiOS/LeileiOS/';
 const surface = root + 'Chat/MessageSurface/';
 
@@ -59,6 +60,14 @@ test('Spotify baseline stays byte-identical except explicitly accepted assistant
   assert.equal(manifest.ref,'41bf880f24a5d42dd48fb39603c47080b3ec75bd');
   for (const [file,sha] of Object.entries(manifest.sha256)) {
     const content=readFileSync(file,'utf8');
+    if (file.endsWith('/NativeLiveInteractions.swift')) {
+      // The historical Spotify interaction fixture remains immutable. Only
+      // the accepted iMessage glass modifier is allowed around its two cards.
+      const original=readFileSync('tests/fixtures/runtime-activity-main-8efd5977/NativeLiveInteractions.swift','utf8');
+      assert.equal(createHash('sha256').update(original).digest('hex'),sha,file);
+      assertInteractionThemePreservesOriginal(content,original);
+      continue;
+    }
     let equivalent = content;
     if (file.endsWith('/NativeLiveAssistantTurnPresentation.swift')) {
       // Accepted additive fields: thinking (65563ed6) and display-only timestamp (2e6505e0).
