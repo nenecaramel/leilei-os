@@ -581,3 +581,51 @@ test('continuation detects transcript changes across state round trips before bi
     assert.equal(calls, 1);
   });
 });
+
+test('Desktop continuation re-pins only native exit metadata the drained daemon writer appends around its receipt', async t => {
+  const { handoffNativeContinuationToDesktop } = await import('../src/native-session-continuation.mjs');
+  const { createNativeSessionDrainServer } = await import('../src/native-session-daemon-drain.mjs');
+  const exitMetadata = [{ type: 'last-prompt', lastPrompt: 'PRIVATE_PROMPT', sessionId: A }, { type: 'cost-state', sessionId: A, totalCostUSD: 1 }];
+  const newTurn = [{ type: 'user', uuid: D, parentUuid: CP, message: { content: 'new turn' } }];
+  // The SDK child flushes its exit records either before or after the receipt.
+  for (const [appended, delayMs] of [[exitMetadata, 0], [exitMetadata, 60], [newTurn, 60]]) {
+    await fixture(async ({ input, transcriptFile }) => {
+      let pending = Promise.resolve();
+      const append = async () => writeFile(transcriptFile, (await readFile(transcriptFile, 'utf8')) + '\n' + appended.map(JSON.stringify).join('\n'));
+      const close = await createNativeSessionDrainServer({ recoveryDirectory: input.recoveryDirectory, drain: async () => {
+        if (delayMs) pending = new Promise(resolve => setTimeout(resolve, delayMs)).then(append);
+        else await append();
+        return { ready: true, writer: 'closed', tasks: [] };
+      } });
+      t.after(close);
+      const routes = [];
+      let launched = false;
+      const run = handoffNativeContinuationToDesktop({ input: { ...input, historyMode: 'continuation' }, conversationId: A,
+        relayUrl: 'https://fixture.example', relayToken: 'fixture', retryDelaysMs: [], drainSettle: { pollMs: 20, quietMs: 150, timeoutMs: 3000 },
+        launchImpl: async () => { launched = true; },
+        fetchImpl: async (url, request) => {
+          const route = new URL(url).pathname.split('/').at(-1), body = JSON.parse(request.body);
+          routes.push({ route, body });
+          const data = route === 'continuation-state' ? { expectedHeadMessageId: null, expectedRevision: null,
+            providerSessionId: A, providerCheckpointId: CP, effectiveWorkingDirectory: '/fixture', owner: 'leileios' }
+            : { outcome: 'attached', owner: 'desktop', conversationId: A, headMessageId: null, providerSessionId: A, providerCheckpointId: CP, inserted: 0 };
+          return Response.json({ success: true, data });
+        } });
+      try {
+        if (appended === exitMetadata) {
+          await run;
+          await pending;
+          const settled = createHash('sha256').update(await readFile(transcriptFile)).digest('hex');
+          assert.notEqual(settled, input.expectedRevision);
+          assert.equal(routes.at(-1).route, 'continuation-release');
+          assert.equal(routes.at(-1).body.revision, settled);
+          assert.equal(launched, true);
+        } else {
+          await assert.rejects(run, e => e.code === 'NATIVE_INSPECTION_CHANGED');
+          assert.deepEqual(routes, []);
+          assert.equal(launched, false);
+        }
+      } finally { await pending; await close(); }
+    });
+  }
+});

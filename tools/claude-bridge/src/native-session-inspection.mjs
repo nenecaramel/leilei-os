@@ -184,6 +184,9 @@ export async function resolveDesktopNativeSelection({ sessionId, ...input }) {
   return { ...source, inspection: await inspectDesktopNativeSession({ ...input, ...source, followNativeContinuation: true }) };
 }
 
+const endOfTurnRecord = e => (e.type === "system" && e.subtype === "stop_hook_summary") || (e.type === "attachment" &&
+  (e.attachment?.type === "prompt_snapshot" || (e.attachment?.type === "hook_success" && e.attachment.hookEvent === "Stop")));
+
 // Execution ancestry stops at the native compact root. It deliberately never
 // expands logicalParentUuid or reads other session files for display history.
 function nativeExecutionContinuation(snapshot, desktopCheckpointId) {
@@ -206,10 +209,12 @@ function nativeExecutionContinuation(snapshot, desktopCheckpointId) {
   const last = chain.findLast(e => !e.isMeta && !e.isCompactSummary && ["user", "assistant"].includes(e.type));
   if (last?.type !== "assistant" || last.message?.stop_reason === "tool_use" ||
     (Array.isArray(last.message?.content) && last.message.content.at(-1)?.type === "tool_use")) throw fail("NATIVE_TURN_UNFINISHED");
-  // Only native Stop receipts may follow a completed reply. An arbitrary tool,
-  // attachment or compaction tail is not equivalent to the completed checkpoint.
+  // Only native end-of-turn records may follow a completed reply: the Stop
+  // receipt, Stop hook results and the prompt snapshot written after a changed
+  // (e.g. compacted) prompt. An arbitrary tool, attachment or compaction tail
+  // is not equivalent to the completed checkpoint.
   const trailing = chain.slice(chain.findLastIndex(e => e.uuid === last.uuid) + 1);
-  if (trailing.some(e => e.type !== "system" || e.subtype !== "stop_hook_summary")) throw fail("NATIVE_TURN_UNFINISHED");
+  if (!trailing.every(endOfTurnRecord)) throw fail("NATIVE_TURN_UNFINISHED");
   return { checkpointId: last.uuid, checkpointIds: [...ancestry], completedTurnCheckpointIds: [last.uuid, ...trailing.map(e => e.uuid)] };
 }
 

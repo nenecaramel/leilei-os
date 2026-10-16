@@ -362,3 +362,24 @@ test('continuation inspection rejects conflicting UUID content rather than silen
       historyMode: 'continuation', followNativeContinuation: true }), e => e.code === 'CONFLICTING_NATIVE_UUID');
   });
 });
+
+test('continuation accepts native end-of-turn records between the final reply and its Stop receipt', async () => {
+  const { inspectDesktopNativeSession } = await import(moduleUrl);
+  await fixture(async ({ root, indexFile, transcriptFile }) => {
+    const snapshot = '00000000-0000-4000-8000-000000000010', hook = '00000000-0000-4000-8000-000000000011', stop = '00000000-0000-4000-8000-000000000012';
+    const tail = [
+      { type: 'attachment', uuid: snapshot, parentUuid: CP, attachment: { type: 'prompt_snapshot', systemPrompt: 'fixture' } },
+      { type: 'attachment', uuid: hook, parentUuid: snapshot, attachment: { type: 'hook_success', hookEvent: 'Stop', hookName: 'Stop' } },
+      { type: 'system', subtype: 'stop_hook_summary', uuid: stop, parentUuid: hook },
+    ];
+    await writeFile(transcriptFile, [...entries, ...tail].map(JSON.stringify).join('\n'));
+    const input = { indexFile, projectDirectory: root, peerDirectory: root, probeProcessStart: async () => started,
+      historyMode: 'continuation', followNativeContinuation: true };
+    assert.equal((await inspectDesktopNativeSession(input)).providerCheckpointId, CP);
+    // Anything that could still feed the model keeps the turn open.
+    await writeFile(transcriptFile, [...entries, { ...tail[0], attachment: { type: 'queued_command', prompt: 'next' } }, ...tail.slice(1)].map(JSON.stringify).join('\n'));
+    await assert.rejects(inspectDesktopNativeSession(input), e => e.code === 'NATIVE_TURN_UNFINISHED');
+    await writeFile(transcriptFile, [...entries, { ...tail[1], parentUuid: CP, attachment: { type: 'hook_success', hookEvent: 'PreToolUse' } }, { ...tail[2], parentUuid: hook }].map(JSON.stringify).join('\n'));
+    await assert.rejects(inspectDesktopNativeSession(input), e => e.code === 'NATIVE_TURN_UNFINISHED');
+  });
+});
