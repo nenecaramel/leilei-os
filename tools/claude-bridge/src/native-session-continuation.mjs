@@ -6,7 +6,7 @@ import { readNativeSessionRelease } from './native-session-activity.mjs';
 import { readNativeContinuationEvidence } from './native-session-inspection.mjs';
 import { preflightNativeSessionSwitch } from './native-session-switch-preflight.mjs';
 import { nativeHistoryRequest, assertNativeHandoffRecoveryClear, launchDesktopNativeSession } from './native-session-switch-restore.mjs';
-import { requestNativeSessionDrain } from './native-session-daemon-drain.mjs';
+import { requestNativeSessionDrain, requestNativeSessionResume } from './native-session-daemon-drain.mjs';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const hash = /^[a-f0-9]{64}$/;
 const fail = code => Object.assign(new Error(code), { code });
@@ -52,7 +52,10 @@ async function switchContinuation({ input, conversationId, relayUrl, relayToken,
   await preflightNativeSessionSwitch(input);
   await assertNativeHandoffRecoveryClear(recoveryDirectory);
   if (owner === 'desktop') await launchImpl({ ...selection, configDirectory: input.configDirectory });
-  return { ...result, executionAuthorized: false, ...(drain ? { drain } : {}),
+  // A running daemon still fences this conversation from the earlier Desktop
+  // handoff drain. Only after the server attach may it accept turns again.
+  const resumed = owner === 'leileios' ? await requestNativeSessionResume({ recoveryDirectory, conversationId, providerSessionId: selection.providerSessionId }) : null;
+  return { ...result, executionAuthorized: false, ...(drain ? { drain } : {}), ...(resumed ? { daemonResumed: true } : {}),
     ...(owner === 'desktop' ? { desktopLaunchRequested: true, desktopSessionVerified: false } : {}) };
 }
 

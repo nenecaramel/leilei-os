@@ -6,7 +6,11 @@ export type NativeSessionDrainReport = {
 export function createNativeSessionDrainServer(input: {
   recoveryDirectory: string; recoverStale?: boolean;
   drain(conversationId: string, providerSessionId: string): Promise<NativeSessionDrainReport>;
+  resume?(conversationId: string, providerSessionId: string): Promise<void>;
 }): Promise<() => Promise<void>>;
 export function requestNativeSessionDrain(input: {
   recoveryDirectory: string; conversationId: string; providerSessionId: string;
 }): Promise<NativeSessionDrainReport | null>;
+export function requestNativeSessionResume(input: {
+  recoveryDirectory: string; conversationId: string; providerSessionId: string;
+}): Promise<{ resumed: true } | null>;

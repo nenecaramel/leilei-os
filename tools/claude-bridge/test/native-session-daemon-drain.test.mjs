@@ -30,3 +30,15 @@ test('verified dead socket recovery allows restart but never replaces a live lis
  await assert.rejects(createNativeSessionDrainServer(options),/already exists/);
  assert.equal((await requestNativeSessionDrain({recoveryDirectory:root,conversationId:A,providerSessionId:B})).ready,true);
 });
+
+test('resume request lifts the daemon handoff fence and never claims success without the daemon',async t=>{
+ const { requestNativeSessionResume } = await import('../src/native-session-daemon-drain.mjs');
+ const root=await mkdtemp(path.join(tmpdir(),'resume-ipc-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ assert.equal(await requestNativeSessionResume({recoveryDirectory:root,conversationId:A,providerSessionId:B}),null);
+ const calls=[];let fail=false;
+ const close=await createNativeSessionDrainServer({recoveryDirectory:root,drain:async()=>assert.fail('resume must not drain'),
+  resume:async(c,s)=>{if(fail)throw new Error('PRIVATE');calls.push([c,s]);}});t.after(close);
+ assert.deepEqual(await requestNativeSessionResume({recoveryDirectory:root,conversationId:A,providerSessionId:B}),{resumed:true});
+ assert.deepEqual(calls,[[A,B]]);
+ fail=true;await assert.rejects(requestNativeSessionResume({recoveryDirectory:root,conversationId:A,providerSessionId:B}),e=>e.code==='NATIVE_DAEMON_RESUME_UNCONFIRMED'&&!e.message.includes('PRIVATE'));
+});
