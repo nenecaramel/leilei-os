@@ -68,6 +68,18 @@ test('Spotify baseline stays byte-identical except explicitly accepted assistant
       assertInteractionThemePreservesOriginal(content,original);
       continue;
     }
+    if (file.endsWith('/NativeLiveSpotifyCard.swift')) {
+      // Preserve the frozen historical Spotify card byte-for-byte except the
+      // single approved theme-aware background. That modifier delegates
+      // Original's 0.045 gray fill and 11pt corner to the shared panel.
+      const themePaint = '.modifier(NativeLiveIMessageContentPanel(\n            originalOpacity: 0.045,\n            originalCornerRadius: 11\n        ))';
+      const originalPaint = '.background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 11, style: .continuous))';
+      assert.equal(content.split(themePaint).length, 2, 'Exactly one approved Spotify card background');
+      const normalizedCard = content.replace(themePaint, originalPaint);
+      assert.equal(createHash('sha256').update(normalizedCard).digest('hex'), sha,
+        'All Spotify result entities, links, details, error and state handling must remain historical');
+      continue;
+    }
     let equivalent = content;
     if (file.endsWith('/NativeLiveAssistantTurnPresentation.swift')) {
       // Accepted additive fields: thinking (65563ed6) and display-only timestamp (2e6505e0).
