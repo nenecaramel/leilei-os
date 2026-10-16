@@ -228,6 +228,7 @@ const closeHandoffServer = await createNativeSessionDrainServer({
   recoverStale: true, // Exclusive daemonLock was acquired before this control endpoint.
   recoveryDirectory: join(homedir(), ".leileios"),
   drain: (conversationId: string, providerSessionId: string) => persistentRuntime.drain(conversationId, providerSessionId),
+  resume: (conversationId: string, providerSessionId: string) => persistentRuntime.resume(conversationId, providerSessionId),
 });
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);

@@ -2,7 +2,8 @@ import net from 'node:net';
 import { chmod, lstat, mkdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const fail = () => Object.assign(new Error('NATIVE_DAEMON_DRAIN_UNCONFIRMED'), { code: 'NATIVE_DAEMON_DRAIN_UNCONFIRMED' });
+const failWith = code => () => Object.assign(new Error(code), { code });
+const fail = failWith('NATIVE_DAEMON_DRAIN_UNCONFIRMED'), failResume = failWith('NATIVE_DAEMON_RESUME_UNCONFIRMED');
 const endpoint = root => path.join(root, 'daemon-control', 'handoff.sock');
 const owned = info => info.uid === process.getuid() && (info.mode & 0o077) === 0;
 function validReport(value) {
@@ -11,7 +12,9 @@ function validReport(value) {
     && value.tasks.every(task => typeof task.id === 'string' && task.id.length <= 256 && ['stopped', 'completed', 'unknown'].includes(task.status))
     && (!value.ready || value.writer === 'closed' && value.tasks.every(task => task.status !== 'unknown'));
 }
-export async function createNativeSessionDrainServer({ recoveryDirectory, drain, recoverStale = false }) {
+// One private endpoint, two requests: drain before a Desktop handoff, and
+// resume once the conversation is attached back so new turns are accepted.
+export async function createNativeSessionDrainServer({ recoveryDirectory, drain, resume, recoverStale = false }) {
   const socketPath = endpoint(recoveryDirectory), directory = path.dirname(socketPath);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const info = await lstat(directory);
@@ -47,8 +50,15 @@ export async function createNativeSessionDrainServer({ recoveryDirectory, drain,
       handled = true;
       void (async () => {
         try {
-          const request = JSON.parse(body);
-          if (Object.keys(request).sort().join(',') !== 'conversationId,providerSessionId' || !uuid.test(request.conversationId) || !uuid.test(request.providerSessionId)) throw fail();
+          const request = JSON.parse(body), keys = Object.keys(request).sort().join(',');
+          if (!['conversationId,providerSessionId', 'action,conversationId,providerSessionId'].includes(keys)
+            || (keys.startsWith('action') && (request.action !== 'resume' || typeof resume !== 'function'))
+            || !uuid.test(request.conversationId) || !uuid.test(request.providerSessionId)) throw fail();
+          if (request.action === 'resume') {
+            await resume(request.conversationId, request.providerSessionId);
+            socket.end(JSON.stringify({ resumed: true }) + '\n');
+            return;
+          }
           const report = await drain(request.conversationId, request.providerSessionId);
           if (!validReport(report)) throw fail();
           socket.end(JSON.stringify({ report }) + '\n');
@@ -70,6 +80,17 @@ export async function createNativeSessionDrainServer({ recoveryDirectory, drain,
 }
 export async function requestNativeSessionDrain({ recoveryDirectory, conversationId, providerSessionId }) {
   if (!uuid.test(conversationId) || !uuid.test(providerSessionId)) throw fail();
+  return exchange(recoveryDirectory, { conversationId, providerSessionId }, value => validReport(value.report) ? value.report : null, fail);
+}
+
+/** Null when no daemon listens: a later daemon starts without handoff fences. */
+export async function requestNativeSessionResume({ recoveryDirectory, conversationId, providerSessionId }) {
+  if (!uuid.test(conversationId) || !uuid.test(providerSessionId)) throw failResume();
+  return exchange(recoveryDirectory, { action: 'resume', conversationId, providerSessionId },
+    value => value.resumed === true ? { resumed: true } : null, failResume);
+}
+
+async function exchange(recoveryDirectory, request, accept, fail) {
   const socketPath = endpoint(recoveryDirectory);
   try {
     const directory = await lstat(path.dirname(socketPath)), socket = await lstat(socketPath);
@@ -77,15 +98,15 @@ export async function requestNativeSessionDrain({ recoveryDirectory, conversatio
   } catch (error) { if (error.code === 'ENOENT') return null; throw fail(); }
   return new Promise((resolve, reject) => {
     const socket = net.createConnection(socketPath); let body = '', settled = false;
-    const done = (error, report) => { if (settled) return; settled = true; socket.destroy(); error ? reject(fail()) : resolve(report); };
+    const done = (error, value) => { if (settled) return; settled = true; socket.destroy(); error ? reject(fail()) : resolve(value); };
     socket.setTimeout(15_000, () => done(fail())); socket.on('error', () => done(fail()));
-    socket.on('connect', () => socket.write(JSON.stringify({ conversationId, providerSessionId }) + '\n'));
+    socket.on('connect', () => socket.write(JSON.stringify(request) + '\n'));
     socket.setEncoding('utf8');
     socket.on('data', chunk => {
       body += chunk;
       if (Buffer.byteLength(body) > 64 * 1024) return done(fail());
       if (!body.includes('\n')) return;
-      try { const value = JSON.parse(body); if (!validReport(value.report)) throw fail(); done(null, value.report); }
+      try { const value = accept(JSON.parse(body)); if (!value) throw fail(); done(null, value); }
       catch { done(fail()); }
     });
     socket.on('end', () => { if (!settled) done(fail()); });

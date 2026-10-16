@@ -134,3 +134,16 @@ test("full persistent capacity safely routes a fifth conversation to the existin
  for(let n=0;n<4;n++)await executor.execute(command({conversation_id:id(100+n)}),{async commit(){return {canonicalOutcome:"completed"};}});
  assert.equal(executor.canRoute(command({conversation_id:id(104)})),false);assert.equal(routers,4);await executor.closeAll();
 });
+
+test("handoff suspension lifts when the conversation is attached back, but recovery fencing remains", async () => {
+  const { executor } = fixture(async () => ({}));
+  executor.suspend(id(3));
+  assert.equal(executor.canRoute(command()), false);
+  assert.throws(() => executor.assertAccepting(id(3)), /fenced for handoff/);
+  executor.resumeHandoff(id(3));
+  assert.equal(executor.canRoute(command()), true);
+  assert.doesNotThrow(() => executor.assertAccepting(id(3)));
+  executor.suspend(id(3), "recovery"); executor.suspend(id(3));
+  executor.resumeHandoff(id(3));
+  assert.equal(executor.canRoute(command()), false);
+});

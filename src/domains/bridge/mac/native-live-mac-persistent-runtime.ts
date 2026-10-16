@@ -63,6 +63,10 @@ export class NativeLiveMacPersistentRuntime {
       settle: async () => { await this.backgroundResults.flush(); },
     });
   }
+  /** Ownership returned by a server attach; the binding was closed by the earlier drain. */
+  async resume(conversationId: string, _providerSessionId: string): Promise<void> {
+    this.executor.resumeHandoff(conversationId);
+  }
   async closeAll(): Promise<void> {
     this.stopped=true;this.watchdog?.stop();this.watchdog=null;
     await this.executor.closeAll();

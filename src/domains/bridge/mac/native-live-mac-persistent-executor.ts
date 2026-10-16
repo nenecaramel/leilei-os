@@ -39,6 +39,11 @@ export class NativeLiveMacPersistentExecutor {
     const reasons=this.suspended.get(conversationId);if(!reasons?.has("recovery"))return;
     await this.retire(conversationId);reasons.delete("recovery");if(!reasons.size)this.suspended.delete(conversationId);
   }
+  /** The conversation was attached back to LeileiOS: accept its turns again. Recovery fences stay. */
+  resumeHandoff(conversationId: string): void {
+    const reasons=this.suspended.get(conversationId);if(!reasons)return;
+    reasons.delete("handoff");if(!reasons.size)this.suspended.delete(conversationId);
+  }
   assertAccepting(conversationId: string): void { if (this.shutDown || this.suspended.has(conversationId)) throw new Error("Persistent session is fenced for handoff."); }
 
   constructor(private readonly input: {

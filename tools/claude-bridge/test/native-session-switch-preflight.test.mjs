@@ -557,7 +557,7 @@ test('fixed CLI continuation mode uses the metadata endpoint instead of legacy r
     try {
       const { stdout, stderr } = await promisify(execFile)(process.execPath, [new URL('../scripts/native-session-switch.mjs', import.meta.url).pathname,
         '--restore', '--history-mode', 'continuation', '--desktop-index', input.indexFile, '--project-dir', input.projectDirectory,
-        '--config-dir', input.configDirectory, '--conversation-id', A], { env: { ...process.env,
+        '--config-dir', input.configDirectory, '--conversation-id', A], { env: { ...process.env, HOME: path.dirname(input.configDirectory),
           LEILEI_NATIVE_LIVE_RELAY_URL: `http://127.0.0.1:${server.address().port}`, LEILEI_NATIVE_LIVE_RELAY_TOKEN: 'fixture' }, timeout: 10_000 });
       assert.equal(stderr, ''); assert.equal(JSON.parse(stdout).inserted, 0);
       assert.deepEqual(routes, ['continuation-state', 'continuation-attach']);
@@ -628,4 +628,36 @@ test('Desktop continuation re-pins only native exit metadata the drained daemon 
       } finally { await pending; await close(); }
     });
   }
+});
+
+test('continuation attach tells a running daemon to lift its handoff fence only after the server attaches', async t => {
+  const { attachDesktopNativeContinuation, handoffNativeContinuationToDesktop } = await import('../src/native-session-continuation.mjs');
+  const { createNativeSessionDrainServer } = await import('../src/native-session-daemon-drain.mjs');
+  await fixture(async ({ input }) => {
+    const events = [];
+    const close = await createNativeSessionDrainServer({ recoveryDirectory: input.recoveryDirectory,
+      drain: async (c, s) => { events.push(['drain', c, s]); return { ready: true, writer: 'closed', tasks: [] }; },
+      resume: async (c, s) => { events.push(['resume', c, s]); } });
+    t.after(close);
+    let attachOk = true;
+    const options = { input: { ...input, historyMode: 'continuation' }, conversationId: A, relayUrl: 'https://fixture.example', relayToken: 'fixture', retryDelaysMs: [],
+      drainSettle: { pollMs: 10, quietMs: 20, timeoutMs: 1000 }, launchImpl: async () => {},
+      fetchImpl: async url => {
+        const route = new URL(url).pathname.split('/').at(-1);
+        events.push([route]);
+        if (route === 'continuation-attach' && !attachOk) return Response.json({ success: false, error: { code: 'NATIVE_SESSION_ALREADY_ATTACHED' } }, { status: 409 });
+        const data = route === 'continuation-state' ? { expectedHeadMessageId: null, expectedRevision: null,
+          providerSessionId: A, providerCheckpointId: CP, effectiveWorkingDirectory: '/fixture', owner: 'desktop' }
+          : { outcome: 'attached', owner: route === 'continuation-release' ? 'desktop' : 'leileios', conversationId: A, headMessageId: null, providerSessionId: A, providerCheckpointId: CP, inserted: 0 };
+        return Response.json({ success: true, data });
+      } };
+    await handoffNativeContinuationToDesktop(options);
+    await attachDesktopNativeContinuation(options);
+    assert.deepEqual(events.map(e => e[0]), ['drain', 'continuation-state', 'continuation-release', 'continuation-state', 'continuation-attach', 'resume']);
+    assert.deepEqual(events.at(-1), ['resume', A, A]);
+    events.length = 0; attachOk = false;
+    await assert.rejects(attachDesktopNativeContinuation(options));
+    assert.equal(events.some(e => e[0] === 'resume'), false);
+    await close();
+  });
 });
