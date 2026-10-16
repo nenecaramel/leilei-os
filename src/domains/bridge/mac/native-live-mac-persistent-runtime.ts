@@ -24,6 +24,7 @@ export class NativeLiveMacPersistentRuntime {
     attachmentMaterializer: NativeLiveMacAttachmentMaterializer | null;
     outputAttachmentSender: NativeLiveMacOutputAttachmentSender | null;
     createTransport?: typeof createNativeLiveMacClaudeTransport;
+    onRuntimeFailure?: ConstructorParameters<typeof NativeLiveMacPersistentExecutor>[0]["onRuntimeFailure"];
   }) {
     this.registry = new NativeLiveMacSessionRegistry(input.environment, input.defaultWorkingDirectory, input.createTransport, () => null, input.mcpServerConfig ?? null);
     this.backgroundResults = new NativeLiveMacBackgroundResultSink({ listenerInstanceId: input.listenerInstanceId, relay: input.relay,
@@ -45,7 +46,7 @@ export class NativeLiveMacPersistentRuntime {
       });
       this.watchdog=lease;void lease.start().catch(()=>{});
     };
-    this.executor = new NativeLiveMacPersistentExecutor({ hasCapacity: () => this.registry.size < 4, attachmentMaterializer: input.attachmentMaterializer, outputAttachmentSender: input.outputAttachmentSender,
+    this.executor = new NativeLiveMacPersistentExecutor({ hasCapacity: () => this.registry.size < 4, attachmentMaterializer: input.attachmentMaterializer, outputAttachmentSender: input.outputAttachmentSender, onRuntimeFailure: input.onRuntimeFailure ?? null,
       createRouter: () => { startWatchdog(); return new NativeLiveMacPersistentTurnRouter({ registry: this.registry, listenerInstanceId: input.listenerInstanceId,
         relay: input.relay, onBackgroundResult: (owner, frame) => this.backgroundResults.commit(owner, frame) }); } });
   }

@@ -14,6 +14,7 @@ import {
 } from "../src/domains/bridge/mac/native-live-mac-http-relay-client.js";
 import {
   NativeLiveMacRuntimeExecutor,
+  type NativeLiveMacRuntimeFailureDiagnostics,
 } from "../src/domains/bridge/mac/native-live-mac-runtime-executor.js";
 import {
   NativeLiveMacBackgroundModelExecutor,
@@ -201,21 +202,23 @@ await silenceWakeScheduler.refresh().catch((error) => {
 });
 
 const outputAttachmentSender = new NativeLiveMacOutputAttachmentSender(relay);
+const writeRuntimeFailureDiagnostics = (diagnostics: NativeLiveMacRuntimeFailureDiagnostics, path: "legacy" | "persistent") => {
+  process.stdout.write(
+    JSON.stringify({
+      at: new Date().toISOString(),
+      outcome: "runtime_failure_diagnostics",
+      claudeTransport: claudeTransportKind,
+      executionPath: path,
+      ...diagnostics,
+    }) + "\n",
+  );
+};
 const executor = new NativeLiveMacRuntimeExecutor(
   workingDirectoryRuntimePool,
   "/",
   new NativeLiveMacAttachmentMaterializer(relay),
   outputAttachmentSender,
-  (diagnostics) => {
-    process.stdout.write(
-      JSON.stringify({
-        at: new Date().toISOString(),
-        outcome: "runtime_failure_diagnostics",
-        claudeTransport: claudeTransportKind,
-        ...diagnostics,
-      }) + "\n",
-    );
-  },
+  (diagnostics) => writeRuntimeFailureDiagnostics(diagnostics, "legacy"),
 );
 const persistentRuntime = new NativeLiveMacPersistentRuntime({
   environment: process.env, defaultWorkingDirectory, listenerInstanceId, relay,
@@ -223,6 +226,7 @@ const persistentRuntime = new NativeLiveMacPersistentRuntime({
     createHash("sha256").update(JSON.stringify([relayBaseUrl, relayToken])).digest("hex")),
   attachmentMaterializer: new NativeLiveMacAttachmentMaterializer(relay), outputAttachmentSender,
   mcpServerConfig: { type: "http", url: relayBaseUrl + "/internal/native-live-mcp", headers: { Authorization: "Bearer " + relayToken } },
+  onRuntimeFailure: (diagnostics) => writeRuntimeFailureDiagnostics(diagnostics, "persistent"),
 });
 const closeHandoffServer = await createNativeSessionDrainServer({
   recoverStale: true, // Exclusive daemonLock was acquired before this control endpoint.
