@@ -61,6 +61,80 @@ function conserve(file: string, source: string) {
     assert.match(header,/isShowingMurmur = true/);
     return;
   }
+  if (file === 'NativeLiveTaskActivity.swift') {
+    // Task status/child rows are still driven by canonical projections. Glass
+    // is presentation-only; prepareID is the approved Tasks sheet route.
+    for (const required of [
+      'struct NativeLiveActivityGlassRow: ViewModifier',
+      'let task: NativeLiveTurnActivityProjection.TaskActivity',
+      'var prepareID: String? = nil',
+      'Text(task.displayTitle)',
+      'ForEach(childTools) { tool in',
+      'ForEach(childQuestions) { question in',
+      'if !task.resourceLinks.isEmpty',
+      'permissionInteractions(tool)',
+      'onResolveInteraction: onResolveInteraction',
+      'if prepareID != nil { showingTasks = true }',
+      'if let prepareID { NativeLiveTasksSheet(prepareID: prepareID) }',
+      '.sheet(isPresented: $isShowingResources)',
+      'nativeLiveJSONDetail(',
+    ]) assert.ok(source.includes(required), 'Task boundary: '+required);
+    assert.match(source,/if task\.isFailed|if task\.isFailed/);
+    assert.match(source,/else if task\.isCancelled/);
+    assert.match(source,/else if task\.isTerminal/);
+    assert.match(source,/turnIsActive\s*\|\|\s*task\.isBackgrounded == true/);
+    assert.match(source,/if iMessageWallpaperVisible \{\s*content[\s\S]*?\.glassEffect\(/);
+    assert.match(source,/else \{\s*content\s*\}/);
+    return;
+  }
+  if (file === 'NativeLiveToolActivity.swift') {
+    for (const required of [
+      'NativeLiveToolCallCard(',
+      'ForEach(permissionInteractions) { interaction in',
+      'interaction.isPending',
+      'let onResolveInteraction',
+      'NativeLivePermissionInteractionCard(',
+      'onResolve: onResolveInteraction',
+      'NativeLiveInteractionHistoryRow(',
+      'presentation: .nestedPermission',
+      'private var stateLabel: String',
+      'isShowingDetails = true',
+      '.sheet(isPresented: $isShowingDetails)',
+      'title: nativeLiveToolDisplayName(toolName)',
+      'secondaryDetail: resultDetail',
+      'tertiaryDetail: resourceDetail',
+      'status: isError ? "Failed" : "Done"',
+    ]) assert.ok(source.includes(required), 'Tool boundary: '+required);
+    assert.match(source,/private struct NativeLiveToolWallpaperGlass: ViewModifier/);
+    assert.match(source,/if enabled \{\s*content\.glassEffect/);
+    assert.match(source,/else \{\s*content\s*\}/);
+    assert.equal(normalize(source.slice(source.indexOf('enum NativeLiveToolCallState:'), source.indexOf('struct NativeLiveToolCallCard:'))),
+      normalize(baseline.slice(baseline.indexOf('enum NativeLiveToolCallState:'),baseline.indexOf('struct NativeLiveToolCallCard:'))),
+      'Tool result states are unchanged');
+    return;
+  }
+  if (file === 'NativeLiveRuntimeInteractions.swift') {
+    for (const required of [
+      'question.interaction',
+      'interaction.isPending',
+      'let onResolveInteraction',
+      'NativeLiveQuestionInteractionCard(',
+      'onResolve: onResolveInteraction',
+      'status: question.statusLabel',
+      'detail: question.questionDetail',
+      'secondaryDetail: question.responseDetail',
+      'presentation.title(for: interaction)',
+      'presentation.statusLabel(for: interaction)',
+      '.object(interaction.request)',
+      'interaction.response.flatMap',
+      'nativeLiveJSONDetail(.object($0))',
+      'isShowingDetails = true',
+      '.modifier(NativeLiveActivityGlassRow())',
+    ]) assert.ok(source.includes(required), 'Question/history boundary: '+required);
+    assert.match(source,/interaction\.status == "resolved"[\s\S]*interaction\.status == "cancelled"/);
+    assert.equal((source.match(/\.sheet\(isPresented: \$isShowingDetails\)/g)??[]).length,2);
+    return;
+  }
   assert.equal(normalize(source), normalize(baseline), file);
 }
 test('Runtime Activity baseline fixtures are exact 8efd5977 Git blobs', () => {
