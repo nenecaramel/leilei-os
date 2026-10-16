@@ -341,3 +341,27 @@ test("foreground stop with background work closes the owned session and returns 
  f.output.push({type:"system",subtype:"background_tasks_changed",session_id:sid,tasks:[{task_id:"background",run_id:"r1"}]});await seen;stop.resolve();
  await assert.rejects(running,(error:any)=>error.runtimeCode==="INTERRUPTED");assert.equal((await receipt.promise).session_closed,true);assert.equal(f.closes,1);
 });
+
+test('background commit cannot block task observation or be overtaken by a later foreground commit', async t => {
+  const f = await fixture(t);
+  const first = f.run(command(1)); f.finish((await f.inputs.next()).value!.uuid); await first;
+  const entered = deferred<void>(), release = deferred<NativeLiveMacPersistentAcknowledgement>();
+  t.after(() => release.resolve(acknowledged(id(102))));
+  f.setBackground(async () => { entered.resolve(); return release.promise; });
+  const second = f.run(command(2)); second.catch(() => {});
+  const input = (await f.inputs.next()).value!;
+  f.finish(id(88)); await entered.promise;
+  f.finish(input.uuid);
+  const session = f.registry.snapshot()[0].session;
+  let observed = false;
+  const update = new Promise<void>(resolve => {
+    const listen = (event: Record<string, unknown>) => { if (event.subtype === 'task_progress') { observed = true; session.events.off('event', listen); resolve(); } };
+    session.events.on('event', listen);
+  });
+  f.output.push({ type: 'system', subtype: 'task_progress', session_id: sid, task_id: 'synthetic-task', run_id: '001' });
+  await new Promise(setImmediate);
+  const before = { observed, commits: [...f.results] };
+  release.resolve(acknowledged(id(102))); await update; await second;
+  assert.deepEqual(before, { observed: true, commits: [id(1)] });
+  assert.deepEqual(f.results, [id(1), id(2)]); assert.deepEqual(f.background, [id(88)]); assert.equal(f.closes, 0);
+});

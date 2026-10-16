@@ -542,6 +542,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         });
         startupReady.catch(() => {});
       }
+      // One-use admission from this tool's PreToolUse, scoped to its exact turn.
+      // The post-permission check remains fresh; this is never a session grant.
+      const toolAdmissions = new Map();
       const permission = createAgentSdkPermissionCallback({
         toolPermissionPolicy: this.toolPermissionPolicy, events: this.events,
         permissionHandler: permissionHandler ?? (async () => ({ decision: "deny", message: "No permission handler is configured.", interrupt: false })),
@@ -596,7 +599,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
               if ((host?.active ?? null) !== turn) throw new Error("Persistent tool turn changed.");
             };
             const admitTurn = async () => { await admit("tool", turn?.id ?? null); assertTurn(); };
-            try { await admitTurn(); assertTurn(); }
+            const toolId = context?.toolUseID;
+            const admittedTurn = toolAdmissions.get(toolId); toolAdmissions.delete(toolId);
+            try { if (admittedTurn !== turn) await admitTurn(); assertTurn(); }
             catch { return { behavior: "deny", message: "LeileiOS session admission denied.", interrupt: true }; }
             const verdict = await (name === "AskUserQuestion"
               ? question ? question(name, input, context) : { behavior: "deny", message: "No question handler is configured.", interrupt: false }
@@ -605,12 +610,16 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
             catch { return { behavior: "deny", message: "LeileiOS session admission denied.", interrupt: true }; }
             return verdict;
           },
-          hooks: { PreToolUse: [{ hooks: [async () => {
+          hooks: { PreToolUse: [{ hooks: [async input => {
             const turn = host?.active ?? null;
             try {
               await admit("tool", turn?.id ?? null);
               assertLive("tool");
               if ((host?.active ?? null) !== turn) throw new Error("Persistent tool turn changed.");
+              if (typeof input?.tool_use_id === "string" && input.tool_use_id.length <= 512) {
+                toolAdmissions.set(input.tool_use_id, turn);
+                if (toolAdmissions.size > 64) toolAdmissions.delete(toolAdmissions.keys().next().value);
+              }
               return {};
             }
             catch { return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "LeileiOS session admission denied." } }; }
@@ -620,6 +629,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       this.activeSessionHost = host;
       const submit = host.submit.bind(host);
       host.submit = (text, { sendFileHandler = null, ...turn } = {}) => {
+        toolAdmissions.clear();
         if (sendFileHandler !== null && typeof sendFileHandler !== "function") return Promise.reject(new Error("Invalid turn output handler."));
         const id = turn.id ?? randomUUID();
         if (sendFileHandler && sendFiles.has(id)) return Promise.reject(new Error('Duplicate session input id.'));

@@ -3078,3 +3078,25 @@ for (const interactive of [false, true]) {
     assert.equal(questionCalls, interactive ? 1 : 0);
   });
 }
+
+test('one SDK tool shares hook admission with permission entry but still rechecks after permission', async t => {
+  let sdk, inputReady; const ready = new Promise(resolve => { inputReady = resolve; });
+  const admissions = [];
+  let finish; const ended = new Promise(resolve => { finish = resolve; });
+  const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic', toolPermissionPolicy: 'auto_allow', createSendFileMcpServerImpl: async () => null,
+    queryImpl: ({prompt, options}) => {
+      sdk = options; (async()=>{for await(const input of prompt) inputReady(input);})();
+      return { close(){finish();}, async *[Symbol.asyncIterator](){yield {type:'system',subtype:'init',session_id:'synthetic'};await ended;} };
+    },
+  });
+  const host = await transport.openPersistentSession({ authorize: async context => { admissions.push(context.phase); return true; }, onBackgroundResult: async()=>{} });
+  t.after(()=>host.close()); const pending=host.submit('synthetic',{id:'input'});pending.catch(()=>{});await ready;
+  const before=admissions.length;
+  await sdk.hooks.PreToolUse[0].hooks[0]({tool_use_id:'tool-one'});
+  const verdict=await sdk.canUseTool('Bash',{command:'true'},{toolUseID:'tool-one',signal:new AbortController().signal});
+  assert.equal(verdict.behavior,'allow'); assert.equal(admissions.length-before,2);
+  // A consumed ticket cannot authorize a second request with the same ID.
+  const next=admissions.length;
+  await sdk.canUseTool('Bash',{command:'true'},{toolUseID:'tool-one',signal:new AbortController().signal});
+  assert.equal(admissions.length-next,2);
+});

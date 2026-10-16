@@ -206,3 +206,42 @@ test('interrupt receipts cannot claim queued commands from another session or du
  f.host.query.interrupt=async()=>({still_queued:['first','first']});await assert.rejects(f.host.interruptTurn(),/queued/i);
  await f.event({...result(),user_message_uuid:'first'});await turn;
 });
+
+function barrier(){let resolve;const promise=new Promise(r=>{resolve=r;});return{promise,resolve};}
+test('background acknowledgement does not block SDK task membership and progress consumption',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const entered=barrier(),release=barrier();t.after(()=>release.resolve());
+ f.host.onBackgroundResult=async()=>{entered.resolve();await release.promise;};
+ f.output.push({...result(),user_message_uuid:'autonomous'});await entered.promise;
+ let seen=false;const update=f.event(tasks()).then(()=>{seen=true;});await new Promise(setImmediate);
+ const visibleBeforeAck=seen;release.resolve();await update;
+ assert.equal(visibleBeforeAck,true);assert.equal(f.host.tasks.size,1);
+});
+test('new input remains gated while task events keep flowing behind an uncommitted background frame',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const entered=barrier(),release=barrier();t.after(()=>release.resolve());
+ f.host.onBackgroundResult=async()=>{entered.resolve();await release.promise;};
+ f.output.push({...result(),user_message_uuid:'autonomous'});await entered.promise;
+ const pending=f.host.submit('next',{id:'next'});pending.catch(()=>{});
+ let seen=false;const update=f.event(tasks()).then(()=>{seen=true;});await new Promise(setImmediate);
+ const before={seen,inputs:f.inputs.length};release.resolve();await update;
+ // A deterministic task update proves the reader has resumed; the existing
+ // input queue is released by the acknowledgement rather than another wake.
+ await new Promise(setImmediate);assert.deepEqual(before,{seen:true,inputs:0});assert.equal(f.inputs.length,1);
+ await f.event({...result(),user_message_uuid:'next'});await pending;
+});
+test('background sinks register in SDK frame order even while the first commit is pending',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const entered=barrier(),release=barrier();t.after(()=>release.resolve());const order=[];
+ f.host.onBackgroundResult=frame=>{order.push(frame.result.user_message_uuid);if(order.length===1)entered.resolve();return release.promise;};
+ f.output.push({...result(),user_message_uuid:'background-one'});await entered.promise;
+ f.output.push({...result(),user_message_uuid:'background-two'});await new Promise(setImmediate);
+ const registered=[...order];release.resolve();await new Promise(setImmediate);
+ assert.deepEqual(registered,['background-one','background-two']);
+});
+test('asynchronous background commit failure rejects waiting input and closes without execution replay',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());const entered=barrier();let reject;
+ f.host.onBackgroundResult=()=>{entered.resolve();return new Promise((_,no)=>{reject=no;});};
+ f.output.push({...result(),user_message_uuid:'background'});await entered.promise;
+ const pending=assert.rejects(f.host.submit('next',{id:'next'}),/synthetic commit failed/);
+ const failed=assert.rejects(f.host.completion,/synthetic commit failed/);
+ reject(new Error('synthetic commit failed'));await Promise.all([pending,failed]);
+ assert.equal(f.closed,1);assert.equal(f.inputs.length,0);
+});

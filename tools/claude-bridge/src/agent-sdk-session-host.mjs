@@ -4,6 +4,7 @@ import { normalizeAgentSdkInterruptReceipt } from './agent-sdk-interrupt.mjs';
 import { ClaudeEventNormalizer } from './normalized-events.mjs';
 import { createToolImageForwarder } from './tool-images.mjs';
 import { AgentSdkTaskState } from './agent-sdk-task-state.mjs';
+import { readAgentSdkTaskOutput } from './agent-sdk-task-output.mjs';
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
 // Persistent session host used by the Mac daemon transport.
@@ -25,17 +26,45 @@ class SessionHost {
     this.perTaskStopAffordance = perTaskStopAffordance;
     this.observeOutput = observeOutput;
     this.beforeSubmit = beforeSubmit; this.onBackgroundResult = onBackgroundResult;
-    this.events = new EventEmitter(); this.tasks = new Map(); this.ids = new Set();
+    this.events = new EventEmitter(); this.ids = new Set();
     this.taskState = new AgentSdkTaskState(() => this.publishTaskState());
     this.pending = []; this.active = null; this.state = 'starting'; this.sessionId = null;
     this.segment = newSegment();
     this.queryClosed = false;
-    this.backgroundPending = false;
-    this.backgroundAcknowledgement = null;
+    this.backgroundWork = new Set();
     this.backgroundGeneration = 0;
+    this.failure = null;
     this.completion = this.consume();
     // Consumers may attach after startup failure. Preserve rejection for awaiters.
     this.completion.catch(() => {});
+  }
+  get backgroundPending() { return this.backgroundWork.size > 0; }
+  get backgroundAcknowledgement() { return this.backgroundWork.size ? Promise.all([...this.backgroundWork]) : null; }
+  background(frame, message) {
+    if (!this.onBackgroundResult) {
+      this.events.emit('background-result', frame); this.events.emit('event', message); void this.pump(); return;
+    }
+    // Keep observing SDK task state while the caller serializes durable commits.
+    // Bound unacknowledged frames rather than buffering without limit.
+    if (this.backgroundWork.size >= 8) throw new Error('Background acknowledgement backlog exceeded.');
+    this.backgroundGeneration++;
+    let resolve, reject;
+    const work = new Promise((yes, no) => { resolve = yes; reject = no; });
+    this.backgroundWork.add(work);
+    // Invoke now: the router must register its commit before a later foreground
+    // result. Deferring this invocation can invert acknowledgement order.
+    try { Promise.resolve(this.onBackgroundResult(frame)).then(resolve, reject); }
+    catch (error) { reject(error); }
+    void work.then(() => {
+      this.backgroundWork.delete(work);
+      if (['closed', 'failed'].includes(this.state)) return;
+      this.events.emit('background-result', frame); this.events.emit('event', message); void this.pump();
+    }, async error => { this.backgroundWork.delete(work); await this.fail(error); }).catch(error => this.fail(error));
+  }
+  async fail(error) {
+    if (['closed', 'failed'].includes(this.state)) return;
+    this.failure = error; this.state = 'failed'; this.taskState.close(); this.rejectWork(error); this.input.end();
+    try { await this.query.close(); this.queryClosed = true; } catch { /* Failed close remains owned. */ }
   }
   // Live output is routed to a turn only after the SDK stamps that turn's input
   // UUID on a reply frame. Unstamped output stays background, never guessed.
@@ -123,10 +152,18 @@ class SessionHost {
       try { listener.call(this.events, this.taskState.list()); } catch { /* Observability is nonfatal. */ }
     }
   }
+  get tasks() { return this.taskState.members(); }
   listTasks() { return this.taskState.list(); }
   stopTask(id, expected) {
     if (['closed', 'failed'].includes(this.state)) return Promise.reject(new Error('Session host is closed.'));
     return this.taskState.stop(id, expected, taskId => this.query.stopTask(taskId));
+  }
+  async readTaskOutput(id, { handle, signal } = {}) {
+    if (['closed', 'failed'].includes(this.state)) throw new Error('Session host is closed.');
+    const record = this.taskState.capture(id, handle);
+    const result = await readAgentSdkTaskOutput(this.query, id, signal);
+    if (this.taskState.capture(id, handle) !== record) throw new Error('Stale task output.');
+    return result;
   }
   rejectWork(error) {
     this.active?.images.abort(); this.active?.reject(error); this.active = null;
@@ -189,16 +226,6 @@ class SessionHost {
           this.sessionId = sid; this.state = this.active ? 'running' : 'idle'; this.pump();
         }
         if (!this.sessionId && ['assistant', 'user', 'result'].includes(message?.type)) throw new Error('SDK output arrived before session init.');
-        if (message?.type === 'system' && message.subtype === 'background_tasks_changed') {
-          if (!Array.isArray(message.tasks)) throw new Error('Invalid SDK task snapshot.');
-          const tasks = new Map();
-          for (const task of message.tasks) {
-            if (typeof task?.task_id !== 'string' || !task.task_id || tasks.has(task.task_id)) throw new Error('Invalid SDK task identity.');
-            tasks.set(task.task_id, Object.freeze({ ...task }));
-          }
-          this.tasks = tasks;
-        }
-        // Commit both views before task-state observers can issue controls.
         this.taskState.observe(message);
         // SDK membership snapshots are authoritative. Notifications can arrive
         // out of order; never use their bookends to mutate the live task set.
@@ -211,17 +238,7 @@ class SessionHost {
           const consumed = [message.user_message_uuid, ...(Array.isArray(message.user_message_uuids) ? message.user_message_uuids : [])].filter(id => id !== ZERO_UUID);
           if (this.active && !consumed.some(id => typeof id === 'string' && id.trim())) throw new Error('SDK input correlation is unavailable.');
           if (!this.active || !consumed.some(id => this.active.commandIds.has(id))) {
-            if (this.onBackgroundResult) {
-              this.backgroundGeneration++;
-              this.backgroundPending = true;
-              this.backgroundAcknowledgement = Promise.resolve().then(() => this.onBackgroundResult({ result: message, events: segment.rawBackground, normalizedEvents: segment.background }));
-              try { await this.backgroundAcknowledgement; }
-              finally { this.backgroundPending = false; this.backgroundAcknowledgement = null; }
-            }
-            if (this.state === 'closed') break;
-            this.events.emit('background-result', { result: message, events: segment.rawBackground, normalizedEvents: segment.background });
-            this.events.emit('event', message);
-            void this.pump();
+            this.background({ result: message, events: segment.rawBackground, normalizedEvents: segment.background }, message);
             continue;
           }
           const turn = this.active;
@@ -257,12 +274,11 @@ class SessionHost {
         }
         this.events.emit('event', message);
       }
-      if (this.state !== 'closed') throw new Error('SDK session stream ended unexpectedly.');
+      if (this.state !== 'closed') throw this.failure ?? new Error('SDK session stream ended unexpectedly.');
     } catch (error) {
       if (this.state === 'closed') return;
-      this.state = 'failed'; this.taskState.close(); this.rejectWork(error); this.input.end();
-      try { await this.query.close(); this.queryClosed = true; } catch { /* Ownership remains held until close succeeds. */ }
-      throw error;
+      await this.fail(error);
+      throw this.failure ?? error;
     }
   }
 }
