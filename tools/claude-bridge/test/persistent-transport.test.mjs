@@ -40,12 +40,14 @@ test('persistent SDK thinking summaries survive continued turns and respect expl
 
 test('persistent SDK emits provider-supplied visible thinking without exposing signatures',async t=>{
  let f;
- f=fixture({manualResults:true,onInput:input=>{
+ // The fixture emits SDK init immediately after onInput, so queue the reply
+ // after that init to preserve the real provider's startup ordering.
+ f=fixture({manualResults:true,onInput:input=>queueMicrotask(()=>{
    f.output.push({type:'assistant',session_id:'s',uuid:'visible-thinking',user_message_uuid:input.uuid,
      message:{content:[{type:'thinking',thinking:'Provider summary.',signature:'PRIVATE_SIGNATURE'},
        {type:'text',text:'Response.'}]}});
    f.output.push({type:'result',subtype:'success',session_id:'s',result:'Response.',user_message_uuid:input.uuid});
- }});
+ })});
  const host=await f.open();t.after(()=>host.close());
  const live=[];
  const result=await host.submit('ordinary chat',{id:'mine',onNormalizedEvent:event=>{live.push(event);}});
