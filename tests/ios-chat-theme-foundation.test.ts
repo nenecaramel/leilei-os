@@ -737,7 +737,10 @@ test('the iMessage generating-state header matches the existing Thought/Worked c
   assert.match(thinking, /struct NativeLiveProcessStatusHeadline: View/);
   assert.match(thinking, /NativeLiveThoughtProcessIcon\(\)/);
   assert.match(thinking, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
-  assert.match(activity, /if chatTheme == \.iMessage && !header\.isEmpty \{/);
+  const workHeader = activity.slice(activity.indexOf('    var body: some View {'), activity.indexOf('            if effectiveExpanded {'));
+  assert.doesNotMatch(workHeader, /NativeLiveThoughtProcessIcon\(\)|Image\(systemName:\s*"clock"\)/);
+  assert.match(workHeader, /\.padding\(\.leading, chatTheme == \.iMessage && !header\.isEmpty \? 2 : 0\)/);
+  assert.match(thinking, /\.padding\(\.leading, 2\)/);
   assert.match(activity, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
 });
 
