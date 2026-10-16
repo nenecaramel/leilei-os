@@ -35,6 +35,7 @@ struct NativeLiveConversationRowPresentation: Identifiable, Equatable {
     let user: NativeLiveMessagePresentation?
     let userBacking: NativeLiveCurrentPathMessage?
     let assistant: NativeLiveAssistantTurnPresentation?
+    var backgroundResult: NativeLiveBackgroundResultSnapshot? = nil
     var historyMessage: NativeLiveConversationHistoryMessage? = nil
     var historyTimeZone: String? = nil
     var isHistoryDivider = false
