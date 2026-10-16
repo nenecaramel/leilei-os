@@ -126,11 +126,26 @@ test("sub-threshold semantic similarity contributes zero to a lexical hit", () =
   assert.equal(hits.length, 1);
   assert.equal(hits[0]?.channel, "lexical");
   assert.ok(hits[0]);
-  assert.ok(
-    Math.abs(
-      hits[0].score - (0.35 * hits[0].lexicalScore),
-    ) < 1e-12,
+  assert.ok(Math.abs(hits[0].score - hits[0].lexicalScore) < 1e-12);
+});
+
+test("below-floor semantic evidence cannot drop a valid lexical hit below the minimum", () => {
+  const text = ["signal", ...Array.from({length: 24}, (_, i) => `word${i}`)].join(" ");
+  const hits = recallBreath(
+    "signal",
+    [state("lexical-threshold", text)],
+    {
+      ...base,
+      semanticWeight: 0.65,
+      semanticMinScore: 0.8,
+      minimumScore: 0.08,
+      semanticScores: new Map([["lexical-threshold", 0.79]]),
+    },
   );
+
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0]?.channel, "lexical");
+  assert.ok(Math.abs(hits[0]!.score - 0.2) < 1e-12);
 });
 
 test("an unscored lexical candidate keeps full lexical weight", () => {
