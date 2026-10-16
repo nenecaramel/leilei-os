@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'no
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { assertInteractionThemePreservesOriginal } from './ios-theme-interaction-assertions.js';
 const root = 'ios/LeileiOS/LeileiOS/';
 const media = root + 'Chat/MessageSurface/';
 function check(fixture: string, files: string[], marker: string) {
@@ -51,10 +52,25 @@ test('presentation seams preserve ordinary cards, tool permission order, project
   for(const name of ['NativeLiveMediaRenderer.swift','NativeLiveSVGRenderer.swift','NativeLiveToolActivity.swift']) assert.equal(blob(baselineRoot+name),manifest.files[media+name]);
   const renderer=readFileSync(media+'NativeLiveMediaRenderer.swift','utf8');
   const previous=baseline(media+'NativeLiveMediaRenderer.swift');
-  assert.equal(renderer.replace(/    @ViewBuilder var body: some View \{\n        if input.mediaKind == \.audio \{ NativeLiveAudioAttachmentBubble\(input: input\) \}\n        else \{ ordinaryBody \}\n    \}\n\n    private var ordinaryBody: some View \{/, '    var body: some View {'),previous);
+  const legacyRender=renderer.replace(/    @ViewBuilder var body: some View \{\n        if input.mediaKind == \.audio \{ NativeLiveAudioAttachmentBubble\(input: input\) \}\n        else \{ ordinaryBody \}\n    \}\n\n    private var ordinaryBody: some View \{/, '    var body: some View {');
+  const currentPaintStart=legacyRender.indexOf('    // Ordinary files reuse rich-content glass;');
+  const originalPaintStart=previous.indexOf('    private var fileLabel: some View {');
+  const currentPaintEnd=legacyRender.indexOf('    private func retryFailedOperation()');
+  const originalPaintEnd=previous.indexOf('    private func retryFailedOperation()');
+  assert.ok(currentPaintStart>0 && originalPaintStart>0 && currentPaintEnd>currentPaintStart && originalPaintEnd>originalPaintStart);
+  assert.match(renderer.slice(currentPaintStart,currentPaintEnd), /if input\.mediaKind == \.file \{/);
+  assert.match(renderer.slice(currentPaintStart,currentPaintEnd), /NativeLiveIMessageContentPanel\(\s*originalOpacity: 0\.045,\s*originalCornerRadius: 12/);
+  assert.match(renderer.slice(currentPaintStart,currentPaintEnd), /Color\.primary\.opacity\(0\.045\)/);
+  const withoutAcceptedFileLabel=legacyRender.slice(0,currentPaintStart)+previous.slice(originalPaintStart,originalPaintEnd)+legacyRender.slice(currentPaintEnd);
+  assert.equal(withoutAcceptedFileLabel,previous,
+    'Media loader, gallery, playback routing, retries and non-file renderers remain immutable');
   const tool=readFileSync(media+'NativeLiveToolActivity.swift','utf8');
   assert.equal(tool.replace(/            if tool.state != \.running,[\s\S]*?            \} else \{\n/, '').replace(/\n            \}\n\n            ForEach/, '\n\n            ForEach'),baseline(media+'NativeLiveToolActivity.swift'));
-  for (const file of ['NativeLiveTurnActivityProjection.swift','NativeLiveTurnActivityProjection+Tools.swift','NativeLiveInteractions.swift','NativeLiveStructuredToolResult.swift']) assert.equal(blob(media+file),manifest.files[media+file],file);
+  for (const file of ['NativeLiveTurnActivityProjection.swift','NativeLiveTurnActivityProjection+Tools.swift','NativeLiveStructuredToolResult.swift']) assert.equal(blob(media+file),manifest.files[media+file],file);
+  const originalInteractions=readFileSync('tests/fixtures/runtime-activity-main-8efd5977/NativeLiveInteractions.swift','utf8');
+  assert.equal(blob('tests/fixtures/runtime-activity-main-8efd5977/NativeLiveInteractions.swift'),
+    manifest.files[media+'NativeLiveInteractions.swift'], 'Historical interaction oracle');
+  assertInteractionThemePreservesOriginal(readFileSync(media+'NativeLiveInteractions.swift','utf8'),originalInteractions);
   const coordination=root+'App/NativeLiveAttachmentCoordination.swift';
   assert.equal(blob(coordination),manifest.files[coordination]);
 });
