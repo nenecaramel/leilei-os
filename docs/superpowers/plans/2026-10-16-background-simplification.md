@@ -44,3 +44,34 @@ Tasks Loading screenshots alone do not establish an endless UI load. HTTP metada
 shows pending controls while no usable persistent writer handled them; no UI
 redesign or unrelated timeout change is included. Repeat background completion,
 foreground continuity and list/output/stop on a refreshed daemon and iOS build.
+
+
+## Native Cron admission follow-up (2026-10-16)
+
+The owner reports background/foreground continuity and task inspection/stop PASS.
+CronCreate was still rejected by the bridge's optional-source capability check.
+An offline probe using the real pinned CLI2.1.296, isolated config and a rejecting
+loopback model endpoint confirms its UserPromptSubmit omits source while supplying
+prompt_id; the probe made zero model HTTP requests. A second offline probe confirms
+native /loop still supplies the exact submitted foreground hook text.
+
+Remove the cached stamped/unstamped tool capability check. CronCreate and
+ScheduleWakeup now use the existing fresh durable admission in PreToolUse and
+before/after canUseTool permission, including current listener/session/branch/lease
+checks and stale-turn rejection. Optional hook metadata is not authorization.
+No custom scheduler, timer persistence, prompt inference or parser was introduced.
+The input guard's shared 64-attempt/seven-day limit, in-flight admission reservation,
+two-second timeout and known-source timer ID/cadence checks remain unchanged.
+The native five-field Cron has minute granularity; native ScheduleWakeup clamps
+60..3600 seconds. An unstamped fire still cannot supply host duplicate provenance;
+CLI scheduling owns that identity, while host admission bounds cost and ownership.
+
+The opt-in agent-sdk-native-cron-offline test runs the actual CLI and native
+CronCreate/CronList against a loopback synthetic Anthropic endpoint with empty
+settings/MCP/config, synthetic auth and nonpersistent session. It verifies a real
+minute-boundary one-shot fire and automatic removal, plus native /loop
+ScheduleWakeup firing and stop acknowledgement, without a real model call or
+production state. Run with RUN_NATIVE_CLI_OFFLINE_CRON_TEST=1; default suites skip
+these cases to avoid minute-long gates. Controlled tests also keep post-PreToolUse ownership
+revocation coverage. Live Cron/Loop acceptance remains separate from this offline
+native-CLI evidence; do not mark the user's third/fourth acceptance PASS yet.

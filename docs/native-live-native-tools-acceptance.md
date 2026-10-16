@@ -73,32 +73,39 @@ Ordinary prompts, attachments, silence wakes and mid-turn input retain literal
 delivery with per-message `client_composed: true`. A prompt supplied by a wake
 cannot invoke `/loop` merely by starting with that text.
 
-Before model inference, `UserPromptSubmit` admits only explicitly stamped
-`schedule_wakeup` / `loop_wakeup` triggers with the current native session and a
-bounded nonempty `prompt_id`. Subagent triggers, missing provenance, duplicates
-and retired writers fail closed. User/SDK input and existing system/poll task
-notifications keep their existing paths. Older CLIs can omit `source`: an exact
-literal foreground hook may consume one pending ticket from an already admitted
-input (including mid-turn input). It cannot reuse that ticket after the hook has
-run. Native schedule creation is refused until this writer has observed stamped
-hook provenance, while list/delete/stop and ordinary legacy chat remain available.
-This is compatibility for ordinary input, not support for unstamped native timers;
-a preexisting legacy timer with identical text overtaking the first foreground
-hook cannot be absolutely distinguished by that older schema. No transcript
-parsing or historical task replay attempts to repair that ambiguity.
+Before model inference, the input guard accepts an exact one-use foreground
+ticket for an already admitted input (including mid-turn input). Autonomous
+callbacks require fresh surviving-branch/listener/session admission. Known
+`schedule_wakeup` / `loop_wakeup` sources also require a bounded nonempty
+`prompt_id` and reject duplicate IDs. The pinned CLI2.1.296 omits the optional
+`source` field even for real user inputs and native timer fires; `prompt_id` is
+generic correlation and cannot identify a timer by itself. Missing-source
+callbacks therefore use the bounded unclassified autonomous path rather than
+prompt-text inference. Wrong sessions, subagents, retired writers and unsupported
+explicit sources are rejected. Existing stamped system/poll notifications retain
+their paths. An unstamped native event with identical text overtaking the first
+foreground hook cannot be absolutely distinguished by this schema; no transcript
+parsing or historical replay attempts to repair that ambiguity.
+
+CronCreate and ScheduleWakeup use the same fresh durable PreToolUse and
+canUseTool admission as other native tools, including the post-permission check.
+Optional source metadata neither grants nor permanently disables tool access.
 The SDK control callback can overtake consumption of the preceding result, so
-admission waits for that exact foreground boundary and durable acknowledgement,
+autonomous admission waits for that exact boundary and durable acknowledgement,
 then checks the existing surviving-branch/listener/session fence. A new foreground
 reservation, handoff or checkpoint change during the check denies it.
 
-Admission and its boundary wait share a two-second deadline. Per writer, at most
-64 scheduled admission attempts are allowed, at least 60 seconds apart, within
-seven days of opening that writer; denied/uncertain attempts are not replayed.
-These are aggregate writer bounds, not per-job quotas or a billing guarantee.
-Budget exhaustion does not cancel the CLI's stored task: a later trigger is
-blocked, while ordinary chat, `CronList`, `CronDelete` and `ScheduleWakeup(stop)`
-remain available. Creating another schedule does not reset these bounds. Each
-individual invocation can still consume the model's normal turn budget.
+Admission and its boundary wait share a two-second deadline and one synchronous
+in-flight slot. Per writer, at most 64 autonomous attempts are allowed within seven
+days; denied/uncertain attempts consume budget and are not replayed. Identified
+timer sources additionally require 60 seconds between attempts. Unknown-source
+notifications may burst; they cannot prove host-level timer cadence or duplicate
+identity. Native five-field Cron itself has minute granularity, and native
+ScheduleWakeup clamps its delay to 60..3600 seconds. These are aggregate writer
+bounds, not per-job quotas or a billing guarantee. Budget exhaustion does not
+cancel the CLI's stored task; a later autonomous callback is blocked. Ordinary
+chat and authorized list/delete/stop remain available. Creating a schedule does
+not reset these bounds; one invocation still has the model's normal turn budget.
 
 Native scheduling owns persistence, cancellation, expiry and missed-fire handling;
 this adapter neither scans native task files nor promises restart recovery. A
@@ -121,12 +128,12 @@ that their consumers can be retired. This change removes stale claims that the
 daemon never calls the persistent host; it does not remove ordinary fork/edit/retry
 or delete native session history, stored schedules or recovery receipts.
 
-Offline evidence covers native input and hook serialization through the pinned
-SDK with a synthetic CLI, boundary/commit races, denial and execution bounds.
-It does not prove the real CLI has enabled a particular scheduling tool, that a
-live job fires/cancels, or that sleep/restart restores it. Those remain explicit
-live acceptance checks after an authorized daemon refresh. No model call,
-production mutation, deployment or daemon restart is part of these tests.
+Controlled fixture evidence covers native input/hook serialization through the
+pinned SDK, boundary/commit races, denial and execution bounds. The opt-in actual
+CLI evidence below additionally exercises native fire/cancel with synthetic model
+responses; it does not prove real device/account acceptance or sleep/restart
+recovery. No real model call, production mutation, deployment or daemon restart
+is part of these tests.
 
 Reference: [Claude Code scheduled tasks](https://code.claude.com/docs/en/scheduled-tasks).
 
@@ -134,3 +141,14 @@ Task-state observers are nonfatal and see committed membership before they can i
 
 
 Controlled tests do not establish the actual CLI's result after a foreground interrupt. If the provider returns an error instead of a successful result, the existing failure path still closes the writer rather than claiming background preservation. Real CLI interruption, restart/sleep/wake and handoff acceptance remain required before retiring the old fallback paths.
+
+
+2026-10-16 acceptance update: the owner reports background/foreground continuity
+and task inspection/stop PASS. Cron was blocked by the now-removed optional-source
+tool check. `RUN_NATIVE_CLI_OFFLINE_CRON_TEST=1 pnpm --dir tools/claude-bridge exec
+node --test test/agent-sdk-native-cron-offline.test.mjs` opts into the actual pinned
+CLI with isolated settings/config and entirely loopback synthetic Anthropic
+responses. It exercises native one-shot creation/fire/auto-removal and native
+/loop ScheduleWakeup/fire/stop without real model requests or production state.
+Default suites skip these minute-long tests. This is native CLI protocol evidence;
+real device/model Cron/Loop, restart, sleep/wake and handoff acceptance remain open.
