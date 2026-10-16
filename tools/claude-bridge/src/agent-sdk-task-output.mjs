@@ -18,10 +18,21 @@ export async function readAgentSdkTaskOutput(query, taskId, callerSignal) {
     controller.signal.throwIfAborted();
     const result = await Promise.race([query.request({ subtype: 'get_task_output', task_id: taskId }, { signal: controller.signal }), aborted]);
     const body = result?.response;
-    if (!body || typeof body.output !== 'string' || Buffer.byteLength(body.output, 'utf8') > 8192
-      || !Number.isSafeInteger(body.total_bytes) || body.total_bytes < Buffer.byteLength(body.output, 'utf8')
+    if (!body || typeof body.output !== 'string' || body.output.length > 8198
+      || !Number.isSafeInteger(body.total_bytes) || body.total_bytes < 0
       || typeof body.truncated !== 'boolean') throw new Error('Invalid SDK task output response.');
-    return { output: body.output, totalBytes: body.total_bytes, truncated: body.truncated };
+    const bytes = Buffer.from(body.output, 'utf8');
+    // An 8 KiB byte tail can start with up to three orphan continuation bytes.
+    // UTF-8 decoding may expand these into replacement characters (+6 bytes).
+    // Accept only that bounded, explicitly truncated case, then return <=8 KiB
+    // on a complete character boundary. This does not enlarge the read window.
+    const decodedBoundary = body.truncated && body.total_bytes > 8192
+      && bytes.length <= 8198 && body.output.startsWith('\uFFFD');
+    if ((bytes.length > 8192 && !decodedBoundary)
+      || (bytes.length <= 8192 && body.total_bytes < bytes.length)) throw new Error('Invalid SDK task output response.');
+    let start = Math.max(0, bytes.length - 8192);
+    while (start < bytes.length && (bytes[start] & 0xc0) === 0x80) start++;
+    return { output: bytes.subarray(start).toString('utf8'), totalBytes: body.total_bytes, truncated: body.truncated };
   } finally {
     clearTimeout(timer); callerSignal?.removeEventListener('abort', cancelled);
     controller.signal.removeEventListener('abort', onAbort);

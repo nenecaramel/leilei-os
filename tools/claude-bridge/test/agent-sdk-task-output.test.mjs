@@ -46,3 +46,11 @@ test('pre-cancelled task output never sends a control', async () => {
   await assert.rejects(readAgentSdkTaskOutput({request(){calls++;}}, 'synthetic-task', controller.signal));
   assert.equal(calls, 0);
 });
+
+test('UTF-8 tail boundaries retain bounded Chinese output instead of rejecting decoder replacement bytes', async () => {
+  const bytes=Buffer.from('漢'.repeat(4000),'utf8');
+  const output=bytes.subarray(-8192).toString('utf8');
+  assert.ok(Buffer.byteLength(output,'utf8')>8192,'raw byte tail starts inside a UTF-8 character');
+  const result=await readAgentSdkTaskOutput({request:async()=>({response:{output,total_bytes:bytes.length,truncated:true}})},'synthetic-task');
+  assert.ok(Buffer.byteLength(result.output,'utf8')<=8192);assert.ok(result.output.endsWith('漢'));assert.equal(result.totalBytes,12000);assert.equal(result.truncated,true);
+});
