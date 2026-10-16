@@ -34,7 +34,7 @@ test('process section gaps are 18 while body/footer spacing stays 6', () => {
   const row = readFileSync(root + 'NativeLiveAssistantTurnRow.swift', 'utf8');
   assert.match(layout, /processSectionSpacing: CGFloat = 18/);
   assert.match(layout, /assistantSpacing: CGFloat = 6/);
-  assert.match(row, /ChatPresentationLayout\.processSectionSpacing - ChatPresentationLayout\.assistantSpacing/);
+  assert.match(row, /\(chatTheme == \.iMessage \? ChatPresentationLayout\.iMessageProcessSectionSpacing : ChatPresentationLayout\.processSectionSpacing\) - ChatPresentationLayout\.assistantSpacing/);
   assert.match(row, /processSections\.showsThinking && \(processSections\.showsActivity \|\| !turn\.bodyPresentation\.nodes\.isEmpty\)/);
   assert.match(row, /processSections\.showsActivity && !turn\.bodyPresentation\.nodes\.isEmpty/);
 });
@@ -49,7 +49,7 @@ test('process labels stay 14 regular with light arrows and an 8pt gap', () => {
   assert.ok(thinking.indexOf('Image(systemName:') < thinking.indexOf('Spacer(minLength:'));
   const header = activity.slice(activity.indexOf('var body:'), activity.indexOf('if effectiveExpanded {'));
   assert.match(header, /Text\(header\)\s*\.font\(\.system\(size: 14\)\)/);
-  assert.match(header, /\.font\(\.system\(size: 14, weight: \.light\)\)\s*\.foregroundStyle\(\.secondary\)/);
+  assert.match(header, /\.font\(\.system\(size: 14, weight: \.light\)\)\s*\.foregroundStyle\(iMessageWallpaperVisible \? Color\.white : Color\.secondary\)/);
   assert.doesNotMatch(header, /maxWidth: \.infinity/);
   assert.ok(header.indexOf('? "chevron.down"') < header.indexOf('Spacer(minLength:'));
 });
@@ -62,7 +62,8 @@ test('message timestamps are 12pt and user-to-assistant row spacing is 25pt', ()
   const layout = readFileSync('ios/LeileiOS/LeileiOS/Chat/ChatPresentationLayout.swift', 'utf8');
   const list = readFileSync(root + 'NativeLiveMessageList.swift', 'utf8');
   assert.match(layout, /turnSpacing: CGFloat = 25/);
-  assert.match(list, /LazyVStack\(spacing: ChatPresentationLayout\.turnSpacing\)/);
+  assert.match(list, /rowSpacing: CGFloat = ChatPresentationLayout\.turnSpacing/);
+  assert.match(list, /LazyVStack\(spacing: rowSpacing\)/);
 });
 
 test('thought process opens a native sheet with a leading icon and no toolbar buttons', () => {

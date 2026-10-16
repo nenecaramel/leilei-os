@@ -131,6 +131,10 @@ jobs:
         if: steps.scope.outputs.core == 'true'
         run: pnpm install --frozen-lockfile
 
+      - name: Install Claude Bridge test dependencies
+        if: steps.scope.outputs.core == 'true'
+        run: pnpm --dir tools/claude-bridge install --frozen-lockfile
+
       - name: Install Web test dependencies for canonical suite
         if: steps.scope.outputs.core == 'true'
         run: cd web && npm ci
@@ -228,6 +232,9 @@ jobs:
       - name: Install root dependencies
         id: install
         run: pnpm install --frozen-lockfile
+
+      - name: Install Claude Bridge regression dependencies
+        run: pnpm --dir tools/claude-bridge install --frozen-lockfile
 
       - name: Apply ephemeral PostgreSQL migrations
         id: migrate

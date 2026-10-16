@@ -201,7 +201,7 @@ test("iMessage Markdown bubble links match ordinary white message text and quote
     assert.match(renderer, /chatTheme == \.iMessage && \(role == "user" \|\| role == "assistant"\)/);
     assert.match(renderer, /isIMessageBubbleText\s*\? NativeLiveIMessageMarkdownPalette\.inline\(/);
     assert.match(renderer, /: model\.inline|: markdown\.inline/);
-    assert.match(renderer, /if isIMessageBubbleText \{\s*(?:inline|flow)\.foregroundStyle\(NativeLiveIMessageMarkdownPalette\.quote\)/);
+    assert.match(renderer, /if isIMessageBubbleText \{\s*(?:inline|flow)\s*\.foregroundStyle\(NativeLiveIMessageMarkdownPalette\.quote\)/);
     assert.match(renderer, /else \{\s*(?:inline\.foregroundStyle\(\.secondary\)|flow\s*\.foregroundStyle\(\.secondary\))/);
     assert.match(renderer, /if case \.quote\(_\) = model\.style/);
   }

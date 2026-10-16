@@ -83,8 +83,25 @@ function approvedDisclosureHeader(source: string) {
 test('render reference applies only the approved disclosure header layout', () => {
   const reference = approvedDisclosureHeader(readFileSync(fixture + 'NativeLiveRuntimeActivity.swift', 'utf8'));
   const current = readFileSync('ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveRuntimeActivity.swift', 'utf8');
-  const header = (source: string) => source.slice(source.indexOf('    var body: some View {'), source.indexOf('            if effectiveExpanded {')).replace(/\s+/g, '').replace(/,/g, '');
-  assert.equal(header(reference), header(current));
+  const header = (source: string) =>
+    source.slice(source.indexOf('    var body: some View {'), source.indexOf('            if effectiveExpanded {'));
+  const currentHeader = header(current);
+  // iMessage changes alignment, wallpaper contrast and shadow. These checks
+  // preserve disclosure/murmur actions and their relative order instead of
+  // comparing to the pre-theme header pixels.
+  assert.match(currentHeader, /alignment: chatTheme == \.iMessage \? \.center : \.firstTextBaseline/);
+  assert.match(currentHeader, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
+  assert.match(currentHeader, /if chatTheme == \.iMessage && !header\.isEmpty/);
+  assert.equal((currentHeader.match(/expansion\.toggleActivity\(\)/g) ?? []).length, 2);
+  assert.match(currentHeader, /\.disabled\(header\.isEmpty\)/);
+  assert.match(currentHeader, /if normalizedMurmurText != nil/);
+  assert.match(currentHeader, /isShowingMurmur = true/);
+  assert.match(currentHeader, /\.accessibilityLabel\("Murmur"\)/);
+  assert.ok(currentHeader.indexOf('"chevron.right"') < currentHeader.indexOf('Image(systemName: "bubble.left")'),
+    'Disclosure precedes the independent Murmur action');
+  assert.match(currentHeader, /\.shadow\(\s*color: iMessageWallpaperVisible \? Color\.black\.opacity\(0\.75\) : \.clear/);
+  assert.match(current, /prepareID: projection\.prepareID/);
+  assert.match(header(reference), /isShowingMurmur = true/);
   const original = readFileSync(fixture + 'NativeLiveRuntimeActivity.swift', 'utf8');
   const content = '            if effectiveExpanded {';
   assert.equal(reference.slice(reference.indexOf(content)), original.slice(original.indexOf(content)));

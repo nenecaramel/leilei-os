@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
+import { assertInteractionThemePreservesOriginal } from './ios-theme-interaction-assertions.js';
 
 const root = 'ios/LeileiOS/LeileiOS/Chat/MessageSurface/';
 const fixture = 'tests/fixtures/runtime-activity-main-8efd5977/';
@@ -44,12 +45,94 @@ function conserve(file: string, source: string) {
     // every expanded subtree, lifecycle, interaction dispatch and sheet exact.
     const body='    var body: some View {';
     const content='            if effectiveExpanded {';
-    assert.equal(source.slice(0,source.indexOf(body)), baseline.slice(0,baseline.indexOf(body)), 'activity inputs/init');
-    assert.equal(normalize(source.slice(source.indexOf(content))), normalize(baseline.slice(baseline.indexOf(content))), 'expanded activity and sheets');
+    const themeDeclaration = /^\s*@Environment\(\\\.(?:chatTheme|iMessageWallpaperVisible)\) private var [^\n]+/gm;
+    assert.match(source, /@Environment\(\\\.chatTheme\) private var chatTheme/);
+    assert.match(source, /@Environment\(\\\.iMessageWallpaperVisible\) private var iMessageWallpaperVisible/);
+    assert.equal(normalize(source.slice(0,source.indexOf(body)).replace(themeDeclaration, '')),
+      normalize(baseline.slice(0,baseline.indexOf(body))), 'Activity inputs, state and initializer');
+    // prepareID was intentionally added to Task rows. Every other expanded
+    // subtree and interaction dispatch remains pinned to the historical code.
+    assert.match(source, /prepareID: projection\.prepareID/);
+    assert.equal(normalize(source.slice(source.indexOf(content)).replace('prepareID: projection.prepareID,', '')),
+      normalize(baseline.slice(baseline.indexOf(content))), 'Expanded Activity, callbacks and sheets');
     const header=source.slice(source.indexOf(body),source.indexOf(content));
     assert.equal((header.match(/expansion\.toggleActivity\(\)/g)??[]).length,2);
     assert.match(header,/\.disabled\(header\.isEmpty\)/);
     assert.match(header,/isShowingMurmur = true/);
+    return;
+  }
+  if (file === 'NativeLiveTaskActivity.swift') {
+    // Task status/child rows are still driven by canonical projections. Glass
+    // is presentation-only; prepareID is the approved Tasks sheet route.
+    for (const required of [
+      'struct NativeLiveActivityGlassRow: ViewModifier',
+      'let task: NativeLiveTurnActivityProjection.TaskActivity',
+      'var prepareID: String? = nil',
+      'Text(task.displayTitle)',
+      'ForEach(childTools) { tool in',
+      'ForEach(childQuestions) { question in',
+      'if !task.resourceLinks.isEmpty',
+      'permissionInteractions(tool)',
+      'onResolveInteraction: onResolveInteraction',
+      'if prepareID != nil { showingTasks = true }',
+      'if let prepareID { NativeLiveTasksSheet(prepareID: prepareID) }',
+      '.sheet(isPresented: $isShowingResources)',
+      'nativeLiveJSONDetail(',
+    ]) assert.ok(source.includes(required), 'Task boundary: '+required);
+    assert.match(source,/if task\.isFailed|if task\.isFailed/);
+    assert.match(source,/else if task\.isCancelled/);
+    assert.match(source,/else if task\.isTerminal/);
+    assert.match(source,/turnIsActive\s*\|\|\s*task\.isBackgrounded == true/);
+    assert.match(source,/if iMessageWallpaperVisible \{\s*content[\s\S]*?\.glassEffect\(/);
+    assert.match(source,/else \{\s*content\s*\}/);
+    return;
+  }
+  if (file === 'NativeLiveToolActivity.swift') {
+    for (const required of [
+      'NativeLiveToolCallCard(',
+      'ForEach(permissionInteractions) { interaction in',
+      'interaction.isPending',
+      'let onResolveInteraction',
+      'NativeLivePermissionInteractionCard(',
+      'onResolve: onResolveInteraction',
+      'NativeLiveInteractionHistoryRow(',
+      'presentation: .nestedPermission',
+      'private var stateLabel: String',
+      'isShowingDetails = true',
+      '.sheet(isPresented: $isShowingDetails)',
+      'title: nativeLiveToolDisplayName(toolName)',
+      'secondaryDetail: resultDetail',
+      'tertiaryDetail: resourceDetail',
+      'status: isError ? "Failed" : "Done"',
+    ]) assert.ok(source.includes(required), 'Tool boundary: '+required);
+    assert.match(source,/private struct NativeLiveToolWallpaperGlass: ViewModifier/);
+    assert.match(source,/if enabled \{\s*content\.glassEffect/);
+    assert.match(source,/else \{\s*content\s*\}/);
+    assert.equal(normalize(source.slice(source.indexOf('enum NativeLiveToolCallState:'), source.indexOf('struct NativeLiveToolCallCard:'))),
+      normalize(baseline.slice(baseline.indexOf('enum NativeLiveToolCallState:'),baseline.indexOf('struct NativeLiveToolCallCard:'))),
+      'Tool result states are unchanged');
+    return;
+  }
+  if (file === 'NativeLiveRuntimeInteractions.swift') {
+    for (const required of [
+      'question.interaction',
+      'interaction.isPending',
+      'let onResolveInteraction',
+      'NativeLiveQuestionInteractionCard(',
+      'onResolve: onResolveInteraction',
+      'status: question.statusLabel',
+      'detail: question.questionDetail',
+      'secondaryDetail: question.responseDetail',
+      'presentation.title(for: interaction)',
+      'presentation.statusLabel(for: interaction)',
+      '.object(interaction.request)',
+      'interaction.response.flatMap',
+      'nativeLiveJSONDetail(.object($0))',
+      'isShowingDetails = true',
+      '.modifier(NativeLiveActivityGlassRow())',
+    ]) assert.ok(source.includes(required), 'Question/history boundary: '+required);
+    assert.match(source,/interaction\.status == "resolved"[\s\S]*interaction\.status == "cancelled"/);
+    assert.equal((source.match(/\.sheet\(isPresented: \$isShowingDetails\)/g)??[]).length,2);
     return;
   }
   assert.equal(normalize(source), normalize(baseline), file);
@@ -68,7 +151,11 @@ test('All six Activity presentation boundaries conserve complete original blocks
 test('Projection, interaction state/submit/answers and history semantics remain byte identical', () => {
   const manifest = JSON.parse(readFileSync(fixture + 'blobs.json', 'utf8'));
   for (const file of Object.keys(manifest.files)) {
-    if (file !== 'NativeLiveRuntimeActivity.swift') assert.equal(read(file), old(file), file);
+    if (file === 'NativeLiveInteractions.swift') {
+      assertInteractionThemePreservesOriginal(read(file), old(file));
+    } else if (file !== 'NativeLiveRuntimeActivity.swift') {
+      assert.equal(read(file), old(file), file);
+    }
   }
 });
 test('Conservation rejects wrong pending-question dispatch and changed JSON string whitespace', () => {

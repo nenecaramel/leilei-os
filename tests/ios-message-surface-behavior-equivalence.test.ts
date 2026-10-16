@@ -34,15 +34,22 @@ test('MessageSurface fixtures are exact blobs from main@52c957c1',()=>{
 });
 test('MessageSurface conserves every observer, state owner, callback body and scroll command order',()=>{
   const current=readFileSync(root+'NativeLiveMessageSurface.swift','utf8');
-  for(const marker of ['var body:','private var syncUnavailable:','private func captureReplacementAnchor(','private func captureAnchor(','private func copyMessage(','private func showCopyFeedback(','private func scrollToBottom(']) {
+  for(const marker of ['private var syncUnavailable:','private func captureReplacementAnchor(','private func captureAnchor(','private func copyMessage(','private func showCopyFeedback(','private func scrollToBottom(']) {
     assert.equal(block(withoutStatusScrollWrappers(current),marker),block(baseline,marker),marker);
   }
   // Compare complete ordered modifier chain, including transform/action,
   // preference restoration and both lifecycle handlers, not isolated guards.
-  const observers=(s:string)=>compact(s.slice(s.indexOf('.scrollClipDisabled()'),s.indexOf('.overlay(alignment: .top)')));
-  assert.equal(observers(current),observers(baseline));
+  // Approved iMessage clips the scroll surface while Original remains
+  // unclipped. Every modifier/observer after this presentation choice is pinned.
+  const observers=(s:string)=>compact(s.slice(s.indexOf('.scrollClipDisabled('),s.indexOf('.overlay(alignment: .top)')));
+  assert.equal(observers(current).replace('.scrollClipDisabled(chatTheme!=.iMessage)', '.scrollClipDisabled()'),observers(baseline));
   const declarations=(s:string)=>compact(s.slice(s.indexOf('@EnvironmentObject'),s.indexOf('var body:')));
-  assert.equal(declarations(current),declarations(baseline));
+  assert.equal(declarations(current).replace('@Environment(\\.chatTheme)privatevarchatTheme',''),declarations(baseline));
+  assert.match(current, /if !isAuthenticated \{\s*Self\.scrollableState \{ AppStateSurface\(title: "Sign in"\) \}/);
+  assert.match(current, /else if pendingOperation != nil \{\s*messageList\(snapshot\)/);
+  assert.match(current, /case \.content: messageList\(snapshot\)/);
+  assert.match(current, /\.background\(chatTheme == \.iMessage \? Color\.clear : Color\(\.systemBackground\)\)/);
+  assert.match(current, /\.scrollDismissesKeyboard\(\.interactively\)/);
   const actions=(s:string)=>[...s.matchAll(/Button \{([\s\S]*?)\} label:/g)].map(m=>compact(m[1]));
   assert.deepEqual(actions(current),actions(baseline),'return then older action bodies, guard/Task/await order');
   const predicate=(s:string)=>compact(s.slice(s.indexOf('if snapshot?.olderCursor'),s.indexOf('Button {',s.indexOf('if snapshot?.olderCursor'))));
@@ -53,6 +60,8 @@ test('MessageSurface conserves every observer, state owner, callback body and sc
   const list=readFileSync(root+'MessageSurface/NativeLiveMessageList.swift','utf8');
   const oldList=block(baseline,'LazyVStack(');
   const newList=block(list,'LazyVStack(').replaceAll('pagination()', 'loadOlderButton(snapshot)').replaceAll('onCopyMessage($0,row.id)','copyMessage($0,messageID:row.id)').replaceAll('currentHeadMessageID','snapshot?.currentHeadMessageId');
+  assert.match(list, /rowSpacing: CGFloat = ChatPresentationLayout\.turnSpacing/);
+  assert.match(current, /rowSpacing: chatTheme == \.iMessage \? ChatPresentationLayout\.iMessageTurnSpacing : ChatPresentationLayout\.turnSpacing/);
   assert.equal(newList,oldList,'row identity, measurements, order, pagination slots and bottom anchor');
 });
 test('Moved chrome retains exact visual payloads, geometry and transition ownership',()=>{
@@ -67,7 +76,10 @@ test('Moved chrome retains exact visual payloads, geometry and transition owners
   const olderStart=baseline.indexOf('HStack(spacing: 8)',baseline.indexOf('private func loadOlderButton'));
   assert.equal(payload('NativeLivePaginationLabel'),compact(baseline.slice(olderStart,baseline.indexOf('}\n            .buttonStyle',olderStart))));
   for(const marker of ['.overlay(alignment: .top)', '.overlay(alignment: .bottom)']) assert.ok(current.includes(marker));
-  for(const modifier of ['.offset(y: ChatPresentationLayout.scrollActionPaintOffset)', '.scale(scale: 0.9)', '.move(edge: .top)', '.accessibilityLabel("Scroll to latest")']) assert.ok(current.includes(modifier));
+  for(const modifier of ['.scale(scale: 0.9)', '.move(edge: .top)', '.accessibilityLabel("Scroll to latest")']) assert.ok(current.includes(modifier));
+  // Keep the Original offset, but pin iMessage's viewport-safe position.
+  assert.match(current, /\.offset\(y: chatTheme == \.iMessage \? 0 : ChatPresentationLayout\.scrollActionPaintOffset\)/);
+  assert.match(current, /\.padding\(\.bottom, chatTheme == \.iMessage \? 12 : 0\)/);
   // a553c665, 3cabae39 and d5a929c1 explicitly adjusted process/turn/action
   // spacing. Chrome geometry and every other value remain byte-identical.
   const layout=readFileSync(root+'ChatPresentationLayout.swift','utf8');
@@ -75,7 +87,11 @@ test('Moved chrome retains exact visual payloads, geometry and transition owners
     .replace('turnSpacing: CGFloat = 21','turnSpacing: CGFloat = 25')
     .replace('    static let assistantSpacing:', '    static let processSectionSpacing: CGFloat = 18\n    static let assistantSpacing:')
     .replace('actionSpacing: CGFloat = 12','actionSpacing: CGFloat = 10');
-  assert.equal(layout,accepted);
+  // Original-theme geometry is frozen. Additive iMessage-only spacing is
+  // checked explicitly rather than rejected by whole-file byte equality.
+  const constants=(s:string)=>[...s.matchAll(/static let ([A-Za-z]+): CGFloat = ([0-9]+)/g)].filter(m=>!m[1].startsWith('iMessage')).map(m=>[m[1],m[2]]);
+  assert.deepEqual(constants(layout),constants(accepted));
+  for(const declared of ['iMessageUserLeadingClearance: CGFloat = 70','iMessageUserBubbleVerticalInset: CGFloat = 10','iMessageTurnSpacing: CGFloat = 12','iMessageProcessSectionSpacing: CGFloat = 10']) assert.ok(layout.includes(declared));
 });
 test('actual main/current scroll states have identical transitions; a wrong follow condition is rejected', {skip:process.platform!=='darwin'},()=>{
   const old=readFileSync(fixture+'MessageSurface/NativeLiveConversationScrollState.swift','utf8');

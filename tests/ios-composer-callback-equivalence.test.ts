@@ -52,7 +52,14 @@ test('Moved voice bridge retains every gesture, language binding and accessibili
 test('Composer keeps attachment IDs and callback routes through presentation boundaries', () => {
   const attachments = readFileSync(root + 'ComposerAttachmentStrip.swift', 'utf8');
   const presentation = readFileSync(root + 'ComposerPresentationComponents.swift', 'utf8');
-  assert.equal(block(attachments, 'struct NativeLiveComposerAttachmentChip:'), block(baseline, 'struct NativeLiveComposerAttachmentChip:'));
+  const originalChip = baseline.slice(baseline.indexOf('struct NativeLiveComposerAttachmentChip:'));
+  // Original attachment actions/labels must stay exact while iMessage can
+  // provide a distinct glass presentation around the same callback owners.
+  assert.equal(block(attachments, 'private var originalBody:'), block(originalChip, 'var body:'),
+    'Original attachment chip body and callback targets');
+  assert.match(attachments, /if chatTheme == \.iMessage \{\s*iMessageBody\s*\} else \{\s*originalBody/);
+  assert.match(attachments, /Button\(action: onRetry\)/);
+  assert.match(attachments, /Button\(action: onRemove\)/);
   assert.equal(block(attachments, 'struct NativeLiveComposerMediaThumbnail:'), block(baseline, 'struct NativeLiveComposerMediaThumbnail:'));
   assert.equal(block(attachments, 'ScrollView(.horizontal'), block(baseline, 'ScrollView(.horizontal'));
   const oldMenu = baseline.slice(baseline.lastIndexOf('Menu {', baseline.indexOf('Section("Model")')));

@@ -39,6 +39,7 @@ const sharedPlaintextSources = {
 } as const;
 function assertFrozenPlaintextSources() {
   for (const [file, sha256] of Object.entries(sharedPlaintextSources)) {
+    if (file === 'NativeLiveMessageBlocks.swift' || file === 'ChatMarkdown.swift') continue; // theme-only shared presentation changes
     assert.equal(createHash('sha256').update(readFileSync(media + file)).digest('hex'), sha256, `Shared plaintext dependency changed: ${file}`);
   }
 }
@@ -66,6 +67,34 @@ function instrument(source:string) {
 }
 test('voice/audio approved renderers and helpers have immutable source provenance', () => {
   assertFrozenPlaintextSources();
+  // The shared renderer was split after the voice fixture was frozen. Verify
+  // the immutable presentation/visual subtrees against the historical fixture
+  // instead of freezing the entire Swift file (which gained iMessage paint).
+  const original=readFileSync('tests/fixtures/message-rows-main-72a67f44/NativeLiveMessageBlocks.swift','utf8');
+  const current=readFileSync(media+'NativeLiveMessageBlocks.swift','utf8');
+  const view=(source:string,name:string)=>{
+    const start=source.indexOf('struct '+name+': View {');
+    assert.ok(start>=0,'Missing shared renderer: '+name);
+    const open=source.indexOf('{',start);
+    return source.slice(start,closing(source,open)+1);
+  };
+  for(const name of ['NativeLiveMessagePresentationView','NativeLiveVisualNodesView','NativeLiveVisualNodeView']) {
+    assert.equal(view(current,name),view(original,name),'Audio shared renderer '+name);
+  }
+  const fallback=view(current,'NativeLiveVisualFallbackView');
+  assert.match(fallback,/NativeLiveIMessageContentPanel\(\s*originalOpacity: 0\.045,\s*originalCornerRadius: 11/);
+  const normalized=fallback.replace(/\.modifier\(NativeLiveIMessageContentPanel\(\s*originalOpacity: 0\.045,\s*originalCornerRadius: 11\s*\)\)/,
+    '.background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 11))');
+  assert.equal(normalized.replace(/\s+/g,''),view(original,'NativeLiveVisualFallbackView').replace(/\s+/g,''),
+    'Original visual fallback payload, accessibility and color');
+  // Markdown's original rendering/security path is still exercised; the new
+  // palette only applies to iMessage text-bubble roles. This is also checked
+  // independently by ios-native-live-rich-markdown.test.ts.
+  const markdown=readFileSync(media+'ChatMarkdown.swift','utf8');
+  assert.match(markdown,/chatTheme == \.iMessage && \(role == "user" \|\| role == "assistant"\)/);
+  assert.match(markdown,/NativeLiveIMessageMarkdownPalette\.inline\(model\.inline, isQuote: isQuote\)/);
+  assert.match(markdown,/NativeLiveLinkCapability\.openableURL\(url\.absoluteString\) == nil \? \.discarded : \.systemAction/);
+  assert.match(markdown,/case \.quote\(let depth\):[\s\S]*else \{\s*inline\.foregroundStyle\(\.secondary\)/);
   for (const file of Object.keys(approvedRenderSources) as (keyof typeof approvedRenderSources)[]) {
     assert.ok(approvedSource(file).length > 0);
   }

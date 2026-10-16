@@ -53,6 +53,8 @@ test('page retains state wrappers, lifecycle installation and exact UI/scroll wi
   const expectedState = stateSection(withoutRetiredBinding(baseline))
     .replace('@StateObjectvarvoiceInput=VoiceInputController()', '@StateObjectvarvoiceInput=VoiceInputController()@StatevarisNativeCallPresented=false')
     .replace('@StatevarmessageText=""', '@StatevarmessageText=""@StatevarsendFailureMessage:String?')
+    // Approved theme state is additive; retain exact ownership of every other field.
+    .replace('@StatevarsendFailureMessage:String?', '@AppStorage(ChatTheme.storageKey)varchatThemeRawValue=ChatTheme.original.rawValue@Environment(\\.iMessageWallpaperVisible)variMessageWallpaperVisiblevarselectedChatTheme:ChatTheme{ChatTheme(rawValue:chatThemeRawValue)??.original}@StatevarsendFailureMessage:String?')
     // Composer selections persist across page recreation; other ownership stays exact.
     .replace('@Statevarmodel:NativeLiveClaudeModel=.opus55', '@AppStorage("nativeLive.model")varmodel:NativeLiveClaudeModel=.opus55')
     .replace('@Statevareffort:NativeLiveEffortLevel=.high', '@AppStorage("nativeLive.effort")vareffort:NativeLiveEffortLevel=.high');
@@ -96,7 +98,32 @@ test('page retains state wrappers, lifecycle installation and exact UI/scroll wi
     .replace('onRemoveAttachment:', callEntry + 'onRemoveAttachment:')
     .replace('.photosPicker(', callSheet + '.photosPicker(')
     .replace('.overlay{ifisConversationLoading{', sendFailureAlert + '.overlay{ifisConversationLoading{');
-  assert.equal(compact(expandedBody), expectedBody, 'Only accepted refresh, send-failure alert and guarded call entry differ; every other modifier, Task, callback, focus and layout stays identical');
+  // Keep the callback and lifecycle equivalence checks; only approved theme
+  // drawing/scroll changes are exempt from the historical full-body snapshot.
+  const surfaceCall = (source: string) => {
+    const start = source.indexOf('NativeLiveMessageSurface(');
+    const end = source.indexOf('\n            }', start);
+    assert.ok(start >= 0 && end > start, 'Message surface must remain mounted');
+    return compact(source.slice(start, end));
+  };
+  assert.equal(surfaceCall(expandedBody), surfaceCall(block(baseline, 'var body:')),
+    'Message surface parameters, guards and action routes remain identical');
+  const lifecycleChain = (source: string) => {
+    const start = source.indexOf('.task(id: appModel.activeNativeLiveConversationID)');
+    const end = source.indexOf('.safeAreaInset(', start);
+    assert.ok(start >= 0 && end > start, 'Lifecycle chain boundaries');
+    return compact(source.slice(start, end).replace(/\/\/[^\n]*/g, ''));
+  };
+  assert.equal(lifecycleChain(expandedBody), lifecycleChain(block(baseline, 'var body:')),
+    'Lifecycle Tasks, notifications, focus and pending-operation guards');
+  const currentSuffix = compact(expandedBody.slice(expandedBody.indexOf('.photosPicker(')))
+    .replace('.environment(\\.chatTheme,selectedChatTheme)', '');
+  assert.equal(currentSuffix, expectedBody.slice(expectedBody.indexOf('.photosPicker(')),
+    'Unmodified photo, file, camera, keyboard and failure-alert callback chain');
+  assert.match(current, /if !iMessageWallpaperVisible \{/);
+  assert.match(current, /NativeLiveMessageSurface\.scrollableState \{ Color\.clear \}/);
+  assert.match(current, /\.environment\(\\\.chatTheme, selectedChatTheme\)/);
+  assert.match(current, /\.safeAreaInset\(edge: \.bottom, spacing: selectedChatTheme == \.iMessage \? 0 : nil\)/);
   assert.equal((block(current, 'var body:').match(/await refreshConversationPage\(\)/g) ?? []).length, 3);
   assert.doesNotMatch(current, /ScrollView|ScrollViewReader|scrollPosition|GeometryReader|\.scrollDismissesKeyboard/);
 });
