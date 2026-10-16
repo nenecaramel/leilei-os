@@ -174,6 +174,14 @@ struct NativeLiveConversationHeadWaitEnvelope:
     let data: NativeLiveConversationHeadWaitSnapshot
 }
 
+struct NativeLiveBackgroundResultSnapshot: Decodable, Sendable, Equatable, Identifiable {
+    let id: String
+    let sourceMessageId: String
+    let createdAt: String
+    let text: String
+}
+
+// Read-only chat delivery, not a fabricated canonical provider message.
 struct NativeLiveCurrentPathSnapshot: Decodable, Sendable, Equatable {
     let conversationId: String
     let title: String?
@@ -185,6 +193,7 @@ struct NativeLiveCurrentPathSnapshot: Decodable, Sendable, Equatable {
     let resetRequired: Bool
     let messages: [NativeLiveCurrentPathMessage]
     var failedTurn: NativeLiveFailedTurnSnapshot? = nil
+    var backgroundResults: [NativeLiveBackgroundResultSnapshot]? = nil
 }
 
 struct NativeLiveMessageActivitySnapshot:
