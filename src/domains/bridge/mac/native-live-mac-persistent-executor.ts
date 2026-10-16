@@ -9,7 +9,7 @@ import {
 import type { NativeLiveMacAttachmentMaterializer } from "./native-live-mac-attachment-materializer.js";
 import type { NativeLiveMacOutputAttachmentSender } from "./native-live-mac-output-attachment-sender.js";
 import type { NativeLiveMacPersistentAcknowledgement, NativeLiveMacPersistentTurnRouter } from "./native-live-mac-persistent-turn-router.js";
-import { buildNativeLiveRuntimeMetadata, failure, runtimeFailureCode, terminalFallbackEvents } from "./native-live-mac-runtime-executor.js";
+import { buildNativeLiveRuntimeMetadata, failure, runtimeFailureCode, runtimeFailureDiagnostics, terminalFallbackEvents, type NativeLiveMacRuntimeFailureDiagnostics } from "./native-live-mac-runtime-executor.js";
 
 type Router = Pick<NativeLiveMacPersistentTurnRouter, "execute" | "close" | "matches" | "workingDirectory"> & Partial<Pick<NativeLiveMacPersistentTurnRouter, "suspend" | "settle" | "providerSessionId">>;
 type Handler = (request: Record<string, unknown>, context: { signal: AbortSignal | null }) => Promise<Record<string, unknown>>;
@@ -49,6 +49,7 @@ export class NativeLiveMacPersistentExecutor {
   constructor(private readonly input: {
     createRouter(conversationId: string): Router;
     hasCapacity?(): boolean;
+    onRuntimeFailure?: ((diagnostics: NativeLiveMacRuntimeFailureDiagnostics) => void) | null;
     attachmentMaterializer: NativeLiveMacAttachmentMaterializer | null;
     outputAttachmentSender: Pick<NativeLiveMacOutputAttachmentSender, "sendFile"> & Partial<Pick<NativeLiveMacOutputAttachmentSender, "sendInlineImage">> | null;
   }) {}
@@ -166,10 +167,14 @@ export class NativeLiveMacPersistentExecutor {
       });
       return { result: submitted!, delivery: "committed", canonicalOutcome };
     } catch (error) {
+      const errorCode = runtimeFailureCode(error);
+      // Never hide the original cause behind the public RUNTIME_UNAVAILABLE code.
+      // Diagnostics are bounded/redacted by the existing runtime helper and must be fail-soft.
+      try { this.input.onRuntimeFailure?.(runtimeFailureDiagnostics(command.prepare_id, errorCode, error)); } catch { /* Logging cannot change a turn result. */ }
       // The router has already closed its writer; never replay the turn.
       try { await this.retire(command.conversation_id); } catch { /* Keep ownership until a verified close. */ }
       if (delivery !== "pending") return { result: submitted!, delivery, ...(delivery === "committed" ? { canonicalOutcome } : {}) };
-      return { result: failure(command, runtimeFailureCode(error)), delivery };
+      return { result: failure(command, errorCode), delivery };
     } finally {
       await this.input.attachmentMaterializer?.cleanup(command).catch(() => undefined);
     }
