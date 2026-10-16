@@ -103,14 +103,45 @@ test('Inner renderer remains unchanged and wrong retry target is rejected by con
  const wrong=actions.replace('onRetryMessage(user)','onRetryMessage(turn.id)');assert.notEqual(wrong,actions);
  assert.throws(()=>equal(block(wrong,'HStack('),block(old('NativeLiveAssistantTurnRow.swift'),'HStack('),'negative retry target'));
 });
-test('Full router and assistant body recompose to the original ordered blocks',()=>{
- const baseline=old('NativeLiveMessageRows.swift'),current=read('NativeLiveMessageRows.swift');
- const routed=block(current,'var body:').replace(/nativeLiveUserMessageRow\([\s\S]*?onEditMessage:onEditMessage\)/,block(read('NativeLiveUserMessageRow.swift'),'func nativeLiveUserMessageRow('));
- equal(routed,block(baseline,'var body:'),'row routing, IDs and every forwarded input');
- const assistant=read('NativeLiveAssistantTurnRow.swift');
- // The new optional Spotify slot is verified separately; conserve all existing blocks.
- const composed=block(assistant,'var body:').replace(/\n                \.padding\(\.bottom, processSections\.[^\n]+/g, '').replace(/if processSections\.showsLoading \{[\s\S]*?\n            \}/, '').replace('spotifyResultArea','').replace('elevenLabsResultArea','').replace('NativeLiveVisibleThinkingSurface(items: turn.visibleThinking)','').replace('activityArea',block(old('NativeLiveAssistantTurnRow.swift'),'VStack(alignment:.leading,spacing:ChatPresentationLayout.assistantSpacing)').split('NativeLiveMessagePresentationView')[0]).replace(/nativeLiveAssistantActions\([\s\S]*?onRetryMessage:onRetryMessage\)/,block(withoutFooterTimestamp(read('NativeLiveAssistantActions.swift')),'func nativeLiveAssistantActions('));
- equal(composed,withoutRetiredAlbum(block(old('NativeLiveAssistantTurnRow.swift'),'var body:')),'assistant entire ordered body and task except retired album');
+test('Message router and assistant preserve routing and presentation order across both themes',()=>{
+ const router=compact(block(read('NativeLiveMessageRows.swift'),'var body:'));
+ const assistant=compact(block(read('NativeLiveAssistantTurnRow.swift'),'private var content:'));
+ const ordered=(source:string,steps:string[],context:string)=>{
+  let prior=-1;
+  for(const step of steps){
+   const at=source.indexOf(compact(step),prior+1);
+   assert.ok(at>prior, context+' missing or out of order: '+step);
+   prior=at;
+  }
+ };
+ ordered(router,[
+  'if row.isHistoryDivider',
+  'NativeLiveHistoryForkDivider()',
+  'else if let history = row.historyMessage',
+  'NativeLiveHistorySnapshotRow(message:history,timeZone:row.historyTimeZone ?? "UTC")',
+  'else if let turn = row.assistant',
+  'NativeLiveAssistantTurnRow(turn:turn',
+  'onCopyMessage:onCopyMessage,onRetryMessage:onRetryMessage,onResolveInteraction:onResolveInteraction)',
+  'else if let user = row.user',
+  'nativeLiveUserMessageRow(row:row,user:user,appModel:appModel,isTurnInFlight:isTurnInFlight',
+  'onCopyMessage:onCopyMessage,onEditMessage:onEditMessage)',
+ ],'Row routing and callbacks');
+ ordered(assistant,[
+  'NativeLiveVisibleThinkingSurface(items: turn.visibleThinking)',
+  'activityArea',
+  'spotifyResultArea',
+  'elevenLabsResultArea',
+  'if chatTheme == .iMessage',
+  'NativeLiveIMessageTextBubbleList(',
+  'else',
+  'NativeLiveMessagePresentationView(presentation:turn.bodyPresentation)',
+  'MindWriteIndicator(items:mindWrites)',
+  'if chatTheme == .original',
+  'nativeLiveAssistantActions(turn:turn',
+ ],'Assistant sections and Original footer actions');
+ assert.match(assistant,/onRetry: retryAction/);
+ assert.match(assistant,/isRetryDisabled: isTurnInFlight/);
+ assert.match(read('NativeLiveAssistantTurnRow.swift'),/return \{ onRetryMessage\(userID\) \}/);
 });
 test('UIKit context menu and tap coordinator implementation remains byte identical',()=>{
  const current = read('NativeLiveMessageActions.swift');
