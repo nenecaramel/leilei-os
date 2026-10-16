@@ -663,13 +663,19 @@ export function readNativeLiveCurrentPathHandler(
         return;
       }
 
+      const backgroundRevision = snapshot.backgroundResults.length
+        ? createHash("sha256")
+            .update(snapshot.backgroundResults.map(row => row.id).join("|"))
+            .digest("hex").slice(0, 16)
+        : null;
+      const normalRevision = snapshot.failedTurn
+        ? `${nativeLiveCurrentPathActivityRevision(snapshot.messages) ?? "-"}:failed:${snapshot.failedTurn.prepareId}`
+        : nativeLiveCurrentPathActivityRevision(snapshot.messages);
       const etag = nativeLiveCurrentPathEtag(
         snapshot.syncToken,
         limit,
         { beforeMessageId, afterMessageId },
-        snapshot.failedTurn
-          ? `${nativeLiveCurrentPathActivityRevision(snapshot.messages) ?? "-"}:failed:${snapshot.failedTurn.prepareId}`
-          : nativeLiveCurrentPathActivityRevision(snapshot.messages),
+        backgroundRevision ? `${normalRevision ?? "-"}:background:${backgroundRevision}` : normalRevision,
       );
       response.setHeader("ETag", etag);
       if (ifNoneMatchContains(request.header("if-none-match"), etag)) {
@@ -690,6 +696,7 @@ export function readNativeLiveCurrentPathHandler(
           olderCursor: snapshot.olderCursor,
           resetRequired: snapshot.resetRequired,
           messages: snapshot.messages,
+          backgroundResults: snapshot.backgroundResults,
           failedTurn: snapshot.failedTurn ?? null,
         },
       });
