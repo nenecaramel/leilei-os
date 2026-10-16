@@ -14,6 +14,7 @@ import {
 } from "../src/domains/bridge/mac/native-live-mac-http-relay-client.js";
 import {
   NativeLiveMacRuntimeExecutor,
+  type NativeLiveMacRuntimeFailureDiagnostics,
 } from "../src/domains/bridge/mac/native-live-mac-runtime-executor.js";
 import {
   NativeLiveMacBackgroundModelExecutor,
@@ -201,23 +202,21 @@ await silenceWakeScheduler.refresh().catch((error) => {
 });
 
 const outputAttachmentSender = new NativeLiveMacOutputAttachmentSender(relay);
+const reportRuntimeFailure = (diagnostics: NativeLiveMacRuntimeFailureDiagnostics) => {
+  process.stdout.write(JSON.stringify({
+    at: new Date().toISOString(), outcome: "runtime_failure_diagnostics",
+    claudeTransport: claudeTransportKind, ...diagnostics,
+  }) + "\n");
+};
 const executor = new NativeLiveMacRuntimeExecutor(
   workingDirectoryRuntimePool,
   "/",
   new NativeLiveMacAttachmentMaterializer(relay),
   outputAttachmentSender,
-  (diagnostics) => {
-    process.stdout.write(
-      JSON.stringify({
-        at: new Date().toISOString(),
-        outcome: "runtime_failure_diagnostics",
-        claudeTransport: claudeTransportKind,
-        ...diagnostics,
-      }) + "\n",
-    );
-  },
+  reportRuntimeFailure,
 );
 const persistentRuntime = new NativeLiveMacPersistentRuntime({
+  onRuntimeFailure: reportRuntimeFailure,
   environment: process.env, defaultWorkingDirectory, listenerInstanceId, relay,
   outboxDirectory: join(homedir(), ".leileios", "background-results",
     createHash("sha256").update(JSON.stringify([relayBaseUrl, relayToken])).digest("hex")),
