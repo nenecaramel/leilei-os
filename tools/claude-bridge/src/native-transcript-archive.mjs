@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
-import { spawn } from 'node:child_process';
-import { access, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { execFileSync, spawn } from 'node:child_process';
+import { access, link, lstat, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { durableCheckpointPrefix } from './provider-checkpoint-prefix.mjs';
+import { readOnlyFileSnapshot } from './read-only-file-snapshot.mjs';
+import { isDeepStrictEqual } from 'node:util';
 import { readNativeSession } from './native-session-catalog.mjs';
 import { readNativeHistorySources, scanNativeSessionIndex } from './native-session-source-files.mjs';
 // Planning is offline and must read every Rewind copy that carries a needed
@@ -21,7 +24,9 @@ const lastAssistant = snapshot => snapshot.entries.filter(e => !e.isSidechain).f
  * identically from the kept files alone, or nothing is archived.
  */
 export async function planNativeTranscriptArchive({ projectDirectory, windows = new Map(), referenced = new Set(),
-  isOpen = async () => false, now = Date.now(), recentMs = 60 * 60 * 1000 }) {
+  isOpen = async () => false, now = Date.now(), recentMs = 60 * 60 * 1000, historyMode = 'complete' }) {
+  if (!['complete', 'continuation'].includes(historyMode)) throw fail('ARCHIVE_INVALID_MODE');
+  if (historyMode === 'continuation') return planContinuationArchive({ projectDirectory, windows, referenced, isOpen, now, recentMs });
   const index = await scanNativeSessionIndex(projectDirectory);
   const ids = [...index.keys()];
   const sizes = new Map(), reasons = new Map();
@@ -103,6 +108,73 @@ export async function planNativeTranscriptArchive({ projectDirectory, windows = 
     bytes: { keep: total([...keep]), archive: total(archive) }, verified };
 }
 
+
+// Continuation resumes the physical chain in the kept JSONL, including its
+// compact summary. logicalParentUuid is a display-history link, not an SDK
+// execution dependency. Keep entire files; never prune records inside them.
+async function planContinuationArchive({ projectDirectory, windows, referenced, isOpen, now, recentMs }) {
+  const files = (await readdir(projectDirectory, { withFileTypes:true }))
+    .filter(f=>f.isFile() && sessionPattern.test(f.name.slice(0,-6)) && f.name.endsWith('.jsonl'))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+  if(files.length>4096)throw fail('NATIVE_SOURCE_SCAN_LIMIT');
+  const keep=new Map(), sizes=new Map(), digests={}, verified=[], historySources=new Set();
+  const add=(id,reason)=>keep.set(id,[...(keep.get(id)??[]),reason]);
+  let scanned=0;
+  for(const file of files){
+    const id=file.name.slice(0,-6), absolute=path.join(projectDirectory,file.name);
+    const info=await stat(absolute);scanned+=info.size;
+    if(scanned>4*1024*1024*1024)throw fail('NATIVE_SOURCE_SCAN_LIMIT');
+    sizes.set(id,info.size);
+    try { digests[file.name]=(await readOnlyFileSnapshot(absolute,64*1024*1024)).revision; }
+    catch { add(id,'unreadable'); }
+    if(windows.has(id))add(id,'window');
+    // The existing server reference set is intentionally conservative: it also
+    // protects older checkpoints that legacy conversations may still edit.
+    if(referenced.has(id))add(id,'referenced');
+    if(now-info.mtimeMs<recentMs)add(id,'recent');
+    if(await isOpen(id))add(id,'open');
+  }
+  let uncertain=null;
+  for(const id of keep.keys()){
+    try{
+      const root=await readNativeSession(projectDirectory,id);
+      if(root.revision!==digests[`${id}.jsonl`])throw fail('ARCHIVE_PLAN_CHANGED');
+      const carriers=root.entries.filter(e=>!e.isSidechain && ['user','assistant','system','attachment'].includes(e.type) && typeof e.uuid==='string' && Object.hasOwn(e,'parentUuid'));
+      const byId=new Map();
+      for(const e of carriers){
+        const prior=byId.get(e.uuid);
+        if(prior&&!isDeepStrictEqual([prior.type,prior.parentUuid,prior.message,prior.attachment],[e.type,e.parentUuid,e.message,e.attachment]))throw fail('CONFLICTING_NATIVE_UUID');
+        byId.set(e.uuid,e);
+        if(sessionPattern.test(e.forkedFrom?.sessionId??''))historySources.add(e.forkedFrom.sessionId);
+      }
+      const tail=carriers.at(-1);if(!tail)throw fail('NO_CHECKPOINT');
+      const current=durableCheckpointPrefix(root.entries,tail.uuid);
+      // Forked transcripts can still point at an older Session's tool-output
+      // files. Preserve that whole companion bundle; display-only ancestry is
+      // the dependency we remove, not file references in the native context.
+      const execution=JSON.stringify(current.prefix);
+      for(const file of files){
+        const source=file.name.slice(0,-6);
+        if(source!==id && execution.includes(path.join(projectDirectory,source)+path.sep)
+          && !keep.get(source)?.includes(`native_files:${id}`))add(source,`native_files:${id}`);
+      }
+      const checkpoint=windows.get(id);
+      if(checkpoint&&!current.ancestry.has(checkpoint))throw fail('EXPLICIT_BRANCH_SELECTION_REQUIRED');
+      verified.push({sessionId:id,readable:true,executionIdentical:true,checkpointId:tail.uuid,revision:root.revision});
+    }catch(error){
+      uncertain=id;verified.push({sessionId:id,readable:false,reason:error.code??error.runtimeCode??'INVALID_NATIVE_EXECUTION'});
+    }
+  }
+  // A broken/unknown kept root cannot prove its native dependencies. Preserve
+  // this whole project rather than guessing which old file might repair it.
+  if(uncertain)for(const file of files)add(file.name.slice(0,-6),`unverified_execution:${uncertain}`);
+  const archive=files.map(f=>f.name.slice(0,-6)).filter(id=>!keep.has(id));
+  const bytes=ids=>ids.reduce((n,id)=>n+sizes.get(id),0);
+  return {projectDirectory,historyMode:'continuation',keep:[...keep].sort(([a],[b])=>a.localeCompare(b)).map(([sessionId,reasons])=>({sessionId,reasons})),archive,
+    archiveDetails:archive.map(sessionId=>({sessionId,reasons:[historySources.has(sessionId)?'history_only_source':'unreferenced_session']})),
+    bytes:{keep:bytes([...keep.keys()]),archive:bytes(archive)},verified,digests};
+}
+
 function run(command, args, { input, output, cwd } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, stdio: [input ? 'pipe' : 'ignore', output ? 'pipe' : 'ignore', 'ignore'] });
@@ -120,7 +192,8 @@ async function fileDigests(root, members) {
     const info = await lstat(absolute);
     if (info.isSymbolicLink()) throw fail('ARCHIVE_UNSAFE_MEMBER');
     if (info.isDirectory()) for (const name of (await readdir(absolute)).sort()) await walk(path.join(relative, name));
-    else digests[relative] = sha256(await readFile(absolute));
+    else if (info.isFile() && info.nlink === 1) digests[relative] = (await readOnlyFileSnapshot(absolute, Math.max(1, info.size))).revision;
+    else throw fail('ARCHIVE_UNSAFE_MEMBER');
   };
   for (const member of members) await walk(member);
   return digests;
@@ -131,10 +204,13 @@ const exists = file => access(file).then(() => true, () => false);
 /**
  * Archive the planned sessions (and their same-named subfolders), verify every
  * file byte-for-byte from the archive, write a manifest, then remove originals.
- * Any failure leaves the originals in place.
+ * Before retirement, changed plans leave originals in place. After an atomic
+ * retirement move, failure retains the original in a private recovery directory
+ * and restores missing paths without overwriting any concurrently created file.
  */
 export async function applyNativeTranscriptArchive({ projectDirectory, sessionIds, archiveDirectory, label,
-  zstd = '/opt/homebrew/bin/zstd' }) {
+  zstd = '/opt/homebrew/bin/zstd', expectedDigests = {}, verifyPlan = async () => {},
+  assertStagedFilesClosed = assertNoStagedWriter, verifyReferences = async () => {} }) {
   if (!sessionIds.length) return null;
   if (!sessionIds.every(id => sessionPattern.test(id)) || !/^[a-z0-9-]+$/.test(label)) throw fail('ARCHIVE_INVALID_INPUT');
   const members = [];
@@ -142,11 +218,13 @@ export async function applyNativeTranscriptArchive({ projectDirectory, sessionId
     members.push(`${id}.jsonl`);
     if (await exists(path.join(projectDirectory, id))) members.push(id);
   }
+  await verifyPlan();
+  const before = await fileDigests(projectDirectory, members);
+  for (const id of sessionIds) if (expectedDigests[`${id}.jsonl`] && before[`${id}.jsonl`] !== expectedDigests[`${id}.jsonl`]) throw fail('ARCHIVE_PLAN_CHANGED');
   await mkdir(archiveDirectory, { recursive: true, mode: 0o700 });
   const useZstd = await exists(zstd);
   const archiveFile = path.join(archiveDirectory, `${label}.tar.${useZstd ? 'zst' : 'xz'}`);
   if (await exists(archiveFile)) throw fail('ARCHIVE_EXISTS');
-  const before = await fileDigests(projectDirectory, members);
   const { createWriteStream } = await import('node:fs');
   if (useZstd) {
     const tar = spawn('tar', ['-cf', '-', '-C', projectDirectory, '--', ...members], { stdio: ['ignore', 'pipe', 'ignore'] });
@@ -170,10 +248,74 @@ export async function applyNativeTranscriptArchive({ projectDirectory, sessionId
     await rm(archiveFile, { force: true });
     throw error.code ? error : fail('ARCHIVE_VERIFY_FAILED');
   } finally { await rm(verifyDirectory, { recursive: true, force: true }); }
+  await verifyPlan();
+  if (!isDeepStrictEqual(await fileDigests(projectDirectory, members), before)) throw fail('ARCHIVE_PLAN_CHANGED');
   const manifest = { createdAt: new Date().toISOString(), projectDirectory, archiveFile, sessionIds,
     files: Object.entries(before).map(([file, digest]) => ({ file, sha256: digest })),
     restore: `cd '${projectDirectory}' && ${useZstd ? `zstd -dc --long=31 '${archiveFile}' | tar xf - <id>.jsonl <id>` : `tar -xJf '${archiveFile}' <id>.jsonl <id>`}` };
   await writeFile(`${archiveFile}.manifest.json`, JSON.stringify(manifest, null, 2), { mode: 0o600 });
-  for (const member of members) await rm(path.join(projectDirectory, member), { recursive: true, force: true });
+  // Never unlink an original pathname after observing it: it may now name a
+  // different file. Atomic rename captures the actual inode in a private path;
+  // existing writers retain their descriptors and can be detected there. A
+  // later reopen of the old name creates a new file that we never remove.
+  const stagingDirectory = await mkdtemp(path.join(projectDirectory, '.archive-recovery-'));
+  const moved = [];
+  try {
+    for (const member of members) {
+      await rename(path.join(projectDirectory, member), path.join(stagingDirectory, member));
+      moved.push(member);
+    }
+    await verifyReferences();
+    await assertStagedFilesClosed(stagingDirectory);
+    if (!isDeepStrictEqual(await fileDigests(stagingDirectory, members), before)
+      || (await Promise.all(members.map(member => exists(path.join(projectDirectory, member))))).some(Boolean)) {
+      throw fail('ARCHIVE_PLAN_CHANGED');
+    }
+    // No old-path writer can acquire this unadvertised inode after the move.
+    // Open file or directory descriptors fail closed in assertStagedFilesClosed.
+    await rm(stagingDirectory, { recursive: true });
+  } catch (error) {
+    // Restore only missing names using exclusive hard links. In particular a
+    // newly created native transcript is never overwritten by a rollback.
+    for (const member of moved) {
+      try { await restoreMissingMember(path.join(stagingDirectory, member), path.join(projectDirectory, member)); }
+      catch { /* The private original remains recoverable even if restore fails. */ }
+    }
+    await writeFile(`${archiveDirectory}/${label}.recovery.json`, JSON.stringify({
+      createdAt:new Date().toISOString(), projectDirectory, stagingDirectory, archiveFile, members:moved,
+      reason:error.code ?? 'ARCHIVE_RETIREMENT_FAILED',
+      instructions:'Stop all clients before recovery. Preserve both original-path files and this recovery directory; never overwrite a newer transcript.'
+    }, null, 2), { mode:0o600 });
+    throw error.code ? error : fail('ARCHIVE_RETIREMENT_FAILED');
+  }
   return { archiveFile, members: members.length, files: manifest.files.length };
+}
+
+
+function assertNoStagedWriter(directory) {
+  try {
+    execFileSync(process.platform === 'darwin' ? '/usr/sbin/lsof' : 'lsof', ['-t', '+D', directory], {
+      encoding:'utf8', stdio:['ignore','pipe','pipe'], timeout:10_000, maxBuffer:1024*1024,
+    });
+  } catch(error) {
+    // lsof: exit 1 and completely empty output means no open descriptors.
+    // Permissions, warnings, an unavailable executable or a timeout are unknown.
+    const output=String(error.stdout??'').trim();
+    // macOS can report matching PIDs with exit 1. Positive evidence of an
+    // open descriptor is authoritative regardless of that exit status.
+    if (/^[0-9]+(?:\s+[0-9]+)*$/.test(output)) throw fail('ARCHIVE_SOURCE_OPEN');
+    if(error.status===1 && !output && !String(error.stderr??'').trim()) return;
+    throw fail('ARCHIVE_SOURCE_STATE_UNAVAILABLE');
+  }
+  throw fail('ARCHIVE_SOURCE_OPEN');
+}
+
+async function restoreMissingMember(from, to) {
+  const info=await lstat(from);
+  if(info.isFile()) {
+    try { await link(from,to); } catch(error) { if(error.code!=='EEXIST')throw error; }
+  } else if(info.isDirectory()) {
+    try { await mkdir(to,{mode:0o700}); } catch(error) { if(error.code==='EEXIST')return;throw error; }
+    for(const name of await readdir(from))await restoreMissingMember(path.join(from,name),path.join(to,name));
+  }
 }
