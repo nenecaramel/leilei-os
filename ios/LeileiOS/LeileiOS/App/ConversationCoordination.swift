@@ -470,33 +470,9 @@ extension AppModel {
     }
 
     func refreshNativeLiveConversationHistorySnapshot() async {
-        guard isAuthenticated,
-              let conversationID = activeNativeLiveConversationID else {
-            return
-        }
-
-        do {
-            let snapshot =
-                try await api.nativeLiveConversationHistorySnapshot(
-                    conversationID: conversationID
-                )
-            guard activeNativeLiveConversationID == conversationID else {
-                return
-            }
-            nativeLiveHistorySnapshot = snapshot
-        } catch LeileiAPIError.backend(let status, _, _)
-            where status == 404 {
-            guard activeNativeLiveConversationID == conversationID else {
-                return
-            }
-            nativeLiveHistorySnapshot = nil
-        } catch LeileiAPIError.missingAccessToken {
-            clearNativeLiveSessionData()
-        } catch LeileiAPIError.unauthorized {
-            clearNativeLiveSessionData()
-        } catch {
-            // History snapshots are display-only and fail soft.
-        }
+        // Retired display-only copies must not be fetched on page refresh.
+        // Canonical LeileiOS messages are loaded by refreshNativeLiveCurrentPath.
+        nativeLiveHistorySnapshot = nil
     }
 
     func refreshNativeLiveCurrentPath(

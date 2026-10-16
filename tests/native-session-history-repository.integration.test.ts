@@ -444,7 +444,7 @@ test("native restore cannot mark an interrupted nonempty replica complete", { sk
   assert.deepEqual(await store.load({ userId: f.owner, key: { sessionId: f.sessionId } }), f.entries);
 }));
 
-test("fixed restore entry reaches authenticated HTTP writer and isolated DB; lost HTTP ack retry creates one history", { skip: !enabled }, async () => fixture(async f => {
+test("retired full-history CLI fails before writing history or replaying uploads", { skip: !enabled }, async () => fixture(async f => {
   const { mkdtemp, mkdir, writeFile, readFile, rm } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
@@ -452,7 +452,7 @@ test("fixed restore entry reaches authenticated HTTP writer and isolated DB; los
   const { withServer } = await import("./helpers/native-live-http-relay-fixtures.js");
   const { createNativeLiveProviderSessionStoreInternalRouter } = await import("../src/web-api/native-live-provider-session-store-internal-router.js");
   const { restoreNativeSessionHistory, readNativeSessionRestoreState, releaseNativeSessionToDesktop } = await import(modulePath.href);
-  const { restoreDesktopNativeSession, handoffNativeSessionToDesktop } = await import("../tools/claude-bridge/src/native-session-switch-restore.mjs");
+  const { restoreDesktopNativeSession } = await import("../tools/claude-bridge/src/native-session-switch-restore.mjs");
   const { DrizzleNativeLiveProviderSessionStoreRepository } = await import("../src/domains/bridge/provider-session/native-live-provider-session-store.js");
   const root = await mkdtemp(join(tmpdir(), "native-restore-e2e-"));
   const configDirectory = join(root, "config"), projectDirectory = join(configDirectory, "projects", "-synthetic-workspace"), peerDirectory = join(configDirectory, "sessions");
@@ -478,33 +478,23 @@ test("fixed restore entry reaches authenticated HTTP writer and isolated DB; los
       }));
     }, async relayUrl => {
       const options = { input, conversationId: f.input.conversationId, relayUrl, relayToken: "synthetic-restore-token" };
-      let requests = 0, lost = false;
-      const replayed = await restoreDesktopNativeSession({ ...options, sleep: async () => {}, fetchImpl: async (url: any, value: any) => {
-        requests++; const response = await fetch(url, value);
-        if (String(url).endsWith("/restore") && !lost) { lost = true; await response.text(); throw new Error("synthetic lost HTTP response after commit"); }
+      const before = await f.state();
+      let requests = 0;
+      const attempt = () => restoreDesktopNativeSession({ ...options, sleep: async () => {}, fetchImpl: async (url: any, value: any) => {
+        requests++;
+        const response = await fetch(url, value);
+        assert.equal(response.status, 410);
+        assert.equal((await response.clone().json()).error.code, 'NATIVE_FULL_HISTORY_RETIRED');
         return response;
       } });
-      // The committed restore is replayed automatically and is idempotent.
-      assert.equal(replayed.outcome, "already_current");
-      assert.equal(requests, 3, "state, lost restore, one replay");
-      assert.equal((await f.messages()).length, 2);
-      const retry = await restoreDesktopNativeSession(options);
-      assert.equal(retry.outcome, "already_current"); assert.equal(retry.inserted, 0);
-      assert.equal((await f.messages()).length, 2);
+      await assert.rejects(attempt(), { code: 'NATIVE_RESTORE_SERVER_REJECTED' });
+      assert.equal(requests, 1, 'retirement is terminal; no automatic upload retry');
+      await assert.rejects(attempt(), { code: 'NATIVE_RESTORE_SERVER_REJECTED' });
+      assert.equal(requests, 2, 'a later manual attempt also stops at the retired state endpoint');
+      assert.deepEqual(await f.state(), before, 'no message, checkpoint or owner changes');
       const store = new DrizzleNativeLiveProviderSessionStoreRepository(f.database.db);
-      assert.deepEqual(await store.load({ userId: f.owner, key: { sessionId: f.sessionId } }), f.entries);
-      assert.equal(await store.getStatus({ userId: f.owner, sessionId: f.sessionId }), "complete");
-      assert.equal((await f.state()).checkpoints.length, 1);
-      let launches = 0;
-      await handoffNativeSessionToDesktop({ ...options, recoveryDirectory: input.recoveryDirectory, launchImpl: async selection => {
-        launches++; assert.equal(selection.providerSessionId, f.sessionId);
-        assert.equal((await f.state()).conversation.providerMetadata.nativeSessionSource.owner, 'desktop');
-      } });
-      assert.equal(launches, 1);
-      assert.equal((await f.messages()).length, 2);
-      assert.equal((await restoreDesktopNativeSession(options)).outcome, 'already_current');
-      assert.equal((await f.state()).conversation.providerMetadata.nativeSessionSource.owner, 'leileios');
-      assert.equal((await f.messages()).length, 2);
+      assert.equal(await store.load({ userId: f.owner, key: { sessionId: f.sessionId } }), null);
+      assert.equal(await store.getStatus({ userId: f.owner, sessionId: f.sessionId }), null);
     });
     assert.equal(await readFile(transcriptFile, "utf8"), bytes);
   } finally { await rm(root, { recursive: true, force: true }); }
@@ -550,7 +540,7 @@ test("native historical assets bind only verified owned bytes in place; retries 
   await assert.rejects(nativeSessionAsset(f.database.db, { ...request, userId: randomUUID() }), { code: 'NATIVE_SOURCE_BINDING_REQUIRED' });
 }));
 
-test('native restore materializes original image and PDF through upload/HEAD/complete then ordinary download; lost bind ack is idempotent', { skip: !enabled }, async () => fixture(async f => {
+test('retired native restore cannot upload image/PDF bytes, create attachment rows or change local originals', { skip: !enabled }, async () => fixture(async f => {
   const { mkdtemp, mkdir, writeFile, readFile, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
   const { createHash } = await import('node:crypto'); const { default: express } = await import('express');
@@ -591,21 +581,15 @@ test('native restore materializes original image and PDF through upload/HEAD/com
   }, async url => {
     base=url;
     const restore = () => restoreDesktopNativeSession({ input, conversationId: f.input.conversationId, relayUrl: url, relayToken: 'SYNTHETIC', recoveryDirectory: join(root,'recovery'), sleep: async () => {} });
-    // The lost bind ack is replayed automatically; binding is idempotent.
-    const result=await restore(); assert.deepEqual(result.assets,{ materialized:2,unavailable:0 }); assert.equal(lostBind,false);
+    const before = await f.state();
+    await assert.rejects(restore(), { code: 'NATIVE_RESTORE_SERVER_REJECTED' });
+    await assert.rejects(restore(), { code: 'NATIVE_RESTORE_SERVER_REJECTED' });
     const { conversationAttachments } = await import('../src/database/schema.js');
-    const rows=await f.database.db.select().from(conversationAttachments).where(eq(conversationAttachments.userId,f.owner)).orderBy(conversationAttachments.ordinal);
-    assert.equal(rows.length,2); assert.equal((await f.messages()).length,2); assert.equal(puts,2); assert.equal(heads,2);
-    const current = await new DrizzleNativeLiveCurrentPathReader(f.database.db).readCurrentPath({userId:f.owner,conversationId:f.input.conversationId,limit:100});
-    const visible = current!.messages[0]!.blocks.filter(block => block.kind === 'attachment');
-    assert.equal(visible.length,2);
-    assert.deepEqual(visible.map(block => block.payload?.attachment_id),rows.map(row => row.sourceAttachmentId));
-    for(const [i,row] of rows.entries()) {
-      const slot=await attachments.createDownloadSlot({ userId:f.owner,attachmentId:row.sourceAttachmentId! });
-      const bytes=Buffer.from(await (await fetch(slot.download.url)).arrayBuffer());
-      assert.deepEqual(bytes,[image,document][i]); assert.equal(slot.attachment.sha256,createHash('sha256').update(bytes).digest('hex'));
-    }
-    assert.equal((await restore()).assets.materialized,2); assert.equal(puts,2);
+    const rows=await f.database.db.select().from(conversationAttachments).where(eq(conversationAttachments.userId,f.owner));
+    assert.equal(rows.length,0);
+    assert.equal(puts,0); assert.equal(heads,0); assert.equal(objects.size,0);
+    assert.equal(lostBind,true, 'legacy binding writer was never reached');
+    assert.deepEqual(await f.state(),before);
     assert.equal(await readFile(transcriptFile,'utf8'),text);
   }); } finally { await rm(root,{recursive:true,force:true}); }
 }));

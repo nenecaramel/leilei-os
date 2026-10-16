@@ -182,7 +182,7 @@ compare_count() {
 
 if [[ "${BACKUP_FORMAT}" == "leilei-os-postgres-backup-v1" ]]; then
   TABLE_CHECK="$(
-    "${PSQL_BIN}" "${TEMP_DATABASE_URL}" \
+    "${PSQL_BIN}" \
       -X -A -t -v ON_ERROR_STOP=1 \
       --dbname="${TEMP_DATABASE_URL}" \
       -c "SELECT
@@ -197,7 +197,7 @@ if [[ "${BACKUP_FORMAT}" == "leilei-os-postgres-backup-v1" ]]; then
     fail "one or more v1 critical tables are missing after restore"
 
   RESTORED_COUNTS="$(
-    "${PSQL_BIN}" "${TEMP_DATABASE_URL}" \
+    "${PSQL_BIN}" \
       -X -A -t -v ON_ERROR_STOP=1 \
       --dbname="${TEMP_DATABASE_URL}" \
       -c "SELECT
@@ -231,7 +231,7 @@ else
     ' "${TEMP_DIR}/manifest.txt" | LC_ALL=C sort
   )"
   ACTUAL_PUBLIC_TABLES="$(
-    "${PSQL_BIN}" "${TEMP_DATABASE_URL}" \
+    "${PSQL_BIN}" \
       -X -A -t -v ON_ERROR_STOP=1 \
       --dbname="${TEMP_DATABASE_URL}" \
       -c "SELECT tablename
@@ -257,7 +257,7 @@ else
     [[ "${expected}" =~ ^[0-9]+$ ]] ||
       fail "the v2 manifest contains an invalid table count"
     if ! actual="$(
-      "${PSQL_BIN}" "${TEMP_DATABASE_URL}" \
+      "${PSQL_BIN}" \
         -X -A -t -v ON_ERROR_STOP=1 \
         --dbname="${TEMP_DATABASE_URL}" \
         -c "SELECT count(*) FROM public.\"${table}\";" \
@@ -282,7 +282,7 @@ else
     fail "the v2 manifest migration hash is invalid"
 
   if ! RESTORED_MIGRATION_LEDGER="$(
-    "${PSQL_BIN}" "${TEMP_DATABASE_URL}" \
+    "${PSQL_BIN}" \
       -X -A -t -v ON_ERROR_STOP=1 \
       --dbname="${TEMP_DATABASE_URL}" \
       -c "SELECT created_at::text || '|' || hash
