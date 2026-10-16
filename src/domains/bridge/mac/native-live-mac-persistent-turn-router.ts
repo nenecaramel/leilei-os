@@ -170,6 +170,7 @@ export class NativeLiveMacPersistentTurnRouter {
     let command: NativeLiveRuntimeCommand;
     try { command = parseNativeLiveRuntimeCommand(rawCommand); } catch { return false; }
     if (!this.binding) return this.initialCommand === null;
+    if (this.input.registry.get(this.binding.conversationId, this.binding.generationId) !== this.binding) return false;
     return command.conversation_id === this.binding.conversationId && command.runtime_mode === "resume"
       && command.parent_provider_session_id === this.binding.session.sessionId
       && command.parent_provider_checkpoint_id === this.providerCheckpointId
