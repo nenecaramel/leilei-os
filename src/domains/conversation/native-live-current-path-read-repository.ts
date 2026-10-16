@@ -26,6 +26,37 @@ type Database = ReturnType<typeof createDatabase>["db"];
 export const DEFAULT_NATIVE_LIVE_CURRENT_PATH_LIMIT = 100;
 export const MAX_NATIVE_LIVE_CURRENT_PATH_LIMIT = 200;
 
+export type NativeLiveVisibleBackgroundResult = {
+  id: string; sourceMessageId: string; createdAt: string; text: string;
+};
+
+export function visibleBackgroundResult(row: {
+  id: string; sourceMessageId: string; createdAt: Date; payload: unknown;
+}): NativeLiveVisibleBackgroundResult | null {
+  const receipt = row.payload;
+  if (!receipt || typeof receipt !== "object" || Array.isArray(receipt)) return null;
+  const value = receipt as Record<string, unknown>;
+  if (value.kind !== "persistent_background_receipt_v1" || value.phase !== "committed") return null;
+  const result = value.result;
+  if (!result || typeof result !== "object" || Array.isArray(result)) return null;
+  const data = result as Record<string, unknown>;
+  if (data.status !== "success" || !Array.isArray(data.normalized_events)) return null;
+  const texts: string[] = [];
+  for (const event of data.normalized_events) {
+    if (!event || typeof event !== "object" || Array.isArray(event)) continue;
+    const entry = event as Record<string, unknown>;
+    if (entry.type !== "text") continue;
+    const payload = entry.payload;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) continue;
+    const text = (payload as Record<string, unknown>).text;
+    if (typeof text === "string" && text.trim()) texts.push(text);
+  }
+  const text = texts.join("\n\n").trim();
+  if (!text) return null;
+  return { id: row.id, sourceMessageId: row.sourceMessageId,
+    createdAt: row.createdAt.toISOString(), text: text.slice(0, 131_072) };
+}
+
 export type NativeLiveCurrentPathSnapshot = {
   failedTurn?: NativeLiveFailedTurnEvidence | null;
   conversationId: string;
@@ -37,6 +68,7 @@ export type NativeLiveCurrentPathSnapshot = {
   olderCursor: string | null;
   resetRequired: boolean;
   messages: NativeLiveMessage[];
+  backgroundResults: NativeLiveVisibleBackgroundResult[];
 };
 
 type CurrentPathIdRow = {
@@ -112,8 +144,15 @@ implements NativeLiveCurrentPathReader {
         olderCursor: null,
         resetRequired: false,
         messages: [],
+        backgroundResults: [],
       };
     }
+
+    // Independent committed receipts may belong to ancestors outside the
+    // current message window. Never repeat them in older-page responses.
+    const backgroundResults = input.beforeMessageId ? [] : await this.readBackgroundResults({
+      userId: input.userId, conversationId: input.conversationId, headMessageId,
+    });
 
     let startMessageId = headMessageId;
     if (input.beforeMessageId) {
@@ -192,6 +231,7 @@ implements NativeLiveCurrentPathReader {
           olderCursor: null,
           resetRequired: false,
           messages: [],
+          backgroundResults: [],
         };
       }
       startMessageId = cursor.parentMessageId;
@@ -286,6 +326,7 @@ implements NativeLiveCurrentPathReader {
         olderCursor,
         resetRequired,
         messages: [],
+        backgroundResults,
       };
     }
 
@@ -451,9 +492,47 @@ implements NativeLiveCurrentPathReader {
       olderCursor,
       resetRequired,
       messages,
+      backgroundResults,
     };
   }
 
+
+  private async readBackgroundResults(input: {
+    userId: string; conversationId: string; headMessageId: string;
+  }): Promise<NativeLiveVisibleBackgroundResult[]> {
+    const rows = await this.db.execute<{
+      id: string; sourceMessageId: string; createdAt: Date; payload: unknown;
+    }>(sql`
+      WITH RECURSIVE live_branch AS (
+        SELECT id, parent_message_id FROM conversation_messages
+        WHERE user_id=${input.userId}::uuid AND conversation_id=${input.conversationId}::uuid
+          AND id=${input.headMessageId}::uuid
+        UNION ALL
+        SELECT parent.id, parent.parent_message_id
+        FROM conversation_messages parent JOIN live_branch child
+          ON parent.id=child.parent_message_id
+        WHERE parent.user_id=${input.userId}::uuid
+          AND parent.conversation_id=${input.conversationId}::uuid
+      )
+      SELECT event.id, source.assistant_message_id::text AS "sourceMessageId",
+             event.created_at AS "createdAt", event.payload
+      FROM native_live_runtime_events event
+      JOIN native_live_turn_preparations source
+        ON source.id=event.prepare_id AND source.user_id=event.user_id
+      JOIN live_branch ON live_branch.id=source.assistant_message_id
+      WHERE event.user_id=${input.userId}::uuid
+        AND source.conversation_id=${input.conversationId}::uuid
+        AND event.event_type='runtime'
+        AND event.payload->>'kind'='persistent_background_receipt_v1'
+        AND event.payload->>'phase'='committed'
+        AND event.payload->'result'->>'status'='success'
+      ORDER BY event.created_at DESC, event.id DESC
+      LIMIT 512
+    `);
+    return rows.map(visibleBackgroundResult).filter(
+      (result): result is NativeLiveVisibleBackgroundResult => result !== null,
+    ).reverse();
+  }
 
 }
 
