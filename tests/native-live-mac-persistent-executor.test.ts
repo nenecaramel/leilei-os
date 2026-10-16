@@ -11,10 +11,10 @@ const command = (extra: Partial<NativeLiveRuntimeCommand> = {}): NativeLiveRunti
 } as NativeLiveRuntimeCommand);
 type TurnInput = Record<string, any>;
 
-function fixture(behavior: (input: TurnInput) => Promise<unknown>, { matches = true, materializer = null as any, sender = null as any } = {}) {
+function fixture(behavior: (input: TurnInput) => Promise<unknown>, { matches = true, materializer = null as any, sender = null as any, onRuntimeFailure = null as any } = {}) {
   const routers: Array<{ closed: number; inputs: TurnInput[] }> = [];
   const executor = new NativeLiveMacPersistentExecutor({
-    attachmentMaterializer: materializer, outputAttachmentSender: sender,
+    attachmentMaterializer: materializer, outputAttachmentSender: sender, onRuntimeFailure,
     createRouter() {
       const state = { closed: 0, inputs: [] as TurnInput[] }; routers.push(state);
       return { workingDirectory: "/work", matches: () => matches, async close() { state.closed++; },
@@ -59,6 +59,22 @@ test("a failure before any commit is pending: the caller submits the failure res
   const run = await f.executor.execute(command(), { async commit() { commits++; } });
   assert.equal(run.delivery, "pending"); assert.equal(commits, 0);
   assert.deepEqual([run.result.status, (run.result as { error_code?: string }).error_code], ["failure", "NO_PROVIDER_SESSION"]);
+});
+
+test("persistent pre-commit failure logs the bounded original SDK error without changing failure delivery", async () => {
+  const observed: Array<{ runtimeCode: string; errorName?: string; errorMessage?: string }> = [];
+  const f = fixture(async () => {
+    throw Object.assign(new Error("Synthetic SDK startup failed"), { runtimeCode: "RUNTIME_UNAVAILABLE" });
+  }, { onRuntimeFailure: (value: { runtimeCode: string; errorName?: string; errorMessage?: string }) => {
+    observed.push(value);
+    throw new Error("observer unavailable"); // Observability must never alter canonical failure.
+  } });
+  const run = await f.executor.execute(command(), { async commit() { assert.fail("no commit on provider failure"); } });
+  assert.equal(run.delivery, "pending");
+  assert.equal(run.result.status, "failure");
+  assert.equal((run.result as { error_code?: string }).error_code, "RUNTIME_UNAVAILABLE");
+  assert.deepEqual(observed.map(x => [x.runtimeCode,x.errorName,x.errorMessage]),
+    [["RUNTIME_UNAVAILABLE","Error","Synthetic SDK startup failed"]]);
 });
 
 test("only continuing send/wake commands route; a legacy operation retires the writer first", async () => {
