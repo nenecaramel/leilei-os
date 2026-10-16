@@ -10,7 +10,6 @@ export interface BreathSemanticScorer {
   score(input: {
     query: string;
     candidates: readonly BreathSemanticCandidate[];
-    signal?: AbortSignal;
   }): Promise<ReadonlyMap<string, number>>;
 }
 
