@@ -33,7 +33,8 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
   let transcript: Array<Record<string, unknown>> | null = null;
   let writeTranscript = true;
   const resumes: unknown[] = [], submitted: string[] = [];
-  let sdk!: { canUseTool: (name: string, input: unknown, context: unknown) => Promise<unknown> };
+  let sdk!: { canUseTool: (name: string, input: unknown, context: unknown) => Promise<unknown>;
+    hooks: { UserPromptSubmit: Array<{ hooks: Array<(input: Record<string, unknown>) => Promise<{ decision?: string }>> }> } };
   const registry = new NativeLiveMacSessionRegistry({}, root, async (...args) => {
     const configured = await createNativeLiveMacClaudeTransport(...args);
     const open = configured.runtime.openPersistentSession!.bind(configured.runtime);
@@ -375,4 +376,40 @@ test("idle background tools use a fresh session fence and cannot borrow permissi
  held=true;const late=tool();const two=f.run(command(2));await f.inputs.next();gate.resolve(true);
  assert.equal((await late as {behavior:string}).behavior,"deny");
  f.finish(id(22));await two;
+});
+
+test("native scheduled prompt uses the real idle branch fence and existing durable background result path", async t => {
+ let allow=true,checks=0;const f=await fixture(t,async()=>{checks++;return allow;});
+ const one=f.run(command(1));f.finish((await f.inputs.next()).value!.uuid);await one;
+ const hook=f.sdk.hooks.UserPromptSubmit[0].hooks[0];
+ const trigger=(prompt:string)=>hook({hook_event_name:"UserPromptSubmit",session_id:sid,source:"schedule_wakeup",prompt_id:prompt,prompt:"synthetic"});
+ assert.notEqual((await trigger("scheduled-one")).decision,"block");assert.equal(checks,1);
+ const binding=f.registry.snapshot()[0];
+ const settled=new Promise(resolve=>binding.session.events.once("background-result",resolve));
+ f.finish(id(900));await settled;
+ assert.deepEqual(f.background,[id(900)]);assert.deepEqual(f.results,[id(1)]);
+ const next=f.run({...command(2),parent_provider_checkpoint_id:id(102)});
+ f.finish((await f.inputs.next()).value!.uuid);await next;assert.equal(f.launches,1);
+});
+
+test("scheduled prompt cannot borrow an admission through foreground rotation or handoff", async t => {
+ const entered=deferred<void>(),release=deferred<boolean>();
+ const f=await fixture(t,async()=>{entered.resolve();return release.promise;});
+ const one=f.run(command(1));f.finish((await f.inputs.next()).value!.uuid);await one;
+ const hook=f.sdk.hooks.UserPromptSubmit[0].hooks[0];
+ const pending=hook({session_id:sid,source:"loop_wakeup",prompt_id:"racing",prompt:"synthetic"});await entered.promise;
+ f.router.suspend();release.resolve(true);assert.equal((await pending).decision,"block");
+ assert.equal(f.launches,1);assert.deepEqual(f.background,[]);
+});
+
+test("scheduled prompt waits for the preceding durable foreground acknowledgement", async t => {
+ const entered=deferred<void>(),release=deferred<NativeLiveMacPersistentAcknowledgement>();let checks=0;
+ const f=await fixture(t,async()=>{checks++;return true;});
+ const one=f.run(command(1),{async onResult(){entered.resolve();return release.promise;}});
+ f.finish((await f.inputs.next()).value!.uuid);await entered.promise;
+ const hook=f.sdk.hooks.UserPromptSubmit[0].hooks[0];
+ const pending=hook({session_id:sid,source:"schedule_wakeup",prompt_id:"after-commit",prompt:"synthetic"});
+ assert.equal(checks,0);
+ release.resolve(acknowledged());await one;
+ assert.notEqual((await pending).decision,"block");assert.equal(checks,1);
 });

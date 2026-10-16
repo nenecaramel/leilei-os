@@ -63,7 +63,7 @@ export type NativeLiveMacSessionRestore = Readonly<{
   timeoutMs?: number;
 }>;
 export type NativeLiveMacPersistentSessionOptions = {
-  authorize(context: { phase: "input" | "tool"; inputId: string | null; source: NativeLiveMacSessionSource | null; providerSessionId: string | null }): Promise<boolean>;
+  authorize(context: { phase: "input" | "tool" | "scheduled"; inputId: string | null; source: NativeLiveMacSessionSource | null; providerSessionId: string | null }): Promise<boolean>;
   onBackgroundResult(frame: { result: Record<string, unknown>; events: Record<string, unknown>[]; normalizedEvents: NativeLiveNormalizedEvent[] }): Promise<void>;
   execution?: NativeLiveExecutionSelection | null;
   perTaskStopAffordance?: boolean;

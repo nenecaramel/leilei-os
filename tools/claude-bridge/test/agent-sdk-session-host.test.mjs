@@ -200,9 +200,9 @@ test('supplemental input cannot cross a turn boundary during asynchronous author
  const pending=f.host.sendUserMessage('late',{uuid:'late'});pending.catch(()=>{});
  await f.event({...result(),user_message_uuid:'first'});await turn;release();await assert.rejects(pending,/ownership changed/i);assert.deepEqual(f.inputs.map(x=>x.uuid),['first']);
 });
-test('interrupt receipts cannot claim queued commands from another session or duplicate an id',async t=>{
+test('interrupt receipts ignore SDK-internal cron ids without claiming them as user input; duplicates still reject',async t=>{
  const f=await fixture();t.after(()=>f.host.close());const turn=f.host.submit('first',{id:'first'});turn.catch(()=>{});
- f.host.query.interrupt=async()=>({still_queued:['foreign']});await assert.rejects(f.host.interruptTurn(),/queued/i);
+ f.host.query.interrupt=async()=>({still_queued:['sdk-scheduled','first']});assert.deepEqual(await f.host.interruptTurn(),{still_queued:['first']});
  f.host.query.interrupt=async()=>({still_queued:['first','first']});await assert.rejects(f.host.interruptTurn(),/queued/i);
  await f.event({...result(),user_message_uuid:'first'});await turn;
 });

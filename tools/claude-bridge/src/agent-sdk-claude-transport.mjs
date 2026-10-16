@@ -10,6 +10,7 @@ import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import { createAgentSdkTurnHandle } from "./agent-sdk-turn-handle.mjs";
 import { createAgentSdkSessionHost } from "./agent-sdk-session-host.mjs";
+import { createScheduledInputGuard } from "./agent-sdk-scheduled-input.mjs";
 import { createAgentSdkQuestionCallback } from "./agent-sdk-question.mjs";
 import { createAgentSdkPermissionCallback, normalizeAgentSdkToolPermissionPolicy } from "./agent-sdk-permission.mjs";
 import { LEILEIOS_MIND_SYSTEM_PROMPT } from "./leileios-mind-system-prompt.mjs";
@@ -478,7 +479,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.abortRequested = false;
   }
 
-  // Explicit stage-2 entry point; the existing daemon does not call it yet.
+  // The daemon's persistent executor owns this session across logical turns.
   // Keep new-session creation separate from exact native restore below.
   async openPersistentSession(options = {}) {
     return this.#openPersistentSession(options);
@@ -508,9 +509,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     let host, startup = null, rejectStartup = null;
     let firstInputAdmitted = false;
     const assertLive = phase => {
-      if (this.activeSessionHost !== (host ?? claim) || claim.cancelled || (phase === "tool" && !host)
+      if (this.activeSessionHost !== (host ?? claim) || claim.cancelled || (phase !== "input" && !host)
         || host?.queryClosed || ["closed", "failed"].includes(host?.state)
-        || (restore && phase === "tool" && !startup?.nativeIdentityConfirmed)) throw new Error("Persistent session admission was aborted.");
+        || (restore && phase !== "input" && !startup?.nativeIdentityConfirmed)) throw new Error("Persistent session admission was aborted.");
     };
     const admit = async (phase, inputId = null, source = null) => {
       assertLive(phase);
@@ -545,6 +546,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       // One-use admission from this tool's PreToolUse, scoped to its exact turn.
       // The post-permission check remains fresh; this is never a session grant.
       const toolAdmissions = new Map();
+      const scheduledInput = createScheduledInputGuard({ getHost: () => host,
+        admit: () => admit("scheduled", null, null) });
       const permission = createAgentSdkPermissionCallback({
         toolPermissionPolicy: this.toolPermissionPolicy, events: this.events,
         permissionHandler: permissionHandler ?? (async () => ({ decision: "deny", message: "No permission handler is configured.", interrupt: false })),
@@ -573,7 +576,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         queryOptions: {
           cwd: this.cwd, env: this.environment, settingSources: ["user", "project", "local"],
           permissionMode: "default", includePartialMessages: true, perTaskStopAffordance,
-          verbatimPrompts: true,
+          // Only a human /loop opts into native dispatch on its own message.
+          // Composed prompts retain literal delivery via client_composed.
+          verbatimPrompts: false,
           systemPrompt: { type: "preset", preset: "claude_code", append: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT },
           ...executionOptions,
           // Request the same provider displayable summary as the interactive
@@ -591,6 +596,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
             }] }] } },
           } : {}),
           canUseTool: async (name, input, context) => {
+            if (!scheduledInput.allowsTool(name, input)) return { behavior: "deny", message: "Native scheduling requires stamped hook provenance from this CLI.", interrupt: false };
             // A delayed tool callback belongs to the turn that invoked it, not
             // whichever turn happens to be active when authorization returns.
             const turn = host?.active ?? null;
@@ -610,7 +616,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
             catch { return { behavior: "deny", message: "LeileiOS session admission denied.", interrupt: true }; }
             return verdict;
           },
-          hooks: { PreToolUse: [{ hooks: [async input => {
+          hooks: { UserPromptSubmit: [{ hooks: [scheduledInput] }], PreToolUse: [{ hooks: [async input => {
+            if (!scheduledInput.allowsTool(input?.tool_name, input?.tool_input)) return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "Native scheduling requires stamped hook provenance from this CLI." } };
             const turn = host?.active ?? null;
             try {
               await admit("tool", turn?.id ?? null);

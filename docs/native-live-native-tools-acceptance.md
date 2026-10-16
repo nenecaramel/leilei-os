@@ -1,4 +1,4 @@
-# Native Live official tool acceptance (SDK 0.3.286)
+# Native Live official tool acceptance (SDK 0.3.296)
 
 This is a preparation checklist, not evidence of real tool availability or end-to-end acceptance.
 No SDK upgrade or replacement of `mcp__leileios_local__send_file` is included.
@@ -24,9 +24,9 @@ The branch is aligned to main including #1044's interrupted SDK tail recovery an
 
 ## Boundaries not solved by adding tool names
 
-`AgentSdkTurnHandle` ends the input stream on a terminal result and closes the query at cleanup. The Mac daemon remaining alive does not keep that SDK session alive.
+The compatibility `AgentSdkTurnHandle` ends the input stream on a terminal result and closes the query at cleanup. The default persistent daemon path instead keeps its SDK writer alive after foreground completion; the daemon being alive alone is still not sufficient.
 
-- Session-scoped CronCreate/ScheduleWakeup and Monitor cannot be advertised as reliable idle background execution with the current per-turn lifecycle. Retaining a query would also require explicit idle event ownership, cancellation, session handoff and quota controls; this change does not silently implement that new lifecycle.
+- Session-scoped schedules require the persistent writer, fresh admission and durable background receipts described below. Tool advertisement alone remains insufficient evidence of live execution.
 - PushNotification targets Claude's desktop/Remote Control clients. It does not register an APNs delivery path for the LeileiOS iPhone app. Successfully invoking that tool would not prove LeileiOS notification delivery.
 - A private Artifact link is published on Anthropic infrastructure. It is not an upload into the LeileiOS attachment Bucket or a new inline renderer.
 
@@ -63,6 +63,72 @@ Every request is scoped to the source user, surviving canonical branch, native s
 The paired persistent runtime advertises `perTaskStopAffordance` only after the authenticated backend reports task-control protocol version 1 and its consumer is wired, so foreground interrupt can leave background work running. Legacy/test callers without that consumer retain the whole-session fallback. Deploy the matching backend/schema before refreshing the Mac daemon; older backends do not provide this contract. Idle tool callbacks require a fresh surviving-session admission and a second check after permission; a concurrent foreground turn revokes that captured admission. There is no lifetime permission grant, no automatic prompt or model call just to read task state, and no idle permission/question UI borrowed from an old turn.
 
 Pinned SDK 0.3.296 publicly exposes `stopTask` and `backgroundTasks`, but no public task-output reader on `Query`. An internal `get_task_output` protocol type is not a supported public API. A deliberately isolated compatibility shim now invokes the pinned SDK's internal `Query.request` for this one declared `get_task_output` subtype. It reads at most the last 8 KiB as plain text with a two-second deadline, rejects stale handles before/after the request, and fails closed if the method or response is unsupported. A synthetic subprocess test drives the real installed SDK control protocol without launching Claude or sending a prompt; this is not live CLI acceptance. There is no arbitrary task-output file read or dependency upgrade. TaskOutput/TaskStop availability alone does not prove background task management is complete. Live CLI/model, restart, sleep/wake, Rewind and Desktop acceptance remains pending; no formal daemon refresh was performed.
+
+## Session-local Cron / Loop
+
+Use the CLI's existing `CronCreate`, `CronList`, `CronDelete`, `ScheduleWakeup`
+and `/loop`; there is no LeileiOS timer service, cron table or recovery replay.
+An explicit human `/loop` is dispatched as a native skill on the existing writer.
+Ordinary prompts, attachments, silence wakes and mid-turn input retain literal
+delivery with per-message `client_composed: true`. A prompt supplied by a wake
+cannot invoke `/loop` merely by starting with that text.
+
+Before model inference, `UserPromptSubmit` admits only explicitly stamped
+`schedule_wakeup` / `loop_wakeup` triggers with the current native session and a
+bounded nonempty `prompt_id`. Subagent triggers, missing provenance, duplicates
+and retired writers fail closed. User/SDK input and existing system/poll task
+notifications keep their existing paths. Older CLIs can omit `source`: an exact
+literal foreground hook may consume one pending ticket from an already admitted
+input (including mid-turn input). It cannot reuse that ticket after the hook has
+run. Native schedule creation is refused until this writer has observed stamped
+hook provenance, while list/delete/stop and ordinary legacy chat remain available.
+This is compatibility for ordinary input, not support for unstamped native timers;
+a preexisting legacy timer with identical text overtaking the first foreground
+hook cannot be absolutely distinguished by that older schema. No transcript
+parsing or historical task replay attempts to repair that ambiguity.
+The SDK control callback can overtake consumption of the preceding result, so
+admission waits for that exact foreground boundary and durable acknowledgement,
+then checks the existing surviving-branch/listener/session fence. A new foreground
+reservation, handoff or checkpoint change during the check denies it.
+
+Admission and its boundary wait share a two-second deadline. Per writer, at most
+64 scheduled admission attempts are allowed, at least 60 seconds apart, within
+seven days of opening that writer; denied/uncertain attempts are not replayed.
+These are aggregate writer bounds, not per-job quotas or a billing guarantee.
+Budget exhaustion does not cancel the CLI's stored task: a later trigger is
+blocked, while ordinary chat, `CronList`, `CronDelete` and `ScheduleWakeup(stop)`
+remain available. Creating another schedule does not reset these bounds. Each
+individual invocation can still consume the model's normal turn budget.
+
+Native scheduling owns persistence, cancellation, expiry and missed-fire handling;
+this adapter neither scans native task files nor promises restart recovery. A
+closed daemon cannot run local timers. Resuming a native session may restore
+CLI-owned schedules according to the installed CLI's own policy. Rewind, fork,
+handoff, lease loss and unknown delivery retain existing writer retirement and
+receipt fences. Background output uses the same durable receipt/outbox and
+continuation cursor as Bash/Monitor results, without inventing a visible user
+message. SDK-internal queued timer IDs in an interrupt receipt are ignored for
+user-input attribution; they are not reported as user messages or as cancelled.
+
+### Wake cleanup boundary
+
+Modern silence wakes already reserve as same-session resumes when the listener
+advertises persistent sessions. The initial fork preparation and legacy executor
+remain necessary for older listeners, missing generation evidence, capacity and
+unsupported branch operations. They are compatibility paths, not another timer
+engine. Remove them only after real daemon/device/handoff acceptance establishes
+that their consumers can be retired. This change removes stale claims that the
+daemon never calls the persistent host; it does not remove ordinary fork/edit/retry
+or delete native session history, stored schedules or recovery receipts.
+
+Offline evidence covers native input and hook serialization through the pinned
+SDK with a synthetic CLI, boundary/commit races, denial and execution bounds.
+It does not prove the real CLI has enabled a particular scheduling tool, that a
+live job fires/cancels, or that sleep/restart restores it. Those remain explicit
+live acceptance checks after an authorized daemon refresh. No model call,
+production mutation, deployment or daemon restart is part of these tests.
+
+Reference: [Claude Code scheduled tasks](https://code.claude.com/docs/en/scheduled-tasks).
 
 Task-state observers are nonfatal and see committed membership before they can issue reentrant controls; one failing subscriber cannot prevent process cleanup or later subscribers. Local handles fence control admission and stale responses. They cannot add a run ID to the SDK's ID-only `stopTask` RPC: replacement inside the external process after dispatch remains an SDK boundary, not a proven atomic run-targeting guarantee.
 

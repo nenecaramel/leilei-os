@@ -205,8 +205,15 @@ export class NativeLiveMacPersistentTurnRouter {
     if (this.active !== slot || slot.phase !== phase) throw new Error("Persistent reservation is no longer active.");
   }
   private async authorize(context: Parameters<NativeLiveMacPersistentSessionOptions["authorize"]>[0]): Promise<boolean> {
+    // Native timers may arrive as soon as the SDK finishes, before our durable
+    // result receipt. Join that exact commit; never borrow a later reservation.
+    const preceding = this.active;
+    if (context.phase === "scheduled" && preceding?.resultReady) {
+      await preceding.finished;
+      if (this.active !== null) return false;
+    }
     const slot = this.active;
-    if (!slot && !this.suspended && context.phase === "tool" && context.inputId === null && this.binding?.session.sessionId && this.backgroundSource && this.input.relay.checkTaskAdmission) {
+    if (!slot && !this.suspended && (context.phase === "tool" || context.phase === "scheduled") && context.inputId === null && this.binding?.session.sessionId && this.backgroundSource && this.input.relay.checkTaskAdmission) {
       const source=this.backgroundSource, binding=this.binding, checkpoint=this.providerCheckpointId;
       try {
         this.assertLive();
