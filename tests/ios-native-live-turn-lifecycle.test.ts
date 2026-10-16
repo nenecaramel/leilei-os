@@ -104,9 +104,11 @@ test("composer typing is isolated from unrelated chat churn", () => {
     "ios/LeileiOS/LeileiOS/Chat/NativeLiveMessageSurface.swift",
     "utf8",
   );
-  assert.doesNotMatch(
-    surface,
-    /\.scrollDismissesKeyboard\(\.interactively\)/,
+  // Interactive keyboard dismissal was approved for both the populated and
+  // empty scroll surfaces. This must not be treated as composer churn.
+  assert.equal(
+    (surface.match(/\.scrollDismissesKeyboard\(\.interactively\)/g) ?? []).length,
+    2,
   );
 
   const runtimeStore = fs.readFileSync(
