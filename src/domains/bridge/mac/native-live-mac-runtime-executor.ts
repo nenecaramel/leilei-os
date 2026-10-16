@@ -759,7 +759,7 @@ function isRetryableLeileiosMcpStartupFailure(
   return true;
 }
 
-function runtimeFailureDiagnostics(
+export function runtimeFailureDiagnostics(
   prepareId: string,
   runtimeCode: NativeLiveRuntimeFailureCode,
   error: unknown,
