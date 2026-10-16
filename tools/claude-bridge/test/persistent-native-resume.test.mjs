@@ -21,7 +21,7 @@ test('native persistent resume verifies startup identity then continues two turn
  const f=fixture();const host=await f.open();t.after(()=>host.close());assert.equal(f.inputs.length,0);
  const first=await host.submit('wake',{id:inputId,source:'task-notification'});
  const second=await host.submit('next',{id:'55555555-5555-4555-8555-555555555555',source:'human'});
- assert.equal(first.providerSessionId,sid);assert.equal(second.providerSessionId,sid);assert.equal(f.calls,1);assert.equal(f.options.resume,sid);assert.equal(f.options.resumeSessionAt,cp);assert.equal(f.options.forkSession,undefined);assert.equal(f.options.sessionStore,undefined);
+ assert.equal(first.providerSessionId,sid);assert.equal(second.providerSessionId,sid);assert.equal(f.calls,1);assert.equal(f.options.resume,sid);assert.equal(f.options.resumeSessionAt,cp);assert.equal(f.options.forkSession,undefined);assert.equal(f.options.sessionStore,undefined);assert.deepEqual(f.options.thinking,{type:'adaptive',display:'summarized'});
  assert.ok(f.admissions.length>=3);assert.equal(f.admissions[0].providerSessionId,sid);
 });
 test('copied startup identity refuses prompt delivery',async()=>{
