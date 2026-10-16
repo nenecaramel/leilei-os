@@ -38,17 +38,24 @@ test('User row and history/divider moves retain complete presentation and intera
  assert.match(userRow, /onCopy:onCopyMessage,isDisabled:isTurnInFlight/);
  assert.match(userRow, /if isIMessage \{[\s\S]*?Color\.clear\.frame\(width:leadingClearance\)[\s\S]*?messageView\.frame\(maxWidth:\.infinity,alignment:\.trailing\)/);
  assert.match(userRow, /else \{[\s\S]*?Spacer\(minLength:leadingClearance\)\s*messageView/);
- for(const name of ['NativeLiveHistorySnapshotRow','NativeLiveHistoryForkDivider']) {
-  let expected=block(baseline,'struct '+name+':');
-  if(name==='NativeLiveHistorySnapshotRow') {
-   const start=expected.indexOf('                Text('), end=expected.indexOf('                NativeLiveMessagePresentationView',start);
-   const stamp=expected.slice(start,end).replace('.padding(.bottom, 4)','.padding(.top, 4)').replace('size: 13.5', 'size: 12').trimEnd();
-   expected=expected.slice(0,start)+expected.slice(end);
-   const position=expected.indexOf('                .textSelection(.enabled)',start)+'                .textSelection(.enabled)'.length;
-   expected=expected.slice(0,position)+'\n\n'+stamp+expected.slice(position);
-  }
-  equal(block(read(name==='NativeLiveHistorySnapshotRow'?'NativeLiveHistoryMessageRow.swift':'NativeLiveHistoryDivider.swift'),'struct '+name+':'),expected,name);
- }
+ // A history row now uses separate Original and iMessage paint, with no
+ // changes to time-zone formatting or history presentation projection.
+ const history=read('NativeLiveHistoryMessageRow.swift');
+ const oldHistory=block(baseline,'struct NativeLiveHistorySnapshotRow:');
+ assert.match(history,/NativeLiveMessagePresentationProjector\.project\(\.history\(message\)\)/);
+ assert.match(history,/if message\.role == "user"/);
+ assert.match(history,/if chatTheme == \.iMessage \{/);
+ assert.match(history,/Color\.clear\.frame\(width: ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
+ assert.match(history,/NativeLiveIMessageTextBubbleList\(presentation: presentation, side: \.outgoing\)/);
+ assert.match(history,/Spacer\(minLength: ChatPresentationLayout\.userLeadingClearance\)/);
+ assert.match(history,/NativeLiveMessagePresentationView\(presentation: presentation\)/);
+ assert.match(history,/side: \.incoming,[\s\S]*timestamp: MessageTimestampFormatter\.string/);
+ assert.match(history,/UIPasteboard\.general\.string = text\s*copyFeedback\("Message copied"\)/);
+ assert.match(history,/timeZoneIdentifier: timeZone/);
+ assert.match(history,/\.font\(\.system\(size: 12\)\)\s*\.tracking\(0\.12\)\s*\.foregroundStyle\(\.secondary\)\s*\.padding\(\.top, 4\)/);
+ assert.match(oldHistory,/NativeLiveMessagePresentationProjector\.project\(\.history\(message\)\)/);
+ equal(block(read('NativeLiveHistoryDivider.swift'),'struct NativeLiveHistoryForkDivider:'),
+   block(baseline,'struct NativeLiveHistoryForkDivider:'), 'History divider and fork metadata');
  // The Original body and iMessage text/voice paths now live behind the same
  // message presentation. Verify critical actions instead of raw enclosing bytes.
  assert.match(user, /if chatTheme == \.iMessage \{[\s\S]*?NativeLiveIMessageTextBubbleList\(presentation: presentation, side: \.outgoing\)/);
@@ -131,8 +138,8 @@ test('Message router and assistant preserve routing and presentation order acros
   'if chatTheme == .original',
   'nativeLiveAssistantActions(turn:turn',
  ],'Assistant sections and Original footer actions');
- assert.match(assistant,/onRetry: retryAction/);
- assert.match(assistant,/isRetryDisabled: isTurnInFlight/);
+ assert.ok(assistant.includes('onRetry:retryAction'), 'iMessage retry owner is retained');
+ assert.ok(assistant.includes('isRetryDisabled:isTurnInFlight'), 'in-flight guard is retained');
  assert.match(read('NativeLiveAssistantTurnRow.swift'),/return \{ onRetryMessage\(userID\) \}/);
 });
 test('UIKit context menu and tap coordinator implementation remains byte identical',()=>{
