@@ -74,7 +74,16 @@ test('Assistant organization conserves activity bindings, refresh owner, indicat
 });
 test('Inner renderer remains unchanged and wrong retry target is rejected by conservation',()=>{
  const baseline=old('NativeLiveMessageBlocks.swift'),current=read('NativeLiveMessageBlocks.swift');
- for(const name of ['NativeLiveMessagePresentationView','NativeLiveVisualNodesView','NativeLiveVisualNodeView','NativeLiveVisualFallbackView']) equal(block(current,'struct '+name+':'),block(baseline,'struct '+name+':'),name);
+ for(const name of ['NativeLiveMessagePresentationView','NativeLiveVisualNodesView','NativeLiveVisualNodeView']) {
+  equal(block(current,'struct '+name+':'),block(baseline,'struct '+name+':'),name);
+ }
+ // The fallback retains its original text and metadata, but the accepted
+ // iMessage theme paints the background through a conditional shared modifier.
+ const panel = '.modifier(NativeLiveIMessageContentPanel(originalOpacity:0.045,originalCornerRadius:11))';
+ const fallback = compact(block(current,'struct NativeLiveVisualFallbackView:'));
+ assert.ok(fallback.includes(panel),'Expected theme-aware fallback card background');
+ equal(fallback.replace(panel, '.background(Color.primary.opacity(0.045),in:RoundedRectangle(cornerRadius:11))'),
+   block(baseline,'struct NativeLiveVisualFallbackView:'), 'Fallback payload, accessibility and Original paint');
  const actions=withoutFooterTimestamp(read('NativeLiveAssistantActions.swift'));
  const wrong=actions.replace('onRetryMessage(user)','onRetryMessage(turn.id)');assert.notEqual(wrong,actions);
  assert.throws(()=>equal(block(wrong,'HStack('),block(old('NativeLiveAssistantTurnRow.swift'),'HStack('),'negative retry target'));
