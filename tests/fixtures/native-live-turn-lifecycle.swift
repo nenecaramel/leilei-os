@@ -106,6 +106,20 @@ for frame in [surface("pSend",user:"uNew"),surface("pSend",user:"uNew",text:"Hel
     expect(projected.count == 4 && projected[2].id == userID && projected[3].id == assistantID,"Send prepared/runtime stable rows")
     expect(projected[3].assistant!.copyText == (frame.streamingText.isEmpty ? nil : frame.streamingText),"each Send frame renders exactly its one logical body")
 }
+// An early canonical assistant can precede its activity.prepareId. The
+// pending + runtime + canonical renderers must share one stable answer slot.
+let unattributed = snapshot(prefix+[message("uNew","user",text:"New"),message("aNew","assistant",parent:"uNew",text:"Hello")])
+let premature = rows(unattributed,send,surface("pSend",user:"uNew",text:"Hel"))
+expect(premature.count == 4 && premature[3].id == assistantID,"unattributed canonical cannot double the pending answer")
+expect(premature[3].assistant?.copyText == "Hello","canonical text does not regress to the shorter partial")
+var terminalUnattributed = surface("pSend",user:"uNew",text:"Hel",terminal:true)
+terminalUnattributed.operation = "send"
+let afterPendingClears = rows(unattributed,nil,terminalUnattributed)
+expect(afterPendingClears.count == 4 && afterPendingClears[3].id == assistantID,"clearing pending cannot hide/recreate the same answer")
+expect(afterPendingClears[3].assistant?.copyText == "Hello","canonical answer remains visible while runtime drains")
+let afterRuntimeClears = rows(unattributed,nil,nil)
+expect(afterRuntimeClears.map(\.id) == afterPendingClears.map(\.id),"runtime teardown cannot remount an unattributed canonical assistant")
+expect(afterRuntimeClears.last?.assistant?.timestamp == afterPendingClears.last?.assistant?.timestamp,"unattributed canonical cannot reset its turn timestamp when runtime stops")
 let canonical = snapshot(prefix+[message("uNew","user",text:"New"),message("aNew","assistant",parent:"uNew",text:"Hello",prepare:"pSend")])
 let finalRows = rows(canonical,nil,surface("pSend",user:"uNew",text:"Hello",terminal:true))
 expect(finalRows[2].id == userID && finalRows[3].id == assistantID,"canonical backing preserves user and assistant IDs")
@@ -146,8 +160,16 @@ for kind in [NativeLivePendingOperation.Kind.edit(targetUserMessageID:"uB",text:
     expect(next.count == 4 && next[3].id == slot && next[3].assistant?.copyText == "Replacement.","authoritative mismatch reconciles once in same replacement slot")
 }
 assembler = .init(); identities = .init()
-let recovered = surface("pRecovered",user:"uRecovered",text:"Hello")
 let recoveryPrefix = snapshot(prefix+[message("uRecovered","user",text:"Q")])
+var unboundRecovery = surface("pRecovered",user:"uRecovered",text:"Hel")
+unboundRecovery.operation = "send"
+let unboundBefore = rows(recoveryPrefix,nil,unboundRecovery)
+let unboundCanonical = snapshot(prefix+[message("uRecovered","user",text:"Q"),message("aRecovered","assistant",parent:"uRecovered",text:"Hello")])
+let unboundAfter = rows(unboundCanonical,nil,unboundRecovery)
+expect(unboundAfter.count == unboundBefore.count && unboundAfter.map(\.id) == unboundBefore.map(\.id),"fresh Send recovery cannot create second row without prepare attribution")
+expect(unboundAfter.last?.assistant?.copyText == "Hello","unattributed recovered canonical body beats shorter stream")
+assembler = .init(); identities = .init()
+let recovered = surface("pRecovered",user:"uRecovered",text:"Hello")
 let before = rows(recoveryPrefix,nil,recovered)
 let after = rows(snapshot(prefix+[message("uRecovered","user",text:"Q"),message("aRecovered","assistant",parent:"uRecovered",text:"Hello",prepare:"pRecovered")]),nil,recovered)
 expect(before.count == after.count && before.last!.id == after.last!.id,"recovery binds prepare lineage without a second assistant")
@@ -381,7 +403,8 @@ assembler = .init(); identities = .init()
 let oldRetry = NativeLivePendingOperation(kind:.retry(targetUserMessageID:"uA"),baselineSyncToken:nil)
 _ = rows(old,oldRetry)
 identities.bind(oldRetry,prepared:prepared("pOldRetry",user:"uA"),snapshot:old)
-let oldRetryRuntime = surface("pOldRetry",user:"uA",text:"Retry retained",terminal:true)
+var oldRetryRuntime = surface("pOldRetry",user:"uA",text:"Retry retained",terminal:true)
+oldRetryRuntime.operation = "retry"
 _ = rows(old,oldRetry,oldRetryRuntime)
 let oldRetryRetained = rows(old,nil,oldRetryRuntime)
 expect(oldRetryRetained.count == 2 && oldRetryRetained[1].assistant!.copyText == "Retry retained","older Retry failed refresh never reintroduces downstream old branch")

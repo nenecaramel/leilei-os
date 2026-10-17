@@ -33,6 +33,32 @@ struct NativeLiveConversationPresentationAssembler {
             if let pendingOperation { guard binding?.prepareID == surface.prepareID else { return nil }; _ = pendingOperation }
             return surface
         }
+        // Canonical can arrive before activity.prepareId. Correlate solely by
+        // the prepared user's exact ID, never by matching text or timestamps.
+        // Retry of the same user must not adopt its superseded old answer.
+        func unattributedPrepareID(_ message: NativeLiveCurrentPathMessage) -> String? {
+            guard message.role == "assistant",
+                  message.activity?.prepareId == nil,
+                  let parent = message.parentMessageId else { return nil }
+            if let binding, binding.userMessageID == parent,
+               binding.targetUserMessageID != parent {
+                return binding.prepareID
+            }
+            guard pendingOperation == nil else { return nil }
+            if let known = identities.binding(userMessageID:parent),
+               known.targetUserMessageID != parent {
+                return known.prepareID
+            }
+            if let runtime, runtime.operation == "send",
+               runtime.userMessageID == parent {
+                return runtime.prepareID
+            }
+            return nil
+        }
+        func isRuntimeCanonicalAnswer(_ message: NativeLiveCurrentPathMessage, prepareID: String) -> Bool {
+            message.role == "assistant" &&
+                (message.activity?.prepareId == prepareID || unattributedPrepareID(message) == prepareID)
+        }
         if let target = pendingOperation?.targetUserMessageID,
            let index = messages.firstIndex(where: { $0.id == target || $0.id == binding?.userMessageID }) {
             messages = Array(messages.prefix(index+1))
@@ -40,14 +66,14 @@ struct NativeLiveConversationPresentationAssembler {
             if let prepare = binding?.prepareID, let canonical = snapshot?.messages.first(where: { $0.role == "assistant" && $0.activity?.prepareId == prepare }) { messages.append(canonical) }
         }
         if pendingOperation == nil, let runtime,
-           !messages.contains(where:{ $0.activity?.prepareId == runtime.prepareID }),
+           !messages.contains(where:{ isRuntimeCanonicalAnswer($0,prepareID:runtime.prepareID) }),
            let user = runtime.userMessageID, let index = messages.firstIndex(where:{ $0.role == "user" && $0.id == user }) {
             messages = Array(messages.prefix(index+1))
         }
         // A prepared Send/Edit user is durable but intentionally detached from the current head.
         // Hydrate only the backend's exact user and replacement lineage; never infer by text/time.
         if pendingOperation == nil, let runtime,
-           !messages.contains(where:{ $0.activity?.prepareId == runtime.prepareID }),
+           !messages.contains(where:{ isRuntimeCanonicalAnswer($0,prepareID:runtime.prepareID) }),
            let user = runtime.preparedUserMessage, user.id == runtime.userMessageID,
            user.role == "user", user.conversationId.caseInsensitiveCompare(runtime.conversationID.uuidString) == .orderedSame,
            !messages.contains(where:{ $0.id == user.id }) {
@@ -98,15 +124,17 @@ struct NativeLiveConversationPresentationAssembler {
                 let presentation = NativeLiveMessagePresentationProjector.project(source,presentationNamespace:stable)
                 rows.append(.init(id:stable,user:presentation,userBacking:message,assistant:nil))
             } else {
-                let prepare = message.activity?.prepareId
+                let inferredPrepare = unattributedPrepareID(message)
+                let prepare = message.activity?.prepareId ?? inferredPrepare
                 let foreground = prepare == runtime?.prepareID ? runtime : nil
                 let background = prepare.flatMap { backgroundRuntimeSurfaces[$0] }
                 let surface = foreground ?? background
                 var stable = canonicalIDs[message.id] ?? identities.assistantID(message)
                 if let prepare, previous["turn:prepare:\(prepare)"] != nil { stable = "turn:prepare:\(prepare)" }
+                if let inferredPrepare, let known = identities.binding(prepareID:inferredPrepare) { stable = known.stableAssistantID }
                 if let prepare, let pendingIDs, prepare == binding?.prepareID { stable = pendingIDs.assistant }
                 canonicalIDs[message.id] = stable
-                let turn = makeTurn(id:stable,message:message,runtime:surface,background:foreground != nil ? background : nil,pending:nil,identities:identities,canonicalUserMessageIDs:canonicalUserMessageIDs,now:now)
+                let turn = makeTurn(id:stable,message:message,runtime:surface,background:foreground != nil ? background : nil,pending:nil,identities:identities,canonicalUserMessageIDs:canonicalUserMessageIDs,now:now,inferredPrepareID:inferredPrepare)
                 rows.append(.init(id:stable,user:nil,userBacking:nil,assistant:turn))
                 if let prepare { consumedPrepare.insert(prepare) }
             }
@@ -148,8 +176,8 @@ struct NativeLiveConversationPresentationAssembler {
 
     private mutating func makeTurn(id: String,message: NativeLiveCurrentPathMessage?,runtime: NativeLiveRuntimeSurfaceState?,
         background: NativeLiveRuntimeSurfaceState? = nil,pending: NativeLivePendingOperation?,identities: NativeLiveTurnIdentityCoordinator,
-        canonicalUserMessageIDs: Set<String>,now: Date) -> NativeLiveAssistantTurnPresentation {
-        let prepare = runtime?.prepareID ?? message?.activity?.prepareId
+        canonicalUserMessageIDs: Set<String>,now: Date,inferredPrepareID: String? = nil) -> NativeLiveAssistantTurnPresentation {
+        let prepare = runtime?.prepareID ?? message?.activity?.prepareId ?? inferredPrepareID
         let binding = prepare.flatMap { identities.binding(prepareID:$0) } ?? pending.flatMap { identities.bindings[$0.id] }
         let owner = binding?.operationID.uuidString ?? pending?.id.uuidString ?? prepare ?? message?.id ?? generationOwners[id] ?? id
         let last = generationOwners[id] == owner ? previous[id] : nil

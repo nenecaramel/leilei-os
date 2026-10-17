@@ -42,7 +42,14 @@ test('MessageSurface conserves every observer, state owner, callback body and sc
   // Approved iMessage clips the scroll surface while Original remains
   // unclipped. Every modifier/observer after this presentation choice is pinned.
   const observers=(s:string)=>compact(s.slice(s.indexOf('.scrollClipDisabled('),s.indexOf('.overlay(alignment: .top)')));
-  assert.equal(observers(current).replace('.scrollClipDisabled(chatTheme!=.iMessage)', '.scrollClipDisabled()'),observers(baseline));
+  // Only forward growth from a previously bottom-anchored viewport:
+  // transient canonical/optimistic shrinkage must not force a second jump.
+  const boundedFollow = 'metrics.height>old.height&&old.nearBottom&&scrollState.shouldFollowContent&&preservedAnchor==nil';
+  const priorFollow = 'old.height!=metrics.height&&scrollState.shouldFollowContent&&preservedAnchor==nil';
+  assert.ok(observers(current).includes(boundedFollow),'follow only positive growth at the previous bottom');
+  assert.equal(observers(current)
+    .replace('.scrollClipDisabled(chatTheme!=.iMessage)', '.scrollClipDisabled()')
+    .replace(boundedFollow,priorFollow),observers(baseline));
   const declarations=(s:string)=>compact(s.slice(s.indexOf('@EnvironmentObject'),s.indexOf('var body:')));
   assert.equal(declarations(current).replace('@Environment(\\.chatTheme)privatevarchatTheme',''),declarations(baseline));
   assert.match(current, /if !isAuthenticated \{\s*Self\.scrollableState \{ AppStateSurface\(title: "Sign in"\) \}/);
