@@ -156,7 +156,8 @@ export class NativeLiveMacBackgroundResultSink {
   private queue = Promise.resolve();
   private readonly retryAfter = new Map<string,number>();
   constructor(private readonly input: { listenerInstanceId: string; relay: Relay; outbox: NativeLiveMacBackgroundResultOutbox;
-    now?:()=>number; onRecoveryBlocked?(conversationId:string):Promise<void>; onRecovered?(conversationId:string):Promise<void>;
+    now?:()=>number; isForegroundActive?(conversationId:string):boolean;
+    onRecoveryBlocked?(conversationId:string):Promise<void>; onRecovered?(conversationId:string):Promise<void>;
   }) {}
   async commit(owner: NativeLiveMacPersistentBackgroundOwner, frame: Frame): Promise<NativeLiveMacPersistentAcknowledgement> {
     if (!owner.source || !owner.parentProviderCheckpointId || !owner.providerSessionId || !isAbsolute(owner.workingDirectory)) throw new Error("No committed background source is available.");
@@ -215,6 +216,11 @@ export class NativeLiveMacBackgroundResultSink {
       let settled = 0;
       const quarantined=await this.input.outbox.listQuarantined();
       for(const conversation of new Set(quarantined.map(v=>v.result.conversation_id)))await this.input.onRecoveryBlocked?.(conversation).catch(()=>{});
+      const waiting=(await this.input.outbox.list()).filter(v=>v.deferred === true && !v.coveringCheckpointId);
+      for (const conversationId of new Set(waiting.map(v=>v.result.conversation_id))) {
+        if (!this.input.isForegroundActive?.(conversationId))
+          await this.input.onRecoveryBlocked?.(conversationId).catch(()=>{});
+      }
       const now=(this.input.now??Date.now)();
       // An autonomous segment generated inside a foreground turn must keep
       // its provider output durable but cannot be published until F is covered.
