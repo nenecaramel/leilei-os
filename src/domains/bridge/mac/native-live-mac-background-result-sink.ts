@@ -6,7 +6,7 @@ import { requireUuid } from "../protocol/runtime-protocol/parsing.js";
 import type { NativeLiveMacPersistentAcknowledgement, NativeLiveMacPersistentBackgroundOwner } from "./native-live-mac-persistent-turn-router.js";
 import type { NativeLiveMacPersistentSessionOptions } from "./native-live-mac-claude-transport.js";
 
-type Entry = NativeLiveBackgroundSubmit & { parentProviderCheckpointId: string; executionStart?: boolean };
+type Entry = NativeLiveBackgroundSubmit & { parentProviderCheckpointId: string; executionStart?: boolean; deferred?: boolean };
 type Relay = {
   prepareBackgroundResult(input: NativeLiveBackgroundPrepare): Promise<NativeLiveBackgroundPrepared>;
   submitBackgroundResult(input: NativeLiveBackgroundSubmit): Promise<NativeLiveBackgroundAck>;
@@ -21,7 +21,9 @@ function entry(value: Entry): Entry {
   const identity = backgroundIdentity(value), result = backgroundResult(value.result);
   if (result.prepare_id !== identity.sourcePrepareId) throw new Error("Background receipt source mismatch.");
   return { ...identity, parentProviderCheckpointId: requireUuid(value.parentProviderCheckpointId, "parentProviderCheckpointId"),
-    ...(value.executionStart === true ? { executionStart: true } : {}), result };
+    ...(value.executionStart === true ? { executionStart: true } : {}),
+    ...(value.deferred === true ? { deferred: true } : {}),
+    ...(value.coveringCheckpointId ? { coveringCheckpointId: requireUuid(value.coveringCheckpointId, "coveringCheckpointId") } : {}), result };
 }
 
 /** Separate from foreground terminal results: each background frame owns a receipt. */
@@ -76,6 +78,31 @@ export class NativeLiveMacBackgroundResultOutbox {
     // save. If this write fails the original receipt remains on disk.
     this.persistOrder(ordered);
   }
+  /** Record the verified foreground descendant before transmitting the
+   * foreground result. A crash cannot leave a committed F without the B=>F
+   * coverage evidence if this write is required before that commit. */
+  async cover(conversationId: string, coveringCheckpointId: string): Promise<number> {
+    const covering = requireUuid(coveringCheckpointId, "coveringCheckpointId");
+    let updated = 0;
+    for (const original of await this.list()) {
+      if (original.result.conversation_id !== conversationId || original.deferred !== true) continue;
+      if (original.coveringCheckpointId) {
+        if (original.coveringCheckpointId !== covering) throw new Error("Conflicting background covering checkpoint.");
+        continue;
+      }
+      const replacement = entry({ ...original, coveringCheckpointId: covering });
+      const path = this.path(original);
+      if (lstatSync(path).isSymbolicLink() || readFileSync(path,"utf8") !== JSON.stringify(original))
+        throw new Error("Concurrent background outbox mutation.");
+      const temp = `${path}.${randomUUID()}.tmp`, fd=openSync(temp,"wx",0o600);
+      try { writeFileSync(fd,JSON.stringify(replacement)); fsyncSync(fd); }
+      finally { closeSync(fd); }
+      renameSync(temp,path); this.sync();
+      updated++;
+    }
+    return updated;
+  }
+
   async list(): Promise<Entry[]> { return this.listDirectory(this.directory); }
   async listQuarantined(): Promise<Entry[]> { return this.listDirectory(join(this.directory,"blocked")); }
   private listDirectory(directory: string): Entry[] {
@@ -136,6 +163,7 @@ export class NativeLiveMacBackgroundResultSink {
     const pending = entry({ sourcePrepareId: owner.source.prepareId, receiptId: randomUUID(), listenerInstanceId: this.input.listenerInstanceId,
       generationId: owner.generationId, parentProviderCheckpointId: owner.parentProviderCheckpointId,
       ...(owner.executionStart === true ? { executionStart: true } : {}),
+      ...(owner.deferred === true ? { deferred: true } : {}),
       result: { protocol_version: 4, prepare_id: owner.source.prepareId, request_id: owner.source.requestId, conversation_id: owner.conversationId,
         status: "success", provider_session_id: owner.providerSessionId, effective_working_directory: owner.workingDirectory,
         provider_checkpoint_id: frame.providerCheckpointId, normalized_events: frame.normalizedEvents } });
@@ -143,9 +171,11 @@ export class NativeLiveMacBackgroundResultSink {
       await this.input.outbox.save(pending); // Preserve identity before either HTTP response can be lost.
       try {
         const ack = await this.deliver(pending);
-        return ack.outcome === "committed"
-          ? { status: ack.duplicate ? "idempotent" : "applied", providerCheckpointId: ack.providerCheckpointId! }
-          : { status: "rejected" };
+        return ack.outcome === "queued"
+          ? { status: "queued", providerCheckpointId: frame.providerCheckpointId }
+          : ack.outcome === "committed"
+            ? { status: ack.duplicate ? "idempotent" : "applied", providerCheckpointId: ack.providerCheckpointId! }
+            : { status: "rejected" };
       } catch (error) {
         if (error instanceof NativeBackgroundStaleReceipt) {
           // Never lose a generated result just because the backend rejected its
@@ -169,9 +199,13 @@ export class NativeLiveMacBackgroundResultSink {
       const quarantined=await this.input.outbox.listQuarantined();
       for(const conversation of new Set(quarantined.map(v=>v.result.conversation_id)))await this.input.onRecoveryBlocked?.(conversation).catch(()=>{});
       const now=(this.input.now??Date.now)();
-      // One bounded delivery per dispatch pass; a broken receipt must not
-      // prevent unrelated foreground work from ever reaching the daemon loop.
-      const value=(await this.input.outbox.list()).find(v=>(this.retryAfter.get(v.receiptId)??0)<=now);
+      // An autonomous segment generated inside a foreground turn must keep
+      // its provider output durable but cannot be published until F is covered.
+      // Never send a queued producer checkpoint as though it were the latest
+      // canonical session checkpoint.
+      const value=(await this.input.outbox.list()).find(v=>
+        (!v.deferred || v.coveringCheckpointId)
+        && (this.retryAfter.get(v.receiptId)??0)<=now);
       if(!value)return 0;
       try {
         await this.deliver(value);settled++;this.retryAfter.delete(value.receiptId);
@@ -191,13 +225,15 @@ export class NativeLiveMacBackgroundResultSink {
     if (value.result.status !== "success" || prepared.receiptId !== value.receiptId || prepared.providerSessionId !== value.result.provider_session_id
       || prepared.parentProviderCheckpointId !== value.parentProviderCheckpointId) throw new Error("Background preparation binding changed.");
     const ack = await this.input.relay.submitBackgroundResult(value);
-    if (!["committed", "stale", "failed"].includes(ack.outcome) || (ack.outcome === "committed"
-      ? ack.providerCheckpointId !== value.result.provider_checkpoint_id : ack.providerCheckpointId !== null)) throw new Error("Background acknowledgement binding changed.");
+    if (!["committed", "queued", "stale", "failed"].includes(ack.outcome) || (ack.outcome === "committed"
+      ? ack.providerCheckpointId !== (value.coveringCheckpointId ?? value.result.provider_checkpoint_id)
+      : ack.providerCheckpointId !== null)) throw new Error("Background acknowledgement binding changed.");
     if (ack.outcome === "stale") {
       // An HTTP 200 with outcome=stale did not deliver the reply. Deleting its
       // outbox record here permanently loses the only recoverable output.
       throw new NativeBackgroundStaleReceipt();
     }
+    if (ack.outcome === "queued") return ack; // Only commit success deletes outbox evidence.
     await this.input.outbox.acknowledge(value);
     return ack;
   }
