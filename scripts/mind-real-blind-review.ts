@@ -24,14 +24,14 @@ import type { SubjectStateWrite } from "../src/domains/runtime/subject-state/sub
 
 type Json = Record<string, unknown>;
 type Memory = { id: string; text: string };
-type Probe = { query: string; group: "lexical_overlap" | "diverse" };
+type Probe = { query: string; group: "lexical_overlap" | "diverse" | "manual_entered" };
 type Hit = { id: string; score: number };
 type Review = { relevant: Set<string>; selections: Map<string, string[]>; group: Probe["group"] };
 const object = (v: unknown): v is Json => v !== null && typeof v === "object" && !Array.isArray(v);
 const string = (v: unknown): v is string => typeof v === "string";
 const uuid = (v: unknown): v is string => string(v) && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(v);
 const digest = (v: string): string => createHash("sha256").update(v).digest("hex");
-function loadData(doc: unknown): { memories: Memory[]; prompts: string[] } {
+function loadData(doc: unknown): { memories: Memory[]; prompts: string[]; exportedMessageCount: number; completedUserMessageCount: number } {
   if (!object(doc) || doc.schema_version !== 4 || !object(doc.data)
       || !Array.isArray(doc.data.mind)) {
     throw new Error("A LeileiOS Full Backup v4 JSON is required.");
@@ -49,13 +49,20 @@ function loadData(doc: unknown): { memories: Memory[]; prompts: string[] } {
   const memories = snapshotMemories(states).map(x => ({id:x.stateId,text:x.text}));
   const conversations: Json = object(doc.data.conversations) ? doc.data.conversations : {};
   const messages: unknown[] = Array.isArray(conversations.messages) ? conversations.messages : [];
-  const prompts = [...new Set(messages.flatMap(x => {
-    if(!object(x) || x.role !== "user" || x.status !== "completed" ||
-       x.is_current_path !== true || !string(x.display_text)) return [];
-    const query=x.display_text.trim();
-    return query.length>=12 && query.length<=350 ? [query] : [];
-  }))];
-  return {memories,prompts};
+  const completedUserMessages = messages.filter(x => object(x)
+    && x.role === "user" && x.status === "completed" && string(x.display_text));
+  const eligibleMessage = (x: unknown): x is Json => object(x)
+    && x.role === "user" && x.status === "completed" && string(x.display_text)
+    && x.display_text.trim().length >= 12 && x.display_text.trim().length <= 350;
+  const currentPath = completedUserMessages.filter(x => object(x) && x.is_current_path === true);
+  // Prefer active-branch history, but old branches are fine as *test queries*:
+  // this offline read never injects their content into a live Hook.
+  const sourceMessages = currentPath.some(eligibleMessage)
+    ? currentPath : completedUserMessages;
+  const prompts = [...new Set(sourceMessages
+    .filter(eligibleMessage).map(x => (x.display_text as string).trim()))];
+  return {memories,prompts,exportedMessageCount:messages.length,
+    completedUserMessageCount:completedUserMessages.length};
 }
 function charBigrams(text: string): Set<string> {
   const normalized=text.replace(/\s+/gu,"").toLowerCase();
@@ -153,6 +160,7 @@ function summarize(reviews:Review[]):Json {
 const argv=process.argv.slice(2);
 const path=argv.find(x=>!x.startsWith("--"));
 const countString=argv.find(x=>x.startsWith("--count="));
+const forceManual=argv.includes("--manual");
 const limitString=argv.find(x=>x.startsWith("--limit="));
 const count=countString?Number(countString.slice(8)):8;
 const limit=limitString?Number(limitString.slice(8)):256;
@@ -163,9 +171,10 @@ if(!path || !Number.isInteger(count) || count<4 || count>24
 const json:unknown=JSON.parse(await readFile(path,"utf8"));
 const loaded=loadData(json);
 if(loaded.memories.length===0)throw new Error("No eligible global Memory in this backup.");
-if(loaded.prompts.length===0)throw new Error("No eligible historical user queries in this backup.");
+// Some valid Full Backups have Mind but zero exported native_live messages.
+// Never fabricate historical questions or call an online model to generate them.
 const corpus=loaded.memories.sort((a,b)=>digest(a.id).localeCompare(digest(b.id))).slice(0,limit);
-const probes=selectProbes(loaded.prompts,corpus,count);
+const probes:Probe[]=forceManual ? [] : selectProbes(loaded.prompts,corpus,count);
 const candidates:BreathSemanticCandidate[]=corpus.map(m=>({stateId:m.id,text:m.text,kind:"memory"}));
 const byId=new Map(corpus.map(m=>[m.id,m] as const));
 const e5=new LocalE5BreathSemanticScorer();
@@ -173,7 +182,31 @@ const ritrieve=new LocalRitrieveBreathSemanticScorer();
 const reviews:Review[]=[];
 const rl=createInterface({input:stdin,output:stdout});
 try {
-  console.log(`本地盲测：${corpus.length} 条当前有效 Memory，${loaded.prompts.length} 条可选历史提问，计划 ${probes.length} 轮。`);
+  console.log(`本地盲测：${corpus.length} 条当前有效 Memory，备份消息数 ${loaded.exportedMessageCount}，其中已完成用户消息 ${loaded.completedUserMessageCount}，可用历史提问 ${loaded.prompts.length}。`);
+  if(probes.length===0) {
+    console.log("这份备份没有符合条件的历史提问，或启用了 --manual。现在直接在这台 Mac 输入真实测试问题。");
+    console.log("建议一半关于实际记忆（可用含糊的说法），一半完全无关或仅主题相似，来衡量漏召回和误召回。");
+    console.log("每行一个问题，按回车继续；直接回车可提前结束。问题不会上传、保存或出现在最终 JSON。");
+    const dedupe=new Set<string>();
+    for(let i=0;i<count;) {
+      const query=(await rl.question(`测试问题 ${i+1}/${count}：`)).trim();
+      if(!query)break;
+      if(query.length<4 || query.length>350) {
+        console.log("请把问题控制在 4～350 字之间。");
+        continue;
+      }
+      if(dedupe.has(query)){console.log("这条问题已输入过，请换一个。");continue}
+      dedupe.add(query);
+      probes.push({query,group:"manual_entered"});
+      i++;
+    }
+    if(probes.length===0) {
+      const error=new Error("No questions entered.");
+      error.name="NO_TEST_QUERIES";
+      throw error;
+    }
+  }
+  console.log(`本次共 ${probes.length} 题，下面开始两个模型的本地盲测。`);
   console.log("屏幕会显示私人提问与记忆，仅留在本机终端。输入编号表示相关记忆，0=全都无关，s=跳过。");
   console.log("最后只复制 AGGREGATE_RESULT_JSON 标记后的统计 JSON，不要复制上方私人正文。");
   await ritrieve.warmup();
@@ -204,7 +237,7 @@ try {
     const union=new Set<string>();
     for(const values of selections.values())for(const id of values)union.add(id);
     const displayed=[...union].sort((a,b)=>digest(probe.query+a).localeCompare(digest(probe.query+b)));
-    console.log(`\n========== ${i+1}/${probes.length} · ${probe.group} ==========\n历史问题：${probe.query}`);
+    console.log(`\n========== ${i+1}/${probes.length} · ${probe.group} ==========\n测试问题：${probe.query}`);
     if(!displayed.length)console.log("两种模型都没有选出记忆，无法形成有标签的候选池；跳过本题。");
     for(let j=0;j<displayed.length;j++){
       const memory=byId.get(displayed[j]!);
@@ -237,13 +270,16 @@ try {
     input_eligible_total:loaded.memories.length,
     sampled_corpus_count:corpus.length,
     available_user_queries:loaded.prompts.length,
+    exported_message_count:loaded.exportedMessageCount,
+    completed_user_message_count:loaded.completedUserMessageCount,
+    prompt_origin:probes[0]?.group==="manual_entered"?"user_typed_on_device":"historical_export",
     proposed_query_count:probes.length,
     reviewed_query_count:reviews.length,
     skipped_or_unjudgeable_queries:probes.length-reviews.length,
     summary:summarize(reviews),
     limitations:[
       "Unreviewed questions (human skipped or neither model offered a candidate) are excluded, not counted as true negatives.",
-      "Queries are real historical user messages; user grades relevance of the UNION of methods' proposed memories.",
+      "Queries are either exported historical user messages or user-authored locally at test time; user grades the union of proposed memories.",
       "No candidate outside the shown union is manually judged; recall is conditional on this candidate pool.",
       "This compares old E5 embedding and new ritrieve embedding retrieval, not full old/new production Hook behavior.",
       "All private data remain on the Mac; only anonymous aggregate statistics should be shared.",
