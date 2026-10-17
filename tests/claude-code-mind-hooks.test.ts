@@ -26,7 +26,7 @@ const signedData = (semantic_candidates = []) => ({
   context_sha256: CONTEXT_HASH,
   recall_token: RECALL_TOKEN,
 });
-const envContent = config => Object.entries({LEILEI_MIND_RECALL_URL: config.url, LEILEI_MIND_RECALL_TOKEN: config.token, LEILEI_MIND_MCP_SERVER_NAME: "LeileiOS", LEILEI_MIND_SEMANTIC_SOCKET: config.semantic_socket}).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join("\n");
+const envContent = config => Object.entries({LEILEI_MIND_RECALL_URL: config.url, LEILEI_MIND_RECALL_TOKEN: config.token, LEILEI_MIND_MCP_SERVER_NAME: "LeileiOS", LEILEI_MIND_SEMANTIC_SOCKET: config.semantic_socket, LEILEI_MIND_RECALL_MODE: config.index_mode ?? ""}).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join("\n");
 const prompt = (session_id = "s") => ({hook_event_name: "UserPromptSubmit", session_id, prompt: "tea"});
 const receipt = (id = ID) => ({success: true, data: {memory_id: id, entity_id: id, entity_type: "memory", outcome: "applied"}});
 async function fixture(t, respond = (body, res) => res.end(JSON.stringify({
@@ -382,4 +382,41 @@ test("second remote recall timeout preserves first lexical stdout and pending re
   assert.equal(result.status, 0); assert.equal(result.stdout, `${CONTEXT}\n`); assert.equal(result.stderr, "");
   assert.equal(f.calls.length, 2); assert.ok(result.duration < 3800);
   assert.equal((await f.state())[0].pending_recalls[0].recall_id, RECALL_ID);
+});
+
+test("indexed Hook uses one Railway call after local full-memory search", async t => {
+  const f = await fixture(t, (_body, res) => res.end(JSON.stringify({
+    success: true, data: {...signedData(), semantic_mode: "snapshot_v1"},
+  })));
+  const version = "a".repeat(64);
+  const socket = join(f.home, "indexed.sock");
+  const close = await startMindRecallSemanticServer({
+    score: async () => new Map([[ID, .5]]),
+    searchSnapshot: async query => {
+      assert.equal(query, "tea");
+      return {version, count: 2, hits: [{stateId: ID, score: .92}]};
+    },
+  }, socket);
+  t.after(close);
+  f.config.semantic_socket = socket;
+  f.config.index_mode = "indexed_v1";
+  await writeFile(join(f.home, "mind.env"), envContent(f.config), {mode: 0o600});
+  let output = "";
+  await runHook(prompt(), async chunk => {output += chunk;});
+  assert.equal(output, `${CONTEXT}\n`);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].semantic_snapshot_version, version);
+  assert.deepEqual(f.calls[0].snapshot_scores, {[ID]: .92});
+  assert.equal(f.calls[0].semantic_candidates, undefined);
+});
+
+test("indexed Hook without local index uses exactly one lexical Railway fallback", async t => {
+  const f = await fixture(t);
+  f.config.index_mode = "indexed_v1";
+  await writeFile(join(f.home, "mind.env"), envContent(f.config), {mode: 0o600});
+  let output = "";
+  await runHook(prompt(), async chunk => {output += chunk;});
+  assert.equal(output, `${CONTEXT}\n`);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].semantic_snapshot_version, undefined);
 });
