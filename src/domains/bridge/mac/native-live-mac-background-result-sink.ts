@@ -223,6 +223,16 @@ export class NativeLiveMacBackgroundResultSink {
           throw error;
         }
       }
+      // A late B may have reached disk after F's coverage snapshot. It must
+      // not be stranded as a still-queued predecessor while another F starts.
+      const uncovered = (await this.input.outbox.list()).some(value =>
+        value.result.conversation_id === conversationId
+        && value.generationId === generationId
+        && value.deferred === true && !value.coveringCheckpointId);
+      if (uncovered) {
+        this.input.onImmediateFence?.(conversationId);
+        throw new Error("Uncovered autonomous output remains after foreground publication.");
+      }
     });
   }
   async cover(conversationId: string, generationId: string, coveringCheckpointId: string): Promise<number> {
