@@ -106,6 +106,19 @@ for frame in [surface("pSend",user:"uNew"),surface("pSend",user:"uNew",text:"Hel
     expect(projected.count == 4 && projected[2].id == userID && projected[3].id == assistantID,"Send prepared/runtime stable rows")
     expect(projected[3].assistant!.copyText == (frame.streamingText.isEmpty ? nil : frame.streamingText),"each Send frame renders exactly its one logical body")
 }
+// An early canonical assistant can precede its activity.prepareId. The
+// pending + runtime + canonical renderers must share one stable answer slot.
+let unattributed = snapshot(prefix+[message("uNew","user",text:"New"),message("aNew","assistant",parent:"uNew",text:"Hello")])
+let premature = rows(unattributed,send,surface("pSend",user:"uNew",text:"Hel"))
+expect(premature.count == 4 && premature[3].id == assistantID,"unattributed canonical cannot double the pending answer")
+expect(premature[3].assistant?.copyText == "Hello","canonical text does not regress to the shorter partial")
+var terminalUnattributed = surface("pSend",user:"uNew",text:"Hel",terminal:true)
+terminalUnattributed.operation = "send"
+let afterPendingClears = rows(unattributed,nil,terminalUnattributed)
+expect(afterPendingClears.count == 4 && afterPendingClears[3].id == assistantID,"clearing pending cannot hide/recreate the same answer")
+expect(afterPendingClears[3].assistant?.copyText == "Hello","canonical answer remains visible while runtime drains")
+let afterRuntimeClears = rows(unattributed,nil,nil)
+expect(afterRuntimeClears.map(\.id) == afterPendingClears.map(\.id),"runtime teardown cannot remount an unattributed canonical assistant")
 let canonical = snapshot(prefix+[message("uNew","user",text:"New"),message("aNew","assistant",parent:"uNew",text:"Hello",prepare:"pSend")])
 let finalRows = rows(canonical,nil,surface("pSend",user:"uNew",text:"Hello",terminal:true))
 expect(finalRows[2].id == userID && finalRows[3].id == assistantID,"canonical backing preserves user and assistant IDs")
