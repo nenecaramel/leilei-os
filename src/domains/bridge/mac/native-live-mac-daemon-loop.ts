@@ -842,12 +842,15 @@ export class NativeLiveMacDaemonLoop {
         if (command.operation === "edit" || command.operation === "retry") {
           await this.persistentExecutor?.retire(command.conversation_id);
         }
-        if (command.operation === "wake" &&
-            (command.runtime_mode !== "resume" || !this.persistentExecutor?.canRoute(command))) {
-          // Never retire the current writer or invoke the one-shot legacy
-          // executor for a Wake. Refuse stale, unsupported and busy wakes.
-          // The backend finalizes this explicit failure and its wake receipt.
-          return runtimeFailure(command, "NO_PROVIDER_SESSION");
+        if (command.operation === "wake") {
+          // Wake NEVER reaches the branch/fork/one-shot execution below.
+          // A missing or mismatched live writer is a failed Wake, not a
+          // reason to close the writer currently holding native schedules.
+          if (command.runtime_mode !== "resume" || !this.persistentExecutor?.canRoute(command)) {
+            return runtimeFailure(command, "NO_PROVIDER_SESSION");
+          }
+          persistentRun = await this.persistentExecutor.execute(command, { ...options, commit });
+          return persistentRun.result;
         }
         if (this.persistentExecutor?.canRoute(command)) {
           persistentRun = await this.persistentExecutor.execute(command, { ...options, commit });
