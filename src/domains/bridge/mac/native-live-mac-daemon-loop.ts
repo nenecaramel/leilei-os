@@ -414,7 +414,7 @@ export class NativeLiveMacDaemonLoop {
     private readonly externalSessionExecutor:
       NativeLiveExternalSessionExecutor | null = null,
     private readonly resultOutbox: NativeLiveMacResultOutbox | null = null,
-    private readonly persistentExecutor: (Pick<NativeLiveMacPersistentExecutor, "canRoute" | "execute" | "retire"> & Partial<Pick<NativeLiveMacPersistentExecutor, "assertAccepting" | "retireSession">>) | null = null,
+    private readonly persistentExecutor: (Pick<NativeLiveMacPersistentExecutor, "canRoute" | "execute" | "retire"> & Partial<Pick<NativeLiveMacPersistentExecutor, "assertAccepting" | "retireSession" | "shouldDeferWake">>) | null = null,
   ) {}
 
   async runOnce(): Promise<NativeLiveDaemonRunOutcome> {
@@ -757,6 +757,15 @@ export class NativeLiveMacDaemonLoop {
         return { outcome: "idle" };
       }
 
+      if (reservation.command.operation === "wake"
+        && !this.persistentExecutor?.canRoute(reservation.command)
+        && this.persistentExecutor?.shouldDeferWake?.(reservation.command)) {
+        // Foreground work or the bounded writer capacity is temporarily busy.
+        // Do not mark this Wake started, submit a model request or close any
+        // SDK writer. Keep the same durable reservation pending for retry.
+        await this.bestEffortReject(reservation.reservationId, "EXECUTION_START_FAILED");
+        return { outcome: "rejected", reservationId: reservation.reservationId, code: "EXECUTION_START_FAILED" };
+      }
       try {
         await this.relay.markExecutionStarted({
           listenerInstanceId: this.listenerInstanceId,
