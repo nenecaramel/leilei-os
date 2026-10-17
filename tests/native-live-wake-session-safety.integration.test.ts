@@ -43,7 +43,7 @@ for(const scenario of ['quiet','stale','fork-source'] as const) test(`discarded 
  const after=await service.getConversation({userId:user.id,conversationId:conversation.id});assert.ok(after);assert.equal(after.currentHeadMessageId,source.assistantMessageId);
 });
 
-test("stale same-session Wake durably advances a still-queued foreground send, without a new session", {skip:!enabled}, async t=>{
+for(const output of ['quiet','visible'] as const) test(`stale ${output} same-session Wake advances queued foreground send without forking`, {skip:!enabled}, async t=>{
   const databaseUrl=process.env.DATABASE_URL;assert.ok(databaseUrl);
   const {isolatedPostgresTarget,verifyIsolatedPostgresTarget}=await import('../scripts/isolated-postgres-target.mjs');
   await verifyIsolatedPostgresTarget(isolatedPostgresTarget(databaseUrl));
@@ -87,7 +87,7 @@ test("stale same-session Wake durably advances a still-queued foreground send, w
   const stale=await coordinator.finalize(user.id,{
     protocol_version:4,prepare_id:wakeId,request_id:wake.requestId,
     conversation_id:conversation.id,status:'success',provider_session_id:'same-native-session',
-    provider_checkpoint_id:nativeTail,normalized_events:[{type:'text',payload:{text:'late visible Wake'}}]});
+    provider_checkpoint_id:nativeTail,normalized_events:[{type:'text',payload:{text:output==='quiet'?'<quiet />':'late visible Wake'}}]});
   assert.equal(stale.ok,true);
   if(!stale.ok || stale.outcome!=='wake_stale')throw Error('expected stale Wake');
   assert.equal(stale.nativeResumeCheckpointId,nativeTail);
