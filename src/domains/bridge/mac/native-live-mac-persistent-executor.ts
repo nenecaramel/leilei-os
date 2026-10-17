@@ -70,10 +70,15 @@ export class NativeLiveMacPersistentExecutor {
     if (command.attachments?.length && !this.input.attachmentMaterializer) return false;
     if (this.retiring.has(command.conversation_id) || this.suspended.has(command.conversation_id)) return false;
     const router = this.routers.get(command.conversation_id);
-    // Wake is not a foreground resume command. It may only enter the already
-    // alive writer that owns this exact session and checkpoint. Starting a
-    // replacement SDK process would strand the original writer's native Cron.
-    if (command.operation === "wake") return command.runtime_mode === "resume" && !!router && router.matches(command);
+    // Wake never forks or opens a fresh logical session. When the original
+    // writer is still alive, it must match that exact session/checkpoint.
+    // After a daemon restart there is no in-memory writer: restore that same
+    // persisted provider session (resume) instead of losing the queued Wake.
+    // The restore path verifies native identity and durable checkpoint before
+    // submitting any work, and cannot displace another owned writer.
+    if (command.operation === "wake") return command.runtime_mode === "resume"
+      && !!command.parent_provider_session_id && !!command.parent_provider_checkpoint_id
+      && (router ? router.matches(command) : this.input.hasCapacity?.() !== false);
     return router ? router.matches(command) : this.input.hasCapacity?.() !== false;
   }
 
