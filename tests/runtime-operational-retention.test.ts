@@ -69,6 +69,19 @@ test("turn preparation retention preserves unresolved follow-up and semantic wor
   );
 });
 
+test("pending canonical background delivery is not cascade-deleted with an old source preparation", () => {
+  const begin=source.indexOf("FROM native_live_turn_preparations AS preparation");
+  const end=source.indexOf("DELETE FROM native_live_turn_preparations AS preparation",begin);
+  assert.ok(begin>=0&&end>begin);
+  const victim=source.slice(begin,end);
+  assert.match(victim,/NOT EXISTS \([\s\S]*FROM native_live_runtime_events AS receipt/);
+  assert.match(victim,/receipt\.prepare_id = preparation\.id/);
+  assert.match(victim,/receipt\.user_id = preparation\.user_id/);
+  assert.match(victim,/receipt\.payload->>'kind' = 'persistent_background_receipt_v1'/);
+  assert.match(victim,/receipt\.payload->>'phase' = 'queued'/);
+  assert.doesNotMatch(victim,/receipt\.payload->>'phase' = 'committed'/);
+});
+
 test("context manifests and current runtime listener leases are bounded operational data", () => {
   assert.match(source, /DELETE FROM runtime_context_manifests/);
   assert.match(
