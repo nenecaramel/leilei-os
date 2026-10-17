@@ -49,28 +49,36 @@ export function createScheduledInputGuard({ getHost, admit, now = () => Date.now
     autonomousAttempts++; admissionPending = true;
     if (!unclassified) { seen.add(id); lastAttemptAt = at; }
     const generation = host.backgroundGeneration;
-    const foreground = host.active;
     const abort = new AbortController();
     let timer;
     try {
       await Promise.race([(async () => {
-        // Native Cron/Loop may fire while F is still running. A one-shot
-        // callback cannot wait for F and then retry after a 2s hook deadline:
-        // that discards the only fire. Ask the Mac router for fresh committed
-        // source/lease/generation admission even while F owns its input. The
-        // SDK's own command UUID and the durable B=>F cover still fence output.
+        // SDK control callbacks can overtake delivery of the preceding result
+        // to this iterator. Wait for that exact boundary, never a later input.
+        if (host.active) await precedingBoundary(host, abort.signal);
+        if (abort.signal.aborted || host.active) throw new Error('Foreground input owns the writer.');
         await admit();
       })(), new Promise((_, reject) => {
         timer = setTimeout(() => { abort.abort(); reject(new Error('Scheduled admission timed out.')); }, 2_000);
       })]);
       if (getHost() !== host || host.queryClosed || ['closed', 'failed'].includes(host.state)
-        || (host.active !== foreground && host.active !== null)
-        || host.backgroundPending || host.backgroundGeneration !== generation) return block('STALE_ADMISSION');
+        || host.active || host.backgroundPending || host.backgroundGeneration !== generation) return block('STALE_ADMISSION');
       return {};
     } catch { return block(abort.signal.aborted ? 'ADMISSION_TIMEOUT' : 'ADMISSION_DENIED'); }
     finally { clearTimeout(timer); abort.abort(); admissionPending = false; }
   };
   return hook;
+}
+
+function precedingBoundary(host, signal) {
+  const inputId = host.active.id;
+  return new Promise((resolve, reject) => {
+    const cleanup = () => { host.events.off('turn-result', finished); signal.removeEventListener('abort', cancelled); };
+    const finished = frame => { if (frame.inputId !== inputId) return; cleanup(); resolve(); };
+    const cancelled = () => { cleanup(); reject(new Error('Scheduled boundary deadline expired.')); };
+    host.events.on('turn-result', finished); signal.addEventListener('abort', cancelled, { once: true });
+    if (signal.aborted) cancelled();
+  });
 }
 
 export function isNativeLoopInput(text, source) {
