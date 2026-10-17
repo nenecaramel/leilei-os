@@ -43,7 +43,7 @@ export function parseBackgroundPrepareBody(value: unknown): Omit<NativeLiveBackg
   return { receiptId: requireUuid(body.receipt_id, "receipt_id"), listenerInstanceId: requireUuid(body.listener_instance_id, "listener_instance_id"),
     generationId: requireUuid(body.generation_id, "generation_id"), parentProviderCheckpointId: requireUuid(body.parent_provider_checkpoint_id, "parent_provider_checkpoint_id"), ...(body.execution_start === true ? { executionStart: true } : {}), ...(body.deferred === true ? { deferred: true } : {}) };
 }
-export function parseBackgroundSubmitBody(value: unknown): Pick<NativeLiveBackgroundSubmit, "listenerInstanceId" | "generationId" | "result"> {
+export function parseBackgroundSubmitBody(value: unknown): Pick<NativeLiveBackgroundSubmit, "listenerInstanceId" | "generationId" | "result" | "coveringCheckpointId"> {
   const body = requireRecord(value); requireExactKeys(body, ["listener_instance_id", "generation_id", "result"], ["covering_checkpoint_id"]);
   return { listenerInstanceId: requireUuid(body.listener_instance_id, "listener_instance_id"), generationId: requireUuid(body.generation_id, "generation_id"), result: backgroundResult(body.result), ...(body.covering_checkpoint_id === undefined ? {} : { coveringCheckpointId: requireUuid(body.covering_checkpoint_id, "covering_checkpoint_id") }) };
 }
