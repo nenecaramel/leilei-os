@@ -104,6 +104,20 @@ test("foreground failure before coverage fences an already-queued native B recei
   assert.deepEqual(fenced,[conversation],"a queued B without F's proof must prevent the next send");
 });
 
+test("corrupted background outbox on F error fences the writer without skipping retirement",async t=>{
+  const fenced:string[]=[];
+  const f=await fixture(t,undefined,undefined,{
+    hasUnpublishedDeferred:()=>{throw new Error("corrupt journal");},
+    onForegroundUnpublished:id=>fenced.push(id),
+  });
+  const running=f.run(command(1),{async onResult(){throw new Error("F failed");}});
+  const rejected=assert.rejects(running,/F failed/);
+  f.finish((await f.inputs.next()).value!.uuid);
+  await rejected;
+  assert.deepEqual(fenced,[conversation]);
+  assert.equal(f.closes,1,"outbox inspection failure cannot bypass safe writer retirement");
+});
+
 test("foreground failure after fsynced B coverage fences the session without publishing B", async t => {
   const fenced: string[] = [];
   let published = false;
