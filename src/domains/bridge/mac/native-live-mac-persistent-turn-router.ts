@@ -241,10 +241,13 @@ export class NativeLiveMacPersistentTurnRouter {
       // F may have failed after B\'s covering evidence was fsynced, or B\'s
       // post-F publication may have failed. Fence synchronously BEFORE another
       // foreground send can be dispatched against a potentially stale head.
-      if (command.operation === "send" && (
-        coveredBackgroundOutstanding
-        || (this.generationId && this.input.hasUnpublishedDeferred?.(command.conversation_id, this.generationId))
-      )) this.input.onForegroundUnpublished?.(command.conversation_id);
+      let mustFence = coveredBackgroundOutstanding;
+      if (command.operation === "send" && this.generationId && this.input.hasUnpublishedDeferred) {
+        try { mustFence = this.input.hasUnpublishedDeferred(command.conversation_id, this.generationId) || mustFence; }
+        catch { mustFence = true; } // Corrupt outbox is unsafe to ignore.
+      }
+      if (command.operation === "send" && mustFence)
+        this.input.onForegroundUnpublished?.(command.conversation_id);
       // Provider work or a durable commit may already have happened. Never
       // replay, open a replacement query, or let a later turn consume this slot.
       try { await this.close(); } catch { /* Retain failed-close registry owner. */ }
