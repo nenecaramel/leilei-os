@@ -440,14 +440,6 @@ extension AppModel {
                                 surfaceTransientFailure: false
                             )
                             self.scheduleCurrentHeadMindWriteRefresh()
-                        } else if result.outcome == "timeout" {
-                            // Background receipts do not advance canonical head.
-                            // Refresh the ETag-backed read on each 25s wait
-                            // expiry so the active conversation sees new replies.
-                            await self.refreshNativeLiveCurrentPath(
-                                force: false,
-                                surfaceTransientFailure: false
-                            )
                         }
                     } catch is CancellationError {
                         return
@@ -639,8 +631,7 @@ extension AppModel {
                     olderCursor: page.olderCursor,
                     resetRequired: false,
                     messages: olderMessages + latest.messages,
-                    failedTurn: latest.failedTurn,
-                    backgroundResults: latest.backgroundResults
+                    failedTurn: latest.failedTurn
                 )
                 chatSyncState = .ready
             }
