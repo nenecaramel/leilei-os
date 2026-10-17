@@ -97,3 +97,15 @@ pnpm exec tsx scripts/mind-real-blind-review.ts "$BACKUP" --count=8
 ```
 
 **绝不要把交互过程输出的私人对话或 Memory 明文发到聊天或提交 GitHub。** 只复制 `AGGREGATE_RESULT_JSON_START` 之后的 JSON；评审不上传任何用户内容，不改动真实 Mind/daemon/Hook/Railway。E5 仅在本机运行，若没有公开模型权重可能首次下载模型文件。生产 PR 仍为 Draft，不能据此直接启用新 Hook。
+
+### 真实备份缺少历史提问时的本机输入模式
+
+2026-10-18 用户实际 Full Backup v4 有 135 条当前有效 Mind Memory，但 `mind-real-blind-review.ts` 的历史提问筛选结果为 0，先前版本因此在测试前报错。备份的 `listConversations` 实现只导出 `origin=native_live` 对话，因此独立 Claude Code/SDK 对话不一定存在于备份中。新脚本优先使用已完成的当前分支用户提问，若没有则接受已完成的其他分支提问作为**离线测试问题**；若仍无问题，自动进入本机交互模式，请用户最多输入 8 条要测试的问题（或以 `--count=N` 指定，空行提前结束）。也可使用 `--manual` 强制自己输入。测试集的输入来源在最终匿名 JSON 以 `prompt_origin` 标明，`exported_message_count` 与 `completed_user_message_count` 只记录数量。
+
+```zsh
+pnpm exec tsx scripts/mind-real-blind-review.ts "$BACKUP" --count=8
+# 如希望忽略已导出的历史问题，始终自己输入：
+pnpm exec tsx scripts/mind-real-blind-review.ts "$BACKUP" --count=8 --manual
+```
+
+用户应在本机输入部分**应该相关**的改写问题，部分**应该无关**或语义相近但无确切对应记忆的问题，然后对匿名打乱候选按编号人工判断。最终只能发送 `AGGREGATE_RESULT_JSON_START` 后的统计 JSON，不要粘贴屏幕中私人的测试问题及记忆正文。两模型均未提名候选的试题属于**未标注**，不虚构正确空结果；本轮仍不是生产完整旧 Hook 对新版 Hook 的端到端 A/B。
