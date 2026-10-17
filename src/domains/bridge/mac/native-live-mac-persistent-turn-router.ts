@@ -79,7 +79,7 @@ export class NativeLiveMacPersistentTurnRouter {
       owner: NativeLiveMacPersistentBackgroundOwner,
       frame: Parameters<NativeLiveMacPersistentSessionOptions["onBackgroundResult"]>[0] & { providerCheckpointId: string },
     ): Promise<NativeLiveMacPersistentAcknowledgement>;
-    onForegroundCoverage?(conversationId: string, coveringCheckpointId: string): Promise<number>;
+    onForegroundCoverage?(conversationId: string, generationId: string, coveringCheckpointId: string): Promise<number>;
     onForegroundPublished?(conversationId: string): Promise<void>;
   }) {
     if (!input.listenerInstanceId.trim() || typeof input.onBackgroundResult !== "function") throw new Error("Listener and durable background sink are required.");
@@ -214,7 +214,7 @@ export class NativeLiveMacPersistentTurnRouter {
         // producer checkpoint. Journal the covering frontier *before* F is
         // submitted: a crash must not publish F without preserving B=>F proof.
         if (command.operation === "send") {
-          await this.input.onForegroundCoverage?.(command.conversation_id, providerCheckpointId);
+          await this.input.onForegroundCoverage?.(command.conversation_id, this.generationId!, providerCheckpointId);
           this.assertSlot(slot, "acknowledging");
         }
         const outcome = await slot.onResult({ command, result, providerCheckpointId });
