@@ -220,7 +220,7 @@ test("covered but not canonically published cannot masquerade as successful reco
     onRecoveryBlocked:async id=>{blocked.push(id);}});
   assert.deepEqual(await sink.commit({...owner,deferred:true},frame),{status:"queued",providerCheckpointId:id(6)});
   await sink.cover(id(1),id(2),id(8));
-  await assert.rejects(sink.publishCovered(id(1),id(2)),/still queued/i);
+  await assert.rejects(sink.publishCovered(id(1),id(2)),/queued reply|still queued/i);
   assert.equal((await f.outbox.list()).length,1,"a covering proof is not a committed receipt");
   assert.equal(await sink.flush(),0);
   assert.deepEqual(blocked,[id(1)],"daemon must fence writer while covered output is uncommitted");
