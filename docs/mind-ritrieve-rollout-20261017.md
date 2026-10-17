@@ -13,10 +13,10 @@
 
 | 阶段 | 已提交 | 未验收 |
 |---|---|---|
-| 1：模型更换 | 本机 Python SentenceTransformers worker，独立安装、模型预热、向量缓存；现有 E5 默认保留 | Mac 真正安装、冷/热启动性能 |
+| 1：模型更换 | 本机 Python SentenceTransformers worker，独立安装、模型预热、向量缓存；现有 E5 默认保留 | Mac 已安装 Python 3.12 与真实模型；96 条合成记忆 P95 165.5ms，尚欠全库量测 |
 | 2：一次网络请求 + 全库索引 | 鉴权 GET `/internal/mind/snapshot`，128/页，版本一致性检测；Mac 60s 只读刷新、原子替换内存向量索引；Hook `indexed_v1` 先查 UNIX socket 再请求一次 Railway | 真实环境端到端测试、30k 条上限与长尾性能 |
 | 3：相关性与安全 | 当前链短句语境、local top-48、绝对阈值 0.68 + 长列表分布阈值、服务器当前快照哈希与权限复核、无关零条、旧索引回退 | 阈值必须根据真实 Memory 标注集校准，不能把 0.68 当最终最佳值 |
-| 4：回归与对照 | 新增快照、索引、Hook 网络次数、鉴权、隐藏/失效记忆及脱敏指标测试；本地离线比较脚本 `scripts/evaluate-mind-embedding.ts` | GitHub CI 通过、Mac 上真实 E5 vs ritrieve 质量与延迟数据 |
+| 4：回归与对照 | 新增快照、索引、Hook 网络次数、鉴权、隐藏/失效记忆及脱敏指标测试；本地离线比较脚本 `scripts/evaluate-mind-embedding.ts` | Mac `pnpm typecheck`、Mind 专项 48/48、生产门禁 355/355 已通过；GitHub CI 与真实 E5/ritrieve 质量对照尚欠 |
 
 全库索引只在 Mac **内存中**，daemon 重启重新同步；Python worker 不上传记忆到远端模型服务，不将查询/Memory 写日志。当前缓存容量 30k 条、每条用于 embedding 的前 2000 字符，超限/同步失败会退回旧 lexical 召回（不会越权注入）。
 
@@ -38,4 +38,4 @@
 - 编译、focused tests、full CI、孤立数据库回归成功（不可用时要说明），在 CI 失败前保持 PR 为 Draft。
 - `scripts/evaluate-mind-embedding.ts` 只接受用户本地路径中的私人标注 JSON，不自动从生产数据库抓数据，不提交明文样本；控制台只输出聚合指标。
 
-**当前状态**：阶段 1～3 的代码和阶段 4 的测试框架已提交，但未有可确认的绿色 CI、未在用户 Mac 上装模型，也未获得真实召回测试结果，不能宣称质量提升已验证或生产切换完成。
+**当前状态（2026-10-18）**：Mac 已安装并使用真实 ritrieve 模型（1792 维），96 条合成记忆 warm-query P95 165.5ms；本机 `pnpm typecheck`、Mind 专项 48/48、生产运行时门禁 355/355 均通过。之前缺失的独立 Claude Agent SDK 依赖和读取真实恢复目录的测试隔离问题已排除，未更改线上恢复保护。仍没有可确认的绿色 GitHub CI、真实 Mind 召回准确率对照、实际全库 P95 或 Hook→Railway 端到端结果；PR 仍 Draft，不自动合并或开启 `indexed_v1`。
