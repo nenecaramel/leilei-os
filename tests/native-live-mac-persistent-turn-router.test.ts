@@ -123,6 +123,29 @@ test("native started binding waits for earlier background acknowledgement withou
   assert.deepEqual(f.results, [id(1),id(2)]);
 });
 
+test("native background after started foreground advances only queued provider evidence until F finishes",async t=>{
+  const phases:string[]=[];
+  const f=await fixture(t,undefined,async input=>{
+    phases.push(input.phase);
+    return{userMessageId:input.commandUuid,parentProviderCheckpointId:checkpoint};
+  });
+  const first=f.run(command(1));
+  f.finish((await f.inputs.next()).value!.uuid);await first;
+  f.setBackground(async()=>({status:"queued",providerCheckpointId:id(102)}));
+  const second=f.run(command(2)),input=(await f.inputs.next()).value!;
+  f.output.push({type:"command_lifecycle",state:"started",command_uuid:input.uuid,session_id:sid});
+  for(let i=0;i<100&&phases.length<2;i++)await new Promise(setImmediate);
+  assert.deepEqual(phases,["queued","started"]);
+  f.finish(id(77));
+  assert.equal((await f.backgroundObserved.next()).value,id(77));
+  for(let i=0;i<100&&f.backgroundOwners.length===0;i++)await new Promise(setImmediate);
+  assert.equal(f.backgroundOwners.at(-1)?.deferred,true);
+  f.finish(input.uuid);
+  await second;
+  assert.equal(f.router.providerCheckpointId,id(103),"F's verified descendant replaces the queued producer cursor");
+  assert.deepEqual(f.results,[id(1),id(2)]);
+});
+
 test("native started binding missing or disagreeing with live cursor rejects the foreground result", async t => {
   const f = await fixture(t, undefined, async input => ({
     userMessageId: input.commandUuid,
