@@ -22,6 +22,7 @@ export type NativeLiveMacPersistentBackgroundOwner = Readonly<{
   conversationId: string; generationId: string;
   source: Readonly<{ prepareId: string; requestId: string }> | null;
   providerSessionId: string; parentProviderCheckpointId: string | null; workingDirectory: string;
+  executionStart?: boolean;
 }>;
 
 export type NativeLiveMacPersistentAcknowledgement =
@@ -45,6 +46,8 @@ type Slot = TurnInput & {
   lease?: NativeLiveMacExecutionLease;
   controlAbort?: AbortController;
   resultReady: boolean;
+  nativeStarted?: boolean;
+  startedBinding?: Promise<void>;
   finished: Promise<void>;
   finish(): void;
 };
@@ -67,7 +70,7 @@ export class NativeLiveMacPersistentTurnRouter {
     registry: NativeLiveMacSessionRegistry;
     listenerInstanceId: string;
     taskControlsAvailable?: () => Promise<boolean>;
-    relay: Pick<NativeLiveMacDaemonRelayClient, "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission">;
+    relay: Pick<NativeLiveMacDaemonRelayClient, "bindInput" | "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission">;
     // Autonomous results deliberately have no foreground command. They require
     // their own durable preparation/branch fence, not the active turn's sink.
     onBackgroundResult(
@@ -98,6 +101,7 @@ export class NativeLiveMacPersistentTurnRouter {
       phase: "executing", authorize: createNativeLiveMacExecutionAdmission({ listenerInstanceId: this.input.listenerInstanceId, command, relay: this.input.relay }) };
     // Reserve before the first await, including path resolution and SDK startup.
     this.active = slot;
+    let onCommandStarted: ((frame: { inputId: string; source: string }) => void) | null = null;
     try {
       if (this.binding && command.expected_working_directory !== null) {
         const cwd = await resolveNativeLiveMacWorkingDirectory(command.expected_working_directory);
@@ -113,6 +117,30 @@ export class NativeLiveMacPersistentTurnRouter {
         });
         await slot.lease.start(); this.assertSlot(slot);
       }
+      // Queued is an advisory reservation. Only the CLI's exact native start
+      // UUID may bind the eventual canonical parent and continuation cursor.
+      const bindInput = command.operation === "send" && command.runtime_mode === "resume"
+        ? this.input.relay.bindInput?.bind(this.input.relay) : undefined;
+      if (bindInput) {
+        const queued = await bindInput({ listenerInstanceId: this.input.listenerInstanceId,
+          command, phase: "queued", commandUuid: slot.inputId });
+        if (!queued || queued.userMessageId !== slot.inputId
+          || queued.parentProviderCheckpointId !== command.parent_provider_checkpoint_id)
+          throw new Error("Native foreground queued input binding rejected.");
+      }
+      onCommandStarted = frame => {
+        if (!bindInput || this.active !== slot || frame.inputId !== slot.inputId
+          || frame.source !== "foreground" || slot.nativeStarted) return;
+        slot.nativeStarted = true;
+        slot.startedBinding = bindInput({ listenerInstanceId: this.input.listenerInstanceId,
+          command, phase: "started", commandUuid: frame.inputId }).then(bound => {
+          if (!bound || bound.userMessageId !== slot.inputId
+            || bound.parentProviderCheckpointId !== this.providerCheckpointId)
+            throw new Error("Native foreground started input cannot prove latest checkpoint.");
+        });
+        slot.startedBinding.catch(() => {}); // The terminal path awaits the exact result.
+      };
+      if (bindInput) this.binding!.session.events.on("command-started", onCommandStarted);
       const resultPromise = this.binding!.session.submit(input.prompt ?? command.prompt, { id: slot.inputId, source: command.operation === "wake" ? "task-notification" : "human", ...this.output(slot) });
       let controls: Promise<void> | null = null;
       if (input.controlPump) {
@@ -141,6 +169,10 @@ export class NativeLiveMacPersistentTurnRouter {
       finally { slot.controlAbort?.abort(); await controls?.catch(() => {}); }
       this.assertSlot(slot);
       if (result.inputId !== slot.inputId || result.providerSessionId !== this.binding!.session.sessionId) throw new Error("Persistent result changed input/session identity.");
+      if (bindInput) {
+        if (!slot.nativeStarted || !slot.startedBinding) throw new Error("Native foreground input started receipt is missing.");
+        await slot.startedBinding;
+      }
       slot.phase = "acknowledging"; // Revoke execution before awaiting the sink.
       slot.lease?.stop();
       await this.acknowledge(async () => {
@@ -161,7 +193,12 @@ export class NativeLiveMacPersistentTurnRouter {
       // replay, open a replacement query, or let a later turn consume this slot.
       try { await this.close(); } catch { /* Retain failed-close registry owner. */ }
       throw error;
-    } finally { slot.controlAbort?.abort(); slot.lease?.stop(); if (this.active === slot) this.active = null; slot.finish(); }
+    } finally {
+      if (onCommandStarted) this.binding?.session.events.off("command-started", onCommandStarted);
+      slot.controlAbort?.abort(); slot.lease?.stop();
+      if (this.active === slot) this.active = null;
+      slot.finish();
+    }
   }
 
   /** Whether this command can continue this writer: same session and committed checkpoint. */
@@ -224,6 +261,11 @@ export class NativeLiveMacPersistentTurnRouter {
       } catch {return false;}
     }
     if (this.suspended || !slot || slot.phase !== "executing" || context.inputId !== slot.inputId) return false;
+    if (context.phase !== "input" && slot.command.operation === "send"
+      && slot.command.runtime_mode === "resume" && this.input.relay.bindInput) {
+      if (!slot.nativeStarted || !slot.startedBinding) return false;
+      try { await slot.startedBinding; } catch { return false; }
+    }
     try {
       this.assertSlot(slot);
       if (context.phase === "input" && this.binding && slot.command.parent_provider_checkpoint_id !== this.providerCheckpointId) return false;
@@ -302,6 +344,7 @@ export class NativeLiveMacPersistentTurnRouter {
           this.assertLive();
           const owner: NativeLiveMacPersistentBackgroundOwner = Object.freeze({ conversationId: command.conversation_id,
             generationId: this.generationId!, source: this.backgroundSource, providerSessionId: this.binding!.session.sessionId!,
+            executionStart: this.active?.command.operation === "send" && this.active?.nativeStarted !== true,
             parentProviderCheckpointId: this.providerCheckpointId, workingDirectory: this.binding!.workingDirectory });
           const outcome = await this.input.onBackgroundResult(owner, { ...frame, providerCheckpointId });
           this.assertLive();
