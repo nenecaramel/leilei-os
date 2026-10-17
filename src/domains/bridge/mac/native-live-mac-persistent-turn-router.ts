@@ -119,6 +119,8 @@ export class NativeLiveMacPersistentTurnRouter {
     let onCommandStarted: ((frame: { inputId: string; source: string }) => void) | null = null;
     let removeCommandStartedListener: (() => void) | null = null;
     let coveredBackgroundOutstanding = false;
+    const hadLiveWriter = this.binding !== null;
+    let sdkSubmissionAttempted = false;
     try {
       if (this.binding && command.expected_working_directory !== null) {
         const cwd = await resolveNativeLiveMacWorkingDirectory(command.expected_working_directory);
@@ -179,6 +181,10 @@ export class NativeLiveMacPersistentTurnRouter {
         events.on("command-started", onCommandStarted);
         removeCommandStartedListener = () => events.off("command-started", onCommandStarted!);
       }
+      // Once we hand an input to the SDK, its execution outcome can be
+      // uncertain. Before this point, a rejected Wake has not changed the
+      // provider's state and must not tear down an already running writer.
+      sdkSubmissionAttempted = true;
       const resultPromise = this.binding!.session.submit(input.prompt ?? command.prompt, { id: slot.inputId, source: command.operation === "wake" ? "task-notification" : "human", ...this.output(slot) });
       let controls: Promise<void> | null = null;
       if (input.controlPump) {
@@ -254,7 +260,16 @@ export class NativeLiveMacPersistentTurnRouter {
         this.input.onForegroundUnpublished?.(command.conversation_id);
       // Provider work or a durable commit may already have happened. Never
       // replay, open a replacement query, or let a later turn consume this slot.
-      try { await this.close(); } catch { /* Retain failed-close registry owner. */ }
+      const safeUnstartedWake = command.operation === "wake" && hadLiveWriter
+        && !sdkSubmissionAttempted && !this.suspended && !this.retired
+        && this.binding !== null
+        && this.input.registry.get(this.binding.conversationId, this.binding.generationId) === this.binding;
+      // A Wake rejected before entering the SDK must not kill existing Cron.
+      // Once submitted, maintain the existing fail-closed checkpoint policy:
+      // an uncertain native output cannot be replayed on the old writer.
+      if (!safeUnstartedWake) {
+        try { await this.close(); } catch { /* Retain failed-close registry owner. */ }
+      }
       throw error;
     } finally {
       removeCommandStartedListener?.();
