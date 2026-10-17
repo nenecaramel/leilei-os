@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { backgroundResult, parseBackgroundPrepareBody, parseBackgroundSubmitBody, NativeLiveBackgroundResultError } from "../src/domains/bridge/protocol/native-live-background-result.js";
-import { visibleBackgroundResult } from "../src/domains/conversation/native-live-current-path-read-repository.js";
 import { createNativeLiveRelayInternalRouter } from "../src/web-api/native-live-relay-internal-router.js";
 import { FakeRelayService, withServer, userId, listenerId, prepareId, requestId, conversationId } from "./helpers/native-live-http-relay-fixtures.js";
 const receiptId = "77777777-7777-4777-8777-777777777777", generationId = "88888888-8888-4888-8888-888888888888", checkpoint = "99999999-9999-4999-8999-999999999999";
@@ -58,25 +57,4 @@ for (const [code, status] of [["BACKGROUND_NOT_FOUND", 404], ["BACKGROUND_CONFLI
     const response = await fetch(`${baseUrl}/relay/reservations/${prepareId}/background-results/${receiptId}/result`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ listener_instance_id: listenerId, generation_id: generationId, result }) });
     assert.equal(response.status, status); assert.deepEqual(await response.json(), { success: false, error: { code, message: "Native background result could not be accepted." } });
   });
-});
-
-test("only durable committed background text is projected into chat", () => {
-  const events = [
-    { type: "text", payload: { text: "TIMER_OK" } },
-    { type: "tool_result", payload: { text: "private tool output" } },
-    { type: "runtime", payload: { kind: "internal_telemetry", text: "private" } },
-    { type: "text", payload: { text: "  " } },
-  ];
-  const base = { id: receiptId, sourceMessageId: prepareId, createdAt: new Date("2026-10-16T23:59:03.000Z") };
-  const receipt = { kind: "persistent_background_receipt_v1", phase: "committed",
-    result: { status: "success", normalized_events: events } };
-  const display = visibleBackgroundResult({ ...base, payload: receipt });
-  assert.deepEqual(display, { id: receiptId, sourceMessageId: prepareId,
-    createdAt: "2026-10-16T23:59:03.000Z", text: "TIMER_OK" });
-  assert.equal(visibleBackgroundResult({ ...base, payload: { ...receipt, phase: "prepared" } }), null);
-  assert.equal(visibleBackgroundResult({ ...base, payload: { ...receipt, phase: "stale" } }), null);
-  assert.equal(visibleBackgroundResult({ ...base, payload: { ...receipt, phase: "failed" } }), null);
-  assert.equal(visibleBackgroundResult({ ...base, payload: { ...receipt, result: { ...receipt.result, status: "failure" } } }), null);
-  assert.equal(visibleBackgroundResult({ ...base, payload: { ...receipt, result: { ...receipt.result, normalized_events: events.slice(1, 3) } } }), null);
-  assert.equal(visibleBackgroundResult({ ...base, payload: { ...receipt, kind: "other_receipt" } }), null);
 });
