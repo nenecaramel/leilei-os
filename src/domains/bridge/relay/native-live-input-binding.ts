@@ -73,7 +73,10 @@ export async function bindNativeLiveInput(db: Database, input: NativeLiveInputBi
       eq(conversationMessages.userId, input.userId), eq(conversationMessages.conversationId, p.conversationId),
       eq(conversationMessages.id, p.canonicalUserMessageId),
     )).for("update").limit(1);
-    if (!u || u.role !== "user" || c.head === u.id) return null;
+    if (!u || u.role !== "user" || c.head === u.id || u.parentMessageId !== c.head) return null;
+    // The accepted U->H parent is immutable. Native background B that runs
+    // before F starts must remain QUEUED and later be published after F;
+    // reparenting U under an already-visible B would show H->B->U->F.
     const [used] = await tx.execute(sql`SELECT 1 FROM conversation_messages WHERE user_id=${input.userId}::uuid
       AND conversation_id=${p.conversationId}::uuid AND parent_message_id=${u.id}::uuid
       UNION ALL SELECT 1 FROM conversation_provider_session_checkpoints WHERE user_id=${input.userId}::uuid AND canonical_message_id=${u.id}::uuid LIMIT 1`);
@@ -108,6 +111,7 @@ export async function bindNativeLiveInput(db: Database, input: NativeLiveInputBi
     `);
     if (p.runtimeMode === "resume" && (!cp || cp.session !== p.parentProviderSessionId || cp.cwd !== p.expectedWorkingDirectory || !cp.checkpoint)) return null;
     if (p.runtimeMode === "new" && (c.head !== null || u.parentMessageId !== null)) return null;
+    let startedCheckpoint = cp?.checkpoint ?? null;
     if (input.phase === "started") {
       const [busy] = await tx.execute(sql`SELECT 1 FROM native_live_runtime_events e
         JOIN native_live_turn_preparations source ON source.id=e.prepare_id AND source.user_id=e.user_id
@@ -115,10 +119,35 @@ export async function bindNativeLiveInput(db: Database, input: NativeLiveInputBi
           AND e.payload->>'kind'='persistent_background_receipt_v1' AND e.payload->>'phase'='prepared'
           AND e.payload->>'executionStart'='true' AND (e.payload->>'expiresAt')::timestamptz>clock_timestamp() LIMIT 1`);
       if (busy) return null;
+      // The Mac writer has acknowledged each pre-start B only as queued
+      // transport custody, so the canonical head is still H. The native
+      // stream can already be at B2: bind the actual last producer cursor
+      // while preserving U's original canonical parent H. Producer chaining
+      // was checked when preparing the immutable B receipts.
+      const [tail] = await tx.execute<{ checkpoint: string }>(sql`
+        SELECT e.payload->'result'->>'provider_checkpoint_id' AS checkpoint
+        FROM native_live_runtime_events e
+        JOIN native_live_turn_preparations source
+          ON source.id=e.prepare_id AND source.user_id=e.user_id
+        WHERE e.user_id=${input.userId}::uuid
+          AND source.conversation_id=${p.conversationId}::uuid
+          AND source.assistant_message_id=${c.head}::uuid
+          AND source.status='finalized_success' AND source.dispatch_status='completed'
+          AND e.payload->>'kind'='persistent_background_receipt_v1'
+          AND e.payload->>'phase'='queued'
+          AND e.payload->>'executionStart'='true'
+          AND e.payload->>'deferred'='true'
+          AND e.payload->'identity'->>'listenerInstanceId'=${input.listenerInstanceId}
+          AND e.payload->'context'->>'presentationOwnerId'=${p.id}::text
+          AND e.payload->'context'->>'providerSessionId'=${p.parentProviderSessionId}
+          AND e.payload->'context'->>'sourceRevision' IS NOT DISTINCT FROM ${c.revision}
+          AND e.payload->'context'->>'cwd' IS NOT DISTINCT FROM ${p.expectedWorkingDirectory}
+        ORDER BY e.sequence DESC LIMIT 1
+      `);
+      if (tail?.checkpoint) startedCheckpoint = tail.checkpoint;
     }
     const bound: Marker = { identity: digest, sourceRevision: c.revision, started: input.phase === "started",
-      parentProviderCheckpointId: input.phase === "started" ? cp?.checkpoint ?? null : p.parentProviderCheckpointId };
-    if (bound.started) await tx.update(conversationMessages).set({ parentMessageId: c.head }).where(eq(conversationMessages.id, u.id));
+      parentProviderCheckpointId: input.phase === "started" ? startedCheckpoint : p.parentProviderCheckpointId };
     await tx.update(nativeLiveTurnPreparations).set({
       ...(bound.started ? { parentProviderCheckpointId: bound.parentProviderCheckpointId } : {}),
       runtimeMetadata: { ...p.runtimeMetadata, native_live_input_binding: bound },
