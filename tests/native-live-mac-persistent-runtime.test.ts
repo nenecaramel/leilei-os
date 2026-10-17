@@ -21,7 +21,7 @@ test("composed persistent runtime keeps one SDK writer across foreground, autono
   if(String(url).endsWith("/task-controls/wait"))return await new Promise<Response>((_resolve,reject)=>{
    const cancel=()=>reject(new DOMException("Aborted","AbortError"));init?.signal?.addEventListener("abort",cancel,{once:true});if(init?.signal?.aborted)cancel();
   });
-  const data=String(url).endsWith("/task-controls/capabilities")?{version:1}:String(url).endsWith("session-lease/renew")?{renewed:leaseAlive}:String(url).endsWith("execution-admission")?{admitted:true}:String(url).endsWith("execution-lease/renew")?{renewed:true}:String(url).endsWith("/background-results/prepare")?{receiptId:body.receipt_id,providerSessionId:id(90),parentProviderCheckpointId:body.parent_provider_checkpoint_id,expiresAt:new Date(Date.now()+600000).toISOString()}:String(url).includes("background-results")?{outcome:"committed",duplicate:false,providerCheckpointId:body.result.provider_checkpoint_id}:{canonicalOutcome:quiet?"wake_quiet":"completed",...(quiet?{nativeResumeCheckpointId:body.result.provider_checkpoint_id}:{})};
+  const data=String(url).endsWith("/task-controls/capabilities")?{version:1}:String(url).endsWith("session-lease/renew")?{renewed:leaseAlive}:String(url).endsWith("execution-admission")?{admitted:true}:String(url).endsWith("execution-lease/renew")?{renewed:true}:String(url).endsWith("/input-binding")?{bound:{userMessageId:body.command_uuid,parentProviderCheckpointId:body.parent_provider_checkpoint_id}}:String(url).endsWith("/background-results/prepare")?{receiptId:body.receipt_id,providerSessionId:id(90),parentProviderCheckpointId:body.parent_provider_checkpoint_id,expiresAt:new Date(Date.now()+600000).toISOString()}:String(url).includes("background-results")?{outcome:"committed",duplicate:false,providerCheckpointId:body.result.provider_checkpoint_id}:{canonicalOutcome:quiet?"wake_quiet":"completed",...(quiet?{nativeResumeCheckpointId:body.result.provider_checkpoint_id}:{})};
   return new Response(JSON.stringify({success:true,data}),{headers:{"content-type":"application/json"}});
  });
  const runtime=new NativeLiveMacPersistentRuntime({sessionLeaseScheduler:{schedule(work:()=>Promise<void>){leaseTick=work;return work;},cancel(){leaseTick=null;}},environment:{},defaultWorkingDirectory:root,listenerInstanceId:id(91),relay,outboxDirectory:join(root,"outbox"),attachmentMaterializer:null,outputAttachmentSender:null,async createTransport(...args){
@@ -39,7 +39,9 @@ test("composed persistent runtime keeps one SDK writer across foreground, autono
  releaseReadback();const firstRun=await first;assert.equal(firstRun.canonicalOutcome,"completed");assert.equal(firstRun.result.runtime_metadata?.context_usage?.total_tokens,100);await background;
  const submission=calls.find(c=>c.url.includes("background-results")&&c.url.endsWith("/result"));assert.equal(submission.body.result.prepare_id,id(1));assert.equal(submission.body.result.provider_checkpoint_id,id(101));
  quiet=true;const wake=run(command(2,id(101),true));finish((await inputs.next()).value.uuid);assert.equal((await wake).canonicalOutcome,"wake_quiet");
- quiet=false;const second=run(command(3,id(102)));finish((await inputs.next()).value.uuid);assert.equal((await second).canonicalOutcome,"completed");
+ quiet=false;const second=run(command(3,id(102)));const secondInput=(await inputs.next()).value;
+  frames.push({type:"command_lifecycle",state:"started",command_uuid:secondInput.uuid,session_id:id(90)});
+  finish(secondInput.uuid);assert.equal((await second).canonicalOutcome,"completed");
  assert.equal(launches,1);assert.equal(closes,0);assert.equal(taskAffordance,true);assert.equal((await runtime.backgroundResults.flush()),0);
  assert.ok(leaseTick,"idle writers require an ownership watchdog");leaseAlive=false;await (leaseTick as ()=>Promise<void>)();assert.equal(closes,1);assert.equal(runtime.registry.size,0);
 });
