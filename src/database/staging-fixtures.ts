@@ -1,4 +1,6 @@
 import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { users, runtimeSubjectStates } from "./schema.js";
 import { createMindState } from "../domains/runtime/mind/mind-writer.js";
 
 // Only synthetic fixtures in the isolated Railway PR #1142 project.
@@ -25,36 +27,37 @@ async function main(): Promise<void> {
     ["33333333-3333-4333-8333-333333333333", "这是不应出现在召回中的隐藏测试记录。", true],
   ] as const;
   try {
-    await client.begin(async transaction => {
+    const db = drizzle(client);
+    await db.transaction(async transaction => {
       fixtureStage = "insert_user";
-      await transaction`
-        insert into public.users (id, email, display_name, status)
-        values (${fixtureUser}::uuid, 'mind-staging-fixture@example.invalid', 'Synthetic Mind Tester', 'active')
-        on conflict (id) do nothing
-      `;
+      await transaction.insert(users).values({
+        id: fixtureUser,
+        email: "mind-staging-fixture@example.invalid",
+        displayName: "Synthetic Mind Tester",
+        status: "active",
+      }).onConflictDoNothing();
       for (const [id, text, hidden] of rows) {
         fixtureStage = hidden ? "insert_hidden" : "insert_memory";
         const state = createMindState({
-          id, userId: fixtureUser, subjectId:"G", kind:"memory", text,
-          source: {origin:"manual", occurredAt:null, note:null},
+          id, userId: fixtureUser, subjectId: "G", kind: "memory", text,
+          source: {origin: "manual", occurredAt: null, note: null},
         });
         if (hidden) state.envelope.scope.visibility = "hidden_system";
-        await transaction`
-          insert into public.runtime_subject_states
-            (id, user_id, subject_id, kind, text, payload,
-             scope_applicability, scope_conversation_id, scope_path_head_message_id,
-             settlement_status, path_status, validity_status, envelope)
-          values (
-            ${state.id}::uuid, ${fixtureUser}::uuid, 'G', 'memory',
-            ${state.text ?? text}, ${JSON.stringify(state.payload ?? null)}::jsonb,
-            ${state.envelope.scope.applicability}, null, null,
-            ${state.envelope.status.settlementStatus},
-            ${state.envelope.status.pathStatus},
-            ${state.envelope.status.validityStatus},
-            ${JSON.stringify(state.envelope)}::jsonb
-          )
-          on conflict (id) do nothing
-        `;
+        await transaction.insert(runtimeSubjectStates).values({
+          id: state.id,
+          userId: fixtureUser,
+          subjectId: "G",
+          kind: "memory",
+          text: state.text ?? text,
+          payload: state.payload ?? null,
+          scopeApplicability: state.envelope.scope.applicability,
+          scopeConversationId: null,
+          scopePathHeadMessageId: null,
+          settlementStatus: state.envelope.status.settlementStatus,
+          pathStatus: state.envelope.status.pathStatus,
+          validityStatus: state.envelope.status.validityStatus,
+          envelope: {...state.envelope},
+        }).onConflictDoNothing();
       }
     });
     console.info("Synthetic Mind staging fixtures ready.");
