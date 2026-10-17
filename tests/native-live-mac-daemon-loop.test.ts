@@ -1267,6 +1267,56 @@ test("persistent unknown result is retained for delivery replay without re-execu
   relay.submitError=null; assert.equal((await loop.runOnce()).outcome,"completed"); assert.equal(executions,1);
 });
 
+test("a reserved Wake cannot fall back to a fork, retire Cron, or launch a model", async () => {
+  for (const mode of ["fork", "resume"] as const) {
+    const relay = new FakeRelay();
+    relay.reservation = {reservationId,command:{
+      ...command(),operation:"wake",runtime_mode:mode,
+      canonical_user_message_id:null,parent_provider_session_id:prepareId,
+      parent_provider_checkpoint_id:requestId,
+    }};
+    let legacyCalls=0,retireCalls=0,persistentCalls=0;
+    const loop = new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{
+      async execute(){legacyCalls++;return success();}
+    },null,null,null,null,null,null,null,{
+      canRoute(){return false;},
+      async retire(){retireCalls++;},
+      async execute(){persistentCalls++;throw Error("Wake must not start another writer");},
+    } as never);
+    const outcome=await loop.runOnce();
+    assert.equal(outcome.outcome,"completed");
+    assert.deepEqual([legacyCalls,retireCalls,persistentCalls],[0,0,0],
+      "a stale/unavailable Wake cannot touch the Cron-owning process");
+    const submitted=relay.calls.find(call=>call.name==="submitResult");
+    assert.ok(submitted);
+    assert.equal((submitted.input as any).result.status,"failure");
+    assert.equal((submitted.input as any).result.error_code,"NO_PROVIDER_SESSION");
+  }
+});
+
+test("a routable Wake submits to the live SDK writer without entering legacy", async () => {
+  const relay=new FakeRelay();relay.canonicalOutcome="wake_quiet";
+  relay.reservation={reservationId,command:{
+    ...command(),operation:"wake",runtime_mode:"resume",
+    canonical_user_message_id:null,parent_provider_session_id:prepareId,
+    parent_provider_checkpoint_id:requestId,
+  }};
+  let calls=0;
+  const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{
+    async execute(){throw Error("legacy Wake forbidden");}
+  },null,null,null,null,null,null,null,{
+    canRoute(){return true;},
+    async retire(){throw Error("healthy Wake cannot retire its writer");},
+    async execute(_command: NativeLiveRuntimeCommand,opts:any){
+      calls++;const response=await opts.commit(success());
+      assert.equal(response.canonicalOutcome,"wake_quiet");
+      return {result:success(),delivery:"committed" as const,canonicalOutcome:"wake_quiet"};
+    },
+  } as never);
+  assert.equal((await loop.runOnce()).canonicalOutcome,"wake_quiet");
+  assert.equal(calls,1);
+});
+
 test("an edited branch retires the OLD writer before running the replacement in a NEW persistent fork", async () => {
   const relay = new FakeRelay(); relay.canonicalOutcome = "completed";
   relay.reservation = { reservationId, command: {
