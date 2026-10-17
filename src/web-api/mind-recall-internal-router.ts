@@ -12,13 +12,33 @@ const inputSchema = z.object({
   semantic_candidates: z.array(candidate).max(256).optional(),
   semantic_scores: z.record(z.string().uuid(), z.number().min(0).max(1)).optional(),
   receipt_mode: z.literal("signed_v1").optional(),
+  semantic_snapshot_version: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  snapshot_scores: z.record(z.string().uuid(), z.number().min(0).max(1)).optional(),
 }).strict();
 
 export function createMindRecallRouter(dependencies: {
-  service: Pick<ClaudeCodeMindRecallService, "recall"> & Partial<Pick<ClaudeCodeMindRecallService, "confirm">>;
+  service: Pick<ClaudeCodeMindRecallService, "recall"> & Partial<Pick<ClaudeCodeMindRecallService, "confirm" | "snapshot">>;
   requireActiveUser: (userId: string) => Promise<unknown>;
 }) {
   const router = Router();
+  router.get("/snapshot", async (request, response) => {
+    response.setHeader("Cache-Control", "private, no-store");
+    if (!request.mcpUserId) { response.status(401).json({success: false}); return; }
+    const params = z.object({
+      offset: z.coerce.number().int().min(0).max(30_000).optional().default(0),
+    }).strict().safeParse(request.query);
+    if (!params.success) { response.status(400).json({success: false}); return; }
+    try {
+      await dependencies.requireActiveUser(request.mcpUserId);
+      if (!dependencies.service.snapshot) throw new Error("Unavailable");
+      const data = await dependencies.service.snapshot({
+        userId: request.mcpUserId, offset: params.data.offset,
+      });
+      response.json({success: true, data});
+    } catch {
+      response.status(503).json({success: false, error: {code: "MIND_SNAPSHOT_UNAVAILABLE"}});
+    }
+  });
   router.post("/recall", async (request, response) => {
     if (!request.mcpUserId) { response.status(401).json({success: false}); return; }
     const input = inputSchema.safeParse(request.body);
@@ -31,6 +51,9 @@ export function createMindRecallRouter(dependencies: {
         semanticCandidates: input.data.semantic_candidates,
         semanticScores: input.data.semantic_scores ? new Map(Object.entries(input.data.semantic_scores)) : undefined,
         receiptMode: input.data.receipt_mode,
+        semanticSnapshotVersion: input.data.semantic_snapshot_version,
+        snapshotScores: input.data.snapshot_scores
+          ? new Map(Object.entries(input.data.snapshot_scores)) : undefined,
       });
       response.setHeader("Cache-Control", "no-store");
       response.json({success: true, data});
