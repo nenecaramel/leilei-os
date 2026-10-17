@@ -9,7 +9,7 @@ import { AgentSdkClaudeTransport } from '../src/agent-sdk-claude-transport.mjs';
 
 // Actual pinned CLI, entirely local fake Anthropic responses. Opt in because a
 // real minute-boundary timer would otherwise slow every bridge/gate invocation.
-for (const mode of ['cron', 'loop']) test(`real native CLI ${mode === 'cron' ? 'creates, fires and removes one-shot Cron' : 'fires and stops native /loop ScheduleWakeup'} without hook source`, {
+for (const mode of ['cron', 'cron-after-chat', 'loop']) test(`real native CLI ${mode === 'cron' ? 'creates, fires and removes one-shot Cron' : mode === 'cron-after-chat' ? 'fires one-shot Cron after a second completed human message in the same live writer' : 'fires and stops native /loop ScheduleWakeup'} without hook source`, {
   skip: process.env.RUN_NATIVE_CLI_OFFLINE_CRON_TEST !== '1' && 'Set RUN_NATIVE_CLI_OFFLINE_CRON_TEST=1 (no real model calls)',
   timeout: 195_000,
 }, async () => {
@@ -78,20 +78,31 @@ for (const mode of ['cron', 'loop']) test(`real native CLI ${mode === 'cron' ? '
     });
     assert.equal(foreground.result.subtype, 'success');
     assert.equal(requests, 2, 'foreground completes before the timer fires');
-    assert.equal(tools.includes(mode === 'cron' ? 'CronCreate' : 'ScheduleWakeup'), true);
+    assert.equal(tools.includes(mode === 'loop' ? 'ScheduleWakeup' : 'CronCreate'), true);
     assert.equal(toolErrors, 0);
+    if (mode === 'cron-after-chat') {
+      const second = await host.submit('Ordinary human conversation while timer is armed', {
+        id: '22222222-2222-4222-8222-222222222222', source: 'human',
+      });
+      assert.equal(second.result.subtype, 'success',
+        'the second foreground response must fully finish before native Cron fires');
+      assert.equal(host.state, 'idle',
+        'we are verifying idle Cron AFTER another finished turn, never mid-turn admission');
+      assert.equal(toolErrors, 0);
+    }
     const frame = await Promise.race([background, host.completion.then(() => {
       throw new Error('Native CLI closed before the one-shot result');
     })]);
     assert.equal(frame.result.subtype, 'success');
-    assert.equal(requests, 4, 'one native fire plus native list/stop, using local responses only');
-    if (mode === 'cron') assert.deepEqual(jobCounts, [0], 'native one-shot is automatically removed');
+    assert.equal(requests, mode === 'cron-after-chat' ? 5 : 4, 'one native fire plus native list/stop, using local responses only');
+    if (mode !== 'loop') assert.deepEqual(jobCounts, [0], 'native one-shot is automatically removed');
     else assert.equal(stopped, true, 'native dynamic loop stop is acknowledged');
     assert.equal(toolErrors, 0);
     assert.equal(phases.filter(phase => phase === 'scheduled').length, 1);
     assert.equal(phases.includes('tool'), true);
     assert.deepEqual(hooks, [
       { hasSource: false, hasPromptId: true },
+      ...(mode === 'cron-after-chat' ? [{ hasSource: false, hasPromptId: true }] : []),
       { hasSource: false, hasPromptId: true },
     ]);
     assert.equal(host.state, 'idle');
@@ -105,10 +116,12 @@ for (const mode of ['cron', 'loop']) test(`real native CLI ${mode === 'cron' ? '
 });
 
 function respond(response, step, mode) {
-  const name = step === 1 || step === 3 ? (mode === 'loop' ? 'ScheduleWakeup' : step === 1 ? 'CronCreate' : 'CronList') : null;
+  const fireStep = mode === 'cron-after-chat' ? 4 : 3;
+  const name = step === 1 || step === fireStep
+    ? (mode === 'loop' ? 'ScheduleWakeup' : step === 1 ? 'CronCreate' : 'CronList') : null;
   const input = mode === 'loop' ? (step === 1 ? { delaySeconds: 60, reason: 'Synthetic offline timer', prompt: '/loop 1m Synthetic timer check', noop: true } : { stop: true }) : step === 1 ? { cron: '* * * * *', prompt: 'Synthetic timer check', recurring: false } : {};
   const content = name ? { type: 'tool_use', id: `toolu_synthetic_${step}`, name, input: {} } : { type: 'text', text: '' };
-  const text = step === 2 ? 'SCHEDULED' : 'TIMER_OK';
+  const text = step === 2 ? 'SCHEDULED' : mode === 'cron-after-chat' && step === 3 ? 'ORDINARY_CHAT_OK' : 'TIMER_OK';
   response.writeHead(200, { 'content-type': 'text/event-stream' });
   for (const event of [
     { type: 'message_start', message: { id: `msg_synthetic_${step}`, type: 'message', role: 'assistant', model: 'claude-sonnet-4-6', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 20, output_tokens: 0 } } },
