@@ -322,8 +322,9 @@ export class NativeLiveMacPersistentTurnRouter {
       } catch {return false;}
     }
     if (this.suspended || !slot || slot.phase !== "executing" || context.inputId !== slot.inputId) return false;
-    if (context.phase !== "input" && slot.command.operation === "send"
-      && slot.command.runtime_mode === "resume" && this.input.relay.bindInput) {
+    if (slot.command.operation === "send" && slot.command.runtime_mode === "resume"
+      && this.input.relay.bindInput
+      && (context.phase !== "input" || slot.nativeStarted)) {
       if (!slot.nativeStarted || !slot.startedBinding) return false;
       try { await slot.startedBinding; } catch { return false; }
     }
@@ -336,7 +337,7 @@ export class NativeLiveMacPersistentTurnRouter {
       // rejecting that old cursor here would prevent native start and make
       // the authoritative rebind callback unreachable.
       if (context.phase === "input" && this.binding
-        && slot.command.parent_provider_checkpoint_id !== this.providerCheckpointId
+        && (slot.effectiveCommand ?? slot.command).parent_provider_checkpoint_id !== this.providerCheckpointId
         && !(slot.command.operation === "send" && slot.command.runtime_mode === "resume"
           && this.input.relay.bindInput && !slot.nativeStarted)) return false;
       const checkpoint = this.providerCheckpointId;
