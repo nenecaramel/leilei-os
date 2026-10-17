@@ -52,9 +52,11 @@ export class LocalRitrieveBreathSemanticScorer implements BreathSemanticScorer {
     candidates: readonly BreathSemanticCandidate[];
   }): Promise<ReadonlyMap<string, number>> {
     if (!input.query.trim() || input.candidates.length === 0) return new Map();
-    if (input.candidates.length > MAX_CANDIDATES ||
-      input.candidates.some(c => !c.text.trim() || c.text.length > 2_000)) {
-      throw new Error("Ritrieve candidates are invalid.");
+    if (input.candidates.length > MAX_CANDIDATES) {
+      throw new Error("Ritrieve candidate limit exceeded.");
+    }
+    if (input.candidates.some(c => !c.text.trim() || c.text.length > 2_000)) {
+      throw new Error("Ritrieve candidate text is invalid.");
     }
     const data = await this.send({op: "score", query: input.query,
       passages: input.candidates.map(c => c.text)});
@@ -62,7 +64,8 @@ export class LocalRitrieveBreathSemanticScorer implements BreathSemanticScorer {
       !data.scores.every(x => typeof x === "number" && Number.isFinite(x) && x >= 0 && x <= 1)) {
       throw new Error("Ritrieve returned invalid semantic scores.");
     }
-    return new Map(input.candidates.map((candidate, i) => [candidate.stateId, data.scores![i] as number]));
+    const scores = data.scores as number[];
+    return new Map(input.candidates.map((candidate, i) => [candidate.stateId, scores[i]!]));
   }
 
   /** Build off-path; only commit switches the active local snapshot. */
