@@ -963,7 +963,7 @@ implements NativeLiveMacDaemonRelayClient {
       ),
     );
     if (data.nativeResumeCheckpointId !== undefined
-      && (data.canonicalOutcome !== "wake_quiet" || !requireUuid(data.nativeResumeCheckpointId, "nativeResumeCheckpointId"))) {
+      && (!["wake_quiet", "wake_stale"].includes(data.canonicalOutcome as string) || !requireUuid(data.nativeResumeCheckpointId, "nativeResumeCheckpointId"))) {
       throw new Error("Native quiet acknowledgement is invalid.");
     }
     return {
