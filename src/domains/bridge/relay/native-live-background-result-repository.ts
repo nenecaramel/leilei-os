@@ -112,6 +112,13 @@ async function reconcileRejectedWakePresentationOwner(
       AND rejected.status='prepared' AND rejected.dispatch_status='rejected'
       AND rejected.dispatch_error_code='INVALID_COMMAND'
       AND rejected.result_hash IS NULL AND rejected.assistant_message_id IS NULL
+      -- INVALID_COMMAND alone is not proof that the model never ran.
+      -- A rejected turn with any durable runtime evidence cannot be reclaimed.
+      AND NOT EXISTS (
+        SELECT 1 FROM native_live_runtime_events rejected_event
+        WHERE rejected_event.user_id=c.user_id
+          AND rejected_event.prepare_id=rejected.id
+      )
       AND rejected.runtime_metadata->'native_live_input_binding'->>'started' IS DISTINCT FROM 'true'
       AND rejected.created_at >= wake.finalized_at
       AND rejected.parent_provider_session_id=cp.provider_session_id
