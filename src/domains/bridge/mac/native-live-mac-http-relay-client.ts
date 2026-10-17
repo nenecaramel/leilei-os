@@ -885,7 +885,8 @@ implements NativeLiveMacDaemonRelayClient {
     const data = readRecord(await this.postRetryableBounded(
       `/reservations/${identity.sourcePrepareId}/background-results/prepare`,
       { receipt_id: identity.receiptId, listener_instance_id: identity.listenerInstanceId,
-        generation_id: identity.generationId, parent_provider_checkpoint_id: parent }, 3, AbortSignal.timeout(5_000),
+        generation_id: identity.generationId, parent_provider_checkpoint_id: parent,
+        ...(input.executionStart === true ? { execution_start: true } : {}) }, 3, AbortSignal.timeout(5_000),
     ));
     if (data.receiptId !== identity.receiptId || data.parentProviderCheckpointId !== parent
       || typeof data.providerSessionId !== "string" || !data.providerSessionId.trim() || data.providerSessionId.length > 1024
