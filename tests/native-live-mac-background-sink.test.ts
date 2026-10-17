@@ -42,8 +42,9 @@ test("stale HTTP 200 does not silently delete an undelivered background reply",a
   const evidence=await f.outbox.listQuarantined();
   assert.equal(evidence.length,1,"failed background reply remains durably recoverable");
   assert.equal(evidence[0]!.result.provider_checkpoint_id,id(6));
-  assert.deepEqual(blocked,[id(1)]);
+  assert.deepEqual(blocked,[],"callback must not deadlock by retiring its own writer");
   assert.equal(await sink.flush(),0);
+  assert.deepEqual(blocked,[id(1)],"recovery pass fences after the original SDK acknowledgement has unwound");
   assert.equal((await f.outbox.listQuarantined()).length,1,"restart/recovery must retain rejected evidence");
 });
 
