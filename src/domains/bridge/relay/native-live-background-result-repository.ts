@@ -231,6 +231,12 @@ export async function submitNativeLiveBackgroundResult(db: Database, input: Nati
     const origin = await source(tx, userId, identity.sourcePrepareId), stored = await receipt(tx, userId, identity);
     if (!stored) throw new NativeLiveBackgroundResultError("BACKGROUND_NOT_FOUND");
     if (result.prepare_id !== origin.id || result.request_id !== origin.requestId || result.conversation_id !== origin.conversationId) throw conflict();
+    // A queued F-cover retry must not gain authority from a new listener or
+    // source writer that happens to reuse the same conversation. The old
+    // authenticated origin was fixed at the original prepare transaction.
+    if (origin.listenerId !== identity.listenerInstanceId || origin.sessionId !== stored.context.providerSessionId
+      || origin.status !== "finalized_success" || origin.dispatch !== "completed" || !origin.assistantId)
+      throw conflict();
     if (stored.deferred === true && (stored.phase === "prepared" || stored.phase === "queued")) {
       if (stored.phase === "queued" && stored.resultHash !== resultHash) throw conflict();
       if (result.status === "success" && (
