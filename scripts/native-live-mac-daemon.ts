@@ -467,6 +467,9 @@ while (!stopping) {
         ...("reservationId" in outcome
           ? { reservationId: outcome.reservationId }
           : {}),
+        ...(outcome.outcome === "rejected"
+          ? { rejectionCode: outcome.code }
+          : {}),
         ...("eventDeliveryFailures" in outcome
           && outcome.eventDeliveryFailures
           ? {
