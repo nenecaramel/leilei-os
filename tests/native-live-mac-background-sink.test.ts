@@ -69,6 +69,37 @@ test("network-unknown recovery is backed off and later replays its original rece
  available=true;now+=30000;assert.equal(await sink.flush(),1);assert.equal(f.committed.size,1);assert.deepEqual(recovered,[id(1)]);assert.ok(blocks.length>0);
 });
 
+test("recovery fencing may reenter the serial outbox without deadlocking", async t => {
+  const f = await fixture(t);
+  const blocked: string[] = [];
+  const relay = { ...f.relay, async submitBackgroundResult() {
+    return { outcome: "queued" as const, duplicate: false, providerCheckpointId: null };
+  } };
+  let sink!: NativeLiveMacBackgroundResultSink;
+  sink = new NativeLiveMacBackgroundResultSink({
+    listenerInstanceId: id(7), relay, outbox: f.outbox,
+    isForegroundActive: () => false,
+    onRecoveryBlocked: async conversationId => {
+      blocked.push(conversationId);
+      // A retiring writer may itself reenter the delivery queue. Calling this
+      // while flush() holds its serial lock would wait on itself forever.
+      await sink.cover(id(1), id(2), id(8));
+    },
+  });
+  await sink.commit({ ...owner, deferred: true }, frame);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      sink.flush(),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("recovery callback deadlocked the outbox")), 1000);
+      }),
+    ]);
+  } finally { clearTimeout(timeout); }
+  assert.deepEqual(blocked, [id(1)]);
+  assert.equal((await f.outbox.list())[0]!.coveringCheckpointId, id(8));
+});
+
 test("deferred background is acknowledged queued but is only deleted after F covering checkpoint commits",async t=>{
   const f=await fixture(t);const checks:Array<string|null>=[];
   const relay={...f.relay,async submitBackgroundResult(input:any){
