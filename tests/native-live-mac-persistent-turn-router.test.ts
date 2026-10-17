@@ -222,6 +222,17 @@ test("post-start autonomous receipt waits for pending foreground bind", async t 
   f.finish(input.uuid); await second;
 });
 
+test("queued transport acknowledgement cannot satisfy canonical foreground finalization", async t => {
+  const f=await fixture(t);
+  const running=f.run(command(1),{
+    async onResult(){return {status:"queued",providerCheckpointId:id(101)};}
+  });
+  const failed=assert.rejects(running,/finalization was rejected/);
+  f.finish((await f.inputs.next()).value!.uuid);
+  await failed;
+  assert.equal(f.router.providerCheckpointId,id(101),"never advance to an uncommitted foreground cursor");
+});
+
 test("native started binding missing or disagreeing with live cursor rejects the foreground result", async t => {
   const f = await fixture(t, undefined, async input => ({
     userMessageId: input.commandUuid,
