@@ -1,4 +1,5 @@
 import type { NativeLiveMacPersistentExecutor, NativeLiveMacPersistentExecution } from "./native-live-mac-persistent-executor.js";
+import { failure as runtimeFailure } from "./native-live-mac-runtime-executor.js";
 import type { NativeLiveMacResultOutbox } from "./native-live-mac-result-outbox.js";
 import type {
   NativeLiveRuntimeCommand,
@@ -840,6 +841,13 @@ export class NativeLiveMacDaemonLoop {
         // keep running in parallel with a different presentation branch.
         if (command.operation === "edit" || command.operation === "retry") {
           await this.persistentExecutor?.retire(command.conversation_id);
+        }
+        if (command.operation === "wake" &&
+            (command.runtime_mode !== "resume" || !this.persistentExecutor?.canRoute(command))) {
+          // Never retire the current writer or invoke the one-shot legacy
+          // executor for a Wake. Refuse stale, unsupported and busy wakes.
+          // The backend finalizes this explicit failure and its wake receipt.
+          return runtimeFailure(command, "NO_PROVIDER_SESSION");
         }
         if (this.persistentExecutor?.canRoute(command)) {
           persistentRun = await this.persistentExecutor.execute(command, { ...options, commit });
