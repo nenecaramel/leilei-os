@@ -187,7 +187,8 @@ export class NativeLiveMacPersistentExecutor {
           // A quiet resume has no visible canonical turn. Only its explicit,
           // exact server-committed continuation cursor may keep this writer.
           const quiet = command.operation === "wake" && command.runtime_mode === "resume"
-            && canonicalOutcome === "wake_quiet" && receipt?.nativeResumeCheckpointId === providerCheckpointId;
+            && (canonicalOutcome === "wake_quiet" || canonicalOutcome === "wake_stale")
+            && receipt?.nativeResumeCheckpointId === providerCheckpointId;
           return canonicalOutcome === "completed" || canonicalOutcome === "idempotent" || quiet
             ? { status: canonicalOutcome === "idempotent" ? "idempotent" : "applied", providerCheckpointId, ...(quiet ? { continuationOnly: true } : {}) }
             : { status: "rejected" };
