@@ -38,7 +38,8 @@ const isWriteMemoryTool = name => typeof name === "string" && WRITE_MEMORY_TOOL.
 const DIAGNOSTIC_REASONS = new Set(["no_pending", "turn_mismatch", "receipt_expired", "confirm_http", "budget_exhausted",
   "chain_excluded", "chain_nothing_proven", "chain_prompt_not_visible", "chain_prompt_mismatch", "chain_prompt_stale",
   "chain_read_rejected", "chain_timeout", "chain_anchor_verified", "chain_anchor_diverged",
-  "semantic_no_candidates", "semantic_skipped_budget", "semantic_scored", "semantic_rerank_failed"]);
+  "semantic_no_candidates", "semantic_skipped_budget", "semantic_scored", "semantic_rerank_failed",
+  "semantic_snapshot_stale", "semantic_index_unavailable"]);
 const DIAGNOSTIC_EVENTS = new Set(["Stop", "UserPromptSubmit"]);
 
 // Opt-in only: emit bounded reason codes, never prompt, tokens, IDs, hashes,
@@ -81,6 +82,7 @@ async function readConfig() {
     mcp_tool_name: `mcp__${serverName}__write_memory`,
     semantic_socket: read("LEILEI_MIND_SEMANTIC_SOCKET"),
     diagnostics: read("LEILEI_MIND_DIAGNOSTICS") === "1",
+    indexed_recall: read("LEILEI_MIND_RECALL_MODE") === "indexed_v1",
   };
   const url = new URL(config.url);
   if (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) throw new Error("Invalid URL.");
@@ -339,7 +341,7 @@ export function chainContextHashes(snapshot, start) {
   const hashes = new Set(); const visited = new Set();
   // A persisted, successful tool result is also ancestry evidence. Unlike
   // per-session written_ids, this survives Desktop's copied-session resume.
-  const writeCalls = new Map(); const toolResults = [];
+  const writeCalls = new Map(); const toolResults = []; const recentUserPrompts = [];
   let id = start; let complete = false;
   while (true) {
     if (id === null || id === undefined) { complete = true; break; }
@@ -348,6 +350,12 @@ export function chainContextHashes(snapshot, start) {
     const record = snapshot.records.get(id);
     if (!record) break;
     if (record.type === "system" && record.subtype === "compact_boundary") { complete = true; break; }
+    if (recentUserPrompts.length < 3 && isPrompt(record)) {
+      const content = record.message.content;
+      const text = typeof content === "string" ? content :
+        content.filter(block => block?.type === "text").map(block => block.text).join(" ");
+      if (typeof text === "string" && text.trim() && text.length <= 1000) recentUserPrompts.push(text.trim());
+    }
     const blocks = record.message?.content;
     if (Array.isArray(blocks)) {
       if (record.type === "assistant") {
@@ -380,7 +388,7 @@ export function chainContextHashes(snapshot, start) {
     const memoryId = writtenMemoryId(response);
     if (memoryId) writtenIds.add(memoryId);
   }
-  return {hashes, writtenIds: [...writtenIds], complete};
+  return {hashes, writtenIds: [...writtenIds], complete, recentUserPrompts};
 }
 
 export async function activeChainHashes(path, prompt, invocationStarted) {
@@ -396,6 +404,7 @@ export async function activeChainHashes(path, prompt, invocationStarted) {
     if (anchor.kind) {
       const proof = chainContextHashes(result.value, anchor.start);
       return {hashes: proof?.hashes ?? null, writtenIds: proof?.writtenIds ?? [],
+        recentUserPrompts: proof?.recentUserPrompts ?? [],
         reason: proof ? null : "chain_read_rejected", kind: anchor.kind, start: anchor.start};
     }
     reason = anchor.reason;
@@ -435,7 +444,7 @@ export async function verifyHeadAnchor(config, input, invocationStarted) {
 // Any failure, timeout or ambiguity excludes nothing extra: retrieval proceeds.
 async function chainExclusions(config, input, invocationStarted, activeTurn) {
   if (input.transcript_path === undefined) return [];
-  let timer; let reason = "chain_timeout"; let ids = [];
+  let timer; let reason = "chain_timeout"; let ids = []; let recentUserPrompts = [];
   const budget = new Promise(resolve => { timer = setTimeout(() => resolve(null), CHAIN_BUDGET_MS); });
   try {
     const chain = await Promise.race([activeChainHashes(input.transcript_path, input.prompt, invocationStarted), budget]);
@@ -446,6 +455,7 @@ async function chainExclusions(config, input, invocationStarted, activeTurn) {
       }).catch(() => undefined);
     }
     if (chain?.hashes) {
+      recentUserPrompts = (chain.recentUserPrompts ?? []).filter(text => typeof text === "string");
       const proven = await Promise.race([provenMemoryIds(config, chain.hashes), budget]);
       if (proven) {
         ids = [...new Set([...proven, ...(chain.writtenIds ?? [])])];
@@ -456,7 +466,7 @@ async function chainExclusions(config, input, invocationStarted, activeTurn) {
   finally { clearTimeout(timer); }
   // Reason codes only: never prompt, transcript, hash or memory ID.
   await recordDiagnostic(config, "UserPromptSubmit", reason);
-  return ids;
+  return {ids, recentUserPrompts};
 }
 
 export function writtenMemoryId(response) {
@@ -625,7 +635,8 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     await save(state); return structuredClone(state);
   });
   // Memories whose delivered context is provably still on the active chain.
-  const chainIds = await chainExclusions(config, input, invocationStarted, snapshot.active_turn);
+  const chain = await chainExclusions(config, input, invocationStarted, snapshot.active_turn);
+  const chainIds = chain.ids;
   // Keep existing written IDs first; the server accepts at most MAX_SEEN.
   // If the chain contributes too many IDs, dropping the tail only weakens dedupe.
   const exclude = [...new Set([...snapshot.written_ids, ...chainIds])].slice(0, MAX_SEEN);
