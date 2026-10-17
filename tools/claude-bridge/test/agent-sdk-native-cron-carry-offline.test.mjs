@@ -68,7 +68,7 @@ test('an earlier native Cron survives edit/retry fork without duplication', {
       if(!dir.isDirectory())continue;
       try{
         const raw=await readFile(join(root,'projects',dir.name,sessionId+'.jsonl'),'utf8');
-        matches.push(raw.trim().split('\\n').filter(Boolean).map(JSON.parse));
+        matches.push(raw.trim().split('\n').filter(Boolean).map(JSON.parse));
       }catch(error){if(error.code!=='ENOENT')throw error;}
     }
     assert.equal(matches.length,1,'source CLI must persist exactly one session JSONL');
