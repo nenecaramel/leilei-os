@@ -391,10 +391,10 @@ export async function finalizeSuccess(
               status: "finalized_success",
               resultHash,
               providerSessionId: input.providerSessionId,
-              runtimeMetadata: {
+              runtimeMetadata: nativeInputBinding ? {
                 ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}),
-                ...(nativeInputBinding ? { native_live_input_binding: nativeInputBinding } : {}),
-              },
+                native_live_input_binding: nativeInputBinding,
+              } : input.runtimeMetadata as Record<string, unknown> | null,
               assistantMessageId: assistantMessage.id,
               failureCode: null,
               finalizedAt,
