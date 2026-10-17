@@ -114,8 +114,10 @@ export class NativeLiveMacBackgroundResultOutbox {
     return updated;
   }
 
-  async list(): Promise<Entry[]> { return this.listDirectory(this.directory); }
-  async listQuarantined(): Promise<Entry[]> { return this.listDirectory(join(this.directory,"blocked")); }
+  listSync(): Entry[] { return this.listDirectory(this.directory); }
+  listQuarantinedSync(): Entry[] { return this.listDirectory(join(this.directory,"blocked")); }
+  async list(): Promise<Entry[]> { return this.listSync(); }
+  async listQuarantined(): Promise<Entry[]> { return this.listQuarantinedSync(); }
   private listDirectory(directory: string): Entry[] {
     if (!existsSync(directory)) return [];
     const names = readdirSync(directory).filter(name => /^[a-f0-9]{64}\.json$/.test(name));
