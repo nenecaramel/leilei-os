@@ -155,6 +155,18 @@ export class NativeLiveMacBackgroundResultOutbox {
     }
     this.persistOrder(ordered);
   }
+  /** A quarantined receipt is deleted ONLY after the backend has committed
+   * that exact preexisting provider result. Never discard unverifiable output. */
+  async acknowledgeQuarantined(raw: Entry): Promise<void> {
+    const value = entry(raw), directory = join(this.directory, "blocked");
+    const path = join(directory, basename(this.path(value)));
+    if (!existsSync(path) || lstatSync(path).isSymbolicLink()
+      || readFileSync(path, "utf8") !== JSON.stringify(value))
+      throw new Error("Quarantined background evidence changed during recovery.");
+    unlinkSync(path);
+    const fd = openSync(directory, "r");
+    try { fsyncSync(fd); } finally { closeSync(fd); }
+  }
   private path(value: Entry): string {
     return join(this.directory, createHash("sha256").update(JSON.stringify([value.listenerInstanceId, value.generationId, value.receiptId])).digest("hex") + ".json");
   }
@@ -276,6 +288,35 @@ export class NativeLiveMacBackgroundResultSink {
           blocked.add(value.result.conversation_id);
       }
       const now = (this.input.now ?? Date.now)();
+      const currentNormal = await this.input.outbox.list();
+      const quarantinedCounts = new Map<string, number>();
+      for (const saved of quarantined) {
+        const conversationId = saved.result.conversation_id;
+        quarantinedCounts.set(conversationId, (quarantinedCounts.get(conversationId) ?? 0) + 1);
+      }
+      // A rejected background B may be repairable after a backend bugfix
+      // (notably visible Wake's missing anchor). Re-deliver its immutable
+      // journaled result, NEVER rerun Claude. A singleton is required: the
+      // blocked directory does not retain reliable multi-B producer ordering.
+      // The normal outbox must also be empty for that conversation.
+      for (const saved of quarantined) {
+        const conversationId = saved.result.conversation_id;
+        if (quarantinedCounts.get(conversationId) !== 1
+          || currentNormal.some(value => value.result.conversation_id === conversationId)
+          || this.input.isForegroundActive?.(conversationId)
+          || (this.retryAfter.get(saved.receiptId) ?? 0) > now) continue;
+        try {
+          const ack = await this.deliver(saved, true);
+          if (ack.outcome !== "committed") throw new Error("Quarantined receipt is not durably committed.");
+          completed++;
+          blocked.delete(conversationId);
+          this.retryAfter.delete(saved.receiptId);
+          this.recoveryCandidates.add(conversationId);
+        } catch {
+          this.retryAfter.set(saved.receiptId, now + 60_000);
+          blocked.add(conversationId);
+        }
+      }
       const seenConversations = new Set<string>();
       const value = (await this.input.outbox.list()).find(v => {
         // Files are journaled in SDK generation order. Never skip an earlier
@@ -340,7 +381,7 @@ export class NativeLiveMacBackgroundResultSink {
     }
     return settled;
   }
-  private async deliver(value: Entry): Promise<NativeLiveBackgroundAck> {
+  private async deliver(value: Entry, quarantined = false): Promise<NativeLiveBackgroundAck> {
     const prepared = await this.input.relay.prepareBackgroundResult(value);
     if (value.result.status !== "success" || prepared.receiptId !== value.receiptId || prepared.providerSessionId !== value.result.provider_session_id
       || prepared.parentProviderCheckpointId !== value.parentProviderCheckpointId) throw new Error("Background preparation binding changed.");
@@ -358,7 +399,8 @@ export class NativeLiveMacBackgroundResultSink {
         throw new Error("Unexpected queued reply outside a pre-coverage native foreground; retain outbox.");
       return ack; // Uncovered native producer is durable, not canonically published.
     }
-    await this.input.outbox.acknowledge(value);
+    if (quarantined) await this.input.outbox.acknowledgeQuarantined(value);
+    else await this.input.outbox.acknowledge(value);
     return ack;
   }
   private serial<T>(work: () => Promise<T>): Promise<T> {
