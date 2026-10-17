@@ -192,6 +192,23 @@ export class NativeLiveMacBackgroundResultSink {
       }
     });
   }
+  /** Publish the exact covered segment order before the next foreground input
+   * can use this writer. An unknown/queued ACK is not considered delivered. */
+  async publishCovered(conversationId: string): Promise<void> {
+    await this.serial(async () => {
+      const pending = (await this.input.outbox.list()).filter(value =>
+        value.result.conversation_id === conversationId
+        && value.deferred === true && Boolean(value.coveringCheckpointId));
+      for (const value of pending) {
+        const ack = await this.deliver(value);
+        if (ack.outcome !== "committed") throw new Error("Deferred background result is not canonically published.");
+      }
+    });
+  }
+  async cover(conversationId: string, coveringCheckpointId: string): Promise<number> {
+    return this.serial(() => this.input.outbox.cover(conversationId, coveringCheckpointId));
+  }
+
   /** Re-deliver immutable receipts after a restart; never restart provider work. */
   async flush(): Promise<number> {
     return this.serial(async () => {
