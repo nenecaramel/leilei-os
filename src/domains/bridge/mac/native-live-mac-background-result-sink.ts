@@ -35,22 +35,33 @@ export class NativeLiveMacBackgroundResultOutbox {
   // native SDK outputs across a process restart.
   private get orderPath(): string { return join(this.directory, ".delivery-order.json"); }
   private order(): string[] {
+    // The index can lag behind a receipt whose file was fsynced and renamed
+    // before the index update crashed. Reconcile existing files on EVERY read,
+    // including save(): otherwise saving B2 could persist [B2] while orphaned
+    // B1 survives outside the index and replays after B2.
+    if (!existsSync(this.directory)) return [];
+    const disk = readdirSync(this.directory).filter(name => /^[a-f0-9]{64}\.json$/.test(name));
+    const birthtime = new Map(disk.map(name => {
+      const stat = lstatSync(join(this.directory, name));
+      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Invalid background receipt file.");
+      return [name, stat.birthtimeMs] as const;
+    }));
+    let journal: string[] = [];
     if (existsSync(this.orderPath)) {
-      if (lstatSync(this.orderPath).isSymbolicLink()) throw new Error("Invalid background delivery-order index.");
+      if (!lstatSync(this.orderPath).isFile() || lstatSync(this.orderPath).isSymbolicLink())
+        throw new Error("Invalid background delivery-order index.");
       const data: unknown = JSON.parse(readFileSync(this.orderPath, "utf8"));
       if (!Array.isArray(data) || !data.every(v => typeof v === "string" && /^[a-f0-9]{64}\.json$/.test(v))
         || new Set(data).size !== data.length) throw new Error("Corrupt background delivery-order index.");
-      return data;
+      journal = data;
     }
-    // A pre-upgrade outbox has no order index. Recover its existing records
-    // using recorded filesystem creation order instead of their random hashes.
-    if (!existsSync(this.directory)) return [];
-    return readdirSync(this.directory).filter(name => /^[a-f0-9]{64}\.json$/.test(name))
-      .sort((a,b) => {
-        const lhs = lstatSync(join(this.directory,a)).birthtimeMs;
-        const rhs = lstatSync(join(this.directory,b)).birthtimeMs;
-        return lhs - rhs || a.localeCompare(b);
-      });
+    const indexed = new Set(journal);
+    // An indexed receipt's prior order is authoritative. Newly discovered
+    // orphans are unindexed only because their journal rename was interrupted;
+    // recover them in filesystem creation order, never hash filename order.
+    const orphaned = disk.filter(name => !indexed.has(name))
+      .sort((a,b) => birthtime.get(a)! - birthtime.get(b)! || a.localeCompare(b));
+    return [...journal.filter(name => birthtime.has(name)), ...orphaned];
   }
   private persistOrder(order: string[]): void {
     mkdirSync(this.directory, { recursive: true, mode: 0o700 });
@@ -110,13 +121,9 @@ export class NativeLiveMacBackgroundResultOutbox {
     const names = readdirSync(directory).filter(name => /^[a-f0-9]{64}\.json$/.test(name));
     let ordered = names.sort();
     if (directory === this.directory) {
-      const journal = this.order();
-      const remaining = new Set(names);
-      ordered = journal.filter(name => remaining.delete(name));
-      // Recover an interrupted save (data fsynced, index not yet renamed).
-      // Under the single-writer daemon lease, at most one newly saved
-      // segment is unindexed at this interruption boundary.
-      ordered.push(...[...remaining].sort());
+      // order() also reconciles unindexed fsynced receipts. Never re-sort
+      // recovered entries by their randomly hashed filenames.
+      ordered = this.order();
     }
     return ordered.map(name => {
       const path = join(directory, name);
