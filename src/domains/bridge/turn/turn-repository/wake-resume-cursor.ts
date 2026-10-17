@@ -78,23 +78,26 @@ export async function commitWakeResumeCursorLocked(
   `);
   if (other?.active || other?.replacing) return "stale";
 
+  let queuedSendId: string | null = null;
   if (surface.owner !== sourceOwner) {
-    // Only a NEW queued send from this same original checkpoint may take
-    // presentation ownership while Wake is finishing. That send has not
-    // started in the SDK yet and will bind to this advanced native cursor.
+    // Only a NEW not-yet-reserved send from this same original checkpoint
+    // may take presentation ownership. The already-dispatched request identity
+    // is immutable; such a race must fail closed, not retarget a live command.
     const [queued] = await transaction.execute<{ id: string }>(sql`
       SELECT p.id FROM native_live_turn_preparations p
       WHERE p.user_id = ${row.userId}::uuid AND p.conversation_id = ${row.conversationId}::uuid
         AND p.id::text = ${surface.owner}
         AND p.operation = 'send' AND p.runtime_mode = 'resume'
-        AND p.status = 'prepared' AND p.dispatch_status IN ('staged','pending','reserved')
+        AND p.status = 'prepared' AND p.dispatch_status IN ('staged','pending')
         AND p.execution_started_at IS NULL
         AND p.parent_provider_session_id = ${row.parentProviderSessionId}
         AND p.parent_provider_checkpoint_id = ${row.parentProviderCheckpointId}
         AND p.expected_working_directory IS NOT DISTINCT FROM ${row.expectedWorkingDirectory}::text
       LIMIT 1
+      FOR UPDATE OF p
     `);
     if (!queued) return "stale";
+    queuedSendId = queued.id;
   }
 
   const [binding] = await transaction.execute<{ id: string; base: string }>(sql`
@@ -106,7 +109,7 @@ export async function commitWakeResumeCursorLocked(
       AND cp.provider = 'claude_code'
       AND cp.provider_session_id = ${input.providerSessionId}
       AND cp.effective_working_directory IS NOT DISTINCT FROM ${input.effectiveWorkingDirectory}::text
-      AND ${nativeResumeCheckpointSql("cp", "c")} = ${row.parentProviderCheckpointId}
+      AND ${nativeResumeCheckpointSql("cp", "c", false)} = ${row.parentProviderCheckpointId}
     LIMIT 1
     FOR UPDATE OF cp
   `);
@@ -127,6 +130,26 @@ export async function commitWakeResumeCursorLocked(
       '{native_live_resume_tail}', ${JSON.stringify(cursor)}::jsonb)
     WHERE id = ${binding.id}::uuid AND user_id = ${row.userId}::uuid
   `);
+
+  if (queuedSendId) {
+    // The SDK may have advanced its JSONL while U was being staged.
+    // Atomically retarget only a truly unstarted U to the verified Wake tail,
+    // so even a daemon RESTART restores the correct producer checkpoint.
+    // This also updates the immutable identity used by the eventual reserve.
+    const retargeted = await transaction.execute<{ id: string }>(sql`
+      UPDATE native_live_turn_preparations
+      SET parent_provider_checkpoint_id = ${input.providerCheckpointId},
+          updated_at = now()
+      WHERE user_id = ${row.userId}::uuid AND id = ${queuedSendId}::uuid
+        AND operation = 'send' AND runtime_mode = 'resume'
+        AND parent_provider_checkpoint_id = ${row.parentProviderCheckpointId}
+        AND status = 'prepared'
+        AND dispatch_status IN ('staged', 'pending')
+        AND execution_started_at IS NULL
+      RETURNING id
+    `);
+    if (retargeted.length !== 1) throw new Error("Queued send changed during native Wake cursor reconciliation.");
+  }
 
   const [latest] = await transaction.execute<{ id: string }>(sql`
     SELECT m.id FROM conversation_messages m JOIN conversations c
