@@ -17,6 +17,54 @@ test('configured transport uses one SDK query for two turns and retains default 
  assert.equal(f.options.perTaskStopAffordance,false);
  assert.deepEqual(f.options.thinking,{type:'adaptive',display:'summarized'});
 });
+test('a forked edit keeps its native SDK query open through a second human turn and cleans only the transient prefix',async t=>{
+  const parentId='10000000-0000-4000-8000-000000000001';
+  const checkpoint='10000000-0000-4000-8000-000000000002';
+  const userId='10000000-0000-4000-8000-000000000003';
+  const localForkId='10000000-0000-4000-8000-000000000004';
+  const childId='10000000-0000-4000-8000-000000000005';
+  const prefix=[
+    {type:'user',uuid:userId,parentUuid:null,sessionId:parentId,message:{role:'user',content:[{type:'text',text:'synthetic'}]}},
+    {type:'assistant',uuid:checkpoint,parentUuid:userId,sessionId:parentId,message:{role:'assistant',content:[{type:'text',text:'synthetic'}]}},
+  ];
+  const output=queue();let launches=0,closed=0,cleaned=0,options;
+  const transport=new AgentSdkClaudeTransport({
+    environment:{},cwd:'/synthetic',toolPermissionPolicy:'auto_allow',
+    createSendFileMcpServerImpl:async()=>null,
+    importSessionToStoreImpl:async (_session,store)=>store.append({subpath:null},prefix),
+    prepareLocalCheckpointForkImpl:async ({sessionId,checkpointId, prefix:entries})=>{
+      assert.equal(sessionId,parentId);assert.equal(checkpointId,checkpoint);
+      assert.equal(entries.at(-1)?.uuid,checkpoint);
+      return {sessionId:localForkId,async cleanup(){cleaned++;}};
+    },
+    queryImpl:({prompt,options:opts})=>{
+      launches++;options=opts;output.push({type:'system',subtype:'init',session_id:childId});
+      void(async()=>{for await(const input of prompt){
+        output.push({type:'assistant',session_id:childId,uuid:'synthetic-assistant',
+          message:{content:[{type:'text',text:'synthetic reply'}]}});
+        output.push({type:'result',subtype:'success',session_id:childId,
+          user_message_uuid:input.uuid,result:'synthetic reply'});
+      }})();
+      return {close(){closed++;output.end();},async interrupt(){return {still_queued:[]};},
+        async *[Symbol.asyncIterator](){yield* output;}};
+    },
+  });
+  const host=await transport.forkPersistentSession({sessionId:parentId,checkpointId:checkpoint},{
+    authorize:async()=>true,onBackgroundResult:async()=>{},
+  });t.after(()=>host.close());
+  const first=await host.submit('edited CronCreate message',{id:'edit-uuid'});
+  await new Promise(setImmediate);
+  assert.equal(first.providerSessionId,childId);
+  assert.equal(cleaned,1,'temporary fork prefix is removed only after the SDK accepts the first result');
+  const second=await host.submit('ordinary chat afterwards',{id:'next-uuid'});
+  assert.equal(second.providerSessionId,childId);
+  assert.equal(launches,1,'native Cron must stay in the same live forked process after editing');
+  assert.equal(closed,0);
+  assert.equal(options.forkSession,true);
+  assert.equal(options.resume,localForkId);
+  assert.equal(options.resumeSessionAt,checkpoint);
+});
+
 test('persistent SDK thinking summaries survive continued turns and respect explicit modes',async t=>{
  const cases=[
    ['default',null,{type:'adaptive',display:'summarized'}],

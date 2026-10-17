@@ -25,8 +25,8 @@ export type NativeLiveMacPersistentExecution = Readonly<{
   canonicalOutcome?: string | null;
 }>;
 
-// Not selected by the daemon yet. One router per conversation; a command that
-// cannot continue it (fork, edit, other checkpoint) retires it and goes legacy.
+// One writer per conversation. Edited/retried branches retire the previous
+// owner before opening a fresh persistent fork, so Cron survives subsequent chat.
 export class NativeLiveMacPersistentExecutor {
   private readonly routers = new Map<string, Router>();
   private readonly retiring = new Set<string>();
@@ -61,8 +61,12 @@ export class NativeLiveMacPersistentExecutor {
     if (this.shutDown) return false;
     let command: NativeLiveRuntimeCommand;
     try { command = parseNativeLiveRuntimeCommand(rawCommand); } catch { return false; }
-    if (!["send", "wake"].includes(command.operation) || !["new", "resume"].includes(command.runtime_mode)
-      || command.parent_provider_checkpoint_id === undefined || command.failed_user_message_uuids?.length) return false;
+    const ordinary = ["send", "wake"].includes(command.operation) && ["new", "resume"].includes(command.runtime_mode);
+    const replacement = ["edit", "retry"].includes(command.operation)
+      && (command.runtime_mode === "new" || (command.runtime_mode === "fork"
+        && !!command.parent_provider_session_id && !!command.parent_provider_checkpoint_id));
+    if (!(ordinary || replacement) || command.parent_provider_checkpoint_id === undefined
+      || command.failed_user_message_uuids?.length) return false;
     if (command.attachments?.length && !this.input.attachmentMaterializer) return false;
     if (this.retiring.has(command.conversation_id) || this.suspended.has(command.conversation_id)) return false;
     const router = this.routers.get(command.conversation_id);

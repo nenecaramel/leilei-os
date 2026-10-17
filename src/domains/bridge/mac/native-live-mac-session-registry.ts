@@ -7,6 +7,7 @@ import {
   type NativeLiveMacPersistentSession,
   type NativeLiveMacPersistentSessionOptions,
   type NativeLiveMacSessionRestore,
+  type NativeLiveMacSessionFork,
 } from "./native-live-mac-claude-transport.js";
 import { resolveNativeLiveMacWorkingDirectory } from "./native-live-mac-working-directory-runtime.js";
 
@@ -70,7 +71,12 @@ export class NativeLiveMacSessionRegistry {
     return this.openOwned(input, { ...input.restore });
   }
 
-  private async openOwned(input: OpenInput, restore: NativeLiveMacSessionRestore | null): Promise<NativeLiveMacSessionBinding> {
+  /** A branch replacement owns its newly forked SDK process across later sends. */
+  async openFork(input: OpenInput & { fork: NativeLiveMacSessionFork }): Promise<NativeLiveMacSessionBinding> {
+    return this.openOwned(input, null, { ...input.fork });
+  }
+
+  private async openOwned(input: OpenInput, restore: NativeLiveMacSessionRestore | null, fork: NativeLiveMacSessionFork | null = null): Promise<NativeLiveMacSessionBinding> {
     if (this.shutDown) throw new Error("Persistent session registry is shut down.");
     const { conversationId } = input;
     if (typeof conversationId !== "string" || !conversationId.trim()) throw new Error("Conversation identity is required.");
@@ -84,7 +90,7 @@ export class NativeLiveMacSessionRegistry {
       attemptedOpen: false, closing: null, opening: null!, providerSessionId: restore?.sessionId ?? null,
     };
     this.entries.set(conversationId, entry);
-    entry.opening = this.launch(entry, { ...input, options: { ...input.options } }, restore);
+    entry.opening = this.launch(entry, { ...input, options: { ...input.options } }, restore, fork);
     try { return await entry.opening; }
     catch (error) {
       entry.retired = true;
@@ -141,7 +147,7 @@ export class NativeLiveMacSessionRegistry {
       || [...this.entries.values()].some(other => other !== entry && other.providerSessionId === sessionId)) throw new Error("Native provider session is already owned or changed identity.");
     entry.providerSessionId = sessionId;
   }
-  private async launch(entry: Entry, input: OpenInput, restore: NativeLiveMacSessionRestore | null): Promise<NativeLiveMacSessionBinding> {
+  private async launch(entry: Entry, input: OpenInput, restore: NativeLiveMacSessionRestore | null, fork: NativeLiveMacSessionFork | null): Promise<NativeLiveMacSessionBinding> {
     const workingDirectory = await resolveNativeLiveMacWorkingDirectory(input.expectedWorkingDirectory ?? this.defaultWorkingDirectory);
     this.assertLive(entry);
     const { runtime } = await this.createTransport(this.environment, workingDirectory, this.createSessionStore(), this.mcpServerConfig);
@@ -150,7 +156,8 @@ export class NativeLiveMacSessionRegistry {
     }
     entry.runtime = runtime;
     this.assertLive(entry);
-    if (!(restore ? runtime.restorePersistentSession : runtime.openPersistentSession) || !runtime.closePersistentSession) throw new Error("Runtime does not support owned persistent sessions.");
+    if (!(restore ? runtime.restorePersistentSession : fork ? runtime.forkPersistentSession : runtime.openPersistentSession)
+      || !runtime.closePersistentSession) throw new Error("Runtime does not support owned persistent sessions.");
     const { authorize, onBackgroundResult, ...settings } = input.options;
     if (typeof authorize !== "function" || typeof onBackgroundResult !== "function") throw new Error("Session admission and durable background sink are required.");
     entry.attemptedOpen = true;
@@ -174,6 +181,7 @@ export class NativeLiveMacSessionRegistry {
     };
     const session = restore
       ? await runtime.restorePersistentSession!(restore, handlers)
+      : fork ? await runtime.forkPersistentSession!(fork, handlers)
       : await runtime.openPersistentSession!(handlers);
     this.assertLive(entry);
     this.claimProviderIdentity(entry, session.sessionId);

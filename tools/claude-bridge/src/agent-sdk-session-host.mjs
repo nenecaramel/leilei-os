@@ -10,9 +10,11 @@ const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
 // Persistent session host used by the Mac daemon transport.
 // The caller owns SDK launch settings, auth, canonical preparations and UI capabilities.
-export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, expectedSessionId = null, beforeSubmit = null, onBackgroundResult = null, observeOutput = null } = {}) {
+export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, expectedSessionId = null, beforeSubmit = null, onBackgroundResult = null, observeOutput = null, allowInitialFork = false } = {}) {
   if (typeof queryImpl !== 'function') throw new Error('Session host requires an injected SDK query.');
-  if (queryOptions.forkSession) throw new Error('Session host cannot fork.');
+  // Only a caller that has already checked a durable fork checkpoint may launch
+  // a forked writer. Ordinary live sessions cannot switch their branch.
+  if (queryOptions.forkSession && allowInitialFork !== true) throw new Error('Session host cannot fork.');
   const input = createInputQueue();
   const query = queryImpl({ prompt: input, options: queryOptions });
   if (!query || typeof query[Symbol.asyncIterator] !== 'function') {
