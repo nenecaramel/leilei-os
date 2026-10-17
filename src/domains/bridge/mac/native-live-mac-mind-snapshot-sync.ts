@@ -54,7 +54,7 @@ export class MacMindSnapshotSync {
       if (total !== null && total !== data.total) throw new Error("Memory snapshot count changed.");
       version = data.version;
       total = data.total as number;
-      if (version === this.lastVersion) return;
+      if (version === this.lastVersion && this.index.isSnapshotReady()) return;
       for (const row of data.memories) {
         if (!row || typeof row !== "object" || typeof row.stateId !== "string" ||
           !/^[0-9a-f-]{36}$/i.test(row.stateId) ||
