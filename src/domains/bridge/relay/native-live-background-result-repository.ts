@@ -133,6 +133,78 @@ async function reconcileRejectedWakePresentationOwner(
       )
     RETURNING c.id
   `);
+
+  if (rows.length !== 1) {
+    // Failure-only, bounded booleans/status enums. No prompt, IDs, checkpoint
+    // values, content, user identity or credentials enter diagnostic logs.
+    const [evidence] = await tx.execute<Record<string, unknown>>(sql`
+      SELECT
+        c.current_head_message_id::text = ${context.canonicalMessageId}::text AS "headMatches",
+        (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId')
+          = c.current_head_message_id::text AS "anchorMatchesHead",
+        (c.provider_metadata->'nativeSessionSource'->>'revision')
+          IS NOT DISTINCT FROM ${context.sourceRevision}::text AS "revisionMatches",
+        rejected.id IS NOT NULL AS "ownerIsPreparation",
+        rejected.status='prepared' AS "ownerPrepared",
+        rejected.dispatch_status='rejected' AS "ownerRejected",
+        rejected.dispatch_error_code='INVALID_COMMAND' AS "ownerInvalidCommand",
+        rejected.operation='send' AND rejected.runtime_mode='resume' AS "ownerResumeSend",
+        rejected.result_hash IS NULL AND rejected.assistant_message_id IS NULL AS "ownerNoResult",
+        rejected.runtime_metadata->'native_live_input_binding'->>'started'
+          IS DISTINCT FROM 'true' AS "ownerNotStarted",
+        rejected.created_at >= wake.finalized_at AS "ownerAfterWake",
+        rejected.parent_provider_session_id=cp.provider_session_id AS "ownerSessionMatches",
+        rejected.parent_provider_checkpoint_id=cp.provider_checkpoint_id AS "ownerCheckpointMatches",
+        rejected.expected_working_directory IS NOT DISTINCT FROM cp.effective_working_directory AS "ownerCwdMatches",
+        rejected_user.parent_message_id=c.current_head_message_id AS "ownerUserParentMatches",
+        cp.id=${context.id}::uuid AS "snapshotCheckpointIdMatches",
+        cp.provider_session_id=${context.providerSessionId} AS "snapshotSessionMatches",
+        cp.provider_checkpoint_id=${context.baseCheckpointId} AS "snapshotCheckpointMatches",
+        cp.runtime_metadata->'native_live_generation'->>'presentation_owner_id'
+          =${context.presentationOwnerId} AS "generationOwnerMatches",
+        cp.runtime_metadata->'native_live_generation'->>'source_revision'
+          IS NOT DISTINCT FROM ${context.sourceRevision}::text AS "generationRevisionMatches",
+        wake.status='finalized_success' AND wake.dispatch_status='completed' AS "wakeCompleted",
+        wake.assistant_message_id=c.current_head_message_id AS "wakeHeadMatches",
+        wake.provider_session_id=cp.provider_session_id AS "wakeSessionMatches",
+        wake.wake_context->'runtime_generation'->>'presentation_owner_id'
+          =${context.presentationOwnerId} AS "wakeOwnerMatches",
+        wake.wake_context->'runtime_generation'->>'source_revision'
+          IS NOT DISTINCT FROM ${context.sourceRevision}::text AS "wakeRevisionMatches",
+        wake.wake_context->>'source_head_message_id'=owner.assistant_message_id::text AS "wakeSourceMatches",
+        owner.status='finalized_success' AND owner.dispatch_status='completed' AS "savedOwnerCompleted",
+        owner.provider_session_id=cp.provider_session_id AS "savedOwnerSessionMatches",
+        NOT EXISTS (
+          SELECT 1 FROM native_live_runtime_events e
+          WHERE e.user_id=c.user_id AND e.prepare_id=rejected.id
+        ) AS "noRejectedRuntimeEvents",
+        NOT EXISTS (
+          SELECT 1 FROM native_live_turn_preparations active
+          WHERE active.user_id=c.user_id AND active.conversation_id=c.id
+            AND active.status='prepared' AND active.operation<>'wake'
+            AND active.dispatch_status IN ('staged','pending','reserved','executing','delivery_unknown')
+        ) AS "noActiveForeground"
+      FROM conversations c
+      LEFT JOIN native_live_turn_preparations rejected
+        ON rejected.user_id=c.user_id AND rejected.conversation_id=c.id
+        AND rejected.id::text=c.provider_metadata->'native_live_presentation_owner'->>'prepareId'
+      LEFT JOIN conversation_messages rejected_user
+        ON rejected_user.user_id=c.user_id AND rejected_user.conversation_id=c.id
+        AND rejected_user.id=rejected.canonical_user_message_id
+      LEFT JOIN conversation_provider_session_checkpoints cp
+        ON cp.user_id=c.user_id AND cp.conversation_id=c.id AND cp.id=${context.id}::uuid
+      LEFT JOIN native_live_turn_preparations wake
+        ON wake.user_id=c.user_id AND wake.conversation_id=c.id AND wake.id=${origin.id}::uuid
+      LEFT JOIN native_live_turn_preparations owner
+        ON owner.user_id=c.user_id AND owner.conversation_id=c.id
+        AND owner.id=${context.presentationOwnerId}::uuid
+      WHERE c.user_id=${userId}::uuid AND c.id=${origin.conversationId}::uuid
+    `);
+    process.stderr.write(JSON.stringify({
+      at: new Date().toISOString(), outcome: "native_background_recovery_evidence",
+      evidence: evidence ?? null,
+    }) + "\n");
+  }
   return rows.length === 1;
 }
 
@@ -330,7 +402,12 @@ export async function prepareNativeLiveBackgroundResult(db: Database, input: Nat
     const origin = await source(tx, userId, identity.sourcePrepareId);
     const existing = await receipt(tx, userId, identity);
     if (existing) {
-      if (existing.prepareHash !== prepareHash) throw conflict();
+      if (existing.prepareHash !== prepareHash) {
+        process.stderr.write(JSON.stringify({
+          at: new Date().toISOString(), outcome: "native_background_renewal_hash_conflict",
+        }) + "\n");
+        throw conflict();
+      }
       if (existing.phase !== "prepared" || new Date(existing.expiresAt).getTime() > Date.now())
         return prepared(identity, existing);
       // HTTP preparation may have succeeded before a prolonged network outage.
@@ -341,7 +418,15 @@ export async function prepareNativeLiveBackgroundResult(db: Database, input: Nat
       // or queued outcomes or switch the producer checkpoint.
       const live = await snapshot(tx, userId, identity, origin,
         existing.executionStart === true, existing.deferred === true, existing.context);
-      if (!live || !isDeepStrictEqual(live, existing.context)) throw conflict();
+      if (!live || !isDeepStrictEqual(live, existing.context)) {
+        process.stderr.write(JSON.stringify({
+          at: new Date().toISOString(), outcome: "native_background_renewal_rejected",
+          leaseSourceAvailable: origin.status === "finalized_success"
+            && origin.dispatch === "completed" && origin.listenerId === identity.listenerInstanceId,
+          snapshotFound: Boolean(live), snapshotIdentical: Boolean(live && isDeepStrictEqual(live, existing.context)),
+        }) + "\n");
+        throw conflict();
+      }
       const renewed: Receipt = {
         ...existing, expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
       };
@@ -355,7 +440,12 @@ export async function prepareNativeLiveBackgroundResult(db: Database, input: Nat
       return prepared(identity, renewed);
     }
     const root = await snapshot(tx, userId, identity, origin, input.executionStart, input.deferred);
-    if (!root) throw conflict();
+    if (!root) {
+      process.stderr.write(JSON.stringify({
+        at: new Date().toISOString(), outcome: "native_background_fresh_snapshot_rejected",
+      }) + "\n");
+      throw conflict();
+    }
     let context = root;
     // Several autonomous SDK segments can complete inside one foreground F.
     // B2's parent is the queued producer B1, not the still-current canonical
