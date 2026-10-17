@@ -217,43 +217,64 @@ export class NativeLiveMacBackgroundResultSink {
     return this.serial(() => this.input.outbox.cover(conversationId, generationId, coveringCheckpointId));
   }
 
-  /** Re-deliver immutable receipts after a restart; never restart provider work. */
+  /** Re-deliver immutable receipts after a restart; never restart provider work.
+   * Never invoke writer retirement/recovery callbacks while holding the sink's
+   * serial delivery lock: router.settle() can wait for an ACK queued behind
+   * that lock. All fencing happens after the operation has left the queue. */
   async flush(): Promise<number> {
-    return this.serial(async () => {
-      let settled = 0;
-      const quarantined=await this.input.outbox.listQuarantined();
-      for(const conversation of new Set(quarantined.map(v=>v.result.conversation_id)))await this.input.onRecoveryBlocked?.(conversation).catch(()=>{});
-      const waiting=(await this.input.outbox.list()).filter(v=>v.deferred === true && !v.coveringCheckpointId);
-      for (const conversationId of new Set(waiting.map(v=>v.result.conversation_id))) {
-        if (!this.input.isForegroundActive?.(conversationId))
-          await this.input.onRecoveryBlocked?.(conversationId).catch(()=>{});
+    const blocked = new Set<string>();
+    const recovered = new Set<string>();
+    const settled = await this.serial(async () => {
+      let completed = 0;
+      const quarantined = await this.input.outbox.listQuarantined();
+      for (const value of quarantined) blocked.add(value.result.conversation_id);
+      const waiting = (await this.input.outbox.list()).filter(
+        v => v.deferred === true && !v.coveringCheckpointId,
+      );
+      for (const value of waiting) {
+        if (!this.input.isForegroundActive?.(value.result.conversation_id))
+          blocked.add(value.result.conversation_id);
       }
-      const now=(this.input.now??Date.now)();
-      // An autonomous segment generated inside a foreground turn must keep
-      // its provider output durable but cannot be published until F is covered.
-      // Never send a queued producer checkpoint as though it were the latest
-      // canonical session checkpoint.
-      const value=(await this.input.outbox.list()).find(v=>
+      const now = (this.input.now ?? Date.now)();
+      const value = (await this.input.outbox.list()).find(v =>
         (!v.deferred || v.coveringCheckpointId)
-        // F may have fsynced its covering proof but not committed its own
-        // canonical result yet. Only F's post-commit drain can publish B
-        // while that foreground writer is active. Otherwise a periodic
-        // flush could turn a benign "queued" into a spurious retirement.
+        // F may have fsynced its covering proof but not yet committed. Only
+        // its post-commit drain may publish B while that writer is active.
         && !(v.deferred && this.input.isForegroundActive?.(v.result.conversation_id))
-        && (this.retryAfter.get(v.receiptId)??0)<=now);
-      if(!value)return 0;
+        && (this.retryAfter.get(v.receiptId) ?? 0) <= now
+      );
+      if (!value) return completed;
       try {
-        await this.deliver(value);settled++;this.retryAfter.delete(value.receiptId);
-        if(![...quarantined,...await this.input.outbox.list()].some(v=>v.result.conversation_id===value.result.conversation_id))
-          await this.input.onRecovered?.(value.result.conversation_id);
-      } catch(error) {
-        this.retryAfter.set(value.receiptId,now+30_000);
-        await this.input.onRecoveryBlocked?.(value.result.conversation_id).catch(()=>{});
-        const code=error&&typeof error==="object"&&"relayCode" in error?error.relayCode:null;
-        if(code==="BACKGROUND_CONFLICT"||code==="BACKGROUND_NOT_FOUND"||code==="BACKGROUND_STALE")await this.input.outbox.quarantine(value);
+        const ack = await this.deliver(value);
+        // A queued receipt is not completed transport and must never count
+        // as an acknowledged/visible message.
+        if (ack.outcome !== "committed" && ack.outcome !== "failed")
+          throw new Error("Background recovery did not finalize its receipt.");
+        completed++;
+        this.retryAfter.delete(value.receiptId);
+        if (![...quarantined, ...await this.input.outbox.list()].some(
+          v => v.result.conversation_id === value.result.conversation_id,
+        )) recovered.add(value.result.conversation_id);
+      } catch (error) {
+        this.retryAfter.set(value.receiptId, now + 30_000);
+        blocked.add(value.result.conversation_id);
+        const code = error && typeof error === "object" && "relayCode" in error
+          ? error.relayCode : null;
+        if (code === "BACKGROUND_CONFLICT" || code === "BACKGROUND_NOT_FOUND"
+          || code === "BACKGROUND_STALE") await this.input.outbox.quarantine(value);
       }
-      return settled;
+      return completed;
     });
+    // Release the serial delivery lock *before* either callback may close or
+    // settle the current persistent writer. A background commit queued while
+    // we were flushing is free to finish before any recovery retirement.
+    for (const conversationId of blocked)
+      await this.input.onRecoveryBlocked?.(conversationId).catch(() => {});
+    for (const conversationId of recovered) {
+      if (!blocked.has(conversationId))
+        await this.input.onRecovered?.(conversationId);
+    }
+    return settled;
   }
   private async deliver(value: Entry): Promise<NativeLiveBackgroundAck> {
     const prepared = await this.input.relay.prepareBackgroundResult(value);
