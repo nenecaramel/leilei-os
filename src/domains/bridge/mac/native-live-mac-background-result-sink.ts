@@ -218,6 +218,13 @@ export class NativeLiveMacBackgroundResultSink {
   async cover(conversationId: string, generationId: string, coveringCheckpointId: string): Promise<number> {
     return this.serial(() => this.input.outbox.cover(conversationId, generationId, coveringCheckpointId));
   }
+  /** Synchronous failure fence: a foreground exception can occur before
+   * coverage was ever journaled, while B remains queued on disk. */
+  hasUnpublishedDeferred(conversationId: string, generationId: string): boolean {
+    return this.input.outbox.listSync().some(value =>
+      value.result.conversation_id === conversationId
+      && value.generationId === generationId && value.deferred === true);
+  }
 
   /** Re-deliver immutable receipts after a restart; never restart provider work.
    * Never invoke writer retirement/recovery callbacks while holding the sink's
