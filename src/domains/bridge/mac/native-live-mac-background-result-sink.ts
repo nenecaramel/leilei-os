@@ -195,10 +195,10 @@ export class NativeLiveMacBackgroundResultSink {
   }
   /** Publish the exact covered segment order before the next foreground input
    * can use this writer. An unknown/queued ACK is not considered delivered. */
-  async publishCovered(conversationId: string): Promise<void> {
+  async publishCovered(conversationId: string, generationId: string): Promise<void> {
     await this.serial(async () => {
       const pending = (await this.input.outbox.list()).filter(value =>
-        value.result.conversation_id === conversationId
+        value.result.conversation_id === conversationId && value.generationId === generationId
         && value.deferred === true && Boolean(value.coveringCheckpointId));
       for (const value of pending) {
         const ack = await this.deliver(value);
