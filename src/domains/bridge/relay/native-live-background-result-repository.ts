@@ -254,6 +254,18 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
           OR NOT ((${executionStart} AND coalesce(busy.runtime_metadata->'native_live_input_binding'->>'started','false')='false')
             OR (${deferred} AND busy.runtime_metadata->'native_live_input_binding'->>'started'='true'))))
     LIMIT 1 FOR UPDATE OF cp`);
+  if (knownReceipt && !row) {
+    process.stderr.write(JSON.stringify({
+      at: new Date().toISOString(), outcome: "native_background_snapshot_missing",
+      recoveryAttempted: !executionStart && !deferred,
+      repaired: Boolean(repaired),
+      originWake: origin.operation === "wake",
+      sourceHeadMatchesReceipt: origin.assistantId === knownReceipt.canonicalMessageId,
+      receiptOwnerPresent: Boolean(knownReceipt.presentationOwnerId),
+      receiptExecutionStart: executionStart,
+      receiptDeferred: deferred,
+    }) + "\n");
+  }
   if (repaired && (!row || !isDeepStrictEqual(row, knownReceipt))) throw conflict();
   return row ?? null;
 }
@@ -424,6 +436,11 @@ export async function prepareNativeLiveBackgroundResult(db: Database, input: Nat
           leaseSourceAvailable: origin.status === "finalized_success"
             && origin.dispatch === "completed" && origin.listenerId === identity.listenerInstanceId,
           snapshotFound: Boolean(live), snapshotIdentical: Boolean(live && isDeepStrictEqual(live, existing.context)),
+          sourceIsWake: origin.operation === "wake",
+          sourceHeadIsSavedHead: origin.assistantId === existing.context.canonicalMessageId,
+          savedOwnerPresent: Boolean(existing.context.presentationOwnerId),
+          executionStart: existing.executionStart === true,
+          deferred: existing.deferred === true,
         }) + "\n");
         throw conflict();
       }
