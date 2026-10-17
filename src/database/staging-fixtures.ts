@@ -3,6 +3,7 @@ import { createMindState } from "../domains/runtime/mind/mind-writer.js";
 
 // Only synthetic fixtures in the isolated Railway PR #1142 project.
 // Never run against production or copy a real user's Mind data.
+let fixtureStage = "guard";
 async function main(): Promise<void> {
   const fixtureUser = "3445d472-2bdd-4917-b462-1d3c7c4a5229";
   if (process.env.RAILWAY_PROJECT_ID !== "7e2d02fa-0256-4edd-86af-308e305b1f2c"
@@ -16,6 +17,7 @@ async function main(): Promise<void> {
   if (!url || !new URL(url).hostname.endsWith(".railway.internal")) {
     throw new Error("Refusing non-private staging fixture DB.");
   }
+  fixtureStage = "connect";
   const client = postgres(url, {max:1, prepare:false, ssl:"require", connect_timeout:3});
   const rows = [
     ["11111111-1111-4111-8111-111111111111", "做面包时面团需要充分发酵。", false],
@@ -24,12 +26,14 @@ async function main(): Promise<void> {
   ] as const;
   try {
     await client.begin(async transaction => {
+      fixtureStage = "insert_user";
       await transaction`
         insert into public.users (id, email, display_name, status)
         values (${fixtureUser}::uuid, 'mind-staging-fixture@example.invalid', 'Synthetic Mind Tester', 'active')
         on conflict (id) do nothing
       `;
       for (const [id, text, hidden] of rows) {
+        fixtureStage = hidden ? "insert_hidden" : "insert_memory";
         const state = createMindState({
           id, userId: fixtureUser, subjectId:"G", kind:"memory", text,
           source: {origin:"manual", occurredAt:null, note:null},
@@ -59,7 +63,8 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(() => {
-  console.error("Synthetic Mind staging fixture setup failed.");
+main().catch((error: unknown) => {
+  const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" && /^[A-Z0-9_]{1,32}$/.test(error.code) ? error.code : "UNKNOWN";
+  console.error(`Synthetic Mind staging fixture failed. stage=${fixtureStage} code=${code}`);
   process.exitCode = 1;
 });
