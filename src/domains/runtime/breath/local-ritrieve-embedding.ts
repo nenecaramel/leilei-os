@@ -7,7 +7,7 @@ import type { BreathSemanticCandidate, BreathSemanticScorer } from "./breath-sem
 
 const MAX_REPLY_CHARS = 100_000;
 const MAX_CANDIDATES = 256;
-const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 90_000;
 
 export type LocalRitrieveOptions = {
   executable?: string;
