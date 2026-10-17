@@ -69,6 +69,20 @@ test("network-unknown recovery is backed off and later replays its original rece
  available=true;now+=30000;assert.equal(await sink.flush(),1);assert.equal(f.committed.size,1);assert.deepEqual(recovered,[id(1)]);assert.ok(blocks.length>0);
 });
 
+test("relay failure fences foreground dispatch immediately, before timer-based recovery",async t=>{
+  const f=await fixture(t),fenced:string[]=[];
+  const relay={...f.relay,async prepareBackgroundResult():Promise<never>{
+    throw new TypeError("network response unknown");
+  }};
+  const sink=new NativeLiveMacBackgroundResultSink({
+    listenerInstanceId:id(7),relay,outbox:f.outbox,
+    onImmediateFence:id=>fenced.push(id),
+  });
+  await assert.rejects(sink.commit(owner,frame),/unknown/);
+  assert.deepEqual(fenced,[id(1)],"new input is fenced synchronously before the failed SDK acknowledgement escapes");
+  assert.equal((await f.outbox.list()).length,1,"the original immutable reply survives");
+});
+
 test("recovery fencing may reenter the serial outbox without deadlocking", async t => {
   const f = await fixture(t);
   const blocked: string[] = [];
