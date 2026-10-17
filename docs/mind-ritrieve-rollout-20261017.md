@@ -80,3 +80,20 @@ pnpm exec tsx scripts/mind-real-before-after.ts "$HOME/Downloads/leileios-full-b
 自动测试问题分为三组：①从 Memory 的来源消息反向追溯到当前路径的用户消息，形成**弱标签**（最多 16 条），与生产真实相关性标签不同，可能为零；②直接使用 Memory 原文做 8 条**自引用控制**，只是管线健康检查，不是真实泛化能力；③8 个普通查询，只统计是否返回空结果，**不知道实际是否相关**，不能算准确的无关负例。不会调用云端 LLM 自动判断私人相关性。只有人工/用户确认为真实相关或无关的独立标注测试集，才能严肃衡量 `Recall@4` 和错误注入率。
 
 **重要界限：**这是相同采样候选上的 E5 与 ritrieve *embedding 召回模型* 对照，**不是**完整旧版 Hook（旧版有 lexical 候选阶段）与新版 Hook（索引 + 一次 Railway 请求）的严格端到端 A/B 实验。大规模索引（5k/30k）、真实负例与完整 Hook 延时另行验收。PR 保持 Draft，禁止自动开启生产 `indexed_v1`。
+
+## 用户审阅：真实历史问题的无偏模型候选盲测（待 Mac 执行）
+
+已有备份内 135 条符合当前版本的有效全局 Memory；此前同语料 96 条 E5/ritrieve 对照在用户 Mac 运行成功。旧 E5 模型以阈值 0.80 对 8 条普通**未标注**问题均输出 4 条，ritrieve 0.78 对这些普通问题 8/8 输出空结果；两者 8/8 原文自引用 Top1 命中。此为**筛选行为对比，不能当成召回准确率**；来源消息弱标签数为 0，确认需人工审阅。
+
+新脚本 `scripts/mind-real-blind-review.ts` 使用用户自己导出的同一份 Full Backup v4，本机读取当前路径已完成的真实用户历史提问，自动选取最多 8 题（半数倾向有关键词关联、半数分散样本），用相同最多 256 条合格 Memory 让旧 E5 和新 ritrieve 分别生成候选，把各阈值 top-4 的**合并集合**打乱，不显示候选属于哪个模型和评分。用户只在本机为每题输入真正相关的编号；如全无关输入 `0`，不确定输入 `s` 跳过。无候选的题也标成未审，不会虚假记为正确负例。脚本最终输出匿名聚合：人工标注正例 Top1/Top4 命中、给出候选的错误注入率、用户判断无关的问题正确空结果比例。此候选池仍是两个模型提议的有限并集，并非全部 135 条记忆的人工金标准标注。
+
+```zsh
+cd /tmp/leileios-mind-1142
+git fetch origin codex/mind-ritrieve-staged-20261017
+git switch --detach FETCH_HEAD
+pnpm typecheck
+BACKUP="$(find "$HOME/Downloads" -maxdepth 1 -type f -name 'leileios-full-backup_*.json' | sort | tail -n 1)"
+pnpm exec tsx scripts/mind-real-blind-review.ts "$BACKUP" --count=8
+```
+
+**绝不要把交互过程输出的私人对话或 Memory 明文发到聊天或提交 GitHub。** 只复制 `AGGREGATE_RESULT_JSON_START` 之后的 JSON；评审不上传任何用户内容，不改动真实 Mind/daemon/Hook/Railway。E5 仅在本机运行，若没有公开模型权重可能首次下载模型文件。生产 PR 仍为 Draft，不能据此直接启用新 Hook。
