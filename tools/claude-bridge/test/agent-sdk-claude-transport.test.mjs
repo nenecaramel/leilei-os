@@ -3064,6 +3064,34 @@ for (const interactive of [false, true]) {
   });
 }
 
+test('persistent send_file works as the first tool of its own native-started user reply, not before or after',async t=>{
+ const inputId='11111111-1111-4111-8111-111111111111';
+ let callback=null,uploaded=0;
+ const transport=new AgentSdkClaudeTransport({environment:{},cwd:'/synthetic',
+   createSendFileMcpServerImpl:async handler=>{callback=handler;return {type:'sdk',name:'files'};},
+   queryImpl:({prompt})=>({close(){},async *[Symbol.asyncIterator](){
+     yield {type:'system',subtype:'init',session_id:'session-file'};
+     const {value:input,done}=await prompt[Symbol.asyncIterator]().next();
+     assert.equal(done,false); assert.equal(input.uuid,inputId);
+     await assert.rejects(callback({path:'out/photo.png'}),/only available to the turn/,'queued input is not enough');
+     yield {type:'command_lifecycle',state:'started',command_uuid:'background-cron',session_id:'session-file'};
+     await assert.rejects(callback({path:'out/photo.png'}),/only available to the turn/,'foreign started command is denied');
+     yield {type:'command_lifecycle',state:'started',command_uuid:inputId,session_id:'session-file'};
+     assert.equal((await callback({path:'out/photo.png'})).filename,'photo.png');
+     assert.equal(uploaded,1,'one verified foreground upload, before any assistant reply stamp');
+     yield {type:'assistant',session_id:'session-file',user_message_uuid:inputId,message:{role:'assistant',content:[{type:'text',text:'delivered'}]}};
+     yield {type:'result',session_id:'session-file',user_message_uuid:inputId,subtype:'success',result:'done'};
+   }}),
+ });
+ const host=await transport.openPersistentSession({
+   authorize:async()=>true,onBackgroundResult:async()=>assert.fail('foreground result cannot be background'),
+ });
+ t.after(()=>host.close());
+ const result=await host.submit('send this file',{id:inputId,source:'human',sendFileHandler:async()=>{uploaded++;return {attachmentId:'22222222-2222-4222-8222-222222222222',filename:'photo.png',mimeType:'image/png',sizeBytes:10,sha256:'a'.repeat(64),kind:'image'};}});
+ assert.equal(result.inputId,inputId);
+ await assert.rejects(callback({path:'out/photo.png'}),/only available to the turn/,'completed turn is never available');
+});
+
 test('one SDK tool shares hook admission with permission entry but still rechecks after permission', async t => {
   let sdk, inputReady; const ready = new Promise(resolve => { inputReady = resolve; });
   const admissions = [];
