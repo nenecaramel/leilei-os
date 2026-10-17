@@ -139,8 +139,15 @@ export class NativeLiveMacPersistentTurnRouter {
         if (!bindInput || this.active !== slot || frame.inputId !== slot.inputId
           || frame.source !== "foreground" || slot.nativeStarted) return;
         slot.nativeStarted = true;
-        slot.startedBinding = bindInput({ listenerInstanceId: this.input.listenerInstanceId,
-          command, phase: "started", commandUuid: frame.inputId }).then(bound => {
+        // A native-start frame can race the preceding background HTTP ACK.
+        // Never bind to a canonical head before its earlier receipt settles.
+        // Capture only preceding acknowledgements, not this foreground's
+        // future finalization (which would deadlock waiting on this binding).
+        const precedingAcknowledgements = this.acknowledgement;
+        slot.startedBinding = precedingAcknowledgements.then(() => bindInput({
+          listenerInstanceId: this.input.listenerInstanceId,
+          command, phase: "started", commandUuid: frame.inputId,
+        })).then(bound => {
           if (!bound || bound.userMessageId !== slot.inputId
             || bound.parentProviderCheckpointId !== this.providerCheckpointId)
             throw new Error("Native foreground started input cannot prove latest checkpoint.");
