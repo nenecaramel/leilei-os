@@ -13,7 +13,7 @@ type Transaction = Parameters<Database["transaction"]>[0] extends (tx: infer T) 
 type Source = { id: string; requestId: string; conversationId: string; sessionId: string | null; assistantId: string | null; listenerId: string | null; status: string; dispatch: string };
 type Snapshot = { id: string; canonicalMessageId: string; providerSessionId: string; baseCheckpointId: string; parentProviderCheckpointId: string; cwd: string | null; presentationOwnerId: string | null; sourceRevision: string | null };
 export type NativeLiveBackgroundReceipt = Record<string, unknown> & { kind: "persistent_background_receipt_v1"; phase: "prepared" | NativeLiveBackgroundAck["outcome"];
-  identity: NativeLiveBackgroundIdentity; prepareHash: string; resultHash: string | null; context: Snapshot; expiresAt: string; providerCheckpointId: string | null; executionStart?: boolean; deferred?: boolean; coveringCheckpointId?: string; nativeForegroundParentCheckpointId?: string };
+  identity: NativeLiveBackgroundIdentity; prepareHash: string; resultHash: string | null; context: Snapshot; expiresAt: string; providerCheckpointId: string | null; executionStart?: boolean; deferred?: boolean; coveringCheckpointId?: string; nativeForegroundParentCheckpointId?: string; originalParentProviderCheckpointId?: string };
 type Receipt = NativeLiveBackgroundReceipt;
 const conflict = () => new NativeLiveBackgroundResultError("BACKGROUND_CONFLICT");
 
@@ -162,7 +162,7 @@ async function coveringSnapshot(tx: Transaction, userId: string, origin: Source,
 }
 
 function prepared(identity: NativeLiveBackgroundIdentity, value: Receipt): NativeLiveBackgroundPrepared {
-  return { receiptId: identity.receiptId, providerSessionId: value.context.providerSessionId, parentProviderCheckpointId: value.context.parentProviderCheckpointId, expiresAt: value.expiresAt };
+  return { receiptId: identity.receiptId, providerSessionId: value.context.providerSessionId, parentProviderCheckpointId: value.originalParentProviderCheckpointId ?? value.context.parentProviderCheckpointId, expiresAt: value.expiresAt };
 }
 
 export async function prepareNativeLiveBackgroundResult(db: Database, input: NativeLiveBackgroundPrepare & { userId: string }): Promise<NativeLiveBackgroundPrepared> {
@@ -209,7 +209,8 @@ export async function prepareNativeLiveBackgroundResult(db: Database, input: Nat
           AND e.payload->>'executionStart'='true' AND (e.payload->>'expiresAt')::timestamptz>clock_timestamp() LIMIT 1`);
       if (busy) throw conflict();
     }
-    const value: Receipt = { ...(input.executionStart ? { executionStart: true } : {}), ...(input.deferred ? { deferred: true, nativeForegroundParentCheckpointId: root.parentProviderCheckpointId } : {}), kind: "persistent_background_receipt_v1", phase: "prepared", identity, prepareHash, resultHash: null, context,
+    const value: Receipt = { ...(input.executionStart ? { executionStart: true } : {}), ...(input.deferred ? { deferred: true, nativeForegroundParentCheckpointId: root.parentProviderCheckpointId } : {}), kind: "persistent_background_receipt_v1", phase: "prepared", identity, prepareHash, resultHash: null,
+      originalParentProviderCheckpointId: parent, context,
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(), providerCheckpointId: null };
     await tx.execute(sql`INSERT INTO native_live_runtime_events(id,user_id,prepare_id,sequence,event_type,provider_session_id,payload)
       SELECT ${identity.receiptId}::uuid,${userId}::uuid,${identity.sourcePrepareId}::uuid,coalesce(max(sequence),0)+1,'runtime',${context.providerSessionId},${JSON.stringify(value)}::jsonb
