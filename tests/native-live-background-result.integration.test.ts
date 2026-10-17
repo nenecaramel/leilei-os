@@ -75,6 +75,11 @@ test("background commit has its own durable receipt and does not rewrite canonic
   assert.deepEqual(await f.database.db.select().from(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.id, f.prepare.sourcePrepareId)), sourceBefore);
   const messages = await f.database.db.select().from(conversationMessages).where(eq(conversationMessages.conversationId, f.conversation.id)); assert.equal(messages.length, 3);
   assert.equal((await f.canonical.getConversation({ userId: f.user.id, conversationId: f.conversation.id }))!.currentHeadMessageId, f.prepare.receiptId);
+  const [owner] = await f.database.db.execute<{ anchor: string | null }>(sql`
+    SELECT provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor
+    FROM conversations WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid`);
+  assert.equal(owner!.anchor, f.prepare.receiptId,
+    "canonical background head and next-turn presentation anchor must advance atomically");
   const cp = await f.canonical.getProviderCheckpointForHead({ userId: f.user.id, conversationId: f.conversation.id, canonicalMessageId: f.completed.assistantMessageId }); assert.equal(cp!.providerCheckpointId, f.base);
   assert.deepEqual(cp!.runtimeMetadata?.native_live_generation, { presentation_owner_id: f.prepare.sourcePrepareId, source_revision: null }, "checkpoint must carry the current server generation");
   const receipt = await f.database.db.select().from(nativeLiveRuntimeEvents).where(eq(nativeLiveRuntimeEvents.id, f.prepare.receiptId)); assert.equal(receipt.length, 1); assert.equal(receipt[0]!.eventType, "runtime");
@@ -103,6 +108,9 @@ for (const mutation of ["foreground", "desktop", "head", "generation", "revision
   const [receipt] = await f.database.db.select().from(nativeLiveRuntimeEvents).where(eq(nativeLiveRuntimeEvents.id, f.prepare.receiptId));
   assert.equal(receipt!.payload?.result, undefined, "stale background content must be discarded, not attached to a retired branch");
   const cp = await f.canonical.getProviderCheckpointForHead({ userId: f.user.id, conversationId: f.conversation.id, canonicalMessageId: f.completed.assistantMessageId }); assert.equal(cp!.runtimeMetadata?.native_live_resume_tail, undefined);
+  assert.equal((await f.canonical.getConversation({ userId: f.user.id, conversationId: f.conversation.id }))!.currentHeadMessageId,
+    mutation === "head" ? null : f.completed.assistantMessageId,
+    "stale background result must not write a canonical message or advance the head");
 });
 
 test("another user's or another listener's receipt is never accessible", { skip: !enabled }, async t => {
