@@ -66,11 +66,14 @@ test("persisted pre-deployment context renders former feelings once as memories 
 });
 
 
-test("bridge directs optional emotional memories through MCP, never output tags", async () => {
-  const {LEILEIOS_MIND_SYSTEM_PROMPT: prompt} = await import("../tools/claude-bridge/src/leileios-mind-system-prompt.mjs");
-  assert.match(prompt, /write_memory/);
-  assert.match(prompt, /MCP/);
-  assert.match(prompt, /how it felt at the time/);
-  assert.match(prompt, /why it matters/);
-  assert.doesNotMatch(prompt, /<memory>|<leileios_mind_write>/);
+test("active bridge instructions do not reintroduce retired Mind output tags", async () => {
+  // The current SDK bridge intentionally composes Wake and Murmur only.
+  // The older leileios-mind-system-prompt module was removed; exercising a
+  // nonexistent import did not verify active runtime memory behavior.
+  const { LEILEIOS_WAKE_SYSTEM_PROMPT } = await import("../tools/claude-bridge/src/leileios-wake-system-prompt.mjs");
+  const { LEILEIOS_MURMUR_SYSTEM_PROMPT } = await import("../tools/claude-bridge/src/leileios-murmur-system-prompt.mjs");
+  const prompt = [LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT].join("\n\n");
+  assert.match(prompt, /<leileios_wake>/);
+  assert.match(prompt, /It is not Mind and is not for recall/);
+  assert.doesNotMatch(prompt, /<memory>|<leileios_mind_write>|<thought>|<feel>/);
 });
