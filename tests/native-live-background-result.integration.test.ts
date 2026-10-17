@@ -8,6 +8,7 @@ import { DrizzleNativeLiveBackendTurnPort } from "../src/domains/bridge/turn/nat
 import { DrizzleNativeLiveBackendRelayRepository } from "../src/domains/bridge/relay/native-live-backend-relay.js";
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
 import { DrizzleNativeLiveCurrentPathReader } from "../src/domains/conversation/native-live-current-path-read-repository.js";
+import { NativeLiveSilenceWakeService, silenceWakePreparationId } from "../src/domains/bridge/turn/native-live-silence-wake.js";
 
 const enabled = process.env.RUN_NATIVE_LIVE_RELAY_DATABASE_TEST === "1";
 async function fixture(t: test.TestContext) {
@@ -61,6 +62,83 @@ test("foreground commit advances owner anchor to its canonical assistant in the 
     FROM conversations WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid
   `);
   assert.equal(advanced?.anchor,f.prepare.receiptId);
+});
+
+
+test("visible Silence Wake advances original owner anchor so the next native Cron result commits, not 409", { skip: !enabled }, async t => {
+  const f = await fixture(t);
+  let now = new Date();
+  const silence = new NativeLiveSilenceWakeService(f.database.db, () => now);
+  const schedule = await silence.readSchedule({ userId: f.user.id });
+  assert.ok(schedule);
+  now = new Date(schedule.postTurnDueAt);
+  assert.equal((await silence.fire({
+    userId: f.user.id, epochId: schedule.epochId, slot: "post_turn_idle",
+  })).outcome, "queued");
+
+  const wakeId = silenceWakePreparationId(schedule.epochId, "post_turn_idle");
+  const wake = await new DrizzleNativeLiveBackendTurnPort(f.database.db)
+    .getPreparation({ userId: f.user.id, prepareId: wakeId });
+  assert.ok(wake);
+  const deadline = new Date(Date.now() + 600_000);
+  await f.database.db.update(nativeLiveTurnPreparations).set({
+    runtimeMode: "resume", reservedBy: f.prepare.listenerInstanceId,
+    reservedAt: new Date(), reservationExpiresAt: deadline,
+    executionStartedAt: new Date(), dispatchStatus: "executing",
+  }).where(eq(nativeLiveTurnPreparations.id, wakeId));
+
+  const wakeCheckpoint = crypto.randomUUID();
+  const result = await f.coordinator.finalize(f.user.id, {
+    protocol_version: 4, prepare_id: wakeId, request_id: wake.requestId,
+    conversation_id: f.conversation.id, status: "success",
+    provider_session_id: "synthetic-session", provider_checkpoint_id: wakeCheckpoint,
+    effective_working_directory: "/synthetic",
+    normalized_events: [{ type: "text", payload: { text: "Visible Wake reply" } }],
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok || result.outcome !== "completed")
+    throw Error("visible same-session Wake must have a canonical assistant head");
+  assert.equal(await f.repository.markCompleted({
+    userId: f.user.id, listenerInstanceId: f.prepare.listenerInstanceId, reservationId: wakeId,
+  }), "applied");
+
+  const [surface] = await f.database.db.execute<{
+    owner: string | null; anchor: string | null; head: string | null;
+  }>(sql`
+    SELECT provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner,
+      provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor,
+      current_head_message_id::text AS head
+    FROM conversations WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid
+  `);
+  assert.equal(surface.owner, f.source.command.prepare_id,
+    "Wake must NOT steal the original SDK writer/Cron owner");
+  assert.equal(surface.head, result.assistantMessageId);
+  assert.equal(surface.anchor, result.assistantMessageId,
+    "background CAS must use Wake's current head, not the previous foreground head");
+
+  const receiptId = crypto.randomUUID();
+  const background = {
+    ...f.prepare, sourcePrepareId: wakeId, receiptId,
+    parentProviderCheckpointId: wakeCheckpoint,
+  };
+  const nextResult = {
+    ...f.submit.result, prepare_id: wakeId, request_id: wake.requestId,
+    provider_checkpoint_id: crypto.randomUUID(),
+    normalized_events: [{ type: "text", payload: { text: "Cron test: still running after Wake" } }],
+  };
+  assert.equal((await f.repository.prepareBackgroundResult(background)).receiptId, receiptId);
+  const commit = await f.repository.submitBackgroundResult({
+    ...f.submit, sourcePrepareId: wakeId, receiptId, result: nextResult,
+  });
+  assert.equal(commit.outcome, "committed",
+    "the real regression was prepare HTTP 200 followed by result HTTP 409");
+  const [after] = await f.database.db.execute<{ head: string | null; anchor: string | null }>(sql`
+    SELECT current_head_message_id::text AS head,
+      provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor
+    FROM conversations WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid
+  `);
+  assert.equal(after.head, receiptId);
+  assert.equal(after.anchor, receiptId);
 });
 
 test("committed background reply is one canonical descendant through reopen and pagination", { skip: !enabled }, async t => {
