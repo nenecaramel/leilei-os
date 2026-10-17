@@ -80,7 +80,7 @@ test("deferred background is acknowledged queued but is only deleted after F cov
   assert.deepEqual(await sink.commit({...owner,deferred:true},frame),{status:"queued",providerCheckpointId:id(6)});
   assert.equal((await f.outbox.list()).length,1,"queued is not canonical completion");
   assert.deepEqual(checks,[null]);
-  assert.equal(await sink.cover(id(1),id(8)),1);
+  assert.equal(await sink.cover(id(1),id(2),id(8)),1);
   assert.equal((await f.outbox.list())[0]!.coveringCheckpointId,id(8),"covering F checkpoint is fsynced before F publication");
   await sink.publishCovered(id(1));
   assert.deepEqual(checks,[null,id(8)]);
@@ -95,7 +95,7 @@ test("covered but not canonically published cannot masquerade as successful reco
   const sink=new NativeLiveMacBackgroundResultSink({listenerInstanceId:id(7),relay,outbox:f.outbox,
     onRecoveryBlocked:async id=>{blocked.push(id);}});
   assert.deepEqual(await sink.commit({...owner,deferred:true},frame),{status:"queued",providerCheckpointId:id(6)});
-  await sink.cover(id(1),id(8));
+  await sink.cover(id(1),id(2),id(8));
   await assert.rejects(sink.publishCovered(id(1)),/still queued/i);
   assert.equal((await f.outbox.list()).length,1,"a covering proof is not a committed receipt");
   assert.equal(await sink.flush(),0);
