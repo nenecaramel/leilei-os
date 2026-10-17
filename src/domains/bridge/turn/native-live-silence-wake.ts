@@ -128,21 +128,8 @@ export function formatSilenceWakeMarker(input: {
       ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`
       : `${totalMinutes}m`;
 
-  const parts = new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    month: "2-digit",
-    day: "2-digit",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(input.now);
-  const read = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? "";
-  const weekday = read("weekday")
-    .replace("星期", "周")
-    .replace("星期日", "周日");
-  return `[${read("month")}-${read("day")} ${weekday} ${read("hour")}:${read("minute")} · wake · +${elapsed} · no reply]`;
+  // The timestamp is supplied by the shared hook; avoid repeating it in Wake.
+  return `[wake · +${elapsed} · no reply]`;
 }
 
 export function silenceWakeDeterministicUuid(key: string): string {
