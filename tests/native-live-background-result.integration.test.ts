@@ -65,7 +65,7 @@ test("foreground commit advances owner anchor to its canonical assistant in the 
 });
 
 
-test("visible Silence Wake advances original owner anchor so the next native Cron result commits, not 409", { skip: !enabled }, async t => {
+for (const legacy of [false, true] as const) test(`visible Silence Wake followed by Cron succeeds after ${legacy ? "legacy anchor repair" : "new anchor commit"}`, { skip: !enabled }, async t => {
   const f = await fixture(t);
   let now = new Date();
   const silence = new NativeLiveSilenceWakeService(f.database.db, () => now);
@@ -116,6 +116,16 @@ test("visible Silence Wake advances original owner anchor so the next native Cro
   assert.equal(surface.anchor, result.assistantMessageId,
     "background CAS must use Wake's current head, not the previous foreground head");
 
+  if (legacy) {
+    // Simulate the bad production history from before this fix: visible Wake
+    // already moved the canonical head, but the source owner still anchors H.
+    await f.database.db.execute(sql`
+      UPDATE conversations SET provider_metadata = jsonb_set(
+        provider_metadata, '{native_live_presentation_owner,anchorHeadMessageId}',
+        to_jsonb(${f.completed.assistantMessageId}::text))
+      WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid
+    `);
+  }
   const receiptId = crypto.randomUUID();
   const background = {
     ...f.prepare, sourcePrepareId: wakeId, receiptId,
