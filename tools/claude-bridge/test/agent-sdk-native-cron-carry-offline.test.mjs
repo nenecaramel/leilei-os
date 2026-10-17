@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp,rm,readdir,readFile} from 'node:fs/promises';
 import {createServer} from 'node:http';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -58,9 +58,27 @@ test('an earlier native Cron survives edit/retry fork without duplication', {
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1',
     DISABLE_TELEMETRY:'1',DISABLE_ERROR_REPORTING:'1',
     HTTP_PROXY:'',HTTPS_PROXY:'',ALL_PROXY:'',NO_PROXY:'127.0.0.1',TZ:'UTC'};
+  // SDK's global session listing/import helpers do not receive the query's
+  // isolated env. Read the REAL CLI-written JSONL directly instead; this
+  // keeps the local checkpoint materializer and native CLI fork unmocked.
+  const readRealEntries=async sessionId=>{
+    const dirs=await readdir(join(root,'projects'),{withFileTypes:true});
+    const matches=[];
+    for(const dir of dirs){
+      if(!dir.isDirectory())continue;
+      try{
+        const raw=await readFile(join(root,'projects',dir.name,sessionId+'.jsonl'),'utf8');
+        matches.push(raw.trim().split('\\n').filter(Boolean).map(JSON.parse));
+      }catch(error){if(error.code!=='ENOENT')throw error;}
+    }
+    assert.equal(matches.length,1,'source CLI must persist exactly one session JSONL');
+    return matches[0];
+  };
   const createTransport=()=>new AgentSdkClaudeTransport({
     cwd:root,environment:{CLAUDE_CONFIG_DIR:root},toolPermissionPolicy:'auto_allow',
     createSendFileMcpServerImpl:async()=>null,
+    sessionMessagesImpl:async id=>(await readRealEntries(id)).slice(0,1),
+    importSessionToStoreImpl:async (id,store)=>store.append({subpath:null},await readRealEntries(id)),
     queryImpl:({prompt,options})=>query({prompt,options:{
       ...options,env:environment,settingSources:[],mcpServers:{},
       tools:['CronCreate','CronList','CronDelete'],persistSession:true,
