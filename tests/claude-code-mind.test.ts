@@ -156,7 +156,7 @@ test("authenticated internal recall binds user, rejects malformed metadata and n
   const ok = await post(body); assert.equal(ok.status, 200); assert.equal(ok.headers.get("cache-control"), "no-store");
   const signedOk = await post({...body, receipt_mode: "signed_v1"}); assert.equal(signedOk.status, 200);
   assert.equal(calls, 2);
-  const snapshotUrl = url.replace(/\\/recall$/, "/snapshot");
+  const snapshotUrl = url.replace("/recall", "/snapshot");
   assert.equal((await fetch(snapshotUrl, {headers:{authorization:"Bearer wrong"}})).status, 401);
   assert.equal((await fetch(snapshotUrl + "?offset=oops", {headers:{authorization:"Bearer test-secret"}})).status, 400);
   const snapshot = await fetch(snapshotUrl, {headers:{authorization:"Bearer test-secret"}});
