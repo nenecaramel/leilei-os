@@ -32,6 +32,7 @@ export class NativeLiveMacPersistentRuntime {
     this.registry = new NativeLiveMacSessionRegistry(input.environment, input.defaultWorkingDirectory, input.createTransport, () => null, input.mcpServerConfig ?? null);
     this.backgroundResults = new NativeLiveMacBackgroundResultSink({ listenerInstanceId: input.listenerInstanceId, relay: input.relay,
       outbox: new NativeLiveMacBackgroundResultOutbox(input.outboxDirectory),
+      isForegroundActive:conversationId=>this.executor.isForegroundActive(conversationId),
       onRecoveryBlocked:async conversationId=>{this.executor.suspend(conversationId,"recovery");await this.executor.retire(conversationId);},
       onRecovered:conversationId=>this.executor.recovered(conversationId),
     });
