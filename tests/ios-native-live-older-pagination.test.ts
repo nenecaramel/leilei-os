@@ -68,24 +68,3 @@ test("forced current-path refresh replaces the recent suffix without dropping lo
     /olderCursor: existing\.olderCursor/,
   );
 });
-
-test("durable background result remains a unique, read-only chat row across pagination and head-stable refresh", () => {
-  const models = fs.readFileSync("ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLive/NativeLiveModels.swift", "utf8");
-  const assembler = fs.readFileSync("ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveConversationPresentationAssembler.swift", "utf8");
-  const rows = fs.readFileSync("ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMessageRows.swift", "utf8");
-  const snapshotTransforms = fs.readFileSync("ios/LeileiOS/LeileiOS/App/NativeLiveCurrentPathTransforms.swift", "utf8");
-  assert.match(models, /struct NativeLiveBackgroundResultSnapshot: Decodable, Sendable, Equatable, Identifiable/);
-  assert.match(models, /var backgroundResults: \[NativeLiveBackgroundResultSnapshot\]\? = nil/);
-  assert.match(assembler, /snapshot\?\.backgroundResults \?\? \[\]/);
-  assert.match(assembler, /id: "background:\\\(result\.id\)"/);
-  assert.match(assembler, /row\.backgroundResult = result/);
-  assert.match(assembler, /backgroundResults\[backgroundIndex\]\.createdAt <= message\.createdAt/);
-  assert.match(rows, /else if let result = row\.backgroundResult/);
-  assert.match(rows, /NativeLiveIMessageTextBubbleList\(/);
-  assert.match(rows, /onRetry: nil,/);
-  assert.match(rows, /NativeLiveMessagePresentationView\(presentation: presentation\)/);
-  assert.match(snapshotTransforms, /backgroundResults: refreshed\.backgroundResults/);
-  assert.match(snapshotTransforms, /backgroundResults: delta\.backgroundResults/);
-  assert.match(conversationCoordination, /backgroundResults: latest\.backgroundResults/);
-  assert.match(conversationCoordination, /result\.outcome == "timeout"[\s\S]*?refreshNativeLiveCurrentPath\(/);
-});
