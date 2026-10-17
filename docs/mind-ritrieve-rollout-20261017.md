@@ -60,3 +60,23 @@
 观察：`negative_17`（蛋糕烤箱预热）与「面包面团发酵」同属烘焙但不是同一记忆，最大分 0.7635；`negative_18`（“我们刚才讨论过的是什么”）依赖当前链语境，错误匹配到 0.7953。相关正例最低 0.7787（“老是说到做不到怎么办”）。因此在这些合成样本上不存在一个绝对阈值能同时保留全部 20 条正例并清除全部 20 条负例。**只提高阈值不满足既不漏召回也不误注入的质量目标。**
 
 下一步：以用户授权的本地真实 Memory 标注测试集评估 E5 与 ritrieve（包括主题相近却不该召回、依赖当前链上下文的 hard negatives），量化召回/错误注入与阈值/排序策略；另测至少 20/100/5000 条规模的端到端 p95。不能从两条合成记忆外推全库质量或性能。**不自动切换生产阈值、Hook 或 daemon；PR 保持 Draft。**
+
+## 真实 Mind 的改前／改后离线对照（待 Mac 执行）
+
+已添加 `scripts/mind-real-before-after.ts`，直接读取由 LeileiOS **Settings → Data → Export → Create Full Backup → Share Export** 导出、保存在用户 Mac 本地的 v4 完整备份 JSON。
+
+```zsh
+cd /tmp/leileios-mind-1142
+git fetch origin codex/mind-ritrieve-staged-20261017
+git switch --detach FETCH_HEAD
+pnpm typecheck
+pnpm exec tsx scripts/mind-real-before-after.ts "$HOME/Downloads/leileios-full-backup_替换为实际时间.json"
+```
+
+如 E5 本机旧依赖缺失：仅在用户 Mac 运行 `pnpm setup:runtime-breath-e5`，再重试。本脚本不会读取生产环境 Token、数据库或调用 Railway；E5 的运行库若已存在但模型权重未缓存，可能下载公开模型权重，**不会向模型服务上传私人文本**。绝对不要将 Full Backup、Memory 文本或包含文本的 JSON 发送给 ChatGPT/GitHub。
+
+脚本使用后端相同的 `snapshotMemories` 合格性筛选：仅 subject `G`、全局、已提交/已呈现、已结算、有效、当前且非 `hidden_system` 的 Memory；其他记录不参加。相同的最多 96 条（可加 `--limit=128`，上限 256）候选内，直接用**原始 E5 模型**的 `score` 与**新的 ritrieve 索引**对照；两个模型在各自预热和语料编码之后统计热查询延时。输出只包含数量、弱标注命中率、对普通探针的空结果比例和 p50/p95，不输出私人正文或 ID。
+
+自动测试问题分为三组：①从 Memory 的来源消息反向追溯到当前路径的用户消息，形成**弱标签**（最多 16 条），与生产真实相关性标签不同，可能为零；②直接使用 Memory 原文做 8 条**自引用控制**，只是管线健康检查，不是真实泛化能力；③8 个普通查询，只统计是否返回空结果，**不知道实际是否相关**，不能算准确的无关负例。不会调用云端 LLM 自动判断私人相关性。只有人工/用户确认为真实相关或无关的独立标注测试集，才能严肃衡量 `Recall@4` 和错误注入率。
+
+**重要界限：**这是相同采样候选上的 E5 与 ritrieve *embedding 召回模型* 对照，**不是**完整旧版 Hook（旧版有 lexical 候选阶段）与新版 Hook（索引 + 一次 Railway 请求）的严格端到端 A/B 实验。大规模索引（5k/30k）、真实负例与完整 Hook 延时另行验收。PR 保持 Draft，禁止自动开启生产 `indexed_v1`。
