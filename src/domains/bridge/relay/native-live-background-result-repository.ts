@@ -87,6 +87,71 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
     LIMIT 1 FOR UPDATE OF cp`);
   return row ?? null;
 }
+/** A covering F checkpoint must already be canonical and descendant of
+ * the original source assistant. The intermediate foreground F must have a
+ * native-start binding; any new pending send blocks delayed publication.
+ * This is still server-side ancestry, not an independent proof of the CLI
+ * producer checkpoint: Mac verifies B -> F before journaling the cover. */
+async function coveringSnapshot(tx: Transaction, userId: string, origin: Source,
+  preparedContext: Snapshot, coveringCheckpointId: string): Promise<Snapshot | null> {
+  const [lease] = await tx.execute(sql`SELECT 1 FROM native_live_runtime_listener_leases WHERE user_id=${userId}::uuid
+    AND dispatch_target='claude_code' AND listener_instance_id=${origin.listenerId}::uuid
+      AND lease_expires_at>clock_timestamp() FOR SHARE`);
+  if (!lease) return null;
+  const [row] = await tx.execute<Snapshot>(sql`
+    WITH RECURSIVE chain AS (
+      SELECT m.id,m.parent_message_id,0 AS depth,ARRAY[m.id] AS visited
+      FROM conversation_messages m JOIN conversations c ON c.current_head_message_id=m.id
+      WHERE c.id=${origin.conversationId}::uuid AND c.user_id=${userId}::uuid
+        AND m.user_id=c.user_id AND m.conversation_id=c.id
+      UNION ALL
+      SELECT m.id,m.parent_message_id,chain.depth+1,chain.visited||m.id
+      FROM chain JOIN conversation_messages m ON m.id=chain.parent_message_id
+      WHERE m.user_id=${userId}::uuid AND m.conversation_id=${origin.conversationId}::uuid
+        AND chain.depth<4095 AND NOT m.id=ANY(chain.visited)
+    )
+    SELECT cp.id,cp.canonical_message_id::text AS "canonicalMessageId",
+      cp.provider_session_id AS "providerSessionId",cp.provider_checkpoint_id AS "baseCheckpointId",
+      cp.provider_checkpoint_id AS "parentProviderCheckpointId",cp.effective_working_directory AS cwd,
+      c.provider_metadata->'native_live_presentation_owner'->>'prepareId' AS "presentationOwnerId",
+      c.provider_metadata->'nativeSessionSource'->>'revision' AS "sourceRevision"
+    FROM conversations c JOIN conversation_provider_session_checkpoints cp
+      ON cp.user_id=c.user_id AND cp.conversation_id=c.id
+      AND cp.canonical_message_id=c.current_head_message_id
+    WHERE c.id=${origin.conversationId}::uuid AND c.user_id=${userId}::uuid
+      AND c.origin='native_live' AND c.lifecycle_status='active'
+      AND coalesce(c.provider_metadata->'nativeSessionSource'->>'owner','leileios')='leileios'
+      AND cp.provider='claude_code' AND cp.provider_session_id=${preparedContext.providerSessionId}
+      AND cp.provider_checkpoint_id=${coveringCheckpointId}
+      AND cp.effective_working_directory IS NOT DISTINCT FROM ${preparedContext.cwd}
+      AND (c.provider_metadata->'nativeSessionSource'->>'revision') IS NOT DISTINCT FROM ${preparedContext.sourceRevision}
+      AND EXISTS (SELECT 1 FROM chain WHERE id=${origin.assistantId}::uuid)
+      AND EXISTS (
+        SELECT 1 FROM chain witness
+        JOIN native_live_turn_preparations foreground
+          ON foreground.user_id=${userId}::uuid AND foreground.conversation_id=c.id
+          AND foreground.assistant_message_id=witness.id AND foreground.operation='send'
+          AND foreground.status='finalized_success'
+        JOIN conversation_provider_session_checkpoints fc
+          ON fc.user_id=foreground.user_id AND fc.conversation_id=c.id
+          AND fc.canonical_message_id=witness.id AND fc.provider='claude_code'
+        WHERE foreground.runtime_metadata->'native_live_input_binding'->>'started'='true'
+          AND foreground.parent_provider_session_id=${preparedContext.providerSessionId}
+          AND foreground.parent_provider_checkpoint_id=${preparedContext.parentProviderCheckpointId}
+          AND fc.provider_session_id=${preparedContext.providerSessionId}
+          AND fc.provider_checkpoint_id=${coveringCheckpointId}
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM native_live_turn_preparations active
+        WHERE active.user_id=c.user_id AND active.conversation_id=c.id
+          AND active.status='prepared' AND active.operation<>'wake'
+          AND active.dispatch_status IN ('staged','pending','reserved','executing','delivery_unknown')
+      )
+    LIMIT 1 FOR UPDATE OF cp
+  `);
+  return row ?? null;
+}
+
 function prepared(identity: NativeLiveBackgroundIdentity, value: Receipt): NativeLiveBackgroundPrepared {
   return { receiptId: identity.receiptId, providerSessionId: value.context.providerSessionId, parentProviderCheckpointId: value.context.parentProviderCheckpointId, expiresAt: value.expiresAt };
 }
