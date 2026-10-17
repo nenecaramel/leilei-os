@@ -216,9 +216,16 @@ export class NativeLiveMacBackgroundResultSink {
    * can use this writer. An unknown/queued ACK is not considered delivered. */
   async publishCovered(conversationId: string, generationId: string): Promise<void> {
     await this.serial(async () => {
-      const pending = (await this.input.outbox.list()).filter(value =>
+      const all = (await this.input.outbox.list()).filter(value =>
         value.result.conversation_id === conversationId && value.generationId === generationId
-        && value.deferred === true && Boolean(value.coveringCheckpointId));
+        && value.deferred === true);
+      // A torn coverage-journal write can leave B1 uncovered but B2 covered.
+      // Never publish B2 or a later segment ahead of its producer B1.
+      if (all.some(value => !value.coveringCheckpointId)) {
+        this.input.onImmediateFence?.(conversationId);
+        throw new Error("Uncovered autonomous output remains before foreground publication.");
+      }
+      const pending = all;
       for (const value of pending) {
         try {
           const ack = await this.deliver(value);
@@ -269,13 +276,19 @@ export class NativeLiveMacBackgroundResultSink {
           blocked.add(value.result.conversation_id);
       }
       const now = (this.input.now ?? Date.now)();
-      const value = (await this.input.outbox.list()).find(v =>
-        (!v.deferred || v.coveringCheckpointId)
-        // F may have fsynced its covering proof but not yet committed. Only
-        // its post-commit drain may publish B while that writer is active.
-        && !(v.deferred && this.input.isForegroundActive?.(v.result.conversation_id))
-        && (this.retryAfter.get(v.receiptId) ?? 0) <= now
-      );
+      const seenConversations = new Set<string>();
+      const value = (await this.input.outbox.list()).find(v => {
+        // Files are journaled in SDK generation order. Never skip an earlier
+        // receipt in one conversation merely because it is uncovered, active,
+        // or in backoff; doing so could replay B2 before its native parent B1.
+        if (seenConversations.has(v.result.conversation_id)) return false;
+        seenConversations.add(v.result.conversation_id);
+        return (!v.deferred || Boolean(v.coveringCheckpointId))
+          // F may have fsynced its covering proof but not yet committed. Only
+          // its post-commit drain may publish B while that writer is active.
+          && !(v.deferred && this.input.isForegroundActive?.(v.result.conversation_id))
+          && (this.retryAfter.get(v.receiptId) ?? 0) <= now;
+      });
       if (!value) return completed;
       try {
         const ack = await this.deliver(value);
