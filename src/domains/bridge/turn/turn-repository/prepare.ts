@@ -584,8 +584,15 @@ export async function resolveRuntimeParent(
       }
       if (binding.headMessageId === parentMessageId) {
         if (binding.owner !== "leileios") return { ok: false, result: { ok: false, code: "SESSION_OWNED_BY_DESKTOP" } };
+        // A session imported from Claude Desktop has an immutable handoff
+        // checkpoint, but a later LeileiOS quiet Wake may have advanced the
+        // native JSONL invisibly while leaving the canonical head unchanged.
+        // Never resume the original handoff cursor after that hidden advance.
+        const nativeCursor = continuation === "send" && parentMessageId
+          ? await readNativeResumeCheckpoint(executor, { userId, conversationId, canonicalMessageId: parentMessageId })
+          : null;
         return { ok: true, runtimeMode: continuation === "send" ? "resume" : "fork",
-          parentProviderSessionId: binding.sessionId, parentProviderCheckpointId: binding.checkpointId,
+          parentProviderSessionId: binding.sessionId, parentProviderCheckpointId: nativeCursor ?? binding.checkpointId,
           expectedWorkingDirectory: binding.effectiveWorkingDirectory };
       }
     }
