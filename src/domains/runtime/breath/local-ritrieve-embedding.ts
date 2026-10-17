@@ -107,6 +107,7 @@ export class LocalRitrieveBreathSemanticScorer implements BreathSemanticScorer {
       throw new Error("Invalid Mind semantic search response.");
     }
     return {version: data.version as string, count: data.count as number,
+      ...(data.floor !== undefined ? {floor: data.floor as number} : {}),
       hits: data.hits.map((hit: unknown) => {
         const row = hit as [string, number];
         return {stateId: row[0], score: row[1]};
