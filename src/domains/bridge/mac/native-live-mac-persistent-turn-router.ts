@@ -312,24 +312,13 @@ export class NativeLiveMacPersistentTurnRouter {
       if (this.active !== null) return false;
     }
     const slot = this.active;
-    // A native scheduled prompt can be enqueued while F is still executing.
-    // It must obtain independent admission against the last COMMITTED source;
-    // it must never borrow F's tool grant or run on an edited/forked/retired
-    // writer. The SDK stamps B separately; if B overlaps F, the outbox queues
-    // its canonical publication behind the verified foreground checkpoint.
-    const scheduledAlongsideForeground = context.phase === "scheduled"
-      && slot?.phase === "executing" && slot.command.operation === "send";
-    if ((!slot || scheduledAlongsideForeground) && !this.suspended
-      && (context.phase === "tool" || context.phase === "scheduled") && context.inputId === null
-      && this.binding?.session.sessionId && this.backgroundSource && this.input.relay.checkTaskAdmission) {
+    if (!slot && !this.suspended && (context.phase === "tool" || context.phase === "scheduled") && context.inputId === null && this.binding?.session.sessionId && this.backgroundSource && this.input.relay.checkTaskAdmission) {
       const source=this.backgroundSource, binding=this.binding, checkpoint=this.providerCheckpointId;
       try {
         this.assertLive();
         const admitted=await this.input.relay.checkTaskAdmission({listenerInstanceId:this.input.listenerInstanceId,prepareId:source.prepareId,providerSessionId:binding.session.sessionId!});
         this.assertLive();
-        return admitted && !this.suspended && this.active===slot && this.binding===binding
-          && this.backgroundSource===source && this.providerCheckpointId===checkpoint
-          && (!slot || slot.phase === "executing");
+        return admitted && !this.suspended && this.active===null && this.binding===binding && this.backgroundSource===source && this.providerCheckpointId===checkpoint;
       } catch {return false;}
     }
     if (this.suspended || !slot || slot.phase !== "executing" || context.inputId !== slot.inputId) return false;
