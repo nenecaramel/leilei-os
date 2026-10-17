@@ -68,7 +68,7 @@ export class MacMindSnapshotSync {
         if (memories.length !== total) throw new Error("Incomplete Mind snapshot.");
         break;
       }
-      if (!Number.isInteger(next) || (next as number) !== offset + data.memories.length ||
+      if (typeof next !== "number" || !Number.isInteger(next) || next !== offset + data.memories.length ||
         (next as number) <= offset || (next as number) > total) throw new Error("Invalid snapshot cursor.");
       offset = next as number;
     }
