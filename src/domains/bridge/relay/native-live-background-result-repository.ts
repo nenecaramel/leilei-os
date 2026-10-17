@@ -88,7 +88,7 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
           OR busy.id::text IS DISTINCT FROM (c.provider_metadata->'native_live_presentation_owner'->>'prepareId')
           OR busy.parent_provider_session_id IS DISTINCT FROM cp.provider_session_id
           OR NOT ((${executionStart} AND coalesce(busy.runtime_metadata->'native_live_input_binding'->>'started','false')='false')
-            OR (${deferred} AND busy.runtime_metadata->'native_live_input_binding'->>'started'='true')))))
+            OR (${deferred} AND busy.runtime_metadata->'native_live_input_binding'->>'started'='true'))))
     LIMIT 1 FOR UPDATE OF cp`);
   return row ?? null;
 }
