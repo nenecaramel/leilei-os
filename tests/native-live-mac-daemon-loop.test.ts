@@ -1267,6 +1267,28 @@ test("persistent unknown result is retained for delivery replay without re-execu
   relay.submitError=null; assert.equal((await loop.runOnce()).outcome,"completed"); assert.equal(executions,1);
 });
 
+test("temporarily busy Wake stays pending without starting or retiring any provider writer",async()=>{
+  const relay=new FakeRelay();
+  relay.reservation={reservationId,command:{...command(),operation:"wake",runtime_mode:"resume",
+    canonical_user_message_id:null,parent_provider_session_id:prepareId,
+    parent_provider_checkpoint_id:requestId}};
+  let legacy=0,retired=0,executed=0;
+  const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{
+    async execute(){legacy++;return success();}
+  },null,null,null,null,null,null,null,{
+    canRoute(){return false;},
+    shouldDeferWake(){return true;},
+    async retire(){retired++;},
+    async execute(){executed++;throw Error("must not execute a busy Wake");},
+  } as never);
+  const result=await loop.runOnce();
+  assert.equal(result.outcome,"rejected");
+  assert.equal((result as {code?:string}).code,"EXECUTION_START_FAILED");
+  assert.deepEqual([legacy,retired,executed],[0,0,0]);
+  assert.deepEqual(relay.calls.filter(x=>x.name==="rejectReservation").map(x=>(x.input as any).code),["EXECUTION_START_FAILED"]);
+  assert.equal(relay.calls.some(x=>x.name==="markExecutionStarted" || x.name==="submitResult"),false);
+});
+
 test("a reserved Wake cannot fall back to a fork, retire Cron, or launch a model", async () => {
   for (const mode of ["fork", "resume"] as const) {
     const relay = new FakeRelay();
