@@ -316,6 +316,9 @@ test("started foreground commits before queued autonomous output, with F coverin
     ...f.submit, coveringCheckpointId: crypto.randomUUID(),
   }), { outcome: "queued", duplicate: true, providerCheckpointId: null },
   "wrong covering checkpoint cannot be used to advance history");
+  assert.deepEqual(await f.repository.submitBackgroundResult({ ...secondSubmit, coveringCheckpointId: covering }),
+    { outcome: "queued", duplicate: true, providerCheckpointId: null },
+    "B2 must not appear before its native predecessor B1 even if the network reorders publishes");
   const published = await f.repository.submitBackgroundResult({
     ...f.submit, coveringCheckpointId: covering,
   });
