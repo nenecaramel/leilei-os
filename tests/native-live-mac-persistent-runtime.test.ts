@@ -63,7 +63,7 @@ test("restart fences conversations with pending background outbox before accepti
       normalized_events:[{type:"text",payload:{text:"recoverable background reply"}}],
     },
   });
-  let available=false, firstAttempt!:()=>void;
+  let available=false, now=1_000, firstAttempt!:()=>void;
   const firstAttemptSeen=new Promise<void>(resolve=>{firstAttempt=resolve;});
   const relay={
     async checkExecutionAdmission(){return true;}, async renewExecutionLease(){return true;},
@@ -80,6 +80,7 @@ test("restart fences conversations with pending background outbox before accepti
   const runtime=new NativeLiveMacPersistentRuntime({
     environment:{},defaultWorkingDirectory:root,listenerInstanceId:id(91),
     relay:relay as any,outboxDirectory:dir,attachmentMaterializer:null,outputAttachmentSender:null,
+    backgroundRecoveryNow:()=>now,
   });
   t.after(()=>runtime.closeAll());
   const command={
@@ -92,7 +93,13 @@ test("restart fences conversations with pending background outbox before accepti
   // Initial automatic attempt may have failed. A later bounded replay
   // commits the ORIGINAL receipt and clears recovery fencing.
   await firstAttemptSeen;
+  // Join the startup attempt while the mock relay is still offline. Its
+  // failure backs the durable receipt off rather than retrying immediately.
+  assert.equal(await runtime.backgroundResults.flush(),0);
+  assert.equal(runtime.executor.canRoute(command),false);
   available=true;
+  assert.equal(await runtime.backgroundResults.flush(),0,"recovery honors the retry cooldown");
+  now+=30_001;
   assert.equal(await runtime.backgroundResults.flush(),1);
   for(let i=0;i<100 && !runtime.executor.canRoute(command);i++)await new Promise(setImmediate);
   assert.equal(runtime.executor.canRoute(command),true);
