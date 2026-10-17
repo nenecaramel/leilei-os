@@ -21,23 +21,71 @@ function entry(value: Entry): Entry {
 /** Separate from foreground terminal results: each background frame owns a receipt. */
 export class NativeLiveMacBackgroundResultOutbox {
   constructor(private readonly directory: string) {}
+
+  // The digest in an outbox filename is an identity, NOT a sequence.
+  // Persist writer order independently so recovery cannot reorder adjacent
+  // native SDK outputs across a process restart.
+  private get orderPath(): string { return join(this.directory, ".delivery-order.json"); }
+  private order(): string[] {
+    if (existsSync(this.orderPath)) {
+      if (lstatSync(this.orderPath).isSymbolicLink()) throw new Error("Invalid background delivery-order index.");
+      const data: unknown = JSON.parse(readFileSync(this.orderPath, "utf8"));
+      if (!Array.isArray(data) || !data.every(v => typeof v === "string" && /^[a-f0-9]{64}\\.json$/.test(v))
+        || new Set(data).size !== data.length) throw new Error("Corrupt background delivery-order index.");
+      return data;
+    }
+    // A pre-upgrade outbox has no order index. Recover its existing records
+    // using recorded filesystem creation order instead of their random hashes.
+    if (!existsSync(this.directory)) return [];
+    return readdirSync(this.directory).filter(name => /^[a-f0-9]{64}\\.json$/.test(name))
+      .sort((a,b) => {
+        const lhs = lstatSync(join(this.directory,a)).birthtimeMs;
+        const rhs = lstatSync(join(this.directory,b)).birthtimeMs;
+        return lhs - rhs || a.localeCompare(b);
+      });
+  }
+  private persistOrder(order: string[]): void {
+    mkdirSync(this.directory, { recursive: true, mode: 0o700 });
+    const temporary = `${this.orderPath}.${randomUUID()}.tmp`;
+    const fd = openSync(temporary, "wx", 0o600);
+    try { writeFileSync(fd, JSON.stringify(order)); fsyncSync(fd); }
+    finally { closeSync(fd); }
+    renameSync(temporary, this.orderPath);
+    this.sync();
+  }
   async save(raw: Entry): Promise<void> {
     const value = entry(raw), body = JSON.stringify(value);
     mkdirSync(this.directory, { recursive: true, mode: 0o700 });
-    const path = this.path(value);
+    const path = this.path(value), name = basename(path);
+    const ordered = this.order();
     if (existsSync(path)) {
       if (lstatSync(path).isSymbolicLink() || readFileSync(path, "utf8") !== body) throw new Error("Conflicting background receipt.");
-      return;
+    } else {
+      const temporary = `${path}.${randomUUID()}.tmp`, fd = openSync(temporary, "wx", 0o600);
+      try { writeFileSync(fd, body); fsyncSync(fd); } finally { closeSync(fd); }
+      renameSync(temporary, path); this.sync();
     }
-    const temporary = `${path}.${randomUUID()}.tmp`, fd = openSync(temporary, "wx", 0o600);
-    try { writeFileSync(fd, body); fsyncSync(fd); } finally { closeSync(fd); }
-    renameSync(temporary, path); this.sync();
+    if (!ordered.includes(name)) ordered.push(name);
+    // Even a preexisting identical orphan is indexed before acknowledging
+    // save. If this write fails the original receipt remains on disk.
+    this.persistOrder(ordered);
   }
   async list(): Promise<Entry[]> { return this.listDirectory(this.directory); }
   async listQuarantined(): Promise<Entry[]> { return this.listDirectory(join(this.directory,"blocked")); }
   private listDirectory(directory: string): Entry[] {
     if (!existsSync(directory)) return [];
-    return readdirSync(directory).filter(name => /^[a-f0-9]{64}\.json$/.test(name)).sort().map(name => {
+    const names = readdirSync(directory).filter(name => /^[a-f0-9]{64}\\.json$/.test(name));
+    let ordered = names.sort();
+    if (directory === this.directory) {
+      const journal = this.order();
+      const remaining = new Set(names);
+      ordered = journal.filter(name => remaining.delete(name));
+      // Recover an interrupted save (data fsynced, index not yet renamed).
+      // Under the single-writer daemon lease, at most one newly saved
+      // segment is unindexed at this interruption boundary.
+      ordered.push(...[...remaining].sort());
+    }
+    return ordered.map(name => {
       const path = join(directory, name);
       if (lstatSync(path).isSymbolicLink()) throw new Error("Invalid background receipt file.");
       const value = entry(JSON.parse(readFileSync(path, "utf8")) as Entry);
@@ -48,17 +96,22 @@ export class NativeLiveMacBackgroundResultOutbox {
   async quarantine(raw: Entry): Promise<void> {
     const value=entry(raw),source=this.path(value),directory=join(this.directory,"blocked");
     if(lstatSync(source).isSymbolicLink()||readFileSync(source,"utf8")!==JSON.stringify(value))throw new Error("Conflicting recovery evidence.");
+    const ordered = this.order().filter(name => name !== basename(source));
     mkdirSync(directory,{recursive:true,mode:0o700});
     const target=join(directory,basename(source));
     if(existsSync(target))throw new Error("Conflicting quarantined receipt.");
     renameSync(source,target);
     const fd=openSync(directory,"r");try{fsyncSync(fd);}finally{closeSync(fd);}this.sync();
+    this.persistOrder(ordered);
   }
   async acknowledge(raw: Entry): Promise<void> {
     const value = entry(raw), path = this.path(value);
-    if (!existsSync(path)) return;
-    if (lstatSync(path).isSymbolicLink() || readFileSync(path, "utf8") !== JSON.stringify(value)) throw new Error("Conflicting background receipt acknowledgement.");
-    unlinkSync(path); this.sync();
+    const ordered = this.order().filter(name => name !== basename(path));
+    if (existsSync(path)) {
+      if (lstatSync(path).isSymbolicLink() || readFileSync(path, "utf8") !== JSON.stringify(value)) throw new Error("Conflicting background receipt acknowledgement.");
+      unlinkSync(path); this.sync();
+    }
+    this.persistOrder(ordered);
   }
   private path(value: Entry): string {
     return join(this.directory, createHash("sha256").update(JSON.stringify([value.listenerInstanceId, value.generationId, value.receiptId])).digest("hex") + ".json");
