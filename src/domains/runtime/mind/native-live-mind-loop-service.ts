@@ -38,6 +38,7 @@ import {
   filterBreathEligibleStates,
 } from "../breath/breath-recall.js";
 import { canonicalPathToHead } from "../shared/surface-projector.js";
+import { mindSnapshotVersion, snapshotMemories } from "./mind-snapshot-version.js";
 import { expandCausalStateReferences } from "../lifecycle/persistent-reference-scan.js";
 import {
   readSubjectStateLifecycle,
@@ -256,9 +257,13 @@ export class NativeLiveMindLoopService {
   }
 
   /** Pure assembly: no manifest persistence or recall accounting. */
-  async readOnlyRecall(input: Parameters<NativeLiveMindLoopService["prepareTurn"]>[0]): Promise<{
+  async readOnlyRecall(input: Parameters<NativeLiveMindLoopService["prepareTurn"]>[0] & {
+    semanticSnapshotVersion?: string;
+    snapshotScores?: ReadonlyMap<string, number>;
+  }): Promise<{
     assembled: AssembledTurnContext;
     semanticCandidates: BreathSemanticCandidate[];
+    semanticMode: "snapshot_v1" | "legacy";
   }> {
     // Snapshot once; both the plan and rendering share the same eligibility view.
     const states = await this.port.list({
@@ -266,6 +271,24 @@ export class NativeLiveMindLoopService {
       conversationId: input.conversation.id, globalOnly: true,
     });
     const globalStates = states.filter(state => state.envelope.scope.applicability === "global");
+    // Only the *same* server-sourced, current snapshot may rank memories.
+    // Never let a local score grant access to an invalid/hidden/deleted row.
+    const validIds = new Set(snapshotMemories(globalStates).map(memory => memory.stateId));
+    const scores = input.snapshotScores;
+    const verified = input.semanticSnapshotVersion !== undefined
+      && /^[a-f0-9]{64}$/.test(input.semanticSnapshotVersion)
+      && scores !== undefined && scores.size <= 48
+      && mindSnapshotVersion(globalStates) === input.semanticSnapshotVersion
+      && [...scores].every(([id, score]) => validIds.has(id)
+        && Number.isFinite(score) && score >= 0 && score <= 1);
+    if (verified) {
+      const selectedStates = globalStates.filter(state => scores!.has(state.id) && validIds.has(state.id));
+      return {
+        assembled: await this.assembleRecallContext(input, selectedStates, scores!),
+        semanticCandidates: [],
+        semanticMode: "snapshot_v1",
+      };
+    }
     const lineage = normalizeContextLineageState(input.contextLineage);
     const plan = this.semanticPlanFromStates({
       ...input, states: globalStates,
@@ -274,12 +297,14 @@ export class NativeLiveMindLoopService {
     return {
       assembled: await this.assembleRecallContext(input, globalStates),
       semanticCandidates: plan?.candidates ?? [],
+      semanticMode: "legacy",
     };
   }
 
   private async assembleRecallContext(
     input: Parameters<NativeLiveMindLoopService["prepareTurn"]>[0],
     states: readonly SubjectStateWrite[],
+    verifiedScores?: ReadonlyMap<string, number>,
   ): Promise<AssembledTurnContext> {
     const contextLineage = normalizeContextLineageState(
       input.contextLineage,
@@ -287,9 +312,9 @@ export class NativeLiveMindLoopService {
     const seenStateIds = new Set(contextLineage.seenStateIds);
 
     const configuredSemanticWeight =
-      this.config.breathSemanticWeight ?? 0;
-    let effectiveSemanticWeight = 0;
-    let semanticScores: ReadonlyMap<string, number> | undefined;
+      verifiedScores !== undefined ? 1 : (this.config.breathSemanticWeight ?? 0);
+    let effectiveSemanticWeight = verifiedScores !== undefined ? 1 : 0;
+    let semanticScores: ReadonlyMap<string, number> | undefined = verifiedScores;
     const currentSemanticPlan = this.semanticPlanFromStates({
       ...input,
       states,
@@ -319,7 +344,8 @@ export class NativeLiveMindLoopService {
     );
 
     if (
-      suppliedSemanticPlan
+      verifiedScores === undefined
+      && suppliedSemanticPlan
       && suppliedSemanticPlanIsCurrent
       && input.semanticScores
       && hasCompleteSemanticScores(
@@ -330,7 +356,8 @@ export class NativeLiveMindLoopService {
       semanticScores = input.semanticScores;
       effectiveSemanticWeight = configuredSemanticWeight;
     } else if (
-      currentSemanticPlan
+      verifiedScores === undefined
+      && currentSemanticPlan
       && this.semanticScorer
       && configuredSemanticWeight > 0
     ) {
@@ -374,11 +401,11 @@ export class NativeLiveMindLoopService {
       breathCooldownHours: this.config.breathCooldownHours ?? 0,
       breathSalienceWeight: this.config.breathSalienceWeight ?? 0,
       breathSemanticWeight: effectiveSemanticWeight,
-      breathSemanticMinScore: this.config.breathSemanticMinScore ?? 0,
+      breathSemanticMinScore: verifiedScores !== undefined ? 0.68 : (this.config.breathSemanticMinScore ?? 0),
       breathSemanticScores: semanticScores,
-      breathMinimumScore: this.config.breathMinimumScore ?? 0,
+      breathMinimumScore: verifiedScores !== undefined ? 0.01 : (this.config.breathMinimumScore ?? 0),
       breathSemanticMedianMargin:
-        this.config.breathSemanticMedianMargin ?? 0,
+        verifiedScores !== undefined ? 0 : (this.config.breathSemanticMedianMargin ?? 0),
       breathRecentRecallPenalty:
         this.config.breathRecentRecallPenalty ?? false,
       breathDiversityMaxTokenOverlap:
