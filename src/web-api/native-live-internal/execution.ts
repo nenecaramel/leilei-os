@@ -1,4 +1,4 @@
-import { parseNativeLiveExecutionAdmissionBody } from "../../domains/bridge/protocol/native-live-execution-admission.js";
+import { parseNativeLiveExecutionAdmissionBody, parseNativeLiveInputBindingBody } from "../../domains/bridge/protocol/native-live-execution-admission.js";
 import type {
   RequestHandler,
   Response,
@@ -165,6 +165,29 @@ export function executionAdmissionHandler(dependencies: NativeLiveRelayInternalD
     try {
       const admitted = await dependencies.relayService.checkExecutionAdmission?.({ userId, reservationId, ...body }) === true;
       response.json({ success: true, data: { admitted } });
+    } catch (error) { sendRelayError(response, error); }
+  };
+}
+
+export function bindNativeInputHandler(dependencies: NativeLiveRelayInternalDependencies): RequestHandler {
+  return async (request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId) return;
+    const reservationId = parseReservationId(request.params.reservationId);
+    const body = parseNativeLiveInputBindingBody(request.body);
+    if (!reservationId || !body || !dependencies.relayService.bindInput) { sendInvalid(response); return; }
+    try {
+      // commandUuid is checked against the canonical input UUID by the parser.
+      // Never accept a binding for an arbitrary prompt or SDK-generated task.
+      const { commandUuid: _commandUuid, ...binding } = body;
+      const bound = await dependencies.relayService.bindInput({ userId, reservationId, ...binding });
+      if (!bound) {
+        response.status(409).json({ success: false, error: { code: "NATIVE_INPUT_BINDING_CONFLICT",
+          message: "Native input can no longer be bound to the current session." } });
+        return;
+      }
+      response.json({ success: true, data: { bound } });
     } catch (error) { sendRelayError(response, error); }
   };
 }
