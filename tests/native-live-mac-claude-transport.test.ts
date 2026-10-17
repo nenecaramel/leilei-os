@@ -144,21 +144,17 @@ test("Agent SDK appends the exact silence-wake prompt with real paragraph breaks
     "tools/claude-bridge/src/agent-sdk-claude-transport.mjs",
     "utf8",
   );
+  // The active transport imports Wake + Murmur; the removed Mind prompt is
+  // neither shipped nor loaded. Require physical source newlines and a
+  // two-paragraph composition rather than the old obsolete import sequence.
   assert.match(
     transport,
-    /leileios-mind-system-prompt\.mjs";\nimport \{ LEILEIOS_WAKE_SYSTEM_PROMPT \}/u,
+    /leileios-wake-system-prompt\.mjs";\nimport \{ LEILEIOS_MURMUR_SYSTEM_PROMPT \}/u,
   );
-  assert.doesNotMatch(
-    transport,
-    /leileios-mind-system-prompt\.mjs";\\\\nimport/u,
-  );
+  assert.doesNotMatch(transport, /leileios-mind-system-prompt\.mjs/u);
   assert.match(
     transport,
-    /LEILEIOS_MURMUR_SYSTEM_PROMPT/u,
-  );
-  assert.match(
-    transport,
-    /\[LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT\]\.join\("\\n\\n"\)/u,
+    /\[LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT\]\.join\("\\n\\n"\)/u,
   );
   assert.doesNotMatch(
     transport,

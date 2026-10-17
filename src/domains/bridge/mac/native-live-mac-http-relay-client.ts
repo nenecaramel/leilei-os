@@ -630,6 +630,34 @@ implements NativeLiveMacDaemonRelayClient {
     };
   }
 
+  async bindInput(input: {
+    listenerInstanceId: string; command: import("../protocol/native-live-runtime-protocol.js").NativeLiveRuntimeCommand;
+    phase: "queued" | "started"; commandUuid: string;
+  }): Promise<{ userMessageId: string; parentProviderCheckpointId: string | null } | null> {
+    const c = input.command;
+    if (c.operation !== "send" || c.runtime_mode !== "resume"
+      || !c.canonical_user_message_id || input.commandUuid !== c.canonical_user_message_id) return null;
+    const body = {
+      listener_instance_id: input.listenerInstanceId, request_id: c.request_id,
+      conversation_id: c.conversation_id, runtime_mode: c.runtime_mode,
+      canonical_user_message_id: c.canonical_user_message_id,
+      parent_provider_session_id: c.parent_provider_session_id,
+      parent_provider_checkpoint_id: c.parent_provider_checkpoint_id,
+      command_uuid: input.commandUuid, phase: input.phase,
+    };
+    const data = readRecord(await this.post(
+      `/reservations/${encodeURIComponent(c.prepare_id)}/input-binding`, body, AbortSignal.timeout(3_000),
+    ));
+    const bound = data.bound;
+    if (!bound || typeof bound !== "object" || Array.isArray(bound)) return null;
+    const row = bound as Record<string, unknown>;
+    if (row.userMessageId !== input.commandUuid ||
+      (row.parentProviderCheckpointId !== null &&
+        (typeof row.parentProviderCheckpointId !== "string" || !row.parentProviderCheckpointId.trim())))
+      throw new Error("Native binding returned an unrelated input or invalid checkpoint.");
+    return { userMessageId: row.userMessageId, parentProviderCheckpointId: row.parentProviderCheckpointId as string | null };
+  }
+
   async checkExecutionAdmission(input: {
     listenerInstanceId: string;
     command: import("../protocol/native-live-runtime-protocol.js").NativeLiveRuntimeCommand;
@@ -885,7 +913,9 @@ implements NativeLiveMacDaemonRelayClient {
     const data = readRecord(await this.postRetryableBounded(
       `/reservations/${identity.sourcePrepareId}/background-results/prepare`,
       { receipt_id: identity.receiptId, listener_instance_id: identity.listenerInstanceId,
-        generation_id: identity.generationId, parent_provider_checkpoint_id: parent }, 3, AbortSignal.timeout(5_000),
+        generation_id: identity.generationId, parent_provider_checkpoint_id: parent,
+        ...(input.executionStart === true ? { execution_start: true } : {}),
+        ...(input.deferred === true ? { deferred: true } : {}) }, 3, AbortSignal.timeout(5_000),
     ));
     if (data.receiptId !== identity.receiptId || data.parentProviderCheckpointId !== parent
       || typeof data.providerSessionId !== "string" || !data.providerSessionId.trim() || data.providerSessionId.length > 1024
@@ -900,12 +930,13 @@ implements NativeLiveMacDaemonRelayClient {
     const identity = backgroundIdentity(input), result = backgroundResult(input.result);
     const data = readRecord(await this.postRetryableBounded(
       `/reservations/${identity.sourcePrepareId}/background-results/${identity.receiptId}/result`,
-      { listener_instance_id: identity.listenerInstanceId, generation_id: identity.generationId, result }, 3, AbortSignal.timeout(5_000),
+      { listener_instance_id: identity.listenerInstanceId, generation_id: identity.generationId, result,
+        ...(input.coveringCheckpointId ? { covering_checkpoint_id: requireUuid(input.coveringCheckpointId, "coveringCheckpointId") } : {}) }, 3, AbortSignal.timeout(5_000),
     ));
     const outcome = data.outcome;
-    if (!["committed", "failed", "stale"].includes(String(outcome)) || typeof data.duplicate !== "boolean"
-      || (outcome === "committed" ? result.status !== "success" || data.providerCheckpointId !== result.provider_checkpoint_id
-        : data.providerCheckpointId !== null || (outcome === "failed" && result.status !== "failure"))) {
+    if (!["committed", "queued", "failed", "stale"].includes(String(outcome)) || typeof data.duplicate !== "boolean"
+      || (outcome === "committed" ? result.status !== "success" || data.providerCheckpointId !== (input.coveringCheckpointId ?? result.provider_checkpoint_id)
+        : data.providerCheckpointId !== null || (outcome === "failed" && result.status !== "failure") || (outcome === "queued" && result.status !== "success"))) {
       throw new Error("Native background submission response is invalid.");
     }
     return { outcome: outcome as NativeLiveBackgroundAck["outcome"], duplicate: data.duplicate,

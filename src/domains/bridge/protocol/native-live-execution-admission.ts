@@ -26,3 +26,22 @@ export function parseNativeLiveExecutionAdmissionBody(value: unknown): Omit<Nati
     runtimeMode: body.runtime_mode, canonicalUserMessageId: body.canonical_user_message_id as string | null,
     parentProviderSessionId: body.parent_provider_session_id, parentProviderCheckpointId: body.parent_provider_checkpoint_id };
 }
+
+/** Bind only the exact input UUID that the native CLI accepted. The phase is
+ * supplied over the authenticated daemon channel, never inferred from text. */
+export type NativeLiveInputBindingBody = Omit<NativeLiveExecutionAdmission, "reservationId"> & {
+  phase: "queued" | "started"; commandUuid: string;
+};
+export function parseNativeLiveInputBindingBody(value: unknown): NativeLiveInputBindingBody | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const body = value as Record<string, unknown>;
+  if (Object.keys(body).length !== keys.length + 2 || !Object.hasOwn(body, "phase")
+      || !Object.hasOwn(body, "command_uuid")) return null;
+  const { phase, command_uuid, ...admission } = body;
+  if (phase !== "queued" && phase !== "started") return null;
+  const parsed = parseNativeLiveExecutionAdmissionBody(admission);
+  if (!parsed || parsed.runtimeMode !== "resume" || !parsed.canonicalUserMessageId
+      || typeof command_uuid !== "string" || !uuid.test(command_uuid)
+      || command_uuid !== parsed.canonicalUserMessageId) return null;
+  return { ...parsed, phase, commandUuid: command_uuid };
+}

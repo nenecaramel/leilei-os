@@ -19,19 +19,30 @@ export class NativeLiveMacPersistentRuntime {
   private stopped = false;
   private readonly taskAbort = new AbortController();
   private readonly taskControls: Promise<void>;
+  private recoveryTimer: ReturnType<typeof setInterval> | null = null;
   constructor(input: {
     sessionLeaseScheduler?: ConstructorParameters<typeof NativeLiveMacExecutionLease>[0]["scheduler"];
     environment: NodeJS.ProcessEnv; defaultWorkingDirectory: string; listenerInstanceId: string;
-    relay: Pick<NativeLiveMacHttpRelayClient, "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission" | "renewSessionLease" | "prepareBackgroundResult" | "submitBackgroundResult"> & Partial<NativeLiveMacTaskRelay>;
+    relay: Pick<NativeLiveMacHttpRelayClient, "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission" | "renewSessionLease" | "prepareBackgroundResult" | "submitBackgroundResult"> & Partial<Pick<NativeLiveMacHttpRelayClient, "bindInput">> & Partial<NativeLiveMacTaskRelay>;
     outboxDirectory: string; mcpServerConfig?: NativeLiveMacMcpServerConfig | null;
+    /** Injectable clock for deterministic retry/backoff regression tests. */
+    backgroundRecoveryNow?: () => number;
     attachmentMaterializer: NativeLiveMacAttachmentMaterializer | null;
     outputAttachmentSender: NativeLiveMacOutputAttachmentSender | null;
     createTransport?: typeof createNativeLiveMacClaudeTransport;
     onRuntimeFailure?: ConstructorParameters<typeof NativeLiveMacPersistentExecutor>[0]["onRuntimeFailure"];
   }) {
     this.registry = new NativeLiveMacSessionRegistry(input.environment, input.defaultWorkingDirectory, input.createTransport, () => null, input.mcpServerConfig ?? null);
+    const outbox = new NativeLiveMacBackgroundResultOutbox(input.outboxDirectory);
+    // Fence every conversation with unacknowledged producer output before
+    // accepting a single fresh native send, including crashed or quarantined
+    // records from a previous process. No new Claude execution on replay.
+    const pendingRecovery = [...outbox.listSync(), ...outbox.listQuarantinedSync()];
     this.backgroundResults = new NativeLiveMacBackgroundResultSink({ listenerInstanceId: input.listenerInstanceId, relay: input.relay,
-      outbox: new NativeLiveMacBackgroundResultOutbox(input.outboxDirectory),
+      outbox,
+      ...(input.backgroundRecoveryNow ? { now: input.backgroundRecoveryNow } : {}),
+      isForegroundActive:conversationId=>this.executor.isForegroundActive(conversationId),
+      onImmediateFence: conversationId=>this.executor.suspend(conversationId,"recovery"),
       onRecoveryBlocked:async conversationId=>{this.executor.suspend(conversationId,"recovery");await this.executor.retire(conversationId);},
       onRecovered:conversationId=>this.executor.recovered(conversationId),
     });
@@ -59,7 +70,31 @@ export class NativeLiveMacPersistentRuntime {
     this.executor = new NativeLiveMacPersistentExecutor({ hasCapacity: () => this.registry.size < 4, attachmentMaterializer: input.attachmentMaterializer, outputAttachmentSender: input.outputAttachmentSender, onRuntimeFailure: input.onRuntimeFailure ?? null,
       createRouter: () => { startWatchdog(); return new NativeLiveMacPersistentTurnRouter({ registry: this.registry, listenerInstanceId: input.listenerInstanceId,
         taskControlsAvailable: () => taskControlsAvailable,
-        relay: input.relay, onBackgroundResult: (owner, frame) => this.backgroundResults.commit(owner, frame) }); } });
+        relay: input.relay, onBackgroundResult: (owner, frame) => this.backgroundResults.commit(owner, frame),
+        onForegroundCoverage: async (conversationId, generationId, checkpoint) => {
+          try { return await this.backgroundResults.cover(conversationId, generationId, checkpoint); }
+          catch (error) { this.executor.suspend(conversationId, "recovery"); throw error; }
+        },
+        onForegroundPublished: async (conversationId, generationId) => {
+          try { await this.backgroundResults.publishCovered(conversationId, generationId); }
+          catch (error) { this.executor.suspend(conversationId, "recovery"); throw error; }
+        },
+        hasUnpublishedDeferred: (conversationId, generationId) =>
+          this.backgroundResults.hasUnpublishedDeferred(conversationId, generationId),
+        onForegroundUnpublished: conversationId => this.executor.suspend(conversationId, "recovery") }); } });
+    for (const conversationId of new Set(pendingRecovery.map(value => value.result.conversation_id)))
+      this.executor.suspend(conversationId, "recovery");
+    // Recovery runs independently of user input. Multiple older receipts can
+    // require multiple passes; each flush settles at most one, so drive bounded
+    // batches at startup and retry transient relay failures periodically.
+    const replay = async () => {
+      for (let index = 0; index < 512 && !this.stopped; index++) {
+        if (await this.backgroundResults.flush() === 0) break;
+      }
+    };
+    void replay().catch(() => {});
+    this.recoveryTimer = setInterval(() => { void replay().catch(() => {}); }, 30_000);
+    this.recoveryTimer.unref?.();
   }
   async drain(conversationId: string, providerSessionId: string) {
     const generation = this.registry.getGenerationId(conversationId);
@@ -80,6 +115,8 @@ export class NativeLiveMacPersistentRuntime {
     this.executor.resumeHandoff(conversationId);
   }
   async closeAll(): Promise<void> {
+    this.stopped=true;
+    if (this.recoveryTimer) { clearInterval(this.recoveryTimer); this.recoveryTimer=null; }
     this.taskAbort.abort();await this.taskControls;
     this.stopped=true;this.watchdog?.stop();this.watchdog=null;
     await this.executor.closeAll();

@@ -1,3 +1,4 @@
+import { bindNativeLiveInput, checkQueuedNativeLiveInput, type NativeLiveInputBindingRequest, type NativeLiveInputBinding } from "./native-live-input-binding.js";
 import { renewNativeLiveSessionLease, renewNativeLiveExecutionLease, NATIVE_LIVE_EXECUTION_LEASE_MS } from "./native-live-execution-lease.js";
 import { NativeLiveBackgroundResultError } from "../protocol/native-live-background-result.js";
 import { prepareNativeLiveBackgroundResult, submitNativeLiveBackgroundResult } from "./native-live-background-result-repository.js";
@@ -42,6 +43,7 @@ type RelayMutationOutcome =
   | "conflict";
 
 export interface NativeLiveBackendRelayPort {
+  bindInput?(input: NativeLiveInputBindingRequest & { userId: string }): Promise<NativeLiveInputBinding | null>;
   prepareBackgroundResult?(input: NativeLiveBackgroundPrepare & { userId: string }): Promise<NativeLiveBackgroundPrepared>;
   submitBackgroundResult?(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck>;
   checkExecutionAdmission?(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean>;
@@ -528,6 +530,8 @@ implements NativeLiveBackendRelayPort {
     });
   }
 
+  bindInput(input: NativeLiveInputBindingRequest & { userId: string }) { return bindNativeLiveInput(this.db, input); }
+
   prepareBackgroundResult(input: NativeLiveBackgroundPrepare & { userId: string }): Promise<NativeLiveBackgroundPrepared> {
     return prepareNativeLiveBackgroundResult(this.db, input);
   }
@@ -544,7 +548,11 @@ implements NativeLiveBackendRelayPort {
   }
 
   async checkExecutionAdmission(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {
-    return checkNativeLiveExecutionAdmission(this.db, input);
+    // Only a still-owned, unstarted queued input can use its old reservation
+    // during background publication. Tools require the exact started binding
+    // enforced separately by the Mac router.
+    return await checkNativeLiveExecutionAdmission(this.db, input)
+      || await checkQueuedNativeLiveInput(this.db, input);
   }
 
   async markExecutionStarted(input: {
@@ -1032,13 +1040,23 @@ export class NativeLiveBackendRelayService {
     };
   }
 
+  bindInput(input: NativeLiveInputBindingRequest & { userId: string }) { return this.repository.bindInput?.(input) ?? Promise.resolve(null); }
+
   prepareBackgroundResult(input: NativeLiveBackgroundPrepare & { userId: string }): Promise<NativeLiveBackgroundPrepared> {
     if (!this.repository.prepareBackgroundResult) throw new NativeLiveBackgroundResultError("BACKGROUND_UNAVAILABLE");
     return this.repository.prepareBackgroundResult(input);
   }
-  submitBackgroundResult(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck> {
+  async submitBackgroundResult(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck> {
     if (!this.repository.submitBackgroundResult) throw new NativeLiveBackgroundResultError("BACKGROUND_UNAVAILABLE");
-    return this.repository.submitBackgroundResult(input);
+    const receipt = await this.repository.submitBackgroundResult(input);
+    if (receipt.outcome === "committed" && !receipt.duplicate) {
+      // The existing iOS screen long-polls the canonical conversation head.
+      // The database write is already authoritative; waking that observer is
+      // advisory and must never turn a committed message into a failed
+      // delivery if notification is temporarily unavailable.
+      await this.bestEffortTurnTerminalWake(input.userId, input.sourcePrepareId);
+    }
+    return receipt;
   }
 
   async renewSessionLease(input: {userId:string;listenerInstanceId:string}): Promise<boolean> {

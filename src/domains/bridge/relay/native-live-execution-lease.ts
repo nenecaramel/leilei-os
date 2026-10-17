@@ -1,3 +1,4 @@
+import { checkQueuedNativeLiveInput } from "./native-live-input-binding.js";
 import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import type { NativeLiveExecutionAdmission } from "../protocol/native-live-execution-admission.js";
@@ -16,7 +17,7 @@ export async function renewNativeLiveExecutionLease(db: Database, input: NativeL
         if (!origin.length) return false;
         await tx.execute(sql`SELECT id FROM conversations WHERE id=${input.conversationId}::uuid AND user_id=${input.userId}::uuid FOR UPDATE`);
         await tx.execute(sql`SELECT user_id FROM native_live_runtime_listener_leases WHERE user_id=${input.userId}::uuid AND dispatch_target='claude_code' FOR UPDATE`);
-        if (!await checkNativeLiveExecutionAdmission(tx, input)) return false;
+        if (!await checkNativeLiveExecutionAdmission(tx, input) && !await checkQueuedNativeLiveInput(tx, input)) return false;
         const renewed = await tx.execute(sql`UPDATE native_live_turn_preparations SET reservation_expires_at=clock_timestamp()+${NATIVE_LIVE_EXECUTION_LEASE_MS}*interval '1 millisecond',updated_at=clock_timestamp()
           WHERE id=${input.reservationId}::uuid AND user_id=${input.userId}::uuid AND reserved_by=${input.listenerInstanceId}::uuid
           AND status='prepared' AND dispatch_status='executing' AND reservation_expires_at>clock_timestamp() RETURNING id`);

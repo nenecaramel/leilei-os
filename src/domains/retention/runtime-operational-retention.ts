@@ -130,6 +130,19 @@ export async function deleteExpiredRuntimeOperationalRecordsBatch(
               WHERE scoring.prepare_id = preparation.id
                 AND scoring.status IN ('pending', 'reserved')
             )
+            -- Operational events cascade with their source preparation.
+            -- A native background B in transport custody is unresolved,
+            -- even if its original foreground H finalized 30 days ago.
+            -- Never erase the only server-side queued receipt by age alone.
+            AND NOT EXISTS (
+              SELECT 1
+              FROM native_live_runtime_events AS receipt
+              WHERE receipt.prepare_id = preparation.id
+                AND receipt.user_id = preparation.user_id
+                AND receipt.event_type = 'runtime'
+                AND receipt.payload->>'kind' = 'persistent_background_receipt_v1'
+                AND receipt.payload->>'phase' IN ('prepared', 'queued')
+            )
           ORDER BY preparation.updated_at ASC, preparation.id ASC
           LIMIT ${remaining}
           FOR UPDATE SKIP LOCKED

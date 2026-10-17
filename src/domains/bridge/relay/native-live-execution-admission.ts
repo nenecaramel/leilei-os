@@ -75,7 +75,38 @@ export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "exec
                 AND cp.provider_session_id = p.parent_provider_session_id
                 AND ((p.operation = 'wake' AND ${nativeResumeCheckpointSql("cp", "c")} = p.parent_provider_checkpoint_id)
                   OR (p.operation = 'send' AND (cp.provider_checkpoint_id = p.parent_provider_checkpoint_id
-                    OR ${nativeResumeCheckpointSql("cp", "c", false)} = p.parent_provider_checkpoint_id)))
+                    OR ${nativeResumeCheckpointSql("cp", "c", false)} = p.parent_provider_checkpoint_id
+                    OR (
+                      -- A native B completed before F began. It remains
+                      -- queued, never published above accepted U. F must
+                      -- instead authorize against B's verified producer
+                      -- cursor, with U's original canonical parent H intact.
+                      p.runtime_metadata->'native_live_input_binding'->>'started'='true'
+                      AND p.runtime_metadata->'native_live_input_binding'->>'parentProviderCheckpointId'
+                        = p.parent_provider_checkpoint_id
+                      AND u.parent_message_id=c.current_head_message_id
+                      AND EXISTS (
+                        SELECT 1 FROM native_live_runtime_events producer
+                        JOIN native_live_turn_preparations origin
+                          ON origin.id=producer.prepare_id AND origin.user_id=producer.user_id
+                        WHERE producer.user_id=p.user_id
+                          AND origin.conversation_id=p.conversation_id
+                          AND origin.assistant_message_id=u.parent_message_id
+                          AND origin.status='finalized_success' AND origin.dispatch_status='completed'
+                          AND producer.event_type='runtime'
+                          AND producer.payload->>'kind'='persistent_background_receipt_v1'
+                          AND producer.payload->>'phase'='queued'
+                          AND producer.payload->>'executionStart'='true'
+                          AND producer.payload->>'deferred'='true'
+                          AND producer.payload->'identity'->>'listenerInstanceId'=p.reserved_by::text
+                          AND producer.payload->'context'->>'presentationOwnerId'=p.id::text
+                          AND producer.payload->'context'->>'providerSessionId'=p.parent_provider_session_id
+                          AND producer.payload->'context'->>'cwd' IS NOT DISTINCT FROM p.expected_working_directory
+                          AND producer.payload->'context'->>'sourceRevision' IS NOT DISTINCT FROM
+                            c.provider_metadata->'nativeSessionSource'->>'revision'
+                          AND producer.payload->'result'->>'provider_checkpoint_id'=p.parent_provider_checkpoint_id
+                      )
+                    ))))
                 AND cp.effective_working_directory IS NOT DISTINCT FROM p.expected_working_directory
             ))
         )

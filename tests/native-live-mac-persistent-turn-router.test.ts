@@ -24,7 +24,10 @@ function command(n: number, wake = false): NativeLiveRuntimeCommand {
     operation: wake ? "wake" : "send", runtime_mode: n === 1 ? "new" : "resume", canonical_user_message_id: wake ? null : id(n + 20),
     parent_provider_session_id: n === 1 ? null : sid, parent_provider_checkpoint_id: n === 1 ? null : id(99 + n), expected_working_directory: null, prompt: "synthetic" };
 }
-async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolean>) {
+type BindInput = (input: { phase: "queued" | "started"; commandUuid: string;
+  command: NativeLiveRuntimeCommand }) => Promise<{ userMessageId: string; parentProviderCheckpointId: string | null } | null>;
+async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolean>, bindInput?: BindInput,
+  callbacks?: Partial<Pick<ConstructorParameters<typeof NativeLiveMacPersistentTurnRouter>[0], "onForegroundCoverage" | "onForegroundPublished" | "onForegroundUnpublished" | "hasUnpublishedDeferred">>) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "persistent-turn-router-")));
   const output = queue<Record<string, unknown>>(), inputs = queue<{ uuid: string; origin: { kind: string } }>();
   const backgroundObserved = queue<string>();
@@ -58,8 +61,8 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
   let backgroundSink: (() => Promise<NativeLiveMacPersistentAcknowledgement>) | null = null;
   let allow = true;
   let admissionSink: ((command: NativeLiveRuntimeCommand) => Promise<boolean>) | null = null;
-  const router = new NativeLiveMacPersistentTurnRouter({ registry, listenerInstanceId: "listener", relay: { ...(idleAdmission ? { checkTaskAdmission:idleAdmission } : {}), async checkExecutionAdmission(input) { admissions.push(input.command.prepare_id); return admissionSink ? admissionSink(input.command) : allow; } },
-    async onBackgroundResult(owner, frame) { backgroundOwners.push(structuredClone(owner)); assert.equal(owner.conversationId, conversation); assert.ok(owner.generationId); background.push(frame.result.user_message_uuid as string); return backgroundSink ? backgroundSink() : acknowledged(frame.events.findLast(event => event.type === "assistant")?.uuid as string); } });
+  const router = new NativeLiveMacPersistentTurnRouter({ registry, listenerInstanceId: "listener", relay: { ...(idleAdmission ? { checkTaskAdmission:idleAdmission } : {}), ...(bindInput ? { bindInput } : {}), async checkExecutionAdmission(input) { admissions.push(input.command.prepare_id); return admissionSink ? admissionSink(input.command) : allow; } },
+    async onBackgroundResult(owner, frame) { backgroundOwners.push(structuredClone(owner)); assert.equal(owner.conversationId, conversation); assert.ok(owner.generationId); background.push(frame.result.user_message_uuid as string); return backgroundSink ? backgroundSink() : acknowledged(frame.events.findLast(event => event.type === "assistant")?.uuid as string); }, ...callbacks });
   const run = (c: NativeLiveRuntimeCommand, extra = {}) => router.execute({ command: c, async onResult(frame) { results.push(frame.command.prepare_id); return acknowledged(frame.result.events.findLast(event => event.type === "assistant")?.uuid as string); }, ...extra });
   const finish = (uuid: string) => {
     const checkpoint = id(nextCheckpoint++);
@@ -70,6 +73,209 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
   t.after(async () => { await router.close(); await registry.closeAll(); await rm(root, { recursive: true, force: true }); });
   return { router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
 }
+
+test("failed post-F background publication synchronously fences the next foreground send", async t => {
+  const fenced: string[] = [];
+  const f = await fixture(t, undefined, undefined, {
+    onForegroundCoverage: async () => 1,
+    onForegroundPublished: async () => { throw new Error("covered B delivery unknown"); },
+    onForegroundUnpublished: conversationId => fenced.push(conversationId),
+  });
+  const active = f.run(command(1));
+  const input = (await f.inputs.next()).value!;
+  const failed = assert.rejects(active, /covered B delivery unknown/);
+  f.finish(input.uuid);
+  await failed;
+  assert.deepEqual(fenced, [conversation], "committed F must not admit G while B publication is unknown");
+  assert.deepEqual(f.results, [id(1)], "foreground F may already have committed");
+});
+
+test("foreground failure before coverage fences an already-queued native B receipt", async t => {
+  const fenced: string[] = [];
+  const f=await fixture(t,undefined,undefined,{
+    onForegroundCoverage:async()=>0,
+    hasUnpublishedDeferred:()=>true,
+    onForegroundUnpublished:conversationId=>fenced.push(conversationId),
+  });
+  const run=f.run(command(1),{async onResult(){throw new Error("F died before covering B");}});
+  const failed=assert.rejects(run,/F died before covering B/);
+  f.finish((await f.inputs.next()).value!.uuid);
+  await failed;
+  assert.deepEqual(fenced,[conversation],"a queued B without F's proof must prevent the next send");
+});
+
+test("corrupted background outbox on F error fences the writer without skipping retirement",async t=>{
+  const fenced:string[]=[];
+  const f=await fixture(t,undefined,undefined,{
+    hasUnpublishedDeferred:()=>{throw new Error("corrupt journal");},
+    onForegroundUnpublished:id=>fenced.push(id),
+  });
+  const running=f.run(command(1),{async onResult(){throw new Error("F failed");}});
+  const rejected=assert.rejects(running,/F failed/);
+  f.finish((await f.inputs.next()).value!.uuid);
+  await rejected;
+  assert.deepEqual(fenced,[conversation]);
+  assert.equal(f.closes,1,"outbox inspection failure cannot bypass safe writer retirement");
+});
+
+test("foreground failure after fsynced B coverage fences the session without publishing B", async t => {
+  const fenced: string[] = [];
+  let published = false;
+  const f = await fixture(t, undefined, undefined, {
+    onForegroundCoverage: async () => 1,
+    onForegroundPublished: async () => { published = true; },
+    onForegroundUnpublished: conversationId => fenced.push(conversationId),
+  });
+  const active = f.run(command(1), { async onResult() { throw new Error("foreground commit failed"); } });
+  const input = (await f.inputs.next()).value!;
+  const failed = assert.rejects(active, /foreground commit failed/);
+  f.finish(input.uuid);
+  await failed;
+  assert.deepEqual(fenced, [conversation]);
+  assert.equal(published, false, "B must remain in the outbox after F fails");
+});
+
+test("successful covered foreground and no-pending-background paths do not fence", async t => {
+  const fenced: string[] = [];
+  let published = 0;
+  const f = await fixture(t, undefined, undefined, {
+    onForegroundCoverage: async () => 1,
+    onForegroundPublished: async () => { published++; },
+    onForegroundUnpublished: conversationId => fenced.push(conversationId),
+  });
+  const active = f.run(command(1));
+  f.finish((await f.inputs.next()).value!.uuid);
+  await active;
+  assert.equal(published, 1);
+  assert.deepEqual(fenced, []);
+});
+
+test("started UUID binds an exact pre-start background advancement before foreground finalization", async t => {
+  const bindings: Array<{ phase: string; inputId: string }> = [];
+  const started = deferred<void>();
+  const f = await fixture(t, undefined, async input => {
+    bindings.push({ phase: input.phase, inputId: input.commandUuid });
+    return { userMessageId: input.commandUuid, parentProviderCheckpointId: input.phase === "queued" ? checkpoint : id(102) };
+  });
+  const first = f.run(command(1));
+  f.finish((await f.inputs.next()).value!.uuid); await first;
+  f.setBackground(async () => { started.resolve(); return {status:"queued",providerCheckpointId:id(102)}; });
+  const second = f.run(command(2)), pending = (await f.inputs.next()).value!;
+  assert.equal(pending.uuid, id(22));
+  f.finish(id(77)); await started.promise;
+  for (let i = 0; i < 100 && (f.router as unknown as { providerCheckpointId: string | null }).providerCheckpointId !== id(102); i++) await new Promise(setImmediate);
+  assert.equal((f.router as unknown as { providerCheckpointId: string | null }).providerCheckpointId, id(102), "earlier background must be acknowledged before the input starts");
+  assert.equal(f.backgroundOwners.at(-1)?.executionStart, true, "background finished before the actual native start");
+  assert.equal(f.backgroundOwners.at(-1)?.deferred,true,"B must remain queued until F commits, never reparent accepted U");
+  f.output.push({ type: "command_lifecycle", state: "started", command_uuid: pending.uuid, session_id: sid });
+  f.finish(pending.uuid);
+  await second;
+  assert.deepEqual(bindings, [
+    { phase: "queued", inputId: id(22) },
+    { phase: "started", inputId: id(22) },
+  ]);
+  assert.deepEqual(f.results, [id(1), id(2)]);
+});
+
+test("native started binding waits for earlier background acknowledgement without waiting for its own result", async t => {
+  const stages: string[] = [], backgroundEntered = deferred<void>();
+  const release = deferred<NativeLiveMacPersistentAcknowledgement>();
+  const f = await fixture(t, undefined, async input => {
+    stages.push(input.phase);
+    return { userMessageId: input.commandUuid,
+      parentProviderCheckpointId: input.phase === "queued" ? id(101) : id(102) };
+  });
+  const first = f.run(command(1));
+  f.finish((await f.inputs.next()).value!.uuid); await first;
+  f.setBackground(async () => { backgroundEntered.resolve(); return release.promise; });
+  const second = f.run(command(2)), pending = (await f.inputs.next()).value!;
+  f.finish(id(77)); await backgroundEntered.promise;
+  f.output.push({ type: "command_lifecycle", state: "started", command_uuid: pending.uuid, session_id: sid });
+  await new Promise(setImmediate);
+  assert.deepEqual(stages, ["queued"], "cannot bind started before prior background checkpoint is acknowledged");
+  release.resolve(acknowledged(id(102)));
+  for (let i = 0; i < 100 && stages.length === 1; i++) await new Promise(setImmediate);
+  assert.deepEqual(stages, ["queued", "started"]);
+  f.finish(pending.uuid);
+  await second;
+  assert.deepEqual(f.results, [id(1),id(2)]);
+});
+
+test("native background after started foreground advances only queued provider evidence until F finishes",async t=>{
+  const phases:string[]=[];
+  const f=await fixture(t,undefined,async input=>{
+    phases.push(input.phase);
+    return{userMessageId:input.commandUuid,parentProviderCheckpointId:checkpoint};
+  });
+  const first=f.run(command(1));
+  f.finish((await f.inputs.next()).value!.uuid);await first;
+  f.setBackground(async()=>({status:"queued",providerCheckpointId:id(102)}));
+  const second=f.run(command(2)),input=(await f.inputs.next()).value!;
+  f.output.push({type:"command_lifecycle",state:"started",command_uuid:input.uuid,session_id:sid});
+  for(let i=0;i<100&&phases.length<2;i++)await new Promise(setImmediate);
+  assert.deepEqual(phases,["queued","started"]);
+  f.finish(id(77));
+  assert.equal((await f.backgroundObserved.next()).value,id(77));
+  for(let i=0;i<100&&f.backgroundOwners.length===0;i++)await new Promise(setImmediate);
+  assert.equal(f.backgroundOwners.at(-1)?.deferred,true);
+  f.finish(input.uuid);
+  await second;
+  assert.equal((f.router as unknown as { providerCheckpointId: string | null }).providerCheckpointId,id(103),"F's verified descendant replaces the queued producer cursor");
+  assert.deepEqual(f.results,[id(1),id(2)]);
+});
+
+test("post-start autonomous receipt waits for pending foreground bind", async t => {
+  const pending = deferred<{ userMessageId:string; parentProviderCheckpointId:string|null }|null>();
+  const phases:string[] = [];
+  const f = await fixture(t,undefined,async input=>{
+    phases.push(input.phase);
+    return input.phase==="started" ? pending.promise :
+      {userMessageId:input.commandUuid,parentProviderCheckpointId:checkpoint};
+  });
+  const first=f.run(command(1));
+  f.finish((await f.inputs.next()).value!.uuid); await first;
+  let reached=false;
+  f.setBackground(async()=>{ reached=true; return {status:"queued",providerCheckpointId:id(102)}; });
+  const second=f.run(command(2)), input=(await f.inputs.next()).value!;
+  f.output.push({type:"command_lifecycle",state:"started",command_uuid:input.uuid,session_id:sid});
+  for(let i=0;i<100&&phases.length<2;i++)await new Promise(setImmediate);
+  assert.deepEqual(phases,["queued","started"]);
+  f.finish(id(77));
+  await f.backgroundObserved.next();
+  await new Promise(setImmediate);
+  assert.equal(reached,false);
+  pending.resolve({userMessageId:input.uuid,parentProviderCheckpointId:checkpoint});
+  for(let i=0;i<100&&!reached;i++)await new Promise(setImmediate);
+  assert.equal(reached,true);
+  assert.equal(f.backgroundOwners.at(-1)?.deferred,true);
+  f.finish(input.uuid); await second;
+});
+
+test("queued transport acknowledgement cannot satisfy canonical foreground finalization", async t => {
+  const f=await fixture(t);
+  const running=f.run(command(1),{
+    async onResult(){return {status:"queued",providerCheckpointId:id(101)};}
+  });
+  const failed=assert.rejects(running,/finalization was rejected/);
+  f.finish((await f.inputs.next()).value!.uuid);
+  await failed;
+  assert.equal((f.router as unknown as { providerCheckpointId: string | null }).providerCheckpointId,null,"never advance to an uncommitted foreground cursor");
+});
+
+test("native started binding missing or disagreeing with live cursor rejects the foreground result", async t => {
+  const f = await fixture(t, undefined, async input => ({
+    userMessageId: input.commandUuid,
+    parentProviderCheckpointId: input.phase === "queued" ? checkpoint : id(999),
+  }));
+  const first = f.run(command(1));
+  f.finish((await f.inputs.next()).value!.uuid); await first;
+  const second = f.run(command(2)), pending = (await f.inputs.next()).value!;
+  const rejected = assert.rejects(second, /latest checkpoint/);
+  f.output.push({ type: "command_lifecycle", state: "started", command_uuid: pending.uuid, session_id: sid });
+  f.finish(pending.uuid);
+  await rejected;
+  assert.deepEqual(f.results, [id(1)]);
+});
 
 test("two reservations and wake reuse one SDK query and rotate execution admission", async t => {
   const f = await fixture(t);
@@ -173,6 +379,9 @@ test("foreground and autonomous durable acknowledgements are serialized", async 
   assert.deepEqual(f.background, []);
   release.resolve(acknowledged()); await first; await backgroundEntered.promise;
   assert.deepEqual(f.background, [id(88)]);
+  assert.equal(f.backgroundOwners.at(-1)?.deferred, undefined,
+    "a background callback released after foreground F is fully acknowledged must bind as post-F, not in-flight B");
+  assert.equal(f.backgroundOwners.at(-1)?.executionStart, undefined);
 });
 
 test("caller mutation cannot retarget a pending reservation or its durable result", async t => {

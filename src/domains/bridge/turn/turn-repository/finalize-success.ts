@@ -113,6 +113,15 @@ export async function finalizeSuccess(
           if (row.status !== "prepared") {
             return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
           }
+          // The native-start fence lives on the preparation. It must survive
+          // finalization, because a queued autonomous segment's later covering
+          // proof must locate the exact foreground turn that started.
+          const nativeInputBinding = (row.runtimeMetadata as Record<string, unknown> | null)
+            ?.native_live_input_binding;
+          if (nativeInputBinding && (
+            typeof nativeInputBinding !== "object"
+            || (nativeInputBinding as Record<string, unknown>).started !== true
+          )) return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
 
           const conversations =
             new DrizzleNativeLiveConversationRepository(
@@ -339,7 +348,9 @@ export async function finalizeSuccess(
               effectiveWorkingDirectory: input.effectiveWorkingDirectory,
               providerCheckpointId: input.providerCheckpointId ?? null,
               runtimeMetadata:
-                { ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}), native_live_generation: { presentation_owner_id: sessionGeneration?.presentation_owner_id ?? null, source_revision: sessionGeneration?.source_revision ?? null }, ...(input.providerCheckpointId ? { provider_checkpoint_version: 1 } : {}), turn_started_at: row.createdAt.toISOString(), ...(timingEvents.length ? { native_live_turn_timing_events: timingEvents } : {}) },
+                { ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}),
+                    ...(nativeInputBinding ? { native_live_input_binding: nativeInputBinding } : {}),
+                    native_live_generation: { presentation_owner_id: sessionGeneration?.presentation_owner_id ?? null, source_revision: sessionGeneration?.source_revision ?? null }, ...(input.providerCheckpointId ? { provider_checkpoint_version: 1 } : {}), turn_started_at: row.createdAt.toISOString(), ...(timingEvents.length ? { native_live_turn_timing_events: timingEvents } : {}) },
             },
           });
 
@@ -349,6 +360,34 @@ export async function finalizeSuccess(
             conversationId: row.conversationId,
             messageId: assistantMessage.id,
           });
+
+          // Preparation installs the presentation owner with the PREVIOUS
+          // canonical head as its anchor. After F commits, the same owner
+          // must point at F, or a later autonomous B cannot atomically append
+          // on top of F. Update the anchor under this existing turn/CP/head
+          // transaction; an unrelated new owner must never be overwritten.
+          canonicalWritePhase = "advance_presentation_anchor";
+          if (sessionGeneration?.presentation_owner_id === row.id) {
+            const anchors = await transaction.execute(sql`
+              UPDATE conversations
+              SET provider_metadata=jsonb_set(
+                provider_metadata,
+                '{native_live_presentation_owner,anchorHeadMessageId}',
+                to_jsonb(${assistantMessage.id}::text)
+              )
+              WHERE id=${row.conversationId}::uuid
+                AND user_id=${input.userId}::uuid
+                AND current_head_message_id=${assistantMessage.id}::uuid
+                AND provider_metadata->'native_live_presentation_owner'->>'prepareId'=${row.id}::text
+              RETURNING id
+            `);
+            if (anchors.length !== 1)
+              throw new Error("Native live presentation owner changed during foreground finalization.");
+          } else if (nativeInputBinding) {
+            // A started native F must leave behind an unambiguous covering
+            // owner for every deferred B that the SDK already generated.
+            throw new Error("Native foreground owner changed before covering checkpoint finalization.");
+          }
 
           canonicalWritePhase = "context_lineage";
           await this.persistFinalizedContextLineage(
@@ -380,8 +419,10 @@ export async function finalizeSuccess(
               status: "finalized_success",
               resultHash,
               providerSessionId: input.providerSessionId,
-              runtimeMetadata:
-                input.runtimeMetadata as Record<string, unknown> | null,
+              runtimeMetadata: nativeInputBinding ? {
+                ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}),
+                native_live_input_binding: nativeInputBinding,
+              } : input.runtimeMetadata as Record<string, unknown> | null,
               assistantMessageId: assistantMessage.id,
               failureCode: null,
               finalizedAt,

@@ -16,6 +16,31 @@ test("background parser preserves exact receipt and source identities and snapsh
   assert.throws(() => parseBackgroundSubmitBody({ listener_instance_id: listenerId, generation_id: "wrong", result }));
 });
 
+test("deferred result protocol preserves producer parent and covering F UUID without unknown fields", () => {
+  assert.deepEqual(parseBackgroundPrepareBody({
+    ...prepare, deferred: true,
+  }), { receiptId, listenerInstanceId: listenerId, generationId, parentProviderCheckpointId: checkpoint, deferred: true });
+  assert.deepEqual(parseBackgroundPrepareBody({
+    ...prepare, execution_start: true,
+  }), { receiptId, listenerInstanceId: listenerId, generationId, parentProviderCheckpointId: checkpoint, executionStart: true });
+  assert.throws(() => parseBackgroundPrepareBody({ ...prepare, deferred: false }));
+  assert.throws(() => parseBackgroundPrepareBody({ ...prepare, deferred: "true" }));
+  const next = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const parsed = parseBackgroundSubmitBody({
+    listener_instance_id: listenerId, generation_id: generationId,
+    result, covering_checkpoint_id: next,
+  });
+  assert.equal(parsed.coveringCheckpointId, next);
+  assert.throws(() => parseBackgroundSubmitBody({
+    listener_instance_id: listenerId, generation_id: generationId,
+    result, covering_checkpoint_id: "unknown",
+  }));
+  assert.throws(() => parseBackgroundSubmitBody({
+    listener_instance_id: listenerId, generation_id: generationId,
+    result, covering_checkpoint_id: next, user_id: userId,
+  }));
+});
+
 for (const [name, patch] of [
   ["missing checkpoint", { provider_checkpoint_id: undefined }],
   ["legacy protocol", { protocol_version: 3 }],
@@ -28,6 +53,54 @@ for (const [name, patch] of [
   ["unbound output attachment", { output_attachment_ids: [receiptId] }],
 ] as const) test(`background result rejects ${name}`, () => {
   assert.throws(() => backgroundResult({ ...result, ...patch }), { code: "INVALID_BACKGROUND_RESULT" });
+});
+
+test("input binding HTTP route authenticates and rejects foreign native UUIDs", async () => {
+  const commandId="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const body={
+    listener_instance_id:listenerId,request_id:requestId,conversation_id:conversationId,
+    runtime_mode:"resume",canonical_user_message_id:commandId,
+    parent_provider_session_id:"synthetic",parent_provider_checkpoint_id:checkpoint,
+    command_uuid:commandId,phase:"started",
+  };
+  const seen:unknown[]=[];
+  const service=Object.assign(new FakeRelayService(),{
+    async bindInput(input:unknown){
+      seen.push(input);
+      return{userMessageId:commandId,parentProviderCheckpointId:checkpoint};
+    },
+  });
+  await withServer(app=>{app.use("/relay",createNativeLiveRelayInternalRouter({relayService:service}));},async url=>{
+    const response=await fetch(`${url}/relay/reservations/${prepareId}/input-binding`,{
+      method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body),
+    });
+    assert.equal(response.status,401);
+    assert.deepEqual(seen,[]);
+  });
+  await withServer(app=>{
+    app.use((request,_response,next)=>{request.mcpUserId=userId;next();});
+    app.use("/relay",createNativeLiveRelayInternalRouter({relayService:service}));
+  },async url=>{
+    const post=(candidate:unknown)=>fetch(`${url}/relay/reservations/${prepareId}/input-binding`,{
+      method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(candidate),
+    });
+    for(const invalid of [
+      {...body,command_uuid:"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"},
+      {...body,phase:"finished"},
+      {...body,extra:true},
+      {...body,runtime_mode:"new"},
+    ]) assert.equal((await post(invalid)).status,400);
+    assert.deepEqual(seen,[]);
+    const valid=await post(body);
+    assert.equal(valid.status,200);
+    assert.deepEqual((await valid.json() as {data:{bound:{userMessageId:string}}}).data.bound.userMessageId,commandId);
+    assert.equal(seen.length,1);
+    const binding=seen[0] as Record<string,unknown>;
+    assert.equal(binding.userId,userId);
+    assert.equal(binding.reservationId,prepareId);
+    assert.equal(binding.phase,"started");
+    assert.equal(Object.hasOwn(binding,"commandUuid"),false,"untrusted UUID must not replace the exact canonical reservation");
+  });
 });
 
 test("HTTP background routes authenticate first and do not accept caller-supplied user identity", async () => {

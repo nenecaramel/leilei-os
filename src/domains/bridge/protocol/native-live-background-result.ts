@@ -4,10 +4,10 @@ import { parseNativeLiveRuntimeExecutionResult, type NativeLiveRuntimeExecutionR
 import { normalizeNativeLiveRuntimeEvent } from "../runtime-interaction/native-live-runtime-event-stream.js";
 
 export type NativeLiveBackgroundIdentity = Readonly<{ sourcePrepareId: string; receiptId: string; listenerInstanceId: string; generationId: string }>;
-export type NativeLiveBackgroundPrepare = NativeLiveBackgroundIdentity & Readonly<{ parentProviderCheckpointId: string }>;
-export type NativeLiveBackgroundSubmit = NativeLiveBackgroundIdentity & Readonly<{ result: NativeLiveRuntimeExecutionResult }>;
+export type NativeLiveBackgroundPrepare = NativeLiveBackgroundIdentity & Readonly<{ parentProviderCheckpointId: string; executionStart?: boolean; deferred?: boolean }>;
+export type NativeLiveBackgroundSubmit = NativeLiveBackgroundIdentity & Readonly<{ result: NativeLiveRuntimeExecutionResult; coveringCheckpointId?: string }>;
 export type NativeLiveBackgroundPrepared = Readonly<{ receiptId: string; providerSessionId: string; parentProviderCheckpointId: string; expiresAt: string }>;
-export type NativeLiveBackgroundAck = Readonly<{ outcome: "committed" | "failed" | "stale"; duplicate: boolean; providerCheckpointId: string | null }>;
+export type NativeLiveBackgroundAck = Readonly<{ outcome: "committed" | "queued" | "failed" | "stale"; duplicate: boolean; providerCheckpointId: string | null }>;
 
 export class NativeLiveBackgroundResultError extends Error {
   constructor(readonly code: "INVALID_BACKGROUND_RESULT" | "BACKGROUND_CONFLICT" | "BACKGROUND_NOT_FOUND" | "BACKGROUND_UNAVAILABLE") {
@@ -39,11 +39,11 @@ export function backgroundResult(value: unknown): NativeLiveRuntimeExecutionResu
 }
 
 export function parseBackgroundPrepareBody(value: unknown): Omit<NativeLiveBackgroundPrepare, "sourcePrepareId"> {
-  const body = requireRecord(value); requireExactKeys(body, ["receipt_id", "listener_instance_id", "generation_id", "parent_provider_checkpoint_id"]);
+  const body = requireRecord(value); requireExactKeys(body, ["receipt_id", "listener_instance_id", "generation_id", "parent_provider_checkpoint_id"], ["execution_start", "deferred"]); if (body.execution_start !== undefined && body.execution_start !== true) throw Error("Invalid execution_start"); if (body.deferred !== undefined && body.deferred !== true) throw Error("Invalid deferred");
   return { receiptId: requireUuid(body.receipt_id, "receipt_id"), listenerInstanceId: requireUuid(body.listener_instance_id, "listener_instance_id"),
-    generationId: requireUuid(body.generation_id, "generation_id"), parentProviderCheckpointId: requireUuid(body.parent_provider_checkpoint_id, "parent_provider_checkpoint_id") };
+    generationId: requireUuid(body.generation_id, "generation_id"), parentProviderCheckpointId: requireUuid(body.parent_provider_checkpoint_id, "parent_provider_checkpoint_id"), ...(body.execution_start === true ? { executionStart: true } : {}), ...(body.deferred === true ? { deferred: true } : {}) };
 }
-export function parseBackgroundSubmitBody(value: unknown): Pick<NativeLiveBackgroundSubmit, "listenerInstanceId" | "generationId" | "result"> {
-  const body = requireRecord(value); requireExactKeys(body, ["listener_instance_id", "generation_id", "result"]);
-  return { listenerInstanceId: requireUuid(body.listener_instance_id, "listener_instance_id"), generationId: requireUuid(body.generation_id, "generation_id"), result: backgroundResult(body.result) };
+export function parseBackgroundSubmitBody(value: unknown): Pick<NativeLiveBackgroundSubmit, "listenerInstanceId" | "generationId" | "result" | "coveringCheckpointId"> {
+  const body = requireRecord(value); requireExactKeys(body, ["listener_instance_id", "generation_id", "result"], ["covering_checkpoint_id"]);
+  return { listenerInstanceId: requireUuid(body.listener_instance_id, "listener_instance_id"), generationId: requireUuid(body.generation_id, "generation_id"), result: backgroundResult(body.result), ...(body.covering_checkpoint_id === undefined ? {} : { coveringCheckpointId: requireUuid(body.covering_checkpoint_id, "covering_checkpoint_id") }) };
 }

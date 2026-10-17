@@ -1273,3 +1273,19 @@ test("legacy fallback never starts if retiring the persistent writer failed",asy
     {canRoute:()=>false,async retire(){throw new Error("close unknown");}} as never);
   assert.equal((await loop.runOnce()).outcome,"rejected");assert.equal(legacy,0);
 });
+
+test("pending background recovery fence blocks both persistent execution and legacy fallback", async () => {
+  const relay=new FakeRelay();let legacy=0,retired=0,persistentRuns=0;
+  const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{
+    async execute(){legacy++;return success();}
+  },null,null,null,null,null,null,null,{
+    assertAccepting(){throw new Error("background recovery pending");},
+    canRoute(){return false;},
+    async retire(){retired++;},
+    async execute(){persistentRuns++;throw new Error("must not execute");}
+  } as never);
+  assert.equal((await loop.runOnce()).outcome,"rejected");
+  assert.equal(legacy,0,"recovery guard cannot redirect a stale send into legacy executor");
+  assert.equal(persistentRuns,0);
+  assert.equal(retired,0,"recovery guard must prevent branch retirement as an implicit fallback");
+});

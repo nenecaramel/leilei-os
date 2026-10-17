@@ -27,7 +27,7 @@ class SessionHost {
     this.perTaskStopAffordance = perTaskStopAffordance;
     this.observeOutput = observeOutput;
     this.beforeSubmit = beforeSubmit; this.onBackgroundResult = onBackgroundResult;
-    this.events = new EventEmitter(); this.ids = new Set();
+    this.events = new EventEmitter(); this.ids = new Set(); this.startedCommands = new Set();
     this.taskState = new AgentSdkTaskState(() => this.publishTaskState());
     this.pending = []; this.active = null; this.state = 'starting'; this.sessionId = null;
     this.segment = newSegment();
@@ -233,6 +233,23 @@ class SessionHost {
         }
         if (!this.sessionId && ['assistant', 'user', 'result'].includes(message?.type)) throw new Error('SDK output arrived before session init.');
         this.taskState.observe(message);
+        // Native CLI 2.1.206+ emits command_lifecycle.started with the exact
+        // uuid of the input actually selected to run. This is the sole
+        // correlation authority for autonomous input: never match text,
+        // prompt_id, an arbitrary active turn or provider output timestamps.
+        if (message?.type === 'command_lifecycle'
+          && message.state === 'started'
+          && typeof message.command_uuid === 'string'
+          && message.command_uuid.trim()
+          && message.command_uuid !== ZERO_UUID
+          && !this.startedCommands.has(message.command_uuid)) {
+          this.startedCommands.add(message.command_uuid);
+          this.events.emit('command-started', Object.freeze({
+            inputId: message.command_uuid,
+            source: this.active?.dispatched && this.active.commandIds.has(message.command_uuid)
+              ? 'foreground' : 'autonomous',
+          }));
+        }
         // SDK membership snapshots are authoritative. Notifications can arrive
         // out of order; never use their bookends to mutate the live task set.
         // Only the current turn owns conversation output. Idle/background events

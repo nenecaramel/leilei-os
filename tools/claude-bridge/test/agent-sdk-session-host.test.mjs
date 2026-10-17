@@ -40,6 +40,26 @@ test('without per-task UI, foreground interrupt stops the session and reports un
  assert.equal(receipt.session_closed,true);assert.deepEqual(receipt.still_queued,[]);assert.deepEqual(receipt.background_tasks,[{id:'task',status:'unknown'}]);assert.deepEqual(f.stopped,['task']);assert.equal(f.closed,1);assert.equal(f.interrupts,0);
 });
 
+test('native command start correlates exact CLI input UUID before provider output, not prompts or guesses',async t=>{
+  const f=await fixture();t.after(()=>f.host.close());
+  const started=[];
+  f.host.events.on('command-started',frame=>started.push(frame));
+  const foreground=f.host.submit('same text',{id:'owned-command'});
+  await f.event({type:'command_lifecycle',state:'queued',command_uuid:'scheduled-command',session_id:'s'});
+  assert.equal(started.length,0);
+  await f.event({type:'command_lifecycle',state:'started',command_uuid:'scheduled-command',session_id:'s'});
+  assert.deepEqual(started,[{inputId:'scheduled-command',source:'autonomous'}]);
+  await f.event({type:'command_lifecycle',state:'started',command_uuid:'scheduled-command',session_id:'s'});
+  assert.equal(started.length,1,'replayed start must not rebind the same native input');
+  await f.event({type:'command_lifecycle',state:'started',command_uuid:'owned-command',session_id:'s'});
+  assert.deepEqual(started.at(-1),{inputId:'owned-command',source:'foreground'});
+  await f.event({type:'command_lifecycle',state:'started',command_uuid:'',session_id:'s'});
+  await f.event({type:'command_lifecycle',state:'completed',command_uuid:'scheduled-command',session_id:'s'});
+  assert.equal(started.length,2,'invalid or terminal lifecycle cannot bind another input');
+  await f.event({...result(),user_message_uuid:'owned-command'});
+  await foreground;
+});
+
 test('autonomous result during idle remains a session event',async t=>{
  const f=await fixture();t.after(()=>f.host.close());await Promise.race([f.event({...result(),user_message_uuid:'autonomous'}),f.host.completion.catch(()=>null)]);assert.equal(f.host.state,'idle');assert.equal(f.closed,0);
 });
