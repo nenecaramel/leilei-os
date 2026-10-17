@@ -102,6 +102,7 @@ export class NativeLiveMacPersistentTurnRouter {
     // Reserve before the first await, including path resolution and SDK startup.
     this.active = slot;
     let onCommandStarted: ((frame: { inputId: string; source: string }) => void) | null = null;
+    let removeCommandStartedListener: (() => void) | null = null;
     try {
       if (this.binding && command.expected_working_directory !== null) {
         const cwd = await resolveNativeLiveMacWorkingDirectory(command.expected_working_directory);
@@ -140,7 +141,11 @@ export class NativeLiveMacPersistentTurnRouter {
         });
         slot.startedBinding.catch(() => {}); // The terminal path awaits the exact result.
       };
-      if (bindInput) this.binding!.session.events.on("command-started", onCommandStarted);
+      if (bindInput) {
+        const events = this.binding!.session.events;
+        events.on("command-started", onCommandStarted);
+        removeCommandStartedListener = () => events.off("command-started", onCommandStarted!);
+      }
       const resultPromise = this.binding!.session.submit(input.prompt ?? command.prompt, { id: slot.inputId, source: command.operation === "wake" ? "task-notification" : "human", ...this.output(slot) });
       let controls: Promise<void> | null = null;
       if (input.controlPump) {
@@ -194,7 +199,7 @@ export class NativeLiveMacPersistentTurnRouter {
       try { await this.close(); } catch { /* Retain failed-close registry owner. */ }
       throw error;
     } finally {
-      if (onCommandStarted) this.binding?.session.events.off("command-started", onCommandStarted);
+      removeCommandStartedListener?.();
       slot.controlAbort?.abort(); slot.lease?.stop();
       if (this.active === slot) this.active = null;
       slot.finish();
