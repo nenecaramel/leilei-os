@@ -345,13 +345,17 @@ test("started foreground commits before queued autonomous output, with F coverin
     { outcome: "committed", duplicate: true, providerCheckpointId: covering });
   assert.equal((await f.repository.prepareBackgroundResult(secondPrepare)).parentProviderCheckpointId,
     f.next,"lost-ACK replay retains B2's original B1 parent, not the later F covering checkpoint");
-  await assert.rejects(f.repository.submitBackgroundResult({ ...quietSubmit, coveringCheckpointId: covering }),
-    { code: "INVALID_BACKGROUND_RESULT" });
+  assert.deepEqual(await f.repository.submitBackgroundResult({ ...quietSubmit, coveringCheckpointId: covering }),
+    { outcome: "committed", duplicate: false, providerCheckpointId: covering },
+    "quiet provider activity is already covered by F and needs no empty bubble");
+  assert.deepEqual(await f.repository.submitBackgroundResult({ ...quietSubmit, coveringCheckpointId: covering }),
+    { outcome: "committed", duplicate: true, providerCheckpointId: covering },
+    "retrying the quiet receipt cannot add a second provider turn");
   const afterQuiet = (await new DrizzleNativeLiveCurrentPathReader(f.database.db).readCurrentPath({
     userId:f.user.id,conversationId:f.conversation.id,limit:100,
   }))!;
   assert.deepEqual(afterQuiet.messages.map(x=>x.id),snapshot.messages.map(x=>x.id),
-    "a quiet queued native segment cannot be misreported as a visible committed reply");
+    "quiet native continuation must not appear as an empty ordinary chat bubble");
 
 });
 
