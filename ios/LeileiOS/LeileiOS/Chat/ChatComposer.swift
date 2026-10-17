@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChatComposer: View {
     @Environment(\.chatTheme) private var chatTheme
+    @ScaledMetric(relativeTo: .body) private var iMessageTextMaxHeight: CGFloat = 132
     @Binding var text: String
     @Binding var model: NativeLiveClaudeModel
     @Binding var thinking: NativeLiveThinkingMode
@@ -126,6 +127,10 @@ struct ChatComposer: View {
                     .font(.body)
                     .foregroundStyle(.primary)
                     .lineLimit(1...6)
+                    // Keep the vertical-axis field at its content height. Without
+                    // this it can expand to the keyboard's available viewport.
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxHeight: iMessageTextMaxHeight, alignment: .topLeading)
                     .padding(.vertical, 9)
                     .padding(.leading, 14)
 
@@ -134,7 +139,7 @@ struct ChatComposer: View {
                         .padding(.bottom, 3)
                 }
                 .frame(minHeight: 42)
-                .glassEffect(.regular, in: Capsule())
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             }
         }
     }
