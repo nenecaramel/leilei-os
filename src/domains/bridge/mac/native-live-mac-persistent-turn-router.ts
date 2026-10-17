@@ -383,6 +383,8 @@ export class NativeLiveMacPersistentTurnRouter {
   }
 
   // Output callbacks act only while their own reservation is still executing.
+  // The runtime protocol omits output_attachments_enabled when enabled by default;
+  // only an explicit false disables it (matching persistent-executor and relay).
   private output(slot: Slot): NativeLiveMacPersistentTurnOutput {
     const guard = <A extends unknown[], R>(handler: ((...args: A) => R) | undefined) => handler && ((...args: A): R => {
       this.assertSlot(slot);
@@ -391,8 +393,8 @@ export class NativeLiveMacPersistentTurnRouter {
     });
     return {
       ...(slot.onNormalizedEvent ? { onNormalizedEvent: guard(slot.onNormalizedEvent) } : {}),
-      ...(slot.command.output_attachments_enabled === true && slot.toolImageHandler ? { toolImageHandler: guard(slot.toolImageHandler) } : {}),
-      ...(slot.command.output_attachments_enabled === true && slot.sendFileHandler ? { sendFileHandler: guard(slot.sendFileHandler) } : {}),
+      ...(slot.command.output_attachments_enabled !== false && slot.toolImageHandler ? { toolImageHandler: guard(slot.toolImageHandler) } : {}),
+      ...(slot.command.output_attachments_enabled !== false && slot.sendFileHandler ? { sendFileHandler: guard(slot.sendFileHandler) } : {}),
     };
   }
 
