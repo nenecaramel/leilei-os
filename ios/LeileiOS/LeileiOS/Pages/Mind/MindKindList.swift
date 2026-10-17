@@ -24,6 +24,10 @@ struct MindMemoryListView: View {
     @State private var searchFailed = false
     @State private var searchRefreshFailed = false
     @State private var searchGeneration = 0
+    @State private var listScrollPosition: String?
+    @State private var searchScrollPosition: String?
+    @State private var lastListTaskKey: String?
+    @State private var lastSearchTaskKey: String?
 
     var body: some View {
         Group {
@@ -52,12 +56,16 @@ struct MindMemoryListView: View {
                             MindItemDetailView(
                                 initialItem: item,
                                 onDeleted: {
-                                    reloadToken = UUID()
+                                    removeMindItem(id: item.id)
+                                },
+                                onUpdated: { updated in
+                                    updateMindItem(updated)
                                 }
                             )
                         } label: {
                             MindItemRow(item: item)
                         }
+                        .id(item.id)
                     }
 
                     if nextCursor != nil {
@@ -76,6 +84,7 @@ struct MindMemoryListView: View {
                     }
                 }
                 .listStyle(.plain)
+                .scrollPosition(id: $listScrollPosition)
                 .scrollContentBackground(.hidden)
                 .background(Color(.systemBackground))
                 .refreshable {
@@ -116,6 +125,12 @@ struct MindMemoryListView: View {
             }
         }
         .task(id: "\(sort.rawValue)|\(undatedOnly)|\(reloadToken)") {
+            let taskKey = "\(sort.rawValue)|\(undatedOnly)|\(reloadToken)"
+            // Popping a detail may reactivate .task; retain previously
+            // appended cursor pages and the observed scroll position.
+            guard lastListTaskKey != taskKey else { return }
+            lastListTaskKey = taskKey
+            listScrollPosition = nil
             await reload()
         }
         .sheet(isPresented: $dateFilterPresented) {
@@ -128,6 +143,10 @@ struct MindMemoryListView: View {
             if undated { selectedDate = nil }
         }
         .task(id: "\(query)|\(selectedDate ?? "")|\(undatedOnly)|\(reloadToken)") {
+            let taskKey = "\(query)|\(selectedDate ?? "")|\(undatedOnly)|\(reloadToken)"
+            guard lastSearchTaskKey != taskKey else { return }
+            lastSearchTaskKey = taskKey
+            searchScrollPosition = nil
             await searchIfNeeded()
         }
     }
@@ -152,9 +171,15 @@ struct MindMemoryListView: View {
             List {
                 ForEach(searchRows) { row in
                     NavigationLink {
-                        MindMemoryReadView(id: row.id) {
-                            reloadToken = UUID()
-                        }
+                        MindMemoryReadView(
+                            id: row.id,
+                            onChanged: {
+                                removeMindItem(id: row.id)
+                            },
+                            onUpdated: { updated in
+                                updateMindItem(updated)
+                            }
+                        )
                     } label: {
                         VStack(alignment: .leading, spacing: 5) {
                             Text(row.snippet)
@@ -168,6 +193,7 @@ struct MindMemoryListView: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .id(row.id)
                 }
                 if searchCursor != nil {
                     Button("More") {
@@ -189,9 +215,38 @@ struct MindMemoryListView: View {
                 }
             }
             .listStyle(.plain)
+            .scrollPosition(id: $searchScrollPosition)
             .scrollContentBackground(.hidden)
             .background(Color(.systemBackground))
             .refreshable { await searchIfNeeded(skipDelay: true, preservingContent: true) }
+        }
+    }
+
+    // An edit/delete should never discard earlier cursor pages or change
+    // scroll state. Update only the affected stable row in either feed.
+    @MainActor
+    private func removeMindItem(id: String) {
+        let oldCount = items.count
+        items.removeAll { $0.id == id }
+        searchRows.removeAll { $0.id == id }
+        if items.count != oldCount {
+            totalCount = totalCount.map { max(0, $0 - 1) }
+        }
+    }
+
+    @MainActor
+    private func updateMindItem(_ updated: MindProductItem) {
+        if let index = items.firstIndex(where: { $0.id == updated.id }) {
+            items[index] = updated
+        }
+        if let index = searchRows.firstIndex(where: { $0.id == updated.id }) {
+            let oldRow = searchRows[index]
+            searchRows[index] = MemorySearchPage.Entry(
+                id: updated.id,
+                snippet: MindPresentation.normalized(updated.text)
+                    ?? oldRow.snippet,
+                date: oldRow.date
+            )
         }
     }
 
