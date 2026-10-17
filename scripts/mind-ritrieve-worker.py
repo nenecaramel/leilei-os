@@ -27,6 +27,7 @@ def main():
     cache = OrderedDict()
 
     for raw in sys.stdin:
+        request = None
         try:
             if len(raw) > MAX_REQUEST_CHARS:
                 raise ValueError("request too large")
