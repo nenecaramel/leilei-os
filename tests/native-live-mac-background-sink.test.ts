@@ -87,6 +87,22 @@ test("deferred background is acknowledged queued but is only deleted after F cov
   assert.equal((await f.outbox.list()).length,0,"only a committed durable reply clears outbox evidence");
 });
 
+test("covered but not canonically published cannot masquerade as successful recovery",async t=>{
+  const f=await fixture(t);const blocked:string[]=[];
+  const relay={...f.relay,async submitBackgroundResult(){
+    return{outcome:"queued" as const,duplicate:true,providerCheckpointId:null};
+  }};
+  const sink=new NativeLiveMacBackgroundResultSink({listenerInstanceId:id(7),relay,outbox:f.outbox,
+    onRecoveryBlocked:async id=>{blocked.push(id);}});
+  assert.deepEqual(await sink.commit({...owner,deferred:true},frame),{status:"queued",providerCheckpointId:id(6)});
+  await sink.cover(id(1),id(8));
+  await assert.rejects(sink.publishCovered(id(1)),/still queued/i);
+  assert.equal((await f.outbox.list()).length,1,"a covering proof is not a committed receipt");
+  assert.equal(await sink.flush(),0);
+  assert.deepEqual(blocked,[id(1)],"daemon must fence writer while covered output is uncommitted");
+  assert.equal((await f.outbox.list()).length,1);
+});
+
 test("orphaned deferred background is fenced after foreground failure or daemon restart",async t=>{
   const f=await fixture(t);let active=true;const blocked:string[]=[];
   const relay={...f.relay,async submitBackgroundResult(){
