@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NativeLiveMacBackgroundResultSink, NativeLiveMacBackgroundResultOutbox } from "../src/domains/bridge/mac/native-live-mac-background-result-sink.js";
@@ -54,4 +55,34 @@ test("network-unknown recovery is backed off and later replays its original rece
  await assert.rejects(sink.commit(owner,frame));assert.equal(await sink.flush(),0);assert.equal(attempts,2);
  assert.equal(await sink.flush(),0);assert.equal(attempts,2,"backoff prevents every user message waiting on the broken receipt");
  available=true;now+=30000;assert.equal(await sink.flush(),1);assert.equal(f.committed.size,1);assert.deepEqual(recovered,[id(1)]);assert.ok(blocks.length>0);
+});
+
+test("restart replays background segments in persisted SDK order, not hash filename order", async t => {
+  const f = await fixture(t);
+  const listenerInstanceId = id(7), generationId = id(2);
+  const digest = (receiptId: string) => createHash("sha256")
+    .update(JSON.stringify([listenerInstanceId,generationId,receiptId])).digest("hex");
+  const first = id(100);
+  let second = id(101);
+  // Force filenames to sort in the opposite order to SDK generation.
+  for (let n=101; n<2000 && digest(second)>=digest(first); n++) second=id(n+1);
+  assert.ok(digest(second)<digest(first));
+  const result = (receiptId: string, parentProviderCheckpointId: string, checkpointId: string) => ({
+    sourcePrepareId: id(3), receiptId, listenerInstanceId, generationId,
+    parentProviderCheckpointId,
+    result: { protocol_version: 4 as const, prepare_id: id(3), request_id: id(4),
+      conversation_id: id(1), status: "success" as const,
+      provider_session_id: "synthetic", effective_working_directory: "/synthetic",
+      provider_checkpoint_id: checkpointId, normalized_events: frame.normalizedEvents },
+  });
+  const a=result(first,id(5),id(6)), b=result(second,id(6),id(8));
+  await f.outbox.save(a);
+  await f.outbox.save(b);
+  const recovered = new NativeLiveMacBackgroundResultOutbox((f.outbox as any).directory);
+  assert.deepEqual((await recovered.list()).map(row => row.receiptId),[first,second]);
+  await recovered.acknowledge(a);
+  assert.deepEqual((await new NativeLiveMacBackgroundResultOutbox((f.outbox as any).directory).list()).map(row => row.receiptId),[second]);
+  await recovered.quarantine(b);
+  assert.deepEqual((await recovered.list()).map(row => row.receiptId),[]);
+  assert.deepEqual((await recovered.listQuarantined()).map(row => row.receiptId),[second]);
 });
