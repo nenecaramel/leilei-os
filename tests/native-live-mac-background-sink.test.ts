@@ -32,11 +32,21 @@ test("background sink refuses missing visible source and unbound attachments bef
  await assert.rejects(f.sink.commit(owner,{...frame,normalizedEvents:[{type:"attachment",payload:{attachment_id:id(9)}}]}));
  assert.equal(f.calls.length,0);assert.equal((await f.outbox.list()).length,0);
 });
-test("stale result is acknowledged locally without advancing the persistent writer",async t=>{
- const f=await fixture(t);const relay={...f.relay,async submitBackgroundResult(){return {outcome:"stale" as const,duplicate:false,providerCheckpointId:null};}};
- const sink=new NativeLiveMacBackgroundResultSink({listenerInstanceId:id(7),relay,outbox:f.outbox});
- assert.deepEqual(await sink.commit(owner,frame),{status:"rejected"});assert.equal((await f.outbox.list()).length,0);
+test("stale HTTP 200 does not silently delete an undelivered background reply",async t=>{
+  const f=await fixture(t);const blocked:string[]=[];
+  const relay={...f.relay,async submitBackgroundResult(){return {outcome:"stale" as const,duplicate:false,providerCheckpointId:null};}};
+  const sink=new NativeLiveMacBackgroundResultSink({listenerInstanceId:id(7),relay,outbox:f.outbox,
+    onRecoveryBlocked:async(conversationId:string)=>{blocked.push(conversationId);}});
+  await assert.rejects(sink.commit(owner,frame), /stale/i);
+  assert.equal((await f.outbox.list()).length,0,"stale result must not be redelivered as a normal success");
+  const evidence=await f.outbox.listQuarantined();
+  assert.equal(evidence.length,1,"failed background reply remains durably recoverable");
+  assert.equal(evidence[0]!.result.provider_checkpoint_id,id(6));
+  assert.deepEqual(blocked,[id(1)]);
+  assert.equal(await sink.flush(),0);
+  assert.equal((await f.outbox.listQuarantined()).length,1,"restart/recovery must retain rejected evidence");
 });
+
 
 test("an unpreparable receipt is quarantined and fenced without starving another conversation",async t=>{
  const f=await fixture(t);const blocked:string[]=[];let broken=true;
