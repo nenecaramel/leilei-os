@@ -11,7 +11,7 @@ export class MacMindSnapshotSync {
   constructor(
     private readonly baseUrl: string,
     private readonly token: string,
-    private readonly index: Pick<LocalRitrieveBreathSemanticScorer, "replaceSnapshot">,
+    private readonly index: Pick<LocalRitrieveBreathSemanticScorer, "replaceSnapshot" | "isSnapshotReady">,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
