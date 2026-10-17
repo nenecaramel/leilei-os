@@ -601,6 +601,39 @@ test("native scheduled prompt uses the real idle branch fence and existing durab
  f.finish((await f.inputs.next()).value!.uuid);await next;assert.equal(f.launches,1);
 });
 
+for (const source of ["schedule_wakeup", undefined] as const) test(`one-shot native Cron ${source ?? "unstamped"} remains admitted while F is executing, and B is deferred`, async t => {
+  let checks = 0;
+  const f = await fixture(t, async () => { checks++; return true; });
+  const first = f.run(command(1));
+  f.finish((await f.inputs.next()).value!.uuid);
+  await first;
+
+  const foreground = f.run(command(2));
+  const userInput = (await f.inputs.next()).value!;
+  f.setBackground(async () => ({ status: "queued", providerCheckpointId: id(102) }));
+  const hook = f.sdk.hooks.UserPromptSubmit[0].hooks[0];
+  const scheduled = await hook({
+    hook_event_name: "UserPromptSubmit", session_id: sid,
+    ...(source ? { source, prompt_id: "once-during-foreground" } : {}),
+    prompt: "TIMER_OK",
+  });
+  assert.notEqual(scheduled.decision, "block",
+    "one-shot Cron cannot be dropped just because the user is still chatting");
+  assert.equal(checks, 1, "scheduled input must obtain its own server admission");
+
+  f.finish(id(900));
+  assert.equal((await f.backgroundObserved.next()).value, id(900));
+  for (let i = 0; i < 100 && !f.backgroundOwners.length; i++) await new Promise(setImmediate);
+  assert.equal(f.backgroundOwners.at(-1)?.deferred, true,
+    "overlapping B must not publish above accepted U before F finishes");
+  assert.equal(f.backgroundOwners.at(-1)?.executionStart, true,
+    "a B preceding F's native start must be persisted for exact later binding");
+  f.finish(userInput.uuid);
+  await foreground;
+  assert.deepEqual(f.results, [id(1), id(2)]);
+  assert.equal(f.closes, 0, "ordinary foreground conversation must retain the scheduled writer");
+});
+
 test("scheduled prompt cannot borrow an admission through foreground rotation or handoff", async t => {
  const entered=deferred<void>(),release=deferred<boolean>();
  const f=await fixture(t,async()=>{entered.resolve();return release.promise;});
