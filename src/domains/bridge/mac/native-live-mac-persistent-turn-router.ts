@@ -288,7 +288,16 @@ export class NativeLiveMacPersistentTurnRouter {
     }
     try {
       this.assertSlot(slot);
-      if (context.phase === "input" && this.binding && slot.command.parent_provider_checkpoint_id !== this.providerCheckpointId) return false;
+      // Before command_lifecycle.started, the foreground was queued against
+      // the previous canonical checkpoint. A native autonomous result can have
+      // advanced the verified session checkpoint while it was queued. The
+      // queued server binding (and fresh admission check below) is the fence;
+      // rejecting that old cursor here would prevent native start and make
+      // the authoritative rebind callback unreachable.
+      if (context.phase === "input" && this.binding
+        && slot.command.parent_provider_checkpoint_id !== this.providerCheckpointId
+        && !(slot.command.operation === "send" && slot.command.runtime_mode === "resume"
+          && this.input.relay.bindInput && !slot.nativeStarted)) return false;
       const checkpoint = this.providerCheckpointId;
       const admitted = await slot.authorize(context);
       this.assertSlot(slot);
