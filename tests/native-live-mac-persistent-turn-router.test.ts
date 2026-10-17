@@ -27,7 +27,8 @@ function command(n: number, wake = false): NativeLiveRuntimeCommand {
 type BindInput = (input: { phase: "queued" | "started"; commandUuid: string;
   command: NativeLiveRuntimeCommand }) => Promise<{ userMessageId: string; parentProviderCheckpointId: string | null } | null>;
 async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolean>, bindInput?: BindInput,
-  callbacks?: Partial<Pick<ConstructorParameters<typeof NativeLiveMacPersistentTurnRouter>[0], "onForegroundCoverage" | "onForegroundPublished" | "onForegroundUnpublished" | "hasUnpublishedDeferred">>) {
+  callbacks?: Partial<Pick<ConstructorParameters<typeof NativeLiveMacPersistentTurnRouter>[0], "onForegroundCoverage" | "onForegroundPublished" | "onForegroundUnpublished" | "hasUnpublishedDeferred">>,
+  captureSendFileTool?: (callback: (input: {path: string; displayName: string | null}) => Promise<unknown>) => void) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "persistent-turn-router-")));
   const output = queue<Record<string, unknown>>(), inputs = queue<{ uuid: string; origin: { kind: string } }>();
   const backgroundObserved = queue<string>();
@@ -40,6 +41,13 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
     hooks: { UserPromptSubmit: Array<{ hooks: Array<(input: Record<string, unknown>) => Promise<{ decision?: string }>> }> } };
   const registry = new NativeLiveMacSessionRegistry({}, root, async (...args) => {
     const configured = await createNativeLiveMacClaudeTransport(...args);
+    if (captureSendFileTool) {
+      // Exercise the actual persistent SDK -> router -> output sink with a local
+      // in-process MCP callback, but no real file, relay or provider process.
+      (configured.runtime as any).createSendFileMcpServerImpl = async (
+        handler: (input: {path: string; displayName: string | null}) => Promise<unknown>,
+      ) => { captureSendFileTool(handler); return { type: "sdk", name: "test-files" }; };
+    }
     const open = configured.runtime.openPersistentSession!.bind(configured.runtime);
     configured.runtime.openPersistentSession = (options: NativeLiveMacPersistentSessionOptions) => open({ ...options, onBackgroundResult: frame => {
       backgroundObserved.push(frame.result.user_message_uuid as string);
@@ -488,6 +496,33 @@ test("output attachment handlers default enabled and only explicit false disable
   f.finish(input.uuid);
   await running;
   assert.deepEqual(forwarded, enabled !== false ? ["image/png"] : []);
+ });
+});
+
+test("send_file follows the production default-omitted flag through real persistent SDK and router", async t => {
+ for (const flag of [undefined, false, true]) await t.test(String(flag), async t => {
+  let tool: ((input: {path:string;displayName:string|null})=>Promise<unknown>) | null = null;
+  const sent: string[] = [];
+  const f = await fixture(t, undefined, undefined, undefined, callback => { tool = callback; });
+  const cmd = { ...command(1), ...(flag === undefined ? {} : { output_attachments_enabled: flag }) };
+  const running = f.run(cmd, { sendFileHandler: async (input: {path:string}) => {
+    sent.push(input.path);
+    return { attachmentId:id(900),filename:"photo.mp3",mimeType:"audio/mpeg",sizeBytes:32,sha256:"0".repeat(64),kind:"file" };
+  } });
+  const input = (await f.inputs.next()).value!;
+  f.output.push({type:"command_lifecycle",state:"started",command_uuid:input.uuid,session_id:sid});
+  await new Promise(setImmediate);
+  assert.ok(tool, "the SDK session installed its one local send_file MCP server");
+  const invoke = () => tool!({path:"audio/photo.mp3",displayName:null});
+  if (flag === false) {
+    await assert.rejects(invoke(),/only available to the turn/,"explicit disabled flag must prevent file delivery");
+    assert.deepEqual(sent,[]);
+  } else {
+    await invoke();
+    assert.deepEqual(sent,["audio/photo.mp3"],"default-on and explicit true must reach only this turn's sink");
+  }
+  f.finish(input.uuid); await running;
+  await assert.rejects(invoke(),/only available to the turn/,"completed turn cannot reuse file capability");
  });
 });
 
