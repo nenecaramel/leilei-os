@@ -128,6 +128,7 @@ export type NativeLiveFinalizeSuccessPortResult =
       ok: true;
       outcome: "wake_discarded";
       record: null;
+      nativeResumeCheckpointId?: string;
     }
   | {
       ok: false;
@@ -253,7 +254,7 @@ export interface NativeLiveBackendTurnPort {
     providerSessionId: string;
     providerCheckpointId: string;
     effectiveWorkingDirectory: string | null;
-  }): Promise<"committed" | "stale">;
+  }): Promise<"committed" | "superseded" | "stale">;
 
   discardWake?(input: {
     userId: string;
@@ -540,6 +541,11 @@ export class NativeLiveBackendTurnCoordinator {
             providerCheckpointId: result.provider_checkpoint_id, effectiveWorkingDirectory: result.effective_working_directory ?? null });
           if (outcome === "stale") return { ok: true, outcome: "wake_stale", requestId: preparation.requestId, operation: "wake", conversationId: preparation.conversationId, providerSessionId: result.provider_session_id };
           nativeResumeCheckpointId = result.provider_checkpoint_id;
+          if (outcome === "superseded") return {
+            ok: true, outcome: "wake_stale", requestId: preparation.requestId,
+            operation: "wake", conversationId: preparation.conversationId,
+            providerSessionId: result.provider_session_id, nativeResumeCheckpointId,
+          };
         } else {
           await this.discardWake({ userId, preparation, providerSessionId: result.provider_session_id });
         }
@@ -610,6 +616,8 @@ export class NativeLiveBackendTurnCoordinator {
         operation: "wake",
         conversationId: preparation.conversationId,
         providerSessionId: result.provider_session_id,
+        ...(finalized.nativeResumeCheckpointId
+          ? { nativeResumeCheckpointId: finalized.nativeResumeCheckpointId } : {}),
       };
     }
 

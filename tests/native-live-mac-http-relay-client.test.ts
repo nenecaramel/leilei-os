@@ -922,6 +922,26 @@ test("Mac HTTP relay terminal result retries transient 503 and then completes", 
   assert.equal(calls, 2);
 });
 
+test("Mac relay carries a verified cursor on stale Wake but rejects unproven acknowledgements",async()=>{
+  const nativeCursor="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  let outcome="wake_stale";
+  const client=new NativeLiveMacHttpRelayClient("https://relay.example","secret-token",
+    async()=>new Response(JSON.stringify({success:true,data:{
+      accepted:true,canonicalOutcome:outcome,nativeResumeCheckpointId:nativeCursor,
+    }}),{status:200,headers:{"content-type":"application/json"}}));
+  const result:NativeLiveRuntimeExecutionResult={
+    protocol_version:4,prepare_id:prepareId,request_id:requestId,
+    conversation_id:conversationId,status:"failure",error_code:"CLAUDE_PROCESS_FAILED",
+  };
+  assert.deepEqual(await client.submitResult({
+    listenerInstanceId:listenerId,reservationId:prepareId,result,
+  }),{canonicalOutcome:"wake_stale",nativeResumeCheckpointId:nativeCursor});
+  outcome="completed";
+  await assert.rejects(()=>client.submitResult({
+    listenerInstanceId:listenerId,reservationId:prepareId,result,
+  }),/quiet acknowledgement is invalid/);
+});
+
 test("Mac HTTP relay terminal result bounds persistent transient failures", async () => {
   let calls = 0;
   const fakeFetch: typeof fetch = async () => {
