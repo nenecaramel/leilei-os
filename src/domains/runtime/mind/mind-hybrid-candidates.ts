@@ -50,8 +50,9 @@ export function selectHybridMindCandidates(input: HybridInput): HybridScore[] {
   for (const [id, old] of e5) {
     const next = rit.get(id);
     const text = textById.get(id);
-    if (text === undefined || !next || !Number.isFinite(old.score)
-      || !Number.isFinite(next.score) || old.score < 0.80) continue;
+    if (text === undefined || !next
+      || !Number.isFinite(old.score) || old.score < 0.80 || old.score > 1
+      || !Number.isFinite(next.score) || next.score < 0 || next.score > 1) continue;
     // Strict mutual top-ranked support path. A single model cannot authorize
     // recall, no matter how confident its isolated score seems.
     const agreed = old.rank < 6 && next.rank < 12 && next.score >= 0.68;
