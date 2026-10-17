@@ -78,7 +78,7 @@ test("pending canonical background delivery is not cascade-deleted with an old s
   assert.match(victim,/receipt\.prepare_id = preparation\.id/);
   assert.match(victim,/receipt\.user_id = preparation\.user_id/);
   assert.match(victim,/receipt\.payload->>'kind' = 'persistent_background_receipt_v1'/);
-  assert.match(victim,/receipt\.payload->>'phase' = 'queued'/);
+  assert.match(victim,/receipt\.payload->>'phase' IN \('prepared', 'queued'\)/);
   assert.doesNotMatch(victim,/receipt\.payload->>'phase' = 'committed'/);
 });
 
