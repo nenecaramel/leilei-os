@@ -343,6 +343,19 @@ test("autonomous result uses session sink even while a foreground reservation aw
   assert.deepEqual(f.background, [id(77)]); assert.deepEqual(f.results, [id(1)]);
 });
 
+test("Wake preflight failure before SDK submission leaves existing Cron-owning writer alive",async t=>{
+  const f=await fixture(t);
+  const first=f.run(command(1));
+  f.finish((await f.inputs.next()).value!.uuid);await first;
+  const bad={...command(2,true),expected_working_directory:"/dev/null/no-such-directory"};
+  await assert.rejects(f.run(bad),/directory|working|path|not a/i);
+  assert.equal(f.closes,0,"unstarted Wake cannot destroy a live SDK writer");
+  const next=f.run(command(2));
+  f.finish((await f.inputs.next()).value!.uuid);
+  await next;
+  assert.equal(f.launches,1);
+});
+
 test("stale server admission rejects the next input without executing it", async t => {
   const f = await fixture(t), one = f.run(command(1)); f.finish((await f.inputs.next()).value!.uuid); await one;
   f.deny(); await assert.rejects(f.run(command(2)), /admission denied/); assert.deepEqual(f.results, [id(1)]); assert.equal(f.closes, 1);
