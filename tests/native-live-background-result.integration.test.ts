@@ -41,6 +41,28 @@ async function fixture(t: test.TestContext) {
 }
 
 
+test("foreground commit advances owner anchor to its canonical assistant in the same transaction", { skip: !enabled }, async t => {
+  const f=await fixture(t);
+  const [head] = await f.database.db.execute<{ owner: string | null; anchor: string | null; current: string | null }>(sql`
+    SELECT provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner,
+      provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor,
+      current_head_message_id::text AS current
+    FROM conversations WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid
+  `);
+  assert.equal(head?.owner,f.source.command.prepare_id);
+  assert.equal(head?.anchor,f.completed.assistantMessageId);
+  assert.equal(head?.current,f.completed.assistantMessageId);
+  // Idle Cron B must be able to append on top of H immediately, even when
+  // no new foreground preparation rotated the owner.
+  await f.repository.prepareBackgroundResult(f.prepare);
+  assert.equal((await f.repository.submitBackgroundResult(f.submit)).outcome,"committed");
+  const [advanced] = await f.database.db.execute<{ anchor: string | null }>(sql`
+    SELECT provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor
+    FROM conversations WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid
+  `);
+  assert.equal(advanced?.anchor,f.prepare.receiptId);
+});
+
 test("committed background reply is one canonical descendant through reopen and pagination", { skip: !enabled }, async t => {
   const f = await fixture(t), reader = new DrizzleNativeLiveCurrentPathReader(f.database.db);
   const read = (options: { afterMessageId?: string; beforeMessageId?: string } = {}) =>
