@@ -936,7 +936,21 @@ export class NativeLiveMacDaemonLoop {
               : {}),
           },
         );
-      } catch {
+      } catch (error) {
+        // A reservation that reached /execution-started then failed before
+        // submitting any provider result must have an observable local cause.
+        // Earlier logs only said "rejected", hiding a fenced SDK writer after
+        // a 409 background receipt. Never log prompts, tokens or model output.
+        const errorName = error instanceof Error ? error.name : "UnknownError";
+        const errorMessage = error instanceof Error ? error.message.slice(0, 240) : "Unknown dispatch error";
+        process.stderr.write(JSON.stringify({
+          at: new Date().toISOString(),
+          outcome: "native_runtime_dispatch_rejected",
+          reservationId: reservation.reservationId,
+          operation: reservation.command.operation,
+          runtimeMode: reservation.command.runtime_mode,
+          errorName, errorMessage,
+        }) + "\n");
         await flushRuntimeEvents();
         await this.bestEffortReject(reservation.reservationId, "INVALID_COMMAND");
         return {

@@ -11,7 +11,7 @@ import { requireUuid } from "../protocol/runtime-protocol/parsing.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Database["transaction"]>[0] extends (tx: infer T) => unknown ? T : never;
-type Source = { id: string; requestId: string; conversationId: string; sessionId: string | null; assistantId: string | null; listenerId: string | null; status: string; dispatch: string };
+type Source = { id: string; requestId: string; conversationId: string; sessionId: string | null; assistantId: string | null; listenerId: string | null; status: string; dispatch: string; operation: string };
 type Snapshot = { id: string; canonicalMessageId: string; providerSessionId: string; baseCheckpointId: string; parentProviderCheckpointId: string; cwd: string | null; presentationOwnerId: string | null; sourceRevision: string | null };
 export type NativeLiveBackgroundReceipt = Record<string, unknown> & { kind: "persistent_background_receipt_v1"; phase: "prepared" | NativeLiveBackgroundAck["outcome"];
   identity: NativeLiveBackgroundIdentity; prepareHash: string; resultHash: string | null; context: Snapshot; expiresAt: string; providerCheckpointId: string | null; executionStart?: boolean; deferred?: boolean; coveringCheckpointId?: string; nativeForegroundParentCheckpointId?: string; originalParentProviderCheckpointId?: string };
@@ -36,7 +36,7 @@ async function transaction<T>(db: Database, work: (tx: Transaction) => Promise<T
 }
 async function source(tx: Transaction, userId: string, id: string): Promise<Source> {
   const [row] = await tx.execute<Source>(sql`SELECT id, request_id AS "requestId", conversation_id AS "conversationId", provider_session_id AS "sessionId",
-    assistant_message_id AS "assistantId", reserved_by AS "listenerId", status, dispatch_status AS dispatch
+    assistant_message_id AS "assistantId", reserved_by AS "listenerId", status, dispatch_status AS dispatch, operation
     FROM native_live_turn_preparations WHERE user_id=${userId}::uuid AND id=${id}::uuid FOR UPDATE`);
   if (!row) throw new NativeLiveBackgroundResultError("BACKGROUND_NOT_FOUND"); return row;
 }
@@ -186,6 +186,41 @@ async function coveringSnapshot(tx: Transaction, userId: string, origin: Source,
   return row ?? null;
 }
 
+// Before the visible-Wake anchor fix, Wake could commit H -> W while
+// leaving the original presentation owner anchored to H. The next Cron B
+// would pass prepare, then fail the canonical append with BACKGROUND_CONFLICT.
+// Repair only that exact historical Wake transition, while snapshot() has
+// already locked/verified the current head, session, generation, and absence
+// of a competing foreground. Never rewrite an arbitrary mismatched anchor.
+async function reconcileLegacyVisibleWakeAnchor(
+  tx: Transaction, userId: string, origin: Source, context: Snapshot,
+): Promise<void> {
+  if (origin.operation !== "wake" || origin.assistantId !== context.canonicalMessageId) return;
+  await tx.execute(sql`
+    UPDATE conversations c
+    SET provider_metadata = jsonb_set(
+      c.provider_metadata, '{native_live_presentation_owner,anchorHeadMessageId}',
+      to_jsonb(${context.canonicalMessageId}::text)
+    )
+    FROM native_live_turn_preparations wake
+    WHERE c.user_id=${userId}::uuid AND c.id=${origin.conversationId}::uuid
+      AND c.current_head_message_id=${context.canonicalMessageId}::uuid
+      AND wake.user_id=c.user_id AND wake.conversation_id=c.id AND wake.id=${origin.id}::uuid
+      AND wake.operation='wake' AND wake.status='finalized_success'
+      AND wake.dispatch_status='completed'
+      AND wake.assistant_message_id=c.current_head_message_id
+      AND (c.provider_metadata->'native_live_presentation_owner'->>'prepareId')
+        IS NOT DISTINCT FROM ${context.presentationOwnerId}::text
+      AND (c.provider_metadata->'nativeSessionSource'->>'revision')
+        IS NOT DISTINCT FROM ${context.sourceRevision}::text
+      AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId')
+        = wake.wake_context->>'source_head_message_id'
+      AND wake.wake_context->'runtime_generation'->>'presentation_owner_id'
+        IS NOT DISTINCT FROM ${context.presentationOwnerId}::text
+      AND wake.wake_context->'runtime_generation'->>'source_revision'
+        IS NOT DISTINCT FROM ${context.sourceRevision}::text
+  `);
+}
 function prepared(identity: NativeLiveBackgroundIdentity, value: Receipt): NativeLiveBackgroundPrepared {
   return { receiptId: identity.receiptId, providerSessionId: value.context.providerSessionId, parentProviderCheckpointId: value.originalParentProviderCheckpointId ?? value.context.parentProviderCheckpointId, expiresAt: value.expiresAt };
 }
@@ -385,6 +420,8 @@ export async function submitNativeLiveBackgroundResult(db: Database, input: Nati
     const outcome = !live ? "stale" : result.status === "success" ? "committed" : "failed";
     const checkpoint = outcome === "committed" && result.status === "success" ? result.provider_checkpoint_id! : null;
     const terminal: Receipt = { ...stored, ...(live && current ? { context: current } : {}), phase: outcome, resultHash, providerCheckpointId: checkpoint };
+    if (checkpoint && result.status === "success")
+      await reconcileLegacyVisibleWakeAnchor(tx, userId, origin, stored.context);
     const visible = checkpoint && result.status === "success"
       ? await appendBackgroundMessage(tx, { userId, conversationId: origin.conversationId, receipt: terminal, result }) : false;
     if (checkpoint && !visible) {
