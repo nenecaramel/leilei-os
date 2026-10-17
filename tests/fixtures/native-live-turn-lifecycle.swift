@@ -119,6 +119,7 @@ expect(afterPendingClears.count == 4 && afterPendingClears[3].id == assistantID,
 expect(afterPendingClears[3].assistant?.copyText == "Hello","canonical answer remains visible while runtime drains")
 let afterRuntimeClears = rows(unattributed,nil,nil)
 expect(afterRuntimeClears.map(\.id) == afterPendingClears.map(\.id),"runtime teardown cannot remount an unattributed canonical assistant")
+expect(afterRuntimeClears.last?.assistant?.timestamp == afterPendingClears.last?.assistant?.timestamp,"unattributed canonical cannot reset its turn timestamp when runtime stops")
 let canonical = snapshot(prefix+[message("uNew","user",text:"New"),message("aNew","assistant",parent:"uNew",text:"Hello",prepare:"pSend")])
 let finalRows = rows(canonical,nil,surface("pSend",user:"uNew",text:"Hello",terminal:true))
 expect(finalRows[2].id == userID && finalRows[3].id == assistantID,"canonical backing preserves user and assistant IDs")
