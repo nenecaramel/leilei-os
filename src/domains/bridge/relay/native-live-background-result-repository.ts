@@ -47,13 +47,98 @@ async function receipt(tx: Transaction, userId: string, identity: NativeLiveBack
   if (row.payload.kind !== "persistent_background_receipt_v1" || !isDeepStrictEqual(row.payload.identity, identity)) throw conflict();
   return row.payload;
 }
-async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBackgroundIdentity, origin: Source, executionStart = false, deferred = false): Promise<Snapshot | null> {
+
+/**
+ * Recover one historical Wake -> Cron receipt after a failed foreground send
+ * replaced the presentation owner. This is deliberately receipt-bound: no new
+ * background producer and no unrelated rejected command can reclaim a writer.
+ * The conversation and live listener lease are locked by snapshot() first.
+ */
+async function reconcileRejectedWakePresentationOwner(
+  tx: Transaction, userId: string, origin: Source, context: Snapshot,
+): Promise<boolean> {
+  if (origin.operation !== "wake" || origin.assistantId !== context.canonicalMessageId
+    || !context.presentationOwnerId) return false;
+  const rows = await tx.execute<{ id: string }>(sql`
+    UPDATE conversations c
+    SET provider_metadata=jsonb_set(
+      jsonb_set(c.provider_metadata,
+        '{native_live_presentation_owner,prepareId}',to_jsonb(${context.presentationOwnerId}::text)),
+      '{native_live_presentation_owner,anchorHeadMessageId}',to_jsonb(${context.canonicalMessageId}::text))
+    FROM native_live_turn_preparations rejected
+    JOIN conversation_messages rejected_user
+      ON rejected_user.id=rejected.canonical_user_message_id
+      AND rejected_user.user_id=rejected.user_id
+      AND rejected_user.conversation_id=rejected.conversation_id
+    JOIN conversation_provider_session_checkpoints cp
+      ON cp.user_id=rejected.user_id AND cp.conversation_id=rejected.conversation_id
+    JOIN native_live_turn_preparations wake
+      ON wake.user_id=rejected.user_id AND wake.conversation_id=rejected.conversation_id
+      AND wake.id=${origin.id}::uuid
+    JOIN native_live_turn_preparations owner
+      ON owner.user_id=rejected.user_id AND owner.conversation_id=rejected.conversation_id
+      AND owner.id=${context.presentationOwnerId}::uuid
+    WHERE c.id=${origin.conversationId}::uuid AND c.user_id=${userId}::uuid
+      AND c.id=rejected.conversation_id
+      AND c.origin='native_live' AND c.lifecycle_status='active'
+      AND coalesce(c.provider_metadata->'nativeSessionSource'->>'owner','leileios')='leileios'
+      AND c.provider_metadata->'nativeSessionSource'->>'revision'
+        IS NOT DISTINCT FROM ${context.sourceRevision}::text
+      AND c.current_head_message_id=${context.canonicalMessageId}::uuid
+      AND (c.provider_metadata->'native_live_presentation_owner'->>'prepareId')=rejected.id::text
+      AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId')
+        =c.current_head_message_id::text
+      AND cp.id=${context.id}::uuid AND cp.canonical_message_id=c.current_head_message_id
+      AND cp.provider='claude_code'
+      AND cp.provider_session_id=${context.providerSessionId}
+      AND cp.provider_checkpoint_id=${context.baseCheckpointId}
+      AND cp.effective_working_directory IS NOT DISTINCT FROM ${context.cwd}
+      AND cp.runtime_metadata->'native_live_generation'->>'presentation_owner_id'
+        =${context.presentationOwnerId}
+      AND cp.runtime_metadata->'native_live_generation'->>'source_revision'
+        IS NOT DISTINCT FROM ${context.sourceRevision}::text
+      AND wake.operation='wake' AND wake.status='finalized_success'
+      AND wake.dispatch_status='completed'
+      AND wake.assistant_message_id=c.current_head_message_id
+      AND wake.provider_session_id=cp.provider_session_id
+      AND wake.wake_context->'runtime_generation'->>'presentation_owner_id'
+        =${context.presentationOwnerId}
+      AND wake.wake_context->'runtime_generation'->>'source_revision'
+        IS NOT DISTINCT FROM ${context.sourceRevision}::text
+      AND wake.wake_context->>'source_head_message_id'=owner.assistant_message_id::text
+      AND owner.status='finalized_success' AND owner.dispatch_status='completed'
+      AND owner.provider_session_id=cp.provider_session_id
+      AND rejected.operation='send' AND rejected.runtime_mode='resume'
+      AND rejected.status='prepared' AND rejected.dispatch_status='rejected'
+      AND rejected.dispatch_error_code='INVALID_COMMAND'
+      AND rejected.result_hash IS NULL AND rejected.assistant_message_id IS NULL
+      AND rejected.runtime_metadata->'native_live_input_binding'->>'started' IS DISTINCT FROM 'true'
+      AND rejected.created_at >= wake.finalized_at
+      AND rejected.parent_provider_session_id=cp.provider_session_id
+      AND rejected.parent_provider_checkpoint_id=cp.provider_checkpoint_id
+      AND rejected.expected_working_directory IS NOT DISTINCT FROM cp.effective_working_directory
+      AND rejected_user.parent_message_id=c.current_head_message_id
+      AND NOT EXISTS (
+        SELECT 1 FROM native_live_turn_preparations active
+        WHERE active.user_id=c.user_id AND active.conversation_id=c.id
+          AND active.status='prepared' AND active.operation<>'wake'
+          AND active.dispatch_status IN ('staged','pending','reserved','executing','delivery_unknown')
+      )
+    RETURNING c.id
+  `);
+  return rows.length === 1;
+}
+
+async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBackgroundIdentity, origin: Source, executionStart = false, deferred = false, knownReceipt: Snapshot | null = null): Promise<Snapshot | null> {
   if (origin.status !== "finalized_success" || origin.dispatch !== "completed" || origin.listenerId !== identity.listenerInstanceId || !origin.assistantId) return null;
   await tx.execute(sql`SELECT id FROM conversations WHERE user_id=${userId}::uuid AND id=${origin.conversationId}::uuid FOR UPDATE`);
   // Lease takeover cannot commit between this check and the cursor transaction.
   const [lease] = await tx.execute(sql`SELECT user_id FROM native_live_runtime_listener_leases WHERE user_id=${userId}::uuid
     AND dispatch_target='claude_code' AND listener_instance_id=${identity.listenerInstanceId}::uuid AND lease_expires_at>clock_timestamp() FOR SHARE`);
   if (!lease) return null;
+  const repaired = knownReceipt && !executionStart && !deferred
+    ? await reconcileRejectedWakePresentationOwner(tx, userId, origin, knownReceipt)
+    : false;
   const pendingOwner = sql`EXISTS (SELECT 1 FROM native_live_turn_preparations pending
     JOIN conversation_messages u ON u.id=pending.canonical_user_message_id AND u.user_id=pending.user_id AND u.conversation_id=pending.conversation_id
     WHERE pending.user_id=c.user_id AND pending.conversation_id=c.id AND pending.id::text=c.provider_metadata->'native_live_presentation_owner'->>'prepareId'
@@ -90,6 +175,7 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
           OR NOT ((${executionStart} AND coalesce(busy.runtime_metadata->'native_live_input_binding'->>'started','false')='false')
             OR (${deferred} AND busy.runtime_metadata->'native_live_input_binding'->>'started'='true'))))
     LIMIT 1 FOR UPDATE OF cp`);
+  if (repaired && (!row || !isDeepStrictEqual(row, knownReceipt))) throw conflict();
   return row ?? null;
 }
 /** A covering F checkpoint must already be canonical and descendant of
@@ -247,7 +333,7 @@ export async function prepareNativeLiveBackgroundResult(db: Database, input: Nat
       // before extending only its transport deadline; never reset committed
       // or queued outcomes or switch the producer checkpoint.
       const live = await snapshot(tx, userId, identity, origin,
-        existing.executionStart === true, existing.deferred === true);
+        existing.executionStart === true, existing.deferred === true, existing.context);
       if (!live || !isDeepStrictEqual(live, existing.context)) throw conflict();
       const renewed: Receipt = {
         ...existing, expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
@@ -413,7 +499,8 @@ export async function submitNativeLiveBackgroundResult(db: Database, input: Nati
     }
     if (result.status === "success" && (result.provider_session_id !== stored.context.providerSessionId || result.effective_working_directory !== stored.context.cwd
       || result.provider_checkpoint_id === stored.context.parentProviderCheckpointId)) throw conflict();
-    const current = await snapshot(tx, userId, identity, origin, stored.executionStart);
+    const current = await snapshot(tx, userId, identity, origin, stored.executionStart, false,
+      new Date(stored.expiresAt).getTime() > Date.now() ? stored.context : null);
     const live = current && new Date(stored.expiresAt).getTime() > Date.now()
       && (isDeepStrictEqual(current, stored.context) || (stored.executionStart === true
         && isDeepStrictEqual({ ...current, presentationOwnerId: stored.context.presentationOwnerId }, stored.context)));
