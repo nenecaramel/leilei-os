@@ -1,5 +1,6 @@
 import { lstat, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 const fail = code => Object.assign(new Error(code), { code });
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -51,8 +52,16 @@ export async function archiveRecoveryProtectedSessions(root) {
           !uuid.test(result?.conversation_id ?? '') ||
           !uuid.test(value?.parentProviderCheckpointId ?? '') ||
           !uuid.test(value?.receiptId ?? '') ||
-          !uuid.test(value?.sourcePrepareId ?? ''))
+          !uuid.test(value?.sourcePrepareId ?? '') ||
+          !uuid.test(value?.listenerInstanceId ?? '') ||
+          !uuid.test(value?.generationId ?? '') ||
+          result?.prepare_id !== value.sourcePrepareId)
         throw new Error('Background receipt cannot be bound to a native session');
+      const expectedName = createHash('sha256').update(JSON.stringify([
+        value.listenerInstanceId, value.generationId, value.receiptId
+      ])).digest('hex') + '.json';
+      if (path.basename(file) !== expectedName)
+        throw new Error('Background receipt does not match its journal identity');
       sessions.add(result.provider_session_id.toLowerCase());
       backgroundReceipts++;
     } catch {
