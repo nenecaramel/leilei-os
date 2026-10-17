@@ -20,6 +20,12 @@ for (const mode of ['cron', 'cron-after-chat', 'loop']) test(`real native CLI ${
   const deadline = setTimeout(() => abort.abort(), 180_000);
   const hooks = [], phases = [], jobCounts = [];
   let stopped = false;
+  // For the after-chat probe, allow enough wall-clock room for a completely
+  // finished intervening user turn before the CLI's real minute-granularity fire.
+  const scheduledAt = new Date(Date.now() + 90_000);
+  const cronExpression = mode === 'cron-after-chat'
+    ? `${scheduledAt.getUTCMinutes()} ${scheduledAt.getUTCHours()} * * *`
+    : '* * * * *';
   let requests = 0, toolErrors = 0, tools = [], host;
   const server = createServer(async (request, response) => {
     let raw = '';
@@ -31,7 +37,7 @@ for (const mode of ['cron', 'cron-after-chat', 'loop']) test(`real native CLI ${
     if (request.url?.includes('/messages')) {
       const body = JSON.parse(raw); // Only this test's isolated synthetic session.
       tools = body.tools?.map(tool => tool.name) ?? [];
-      respond(response, ++requests, mode); return;
+      respond(response, ++requests, mode, cronExpression); return;
     }
     response.setHeader('content-type', 'application/json'); response.end('{}');
   });
@@ -115,11 +121,11 @@ for (const mode of ['cron', 'cron-after-chat', 'loop']) test(`real native CLI ${
   }
 });
 
-function respond(response, step, mode) {
+function respond(response, step, mode, cronExpression) {
   const fireStep = mode === 'cron-after-chat' ? 4 : 3;
   const name = step === 1 || step === fireStep
     ? (mode === 'loop' ? 'ScheduleWakeup' : step === 1 ? 'CronCreate' : 'CronList') : null;
-  const input = mode === 'loop' ? (step === 1 ? { delaySeconds: 60, reason: 'Synthetic offline timer', prompt: '/loop 1m Synthetic timer check', noop: true } : { stop: true }) : step === 1 ? { cron: '* * * * *', prompt: 'Synthetic timer check', recurring: false } : {};
+  const input = mode === 'loop' ? (step === 1 ? { delaySeconds: 60, reason: 'Synthetic offline timer', prompt: '/loop 1m Synthetic timer check', noop: true } : { stop: true }) : step === 1 ? { cron: cronExpression, prompt: 'Synthetic timer check', recurring: false } : {};
   const content = name ? { type: 'tool_use', id: `toolu_synthetic_${step}`, name, input: {} } : { type: 'text', text: '' };
   const text = step === 2 ? 'SCHEDULED' : mode === 'cron-after-chat' && step === 3 ? 'ORDINARY_CHAT_OK' : 'TIMER_OK';
   response.writeHead(200, { 'content-type': 'text/event-stream' });
