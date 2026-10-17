@@ -378,6 +378,9 @@ test("foreground and autonomous durable acknowledgements are serialized", async 
   assert.deepEqual(f.background, []);
   release.resolve(acknowledged()); await first; await backgroundEntered.promise;
   assert.deepEqual(f.background, [id(88)]);
+  assert.equal(f.backgroundOwners.at(-1)?.deferred, undefined,
+    "a background callback released after foreground F is fully acknowledged must bind as post-F, not in-flight B");
+  assert.equal(f.backgroundOwners.at(-1)?.executionStart, undefined);
 });
 
 test("caller mutation cannot retarget a pending reservation or its durable result", async t => {
