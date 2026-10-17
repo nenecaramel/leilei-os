@@ -62,7 +62,7 @@ export class NativeLiveMacPersistentRuntime {
         taskControlsAvailable: () => taskControlsAvailable,
         relay: input.relay, onBackgroundResult: (owner, frame) => this.backgroundResults.commit(owner, frame),
         onForegroundCoverage: (conversationId, generationId, checkpoint) => this.backgroundResults.cover(conversationId, generationId, checkpoint),
-        onForegroundPublished: conversationId => this.backgroundResults.publishCovered(conversationId) }); } });
+        onForegroundPublished: (conversationId, generationId) => this.backgroundResults.publishCovered(conversationId, generationId) }); } });
   }
   async drain(conversationId: string, providerSessionId: string) {
     const generation = this.registry.getGenerationId(conversationId);
