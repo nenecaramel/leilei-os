@@ -151,6 +151,161 @@ for (const legacy of [false, true] as const) test(`visible Silence Wake followed
   assert.equal(after.anchor, receiptId);
 });
 
+
+async function strandedRejectedWake(t: test.TestContext) {
+  const f = await fixture(t);
+  let now = new Date();
+  const silence = new NativeLiveSilenceWakeService(f.database.db, () => now);
+  const schedule = await silence.readSchedule({ userId: f.user.id });
+  assert.ok(schedule);
+  now = new Date(schedule.postTurnDueAt);
+  assert.equal((await silence.fire({
+    userId: f.user.id, epochId: schedule.epochId, slot: "post_turn_idle",
+  })).outcome, "queued");
+  const wakeId = silenceWakePreparationId(schedule.epochId, "post_turn_idle");
+  const wake = await new DrizzleNativeLiveBackendTurnPort(f.database.db)
+    .getPreparation({ userId: f.user.id, prepareId: wakeId });
+  assert.ok(wake);
+  const deadline = new Date(Date.now() + 600_000);
+  await f.database.db.update(nativeLiveTurnPreparations).set({
+    runtimeMode: "resume", reservedBy: f.prepare.listenerInstanceId,
+    reservedAt: new Date(), reservationExpiresAt: deadline,
+    executionStartedAt: new Date(), dispatchStatus: "executing",
+  }).where(eq(nativeLiveTurnPreparations.id, wakeId));
+  const wakeCheckpoint = crypto.randomUUID();
+  const final = await f.coordinator.finalize(f.user.id, {
+    protocol_version: 4, prepare_id: wakeId, request_id: wake.requestId,
+    conversation_id: f.conversation.id, status: "success",
+    provider_session_id: "synthetic-session", provider_checkpoint_id: wakeCheckpoint,
+    effective_working_directory: "/synthetic",
+    normalized_events: [{ type: "text", payload: { text: "Visible Wake W" } }],
+  });
+  assert.ok(final.ok && final.outcome === "completed");
+  if (!final.ok || final.outcome !== "completed") throw Error("Wake not completed");
+  assert.equal(await f.repository.markCompleted({
+    userId: f.user.id, listenerInstanceId: f.prepare.listenerInstanceId, reservationId: wakeId,
+  }), "applied");
+
+  // Old deployed Wake advanced H -> W but left the inherited anchor at H.
+  await f.database.db.execute(sql`
+    UPDATE conversations SET provider_metadata=jsonb_set(
+      provider_metadata, '{native_live_presentation_owner,anchorHeadMessageId}',
+      to_jsonb(${f.completed.assistantMessageId}::text))
+    WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid
+  `);
+  const receiptId = crypto.randomUUID();
+  const prepare = {
+    ...f.prepare, sourcePrepareId: wakeId, receiptId,
+    parentProviderCheckpointId: wakeCheckpoint,
+  };
+  const submit = {
+    ...f.submit, sourcePrepareId: wakeId, receiptId,
+    result: {
+      ...f.submit.result, prepare_id: wakeId, request_id: wake.requestId,
+      provider_checkpoint_id: crypto.randomUUID(),
+      normalized_events: [{ type: "text" as const, payload: { text: "Preexisting Cron B" } }],
+    },
+  };
+  await f.repository.prepareBackgroundResult(prepare);
+  await assert.rejects(f.repository.submitBackgroundResult(submit),
+    { code: "BACKGROUND_CONFLICT" }, "original HTTP 409 must be reproduced first");
+
+  const rejected = await f.coordinator.prepare(f.user.id, {
+    dispatch_target: "claude_code", request_id: crypto.randomUUID(),
+    conversation_id: f.conversation.id, operation: "send",
+    expected_head_message_id: final.assistantMessageId, text: "send blocked by recovery",
+  });
+  assert.ok(rejected.ok);
+  if (!rejected.ok) throw Error("failed foreground could not prepare");
+  assert.equal(rejected.command.runtime_mode, "resume");
+  await f.database.db.update(nativeLiveTurnPreparations).set({
+    reservedBy: f.prepare.listenerInstanceId, dispatchStatus: "executing",
+    reservationExpiresAt: deadline, executionStartedAt: new Date(),
+  }).where(eq(nativeLiveTurnPreparations.id, rejected.command.prepare_id));
+  assert.equal(await f.repository.rejectReservation({
+    userId: f.user.id, listenerInstanceId: f.prepare.listenerInstanceId,
+    reservationId: rejected.command.prepare_id, code: "INVALID_COMMAND",
+  }), "applied");
+
+  // Same receipt is now beyond its old transport lease: this reproduces
+  // Mac restart's background-results/prepare HTTP 409 after the Failed alert.
+  await f.database.db.execute(sql`
+    UPDATE native_live_runtime_events SET payload=jsonb_set(
+      payload, '{expiresAt}', to_jsonb('2000-01-01T00:00:00.000Z'::text))
+    WHERE user_id=${f.user.id}::uuid AND id=${receiptId}::uuid
+  `);
+  return { ...f, wakeId, wakeHead: final.assistantMessageId, prepare, submit,
+    rejectedId: rejected.command.prepare_id, receiptId };
+}
+
+test("expired Cron receipt reclaims only a rejected unstarted send owner after legacy Wake 409", { skip: !enabled }, async t => {
+  const f = await strandedRejectedWake(t);
+  const [before] = await f.database.db.execute<{ owner: string; anchor: string }>(sql`
+    SELECT provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner,
+      provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor
+    FROM conversations WHERE id=${f.conversation.id}::uuid
+  `);
+  assert.equal(before.owner, f.rejectedId);
+  assert.equal(before.anchor, f.wakeHead);
+  assert.equal((await f.repository.prepareBackgroundResult(f.prepare)).receiptId, f.receiptId);
+  const committed = await f.repository.submitBackgroundResult(f.submit);
+  assert.equal(committed.outcome, "committed");
+  assert.equal(committed.providerCheckpointId, f.submit.result.provider_checkpoint_id);
+  const [after] = await f.database.db.execute<{ owner: string; anchor: string; head: string }>(sql`
+    SELECT provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner,
+      provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor,
+      current_head_message_id::text AS head
+    FROM conversations WHERE id=${f.conversation.id}::uuid
+  `);
+  assert.equal(after.owner, f.source.command.prepare_id,
+    "rejected foreground may not steal the recovered persistent SDK owner");
+  assert.equal(after.anchor, f.receiptId);
+  assert.equal(after.head, f.receiptId);
+  assert.deepEqual(await f.repository.submitBackgroundResult(f.submit),
+    { outcome: "committed", duplicate: true, providerCheckpointId: f.submit.result.provider_checkpoint_id });
+});
+
+for (const mutated of ["started input", "runtime evidence", "changed revision", "competing foreground"] as const)
+  test(`recovery refuses ${mutated} after rejected foreground`, { skip: !enabled }, async t => {
+    const f = await strandedRejectedWake(t);
+    if (mutated === "started input") {
+      await f.database.db.execute(sql`
+        UPDATE native_live_turn_preparations
+        SET runtime_metadata=jsonb_set(coalesce(runtime_metadata,'{}'::jsonb),
+          '{native_live_input_binding}', '{"started":true}'::jsonb)
+        WHERE id=${f.rejectedId}::uuid
+      `);
+    } else if (mutated === "runtime evidence") {
+      await f.database.db.execute(sql`
+        INSERT INTO native_live_runtime_events
+          (id,user_id,prepare_id,sequence,event_type,provider_session_id,payload)
+        VALUES (${crypto.randomUUID()}::uuid,${f.user.id}::uuid,
+          ${f.rejectedId}::uuid,1,'runtime',NULL,'{}'::jsonb)
+      `);
+    } else if (mutated === "changed revision") {
+      await f.database.db.execute(sql`
+        UPDATE conversations SET provider_metadata=jsonb_set(provider_metadata,
+          '{nativeSessionSource,revision}',to_jsonb(${crypto.randomUUID()}::text))
+        WHERE id=${f.conversation.id}::uuid
+      `);
+    } else {
+      const competitor = await f.coordinator.prepare(f.user.id, {
+        dispatch_target: "claude_code", request_id: crypto.randomUUID(),
+        conversation_id: f.conversation.id, operation: "send",
+        expected_head_message_id: f.wakeHead, text: "live competing foreground",
+      });
+      assert.equal(competitor.ok, true);
+    }
+    await assert.rejects(f.repository.prepareBackgroundResult(f.prepare), { code: "BACKGROUND_CONFLICT" });
+    const [after] = await f.database.db.execute<{ head: string; anchor: string }>(sql`
+      SELECT current_head_message_id::text AS head,
+        provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor
+      FROM conversations WHERE id=${f.conversation.id}::uuid
+    `);
+    assert.equal(after.head, f.wakeHead, "unsafe recovery cannot append an old B");
+    assert.equal(after.anchor, f.wakeHead, "unsafe recovery cannot change the presentation anchor");
+  });
+
 test("committed background reply is one canonical descendant through reopen and pagination", { skip: !enabled }, async t => {
   const f = await fixture(t), reader = new DrizzleNativeLiveCurrentPathReader(f.database.db);
   const read = (options: { afterMessageId?: string; beforeMessageId?: string } = {}) =>
