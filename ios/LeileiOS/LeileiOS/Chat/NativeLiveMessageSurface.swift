@@ -136,7 +136,10 @@ struct NativeLiveMessageSurface: View {
             } action: { old, metrics in
                 contentOffset = metrics.offset
                 scrollState.geometryChanged(isNearBottom:metrics.nearBottom)
-                if old.height != metrics.height && scrollState.shouldFollowContent && preservedAnchor == nil { scrollToBottom(proxy) }
+                // Follow genuinely appended content only when the prior viewport was
+                // already at its bottom. Shrinking/replacing a provisional turn
+                // must not issue another scroll command and amplify the handoff.
+                if metrics.height > old.height && old.nearBottom && scrollState.shouldFollowContent && preservedAnchor == nil { scrollToBottom(proxy) }
             }
             .onScrollPhaseChange { _, phase in
                 let interacting = phase == .tracking || phase == .interacting || phase == .decelerating
