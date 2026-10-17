@@ -98,6 +98,11 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
  * producer checkpoint: Mac verifies B -> F before journaling the cover. */
 async function coveringSnapshot(tx: Transaction, userId: string, origin: Source,
   preparedContext: Snapshot, coveringCheckpointId: string, nativeForegroundParentCheckpointId: string): Promise<Snapshot | null> {
+  // Serialize head selection with normal foreground commits, rewind/handoff,
+  // and concurrent background publishers. Never query a moving head then
+  // append under an unrelated later branch.
+  await tx.execute(sql`SELECT id FROM conversations WHERE id=${origin.conversationId}::uuid
+    AND user_id=${userId}::uuid FOR UPDATE`);
   const [lease] = await tx.execute(sql`SELECT 1 FROM native_live_runtime_listener_leases WHERE user_id=${userId}::uuid
     AND dispatch_target='claude_code' AND listener_instance_id=${origin.listenerId}::uuid
       AND lease_expires_at>clock_timestamp() FOR SHARE`);
