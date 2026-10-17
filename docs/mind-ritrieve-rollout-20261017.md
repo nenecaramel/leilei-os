@@ -38,4 +38,4 @@
 - 编译、focused tests、full CI、孤立数据库回归成功（不可用时要说明），在 CI 失败前保持 PR 为 Draft。
 - `scripts/evaluate-mind-embedding.ts` 只接受用户本地路径中的私人标注 JSON，不自动从生产数据库抓数据，不提交明文样本；控制台只输出聚合指标。
 
-**当前状态（2026-10-18）**：Mac 已安装并使用真实 ritrieve 模型（1792 维），96 条合成记忆 warm-query P95 165.5ms；本机 `pnpm typecheck`、Mind 专项 48/48、生产运行时门禁 355/355 均通过。之前缺失的独立 Claude Agent SDK 依赖和读取真实恢复目录的测试隔离问题已排除，未更改线上恢复保护。仍没有可确认的绿色 GitHub CI、真实 Mind 召回准确率对照、实际全库 P95 或 Hook→Railway 端到端结果；PR 仍 Draft，不自动合并或开启 `indexed_v1`。
+**当前状态（2026-10-18）**：Mac 已安装并使用真实 ritrieve 模型（1792 维），96 条合成记忆 warm-query P95 165.5ms；本机 `pnpm typecheck`、Mind 专项 48/48、生产运行时门禁 355/355 曾通过，后续 staging 实验脚本提交需重新检查。Railway **独立项目**部署了独立 Postgres 和测试 API，HTTP 合成快照/鉴权/服务端评分/空评分/隐藏隔离均通过；Mac 上真实模型→测试库快照→认证 Railway recall 联调可达，实测 2 个正例均命中，隐藏记忆未泄露。**相关性验收仍失败：无关的“太阳系里有哪些行星”分数 0.7487，超过当前小样本 0.68 阈值，被错误召回**。因此不能宣称零无关召回，也不能启用生产 `indexed_v1`。新增完全离线的 `scripts/mind-ritrieve-negative-calibration.ts`，用 20 个正例和 20 个负例对同样 2 条**虚构记忆**做多个阈值探索，等待用户 Mac 运行；合成结果不能代替真实已授权标注集、全库 p95 与误注入率。PR 仍 Draft，生产配置和已有记忆未改动。
