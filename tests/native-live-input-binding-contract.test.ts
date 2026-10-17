@@ -79,7 +79,12 @@ test("pre-native-start autonomous delivery survives the outbox but cannot bypass
   assert.match(router, /stillWithinForeground && foreground\.command\.operation === "send"[\s\S]*?\? \{ deferred: true \}/);
   assert.match(sink, /\.\.\.\(owner\.executionStart === true \? \{ executionStart: true \} : \{\}\)/);
   assert.match(server, /const current = await snapshot\(tx, userId, identity, origin, stored\.executionStart\)/);
-  assert.match(server, /coalesce\(busy\.runtime_metadata->'native_live_input_binding'->>'started','false'\)<>'false'/);
+  // The transaction uses separate exact fences: a pre-start queued send
+  // may admit B only while started=false; a deferred post-start B requires
+  // the same owner's started=true reservation. The former <>false check was
+  // removed when these cases were split.
+  assert.match(server, /\$\{executionStart\} AND coalesce\(busy\.runtime_metadata->'native_live_input_binding'->>'started','false'\)='false'/);
+  assert.match(server, /\$\{deferred\} AND busy\.runtime_metadata->'native_live_input_binding'->>'started'='true'/);
 });
 
 test("temporary overlay is not in the iOS or current-path response", () => {
