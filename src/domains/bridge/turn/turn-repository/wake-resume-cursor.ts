@@ -21,7 +21,7 @@ export async function commitWakeResumeCursorLocked(
     || !row.parentProviderCheckpointId || !row.parentProviderSessionId
     || input.providerSessionId !== row.parentProviderSessionId
     || input.effectiveWorkingDirectory !== row.expectedWorkingDirectory
-    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.providerCheckpointId))
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.providerCheckpointId))
     return "stale";
 
   const wake = row.wakeContext;
