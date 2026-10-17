@@ -65,6 +65,7 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" && /^[A-Z0-9_]{1,32}$/.test(error.code) ? error.code : "UNKNOWN";
-  console.error(`Synthetic Mind staging fixture failed. stage=${fixtureStage} code=${code}`);
+  const constraint = error && typeof error === "object" && "constraint_name" in error && typeof error.constraint_name === "string" && /^runtime_subject_states_[a-z0-9_]{1,96}$/.test(error.constraint_name) ? error.constraint_name : "UNKNOWN";
+  console.error(`Synthetic Mind staging fixture failed. stage=${fixtureStage} code=${code} constraint=${constraint}`);
   process.exitCode = 1;
 });
