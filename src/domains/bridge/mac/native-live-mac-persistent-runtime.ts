@@ -39,6 +39,7 @@ export class NativeLiveMacPersistentRuntime {
     this.backgroundResults = new NativeLiveMacBackgroundResultSink({ listenerInstanceId: input.listenerInstanceId, relay: input.relay,
       outbox,
       isForegroundActive:conversationId=>this.executor.isForegroundActive(conversationId),
+      onImmediateFence: conversationId=>this.executor.suspend(conversationId,"recovery"),
       onRecoveryBlocked:async conversationId=>{this.executor.suspend(conversationId,"recovery");await this.executor.retire(conversationId);},
       onRecovered:conversationId=>this.executor.recovered(conversationId),
     });
