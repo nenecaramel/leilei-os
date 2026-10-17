@@ -26,7 +26,8 @@ function command(n: number, wake = false): NativeLiveRuntimeCommand {
 }
 type BindInput = (input: { phase: "queued" | "started"; commandUuid: string;
   command: NativeLiveRuntimeCommand }) => Promise<{ userMessageId: string; parentProviderCheckpointId: string | null } | null>;
-async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolean>, bindInput?: BindInput) {
+async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolean>, bindInput?: BindInput,
+  callbacks?: Partial<Pick<ConstructorParameters<typeof NativeLiveMacPersistentTurnRouter>[0], "onForegroundCoverage" | "onForegroundPublished" | "onForegroundUnpublished">>) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "persistent-turn-router-")));
   const output = queue<Record<string, unknown>>(), inputs = queue<{ uuid: string; origin: { kind: string } }>();
   const backgroundObserved = queue<string>();
@@ -61,7 +62,7 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
   let allow = true;
   let admissionSink: ((command: NativeLiveRuntimeCommand) => Promise<boolean>) | null = null;
   const router = new NativeLiveMacPersistentTurnRouter({ registry, listenerInstanceId: "listener", relay: { ...(idleAdmission ? { checkTaskAdmission:idleAdmission } : {}), ...(bindInput ? { bindInput } : {}), async checkExecutionAdmission(input) { admissions.push(input.command.prepare_id); return admissionSink ? admissionSink(input.command) : allow; } },
-    async onBackgroundResult(owner, frame) { backgroundOwners.push(structuredClone(owner)); assert.equal(owner.conversationId, conversation); assert.ok(owner.generationId); background.push(frame.result.user_message_uuid as string); return backgroundSink ? backgroundSink() : acknowledged(frame.events.findLast(event => event.type === "assistant")?.uuid as string); } });
+    async onBackgroundResult(owner, frame) { backgroundOwners.push(structuredClone(owner)); assert.equal(owner.conversationId, conversation); assert.ok(owner.generationId); background.push(frame.result.user_message_uuid as string); return backgroundSink ? backgroundSink() : acknowledged(frame.events.findLast(event => event.type === "assistant")?.uuid as string); }, ...callbacks });
   const run = (c: NativeLiveRuntimeCommand, extra = {}) => router.execute({ command: c, async onResult(frame) { results.push(frame.command.prepare_id); return acknowledged(frame.result.events.findLast(event => event.type === "assistant")?.uuid as string); }, ...extra });
   const finish = (uuid: string) => {
     const checkpoint = id(nextCheckpoint++);
@@ -72,6 +73,54 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
   t.after(async () => { await router.close(); await registry.closeAll(); await rm(root, { recursive: true, force: true }); });
   return { router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
 }
+
+test("failed post-F background publication synchronously fences the next foreground send", async t => {
+  const fenced: string[] = [];
+  const f = await fixture(t, undefined, undefined, {
+    onForegroundCoverage: async () => 1,
+    onForegroundPublished: async () => { throw new Error("covered B delivery unknown"); },
+    onForegroundUnpublished: conversationId => fenced.push(conversationId),
+  });
+  const active = f.run(command(1));
+  const input = (await f.inputs.next()).value!;
+  const failed = assert.rejects(active, /covered B delivery unknown/);
+  f.finish(input.uuid);
+  await failed;
+  assert.deepEqual(fenced, [conversation], "committed F must not admit G while B publication is unknown");
+  assert.deepEqual(f.results, [id(1)], "foreground F may already have committed");
+});
+
+test("foreground failure after fsynced B coverage fences the session without publishing B", async t => {
+  const fenced: string[] = [];
+  let published = false;
+  const f = await fixture(t, undefined, undefined, {
+    onForegroundCoverage: async () => 1,
+    onForegroundPublished: async () => { published = true; },
+    onForegroundUnpublished: conversationId => fenced.push(conversationId),
+  });
+  const active = f.run(command(1), { async onResult() { throw new Error("foreground commit failed"); } });
+  const input = (await f.inputs.next()).value!;
+  const failed = assert.rejects(active, /foreground commit failed/);
+  f.finish(input.uuid);
+  await failed;
+  assert.deepEqual(fenced, [conversation]);
+  assert.equal(published, false, "B must remain in the outbox after F fails");
+});
+
+test("successful covered foreground and no-pending-background paths do not fence", async t => {
+  const fenced: string[] = [];
+  let published = 0;
+  const f = await fixture(t, undefined, undefined, {
+    onForegroundCoverage: async () => 1,
+    onForegroundPublished: async () => { published++; },
+    onForegroundUnpublished: conversationId => fenced.push(conversationId),
+  });
+  const active = f.run(command(1));
+  f.finish((await f.inputs.next()).value!.uuid);
+  await active;
+  assert.equal(published, 1);
+  assert.deepEqual(fenced, []);
+});
 
 test("started UUID binds an exact pre-start background advancement before foreground finalization", async t => {
   const bindings: Array<{ phase: string; inputId: string }> = [];
