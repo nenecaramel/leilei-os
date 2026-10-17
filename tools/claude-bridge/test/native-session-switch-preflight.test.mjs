@@ -283,7 +283,8 @@ test('fixed restore command writes only to explicitly configured mock relay and 
       const script = new URL('../scripts/native-session-switch.mjs', import.meta.url).pathname;
       const { stdout, stderr } = await promisify(execFile)(process.execPath, [script, '--restore', '--desktop-index', input.indexFile,
         '--project-dir', input.projectDirectory, '--config-dir', input.configDirectory, '--conversation-id', D], {
-        env: { ...process.env, LEILEI_NATIVE_LIVE_RELAY_URL: `http://127.0.0.1:${server.address().port}`, LEILEI_NATIVE_LIVE_RELAY_TOKEN: 'PRIVATE_TOKEN' },
+        env: { ...process.env, HOME: path.dirname(input.configDirectory),
+          LEILEI_NATIVE_LIVE_RELAY_URL: `http://127.0.0.1:${server.address().port}`, LEILEI_NATIVE_LIVE_RELAY_TOKEN: 'PRIVATE_TOKEN' },
       });
       assert.equal(stderr, ''); assert.equal(requests, 2);
       assert.equal(JSON.parse(stdout).outcome, 'restored');
@@ -385,7 +386,8 @@ test('switch CLI reports canonical rejection reason without exposing server deta
         await assert.rejects(promisify(execFile)(process.execPath,
           [new URL('../scripts/native-session-switch.mjs', import.meta.url).pathname, '--restore', '--desktop-index', input.indexFile,
             '--project-dir', input.projectDirectory, '--config-dir', input.configDirectory],
-          { env: { ...process.env, LEILEI_NATIVE_LIVE_RELAY_URL: `http://127.0.0.1:${server.address().port}`, LEILEI_NATIVE_LIVE_RELAY_TOKEN: 'PRIVATE_TOKEN' } }),
+          { env: { ...process.env, HOME: path.dirname(input.configDirectory),
+             LEILEI_NATIVE_LIVE_RELAY_URL: `http://127.0.0.1:${server.address().port}`, LEILEI_NATIVE_LIVE_RELAY_TOKEN: 'PRIVATE_TOKEN' } }),
           error => error.stderr.trim() === code && !/PRIVATE_TOKEN|PRIVATE_SERVER_DETAIL/.test(error.stderr));
       }
       assert.deepEqual(await readFile(transcriptFile), before);
