@@ -14,7 +14,7 @@ test("Diary list holds a stable scroll anchor and refreshes behind detail withou
   assert.match(rows, /\.scrollPosition\(id: \$scrollPosition\)/);
   assert.match(rows, /\.id\(diary\.id\)/);
   assert.match(page, /await loadDiary\(preservingContent: true\)/);
-  assert.match(page, /\.task \{\s*guard case \.loaded = state else/);
+  assert.match(page, /\.task \{[\s\S]*?if case \.loaded = state \{ return \}/);
 });
 
 test("Archive preserves later loaded batches and their scroll anchor after detail changes", () => {
@@ -27,7 +27,7 @@ test("Archive preserves later loaded batches and their scroll anchor after detai
   assert.match(archive, /private func removeArchivedEntry\(_ id: String\)/);
   assert.match(archive, /completeArchive\?\.removeAll/);
   assert.match(archive, /state = \.loaded\(remaining\)/);
-  assert.match(archive, /onChanged: \{\s*removeArchivedEntry\(diary\.id\)/);
+  assert.match(archive, /onChanged: \{ onRemoved\(diary\.id\) \}/);
   assert.match(archive, /\.task \{\s*if case \.loaded = state \{ return \}/);
 });
 
