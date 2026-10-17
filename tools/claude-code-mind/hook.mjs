@@ -37,7 +37,8 @@ const WRITE_MEMORY_TOOL = /^mcp__[A-Za-z0-9_-]+__write_memory$/;
 const isWriteMemoryTool = name => typeof name === "string" && WRITE_MEMORY_TOOL.test(name);
 const DIAGNOSTIC_REASONS = new Set(["no_pending", "turn_mismatch", "receipt_expired", "confirm_http", "budget_exhausted",
   "chain_excluded", "chain_nothing_proven", "chain_prompt_not_visible", "chain_prompt_mismatch", "chain_prompt_stale",
-  "chain_read_rejected", "chain_timeout", "chain_anchor_verified", "chain_anchor_diverged"]);
+  "chain_read_rejected", "chain_timeout", "chain_anchor_verified", "chain_anchor_diverged",
+  "semantic_no_candidates", "semantic_skipped_budget", "semantic_scored", "semantic_rerank_failed"]);
 const DIAGNOSTIC_EVENTS = new Set(["Stop", "UserPromptSubmit"]);
 
 // Opt-in only: emit bounded reason codes, never prompt, tokens, IDs, hashes,
@@ -643,14 +644,23 @@ export async function runHook(input, output = text => new Promise((resolve, reje
   // Preserve the 3.8s process deadline. Semantic scoring is opportunistic:
   // if the first cross-Pacific recall consumed too much of the budget, emit its
   // lexical result instead of risking a second request that suppresses all recall.
-  if (Array.isArray(data.semantic_candidates) && data.semantic_candidates.length > 0 &&
-      data.semantic_candidates.length <= 256 && Date.now() - invocationStarted < 1500) {
+  if (!Array.isArray(data.semantic_candidates) || data.semantic_candidates.length === 0) {
+    await recordDiagnostic(config, "UserPromptSubmit", "semantic_no_candidates");
+  } else if (data.semantic_candidates.length > 256 || Date.now() - invocationStarted >= 1500) {
+    await recordDiagnostic(config, "UserPromptSubmit", "semantic_skipped_budget");
+  } else {
     try {
       const scores = await semanticScores(config, input.prompt, data.semantic_candidates);
       if (HOOK_DEADLINE_MS - (Date.now() - invocationStarted) > 1200 + DELIVERY_RESERVE_MS) {
         data = await recall(config, {...body, semantic_candidates: data.semantic_candidates, semantic_scores: scores}, 1200);
+        await recordDiagnostic(config, "UserPromptSubmit", "semantic_scored");
+      } else {
+        await recordDiagnostic(config, "UserPromptSubmit", "semantic_skipped_budget");
       }
-    } catch { /* Use the already returned canonical lexical context. */ }
+    } catch {
+      await recordDiagnostic(config, "UserPromptSubmit", "semantic_rerank_failed");
+      // Keep existing canonical lexical recall on scoring or HTTP failure.
+    }
   }
   if (!data.context || data.memory_ids.some(id => exclude.includes(id))) return;
   await withState(config, input.session_id, async (state, save) => {
