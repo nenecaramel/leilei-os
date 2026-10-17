@@ -326,6 +326,75 @@ for (const competitor of ["lease takeover", "head rotation", "second receipt"] a
 
 // Durable-delivery acceptance: an overlay sourced from operational events cannot
 // satisfy these checks. Exercise the real write and current-path readers.
+test("pre-start native B queues and later publishes H -> U -> F -> B without reparenting U", { skip: !enabled }, async t => {
+  const f=await fixture(t);
+  const foreground=await f.coordinator.prepare(f.user.id,{
+    dispatch_target:"claude_code",request_id:crypto.randomUUID(),conversation_id:f.conversation.id,
+    operation:"send",expected_head_message_id:f.completed.assistantMessageId,text:"accepted foreground U",
+  });
+  assert.ok(foreground.ok);
+  if(!foreground.ok)throw Error("foreground reservation missing");
+  const command=foreground.command,deadline=new Date(Date.now()+600_000);
+  await f.database.db.update(nativeLiveTurnPreparations).set({
+    reservedBy:f.prepare.listenerInstanceId,reservedAt:new Date(),reservationExpiresAt:deadline,
+    executionStartedAt:new Date(),dispatchStatus:"executing",
+  }).where(eq(nativeLiveTurnPreparations.id,command.prepare_id));
+  const originalParent=f.completed.assistantMessageId;
+  const userId=command.canonical_user_message_id!;
+  const parent=async()=>{
+    const [user]=await f.database.db.select({parent:conversationMessages.parentMessageId})
+      .from(conversationMessages).where(eq(conversationMessages.id,userId));
+    return user?.parent;
+  };
+  assert.equal(await parent(),originalParent);
+  const binding={
+    userId:f.user.id,listenerInstanceId:f.prepare.listenerInstanceId,reservationId:command.prepare_id,
+    requestId:command.request_id,conversationId:f.conversation.id,runtimeMode:"resume" as const,
+    canonicalUserMessageId:userId,parentProviderSessionId:command.parent_provider_session_id,
+    parentProviderCheckpointId:command.parent_provider_checkpoint_id,
+  };
+  assert.equal((await f.repository.bindInput({...binding,phase:"queued"}))?.parentProviderCheckpointId,f.base);
+  const prestart={...f.prepare,executionStart:true as const,deferred:true as const};
+  await f.repository.prepareBackgroundResult(prestart);
+  assert.deepEqual(await f.repository.submitBackgroundResult(f.submit),{
+    outcome:"queued",duplicate:false,providerCheckpointId:null,
+  });
+  assert.equal((await f.canonical.getConversation({
+    userId:f.user.id,conversationId:f.conversation.id,
+  }))!.currentHeadMessageId,originalParent,
+  "B cannot become canonical before accepted U/F");
+  const started=await f.repository.bindInput({...binding,phase:"started"});
+  assert.equal(started?.parentProviderCheckpointId,f.next,
+    "native F must resume the queued B producer checkpoint, not stale canonical H");
+  assert.equal(await parent(),originalParent,"accepted U's parent is immutable");
+  const covering=crypto.randomUUID();
+  const finished=await f.coordinator.finalize(f.user.id,{
+    protocol_version:4,prepare_id:command.prepare_id,request_id:command.request_id,
+    conversation_id:f.conversation.id,status:"success",provider_session_id:"synthetic-session",
+    provider_checkpoint_id:covering,effective_working_directory:"/synthetic",
+    normalized_events:[{type:"text",payload:{text:"foreground F"}}],
+  });
+  assert.ok(finished.ok&&finished.outcome==="completed");
+  if(!finished.ok||finished.outcome!=="completed")throw Error("foreground did not commit");
+  assert.equal(await parent(),originalParent);
+  await f.repository.markCompleted({userId:f.user.id,
+    listenerInstanceId:f.prepare.listenerInstanceId,reservationId:command.prepare_id});
+  assert.deepEqual(await f.repository.submitBackgroundResult({...f.submit,coveringCheckpointId:covering}),{
+    outcome:"committed",duplicate:false,providerCheckpointId:covering,
+  });
+  const snapshot=(await new DrizzleNativeLiveCurrentPathReader(f.database.db).readCurrentPath({
+    userId:f.user.id,conversationId:f.conversation.id,limit:100,
+  }))!;
+  assert.deepEqual(snapshot.messages.map(x=>x.id),[
+    f.source.command.canonical_user_message_id!,originalParent,userId,finished.assistantMessageId,f.prepare.receiptId,
+  ]);
+  assert.equal(snapshot.messages.at(-1)!.parentMessageId,finished.assistantMessageId);
+  assert.equal((await f.canonical.getProviderCheckpointForHead({
+    userId:f.user.id,conversationId:f.conversation.id,canonicalMessageId:f.prepare.receiptId,
+  }))!.providerCheckpointId,covering);
+  assert.equal(await parent(),originalParent);
+});
+
 test("started foreground commits before queued autonomous output, with F covering B's earlier producer checkpoint", { skip: !enabled }, async t => {
   const f = await fixture(t);
   // Canonical source H is finalized. Stage U/F on the same native session and
