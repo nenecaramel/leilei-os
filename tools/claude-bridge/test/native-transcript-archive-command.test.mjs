@@ -150,7 +150,23 @@ test('new quarantined receipt during packing aborts the retirement of its sessio
       runNativeTranscriptArchive({ ...f,apply:true,relayUrl:'https://relay.invalid',relayToken:'T',fetchImpl }),
       e => e.code === 'ARCHIVE_PLAN_CHANGED'
     );
-    assert.deepEqual((await readdir(f.project)).sort(),[id(1),id(2),id(3)].map(v=>`${v}.jsonl`));
+    // A late recovery receipt forces retirement rollback. The original paths
+    // are hard-linked back, while the private staging directory and manifest
+    // intentionally remain as recovery evidence (not an archive leak).
+    const rootEntries = await readdir(f.project);
+    assert.deepEqual(rootEntries.filter(name => name.endsWith('.jsonl')).sort(),
+      [id(1),id(2),id(3)].map(v=>`${v}.jsonl`));
+    const staging = rootEntries.filter(name => name.startsWith('.archive-recovery-'));
+    assert.equal(staging.length, 1, 'one private rollback directory must remain');
+    const recoveryMarkers = (await readdir(f.archiveDirectory)).filter(name => name.endsWith('.recovery.json'));
+    assert.equal(recoveryMarkers.length, 1, 'a failed retirement must leave its recovery manifest');
+    const recovery = JSON.parse(await readFile(path.join(f.archiveDirectory,recoveryMarkers[0]),'utf8'));
+    assert.equal(recovery.reason,'ARCHIVE_PLAN_CHANGED');
+    assert.equal(recovery.stagingDirectory,path.join(f.project,staging[0]));
+    assert.deepEqual(recovery.members,[`${id(3)}.jsonl`]);
+    const original = await readFile(path.join(f.project,`${id(3)}.jsonl`));
+    const retained = await readFile(path.join(recovery.stagingDirectory,`${id(3)}.jsonl`));
+    assert.deepEqual(original,retained,'restored original is byte-identical to staged recovery source');
     assert.ok((await readFile(blockedPath(f),'utf8')).includes(id(3)));
   } finally { await rm(f.root,{recursive:true,force:true}); }
 });
