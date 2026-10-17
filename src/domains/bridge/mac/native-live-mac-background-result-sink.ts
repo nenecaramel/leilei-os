@@ -228,6 +228,11 @@ export class NativeLiveMacBackgroundResultSink {
       // canonical session checkpoint.
       const value=(await this.input.outbox.list()).find(v=>
         (!v.deferred || v.coveringCheckpointId)
+        // F may have fsynced its covering proof but not committed its own
+        // canonical result yet. Only F's post-commit drain can publish B
+        // while that foreground writer is active. Otherwise a periodic
+        // flush could turn a benign "queued" into a spurious retirement.
+        && !(v.deferred && this.input.isForegroundActive?.(v.result.conversation_id))
         && (this.retryAfter.get(v.receiptId)??0)<=now);
       if(!value)return 0;
       try {
