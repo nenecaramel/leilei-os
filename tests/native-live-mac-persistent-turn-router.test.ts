@@ -195,6 +195,33 @@ test("native background after started foreground advances only queued provider e
   assert.deepEqual(f.results,[id(1),id(2)]);
 });
 
+test("post-start autonomous receipt waits for pending foreground bind", async t => {
+  const pending = deferred<{ userMessageId:string; parentProviderCheckpointId:string|null }|null>();
+  const phases:string[] = [];
+  const f = await fixture(t,undefined,async input=>{
+    phases.push(input.phase);
+    return input.phase==="started" ? pending.promise :
+      {userMessageId:input.commandUuid,parentProviderCheckpointId:checkpoint};
+  });
+  const first=f.run(command(1));
+  f.finish((await f.inputs.next()).value!.uuid); await first;
+  let reached=false;
+  f.setBackground(async()=>{ reached=true; return {status:"queued",providerCheckpointId:id(102)}; });
+  const second=f.run(command(2)), input=(await f.inputs.next()).value!;
+  f.output.push({type:"command_lifecycle",state:"started",command_uuid:input.uuid,session_id:sid});
+  for(let i=0;i<100&&phases.length<2;i++)await new Promise(setImmediate);
+  assert.deepEqual(phases,["queued","started"]);
+  f.finish(id(77));
+  await f.backgroundObserved.next();
+  await new Promise(setImmediate);
+  assert.equal(reached,false);
+  pending.resolve({userMessageId:input.uuid,parentProviderCheckpointId:checkpoint});
+  for(let i=0;i<100&&!reached;i++)await new Promise(setImmediate);
+  assert.equal(reached,true);
+  assert.equal(f.backgroundOwners.at(-1)?.deferred,true);
+  f.finish(input.uuid); await second;
+});
+
 test("native started binding missing or disagreeing with live cursor rejects the foreground result", async t => {
   const f = await fixture(t, undefined, async input => ({
     userMessageId: input.commandUuid,
