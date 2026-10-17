@@ -176,7 +176,10 @@ test("authenticated HTTP background preparation and submission return the durabl
   const { withServer } = await import("./helpers/native-live-http-relay-fixtures.js");
   const { createNativeLiveRelayInternalRouter } = await import("../src/web-api/native-live-relay-internal-router.js");
   const { NativeLiveBackendRelayService } = await import("../src/domains/bridge/relay/native-live-backend-relay.js");
-  const service = new NativeLiveBackendRelayService(f.repository, f.coordinator);
+  const notifications: Array<{ userId: string; kind: string; prepareId: string }> = [];
+  const service = new NativeLiveBackendRelayService(f.repository, f.coordinator, {
+    async notify(input) { notifications.push(input); },
+  });
   await withServer(app => {
     app.use((request, _response, next) => { request.mcpUserId = f.user.id; next(); });
     app.use("/relay", createNativeLiveRelayInternalRouter({ relayService: service }));
@@ -192,8 +195,25 @@ test("authenticated HTTP background preparation and submission return the durabl
     const retry = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body });
     assert.equal(retry.status, 200); assert.deepEqual((await retry.json() as { data: unknown }).data, { outcome: "committed", duplicate: true, providerCheckpointId: f.next });
   });
+  assert.deepEqual(notifications, [{
+    userId: f.user.id, kind: "turn_terminal", prepareId: f.prepare.sourcePrepareId,
+  }], "iOS head long-poll wakes only on the first canonical commit, not an idempotent retry");
 });
 
+
+test("temporary iOS wake notification failure does not undo a committed ordinary background message", { skip: !enabled }, async t => {
+  const f=await fixture(t);
+  const { NativeLiveBackendRelayService } = await import("../src/domains/bridge/relay/native-live-backend-relay.js");
+  const service=new NativeLiveBackendRelayService(f.repository,f.coordinator,{
+    async notify() { throw new Error("notification transport temporarily unavailable"); },
+  });
+  await service.prepareBackgroundResult(f.prepare);
+  const ack=await service.submitBackgroundResult(f.submit);
+  assert.deepEqual(ack,{outcome:"committed",duplicate:false,providerCheckpointId:f.next});
+  assert.equal((await f.canonical.getConversation({
+    userId:f.user.id,conversationId:f.conversation.id,
+  }))!.currentHeadMessageId,f.prepare.receiptId);
+});
 
 test("a prepared receipt expires closed, while committed receipt retries preserve their original outcome", { skip: !enabled }, async t => {
   const f = await fixture(t); await f.repository.prepareBackgroundResult(f.prepare);
