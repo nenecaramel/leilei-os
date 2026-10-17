@@ -99,6 +99,8 @@ export class LocalRitrieveBreathSemanticScorer implements BreathSemanticScorer {
     const data = await this.send({op: "search", query, limit});
     if (!/^[a-f0-9]{64}$/.test(String(data.version)) || !Array.isArray(data.hits) ||
       !Number.isInteger(data.count) || (data.count as number) < 0 ||
+      (data.floor !== undefined && (typeof data.floor !== "number" ||
+        !Number.isFinite(data.floor) || data.floor < 0 || data.floor > 1)) ||
       data.hits.length > limit || !data.hits.every(hit => Array.isArray(hit) &&
         hit.length === 2 && typeof hit[0] === "string" &&
         typeof hit[1] === "number" && Number.isFinite(hit[1]) && hit[1] >= 0 && hit[1] <= 1)) {
