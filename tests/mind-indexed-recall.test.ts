@@ -1,0 +1,81 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createMindState } from "../src/domains/runtime/mind/mind-writer.js";
+import { mindSnapshotVersion, snapshotMemories } from "../src/domains/runtime/mind/mind-snapshot-version.js";
+import { ClaudeCodeMindRecallService } from "../src/domains/runtime/mind/claude-code-mind-recall.js";
+import { DEFAULT_MIND_LOOP_CONFIG } from "../src/domains/runtime/mind/default-backend-mind-runtime.js";
+import type { SubjectStateWrite } from "../src/domains/runtime/subject-state/subject-state-contract.js";
+
+const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+function memory(n: number, text: string): SubjectStateWrite {
+  return createMindState({id: uuid(n), userId: "u1", subjectId: "G", kind: "memory", text,
+    source: {origin: "manual", occurredAt: null, note: null}});
+}
+const receipts = {
+  create: async () => ({recall_id: uuid(80), context_sha256: "a".repeat(64)}),
+  confirm: async () => ({outcome: "confirmed" as const}),
+};
+
+test("snapshot excludes invalid, non-global and hidden memories; version tracks text and status", () => {
+  const valid = memory(1, "他曾经答应不会再这样");
+  const hidden = memory(2, "private system note");
+  hidden.envelope.scope.visibility = "hidden_system";
+  const invalid = memory(3, "invalid");
+  invalid.envelope.status.validityStatus = "invalidated";
+  const scoped = memory(4, "conversation-scoped");
+  scoped.envelope.scope = {...scoped.envelope.scope, applicability: "conversation",
+    conversationId: "different"};
+  const states = [valid, hidden, invalid, scoped];
+  assert.deepEqual(snapshotMemories(states), [{stateId: uuid(1), text: valid.text}]);
+  const before = mindSnapshotVersion(states);
+  valid.text = "他曾答应不会再重复";
+  assert.notEqual(mindSnapshotVersion(states), before);
+  const afterEdit = mindSnapshotVersion(states);
+  valid.envelope.status.pathStatus = "superseded";
+  assert.notEqual(mindSnapshotVersion(states), afterEdit);
+  assert.equal(snapshotMemories(states).length, 0);
+});
+
+test("verified current snapshot uses meaning-based scores, rejects keyword distraction and empty results", async () => {
+  const states = [memory(1, "你又这样对我"), memory(2, "过去反复发生的承诺失信和争执")];
+  const reader = {list: async () => states};
+  const service = new ClaudeCodeMindRecallService(reader, DEFAULT_MIND_LOOP_CONFIG, "G", receipts);
+  const initial = await service.snapshot({userId: "u1", offset: 0});
+  assert.equal(initial.total, 2);
+  assert.equal(initial.next_offset, null);
+  const input = {userId: "u1", sessionId: "s", query: "你又这样对我", excludeIds: []};
+  const selected = await service.recall({
+    ...input, semanticSnapshotVersion: initial.version,
+    snapshotScores: new Map([[uuid(2), .95]]),
+  });
+  assert.equal(selected.semantic_mode, "snapshot_v1");
+  assert.deepEqual(selected.memory_ids, [uuid(2)]);
+  const empty = await service.recall({
+    ...input, semanticSnapshotVersion: initial.version, snapshotScores: new Map(),
+  });
+  assert.equal(empty.semantic_mode, "snapshot_v1");
+  assert.deepEqual(empty.memory_ids, []);
+  assert.equal(empty.context, "");
+  states[1]!.text = "changed since cached";
+  const stale = await service.recall({
+    ...input, semanticSnapshotVersion: initial.version,
+    snapshotScores: new Map([[uuid(2), .95]]),
+  });
+  assert.equal(stale.semantic_mode, "legacy");
+  assert.deepEqual(stale.memory_ids, [uuid(1)]);
+});
+
+test("cached snapshot cannot rank hidden or missing IDs", async () => {
+  const states = [memory(1, "tea"), memory(2, "secret")];
+  states[1]!.envelope.scope.visibility = "hidden_system";
+  const service = new ClaudeCodeMindRecallService({list: async () => states},
+    DEFAULT_MIND_LOOP_CONFIG, "G", receipts);
+  const version = (await service.snapshot({userId: "u1", offset: 0})).version;
+  const rejected = await service.recall({
+    userId: "u1", sessionId: "s", query: "tea", excludeIds: [],
+    semanticSnapshotVersion: version,
+    snapshotScores: new Map([[uuid(2), 1]]),
+  });
+  assert.equal(rejected.semantic_mode, "legacy");
+  assert.ok(!rejected.memory_ids.includes(uuid(2)));
+});
