@@ -80,6 +80,7 @@ struct MindMemoryListView: View {
                                 maxWidth: .infinity,
                                 alignment: .center
                             )
+                            .listRowSeparator(.hidden)
                         }
                     }
                 }
@@ -201,6 +202,7 @@ struct MindMemoryListView: View {
                     }
                     .disabled(searchLoadingMore)
                     .frame(maxWidth: .infinity, alignment: .center)
+                    .listRowSeparator(.hidden)
                 }
                 if searchFailed {
                     Button("Retry") {
