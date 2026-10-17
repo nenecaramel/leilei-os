@@ -230,7 +230,7 @@ test("queued transport acknowledgement cannot satisfy canonical foreground final
   const failed=assert.rejects(running,/finalization was rejected/);
   f.finish((await f.inputs.next()).value!.uuid);
   await failed;
-  assert.equal(f.router.providerCheckpointId,id(101),"never advance to an uncommitted foreground cursor");
+  assert.equal(f.router.providerCheckpointId,null,"never advance to an uncommitted foreground cursor");
 });
 
 test("native started binding missing or disagreeing with live cursor rejects the foreground result", async t => {
