@@ -713,7 +713,7 @@ export async function runHook(input, output = text => new Promise((resolve, reje
         const indexed = await indexedSearch(config, query, Math.min(850, available - 1100));
         body.semantic_snapshot_version = indexed.version;
         body.snapshot_scores = Object.fromEntries(indexed.hits
-          .filter(hit => hit.score >= 0.68).slice(0, 48)
+          .filter(hit => hit.score >= Math.max(0.68, indexed.floor ?? 0.68)).slice(0, 48)
           .map(hit => [hit.stateId, hit.score]));
       } else {
         await recordDiagnostic(config, "UserPromptSubmit", "semantic_skipped_budget");
