@@ -7,6 +7,7 @@ struct MindItemDetailView: View {
 
     let initialItem: MindProductItem
     let onDeleted: () -> Void
+    let onUpdated: ((MindProductItem) -> Void)?
 
     @State private var item: MindProductItem
     @State private var editing = false
@@ -16,10 +17,12 @@ struct MindItemDetailView: View {
 
     init(
         initialItem: MindProductItem,
-        onDeleted: @escaping () -> Void
+        onDeleted: @escaping () -> Void,
+        onUpdated: ((MindProductItem) -> Void)? = nil
     ) {
         self.initialItem = initialItem
         self.onDeleted = onDeleted
+        self.onUpdated = onUpdated
         _item = State(initialValue: initialItem)
     }
 
@@ -166,7 +169,7 @@ struct MindItemDetailView: View {
         .sheet(isPresented: $editing) {
             MemoryEditorSheet(initialItem: item) { updated in
                 item = updated
-                onDeleted()
+                onUpdated?(updated)
             }
         }
         .toolbar {

@@ -54,6 +54,7 @@ struct DiaryListSkeleton: View {
 
 struct DiaryList: View {
     let diaries: [DiaryEntry]
+    @Binding var scrollPosition: String?
     let onChanged: () -> Void
 
     var body: some View {
@@ -69,6 +70,7 @@ struct DiaryList: View {
                         } label: {
                             DiaryRow(diary: diary)
                         }
+                        .id(diary.id)
                         .listRowBackground(Color(.systemBackground))
                         .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
                         .listRowSeparator(
@@ -80,6 +82,7 @@ struct DiaryList: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollPosition(id: $scrollPosition)
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
     }

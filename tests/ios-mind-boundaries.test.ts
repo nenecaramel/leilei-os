@@ -33,7 +33,7 @@ test("Mind memory feed owns loading, retry, pagination and useful row metadata",
   assert.match(source, /!existing\.contains\(\$0\.id\)/);
   assert.match(source, /MindPresentation\.sourceLabel\(item\.source\)/);
   assert.match(source, /MindPresentation\.dateText/);
-  assert.match(source, /onDeleted: \{\s*reloadToken = UUID\(\)/);
+  assert.match(source, /onDeleted: \{\s*removeMindItem\(id: item\.id\)/);\n  assert.match(source, /onUpdated: \{ updated in\s*updateMindItem\(updated\)/);
   assert.doesNotMatch(source, /createManualMind|deleteMind|let kind: MindProductKind/);
 });
 
@@ -113,4 +113,16 @@ test("Mind iOS uses native search/composer and its own Memory editor design", ()
   assert.doesNotMatch(feed, /\.listStyle\(\.insetGrouped\)/);
   assert.match(editor, /conflictUnresolved/);
   assert.match(editor, /Button\("Keep my draft"\)/);
+});
+
+test("Mind More pagination rows hide the stray bottom separator in both feeds", () => {
+  const source = surface("MindKindList");
+  const normal = source.split("if nextCursor != nil {")[1]!.split(".listStyle(.plain)")[0]!;
+  const filtered = source.split("if searchCursor != nil {")[1]!.split("if searchFailed {")[0]!;
+  for (const row of [normal, filtered]) {
+    assert.match(row, /Button\("More"\)/);
+    assert.match(row, /\.listRowSeparator\(\.hidden\)/);
+  }
+  // Ordinary Mind entries should still retain their standard separators.
+  assert.doesNotMatch(normal.split('Button("More")')[0]!, /\.listRowSeparator\(\.hidden\)/);
 });

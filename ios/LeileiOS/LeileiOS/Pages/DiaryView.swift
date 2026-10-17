@@ -20,6 +20,7 @@ struct DiaryView: View {
     @State private var diaryCount: Int?
     @State private var state: DiaryLoadState = .loading
     @State private var loadGeneration = 0
+    @State private var listScrollPosition: String?
 
     var body: some View {
         Group {
@@ -75,9 +76,9 @@ struct DiaryView: View {
                         )
                     }
                 } else {
-                    DiaryList(diaries: visibleDiaries) {
+                    DiaryList(diaries: visibleDiaries, scrollPosition: $listScrollPosition) {
                         Task {
-                            await loadDiary()
+                            await loadDiary(preservingContent: true)
                         }
                     }
                 }
@@ -88,14 +89,14 @@ struct DiaryView: View {
         .navigationDestination(isPresented: $archivePresented) {
             DiaryArchiveView {
                 Task {
-                    await loadDiary()
+                    await loadDiary(preservingContent: true)
                 }
             }
         }
         .navigationDestination(isPresented: $createPresented) {
             DiaryCreateView {
                 Task {
-                    await loadDiary()
+                    await loadDiary(preservingContent: true)
                 }
             }
         }
@@ -178,7 +179,7 @@ struct DiaryView: View {
                     diaryID: target.diaryID,
                     onChanged: {
                         Task {
-                            await loadDiary()
+                            await loadDiary(preservingContent: true)
                         }
                     }
                 )
@@ -187,13 +188,15 @@ struct DiaryView: View {
                     diaryID: target.diaryID,
                     onChanged: {
                         Task {
-                            await loadDiary()
+                            await loadDiary(preservingContent: true)
                         }
                     }
                 )
             }
         }
         .task {
+            // Back navigation must not rebuild an already loaded list.
+            if case .loaded = state { return }
             await loadDiary()
         }
         .task(id: target) {

@@ -4,6 +4,7 @@ struct MindMemoryReadView: View {
     @EnvironmentObject private var appModel: AppModel
     let id: String
     let onChanged: () -> Void
+    var onUpdated: ((MindProductItem) -> Void)? = nil
 
     @State private var item: MindProductItem?
     @State private var failed = false
@@ -12,7 +13,7 @@ struct MindMemoryReadView: View {
     var body: some View {
         Group {
             if let item {
-                MindItemDetailView(initialItem: item, onDeleted: onChanged)
+                MindItemDetailView(initialItem: item, onDeleted: onChanged, onUpdated: onUpdated)
             } else if failed {
                 AppStateSurface(title: "Unavailable", actionTitle: "Retry") {
                     retryToken = UUID()

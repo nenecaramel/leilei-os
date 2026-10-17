@@ -9,6 +9,7 @@ struct DiaryArchiveView: View {
     @State private var diaryCount: Int?
     @State private var completeArchive: [DiaryEntry]?
     @State private var isLoadingMoreArchive = false
+    @State private var listScrollPosition: String?
 
     var body: some View {
         Group {
@@ -34,6 +35,7 @@ struct DiaryArchiveView: View {
                 } else {
                     DiaryArchiveList(
                         diaries: diaries,
+                        scrollPosition: $listScrollPosition,
                         hasMore:
                             diaries.count < (diaryCount ?? diaries.count),
                         isLoadingMore: isLoadingMoreArchive,
@@ -42,10 +44,8 @@ struct DiaryArchiveView: View {
                                 await loadMoreArchive()
                             }
                         }
-                    ) {
-                        Task {
-                            await loadArchive()
-                        }
+                    ) { id in
+                        removeArchivedEntry(id)
                         onActiveDiaryChanged()
                     }
                 }
@@ -64,6 +64,8 @@ struct DiaryArchiveView: View {
             }
         }
         .task {
+            // A popped detail must not reset pagination or the list anchor.
+            if case .loaded = state { return }
             await loadArchive()
         }
         .refreshable {
@@ -86,6 +88,18 @@ struct DiaryArchiveView: View {
         } catch {
             state = .unavailable("Unavailable")
         }
+    }
+
+    // Only an actual restore/delete removes the single affected row. Keep
+    // previously appended archive batches and their scroll coordinates.
+    @MainActor
+    private func removeArchivedEntry(_ id: String) {
+        guard case .loaded(let diaries) = state else { return }
+        let remaining = diaries.filter { $0.id != id }
+        guard remaining.count != diaries.count else { return }
+        completeArchive?.removeAll { $0.id == id }
+        diaryCount = diaryCount.map { max(0, $0 - 1) }
+        state = .loaded(remaining)
     }
 
     @MainActor
@@ -158,10 +172,11 @@ struct DiaryArchiveView: View {
 
 private struct DiaryArchiveList: View {
     let diaries: [DiaryEntry]
+    @Binding var scrollPosition: String?
     let hasMore: Bool
     let isLoadingMore: Bool
     let onLoadMore: () -> Void
-    let onChanged: () -> Void
+    let onRemoved: (String) -> Void
 
     var body: some View {
         List {
@@ -171,11 +186,12 @@ private struct DiaryArchiveList: View {
                         NavigationLink {
                             DiaryArchivedDetailView(
                                 diaryID: diary.id,
-                                onChanged: onChanged
+                                onChanged: { onRemoved(diary.id) }
                             )
                         } label: {
                             DiaryRow(diary: diary)
                         }
+                        .id(diary.id)
                         .listRowBackground(Color(.systemBackground))
                         .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
                         .listRowSeparator(
@@ -207,6 +223,7 @@ private struct DiaryArchiveList: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollPosition(id: $scrollPosition)
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
     }
