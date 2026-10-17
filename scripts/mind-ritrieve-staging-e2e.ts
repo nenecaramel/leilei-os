@@ -49,7 +49,7 @@ try {
     assert.ok(result.hits.every(hit => hit.stateId !== HIDDEN), "Hidden fixture was indexed.");
 
     const responseStarted = performance.now();
-    const response = await fetch(`${STAGING_URL}/internal/mind/recall`, {
+    const response: Response = await fetch(`${STAGING_URL}/internal/mind/recall`, {
       method: "POST",
       redirect: "error",
       signal: AbortSignal.timeout(12000),
