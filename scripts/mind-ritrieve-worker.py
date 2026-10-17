@@ -103,6 +103,10 @@ def main():
                        or not row[1].strip() or len(row[1]) > 2000
                        for row in rows):
                     raise ValueError("invalid snapshot row")
+                # Reject duplicates within this page BEFORE mutating staging.
+                ids = [row[0] for row in rows]
+                if len(set(ids)) != len(ids) or any(state_id in staging for state_id in ids):
+                    raise ValueError("duplicate memory")
                 reuse = []
                 changed = []
                 for state_id, text in rows:
