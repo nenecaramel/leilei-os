@@ -205,6 +205,26 @@ test("daemon periodic flush cannot publish covered B before its active F commits
   assert.equal((await f.outbox.list()).length,0);
 });
 
+test("post-F drain fences a late deferred B that missed the covering snapshot",async t=>{
+  const f=await fixture(t),fences:string[]=[];
+  const sink=new NativeLiveMacBackgroundResultSink({
+    listenerInstanceId:id(7),relay:f.relay,outbox:f.outbox,
+    onImmediateFence:id=>fences.push(id),
+  });
+  await f.outbox.save({
+    sourcePrepareId:id(3),receiptId:id(80),listenerInstanceId:id(7),
+    generationId:id(2),parentProviderCheckpointId:id(5),deferred:true,
+    result:{
+      protocol_version:4,prepare_id:id(3),request_id:id(4),conversation_id:id(1),
+      status:"success",provider_session_id:"synthetic",effective_working_directory:"/synthetic",
+      provider_checkpoint_id:id(6),normalized_events:frame.normalizedEvents,
+    },
+  });
+  await assert.rejects(sink.publishCovered(id(1),id(2)),/Uncovered autonomous output/);
+  assert.deepEqual(fences,[id(1)]);
+  assert.equal((await f.outbox.list()).length,1,"late B remains recoverable, never silently cleared");
+});
+
 test("orphaned deferred background is fenced after foreground failure or daemon restart",async t=>{
   const f=await fixture(t);let active=true;const blocked:string[]=[];
   const relay={...f.relay,async submitBackgroundResult(){
