@@ -113,6 +113,15 @@ export async function finalizeSuccess(
           if (row.status !== "prepared") {
             return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
           }
+          // The native-start fence lives on the preparation. It must survive
+          // finalization, because a queued autonomous segment's later covering
+          // proof must locate the exact foreground turn that started.
+          const nativeInputBinding = (row.runtimeMetadata as Record<string, unknown> | null)
+            ?.native_live_input_binding;
+          if (nativeInputBinding && (
+            typeof nativeInputBinding !== "object"
+            || (nativeInputBinding as Record<string, unknown>).started !== true
+          )) return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
 
           const conversations =
             new DrizzleNativeLiveConversationRepository(
@@ -339,7 +348,9 @@ export async function finalizeSuccess(
               effectiveWorkingDirectory: input.effectiveWorkingDirectory,
               providerCheckpointId: input.providerCheckpointId ?? null,
               runtimeMetadata:
-                { ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}), native_live_generation: { presentation_owner_id: sessionGeneration?.presentation_owner_id ?? null, source_revision: sessionGeneration?.source_revision ?? null }, ...(input.providerCheckpointId ? { provider_checkpoint_version: 1 } : {}), turn_started_at: row.createdAt.toISOString(), ...(timingEvents.length ? { native_live_turn_timing_events: timingEvents } : {}) },
+                { ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}),
+                    ...(nativeInputBinding ? { native_live_input_binding: nativeInputBinding } : {}),
+                    native_live_generation: { presentation_owner_id: sessionGeneration?.presentation_owner_id ?? null, source_revision: sessionGeneration?.source_revision ?? null }, ...(input.providerCheckpointId ? { provider_checkpoint_version: 1 } : {}), turn_started_at: row.createdAt.toISOString(), ...(timingEvents.length ? { native_live_turn_timing_events: timingEvents } : {}) },
             },
           });
 
@@ -380,8 +391,10 @@ export async function finalizeSuccess(
               status: "finalized_success",
               resultHash,
               providerSessionId: input.providerSessionId,
-              runtimeMetadata:
-                input.runtimeMetadata as Record<string, unknown> | null,
+              runtimeMetadata: {
+                ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}),
+                ...(nativeInputBinding ? { native_live_input_binding: nativeInputBinding } : {}),
+              },
               assistantMessageId: assistantMessage.id,
               failureCode: null,
               finalizedAt,
