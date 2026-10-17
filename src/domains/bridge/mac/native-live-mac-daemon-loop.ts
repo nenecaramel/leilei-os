@@ -950,7 +950,7 @@ export class NativeLiveMacDaemonLoop {
           operation: reservation.command.operation,
           runtimeMode: reservation.command.runtime_mode,
           errorName, errorMessage,
-        }) + "\\n");
+        }) + "\n");
         await flushRuntimeEvents();
         await this.bestEffortReject(reservation.reservationId, "INVALID_COMMAND");
         return {
