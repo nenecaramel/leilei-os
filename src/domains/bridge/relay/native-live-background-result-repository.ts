@@ -98,7 +98,8 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
  * This is still server-side ancestry, not an independent proof of the CLI
  * producer checkpoint: Mac verifies B -> F before journaling the cover. */
 async function coveringSnapshot(tx: Transaction, userId: string, origin: Source,
-  preparedContext: Snapshot, coveringCheckpointId: string, nativeForegroundParentCheckpointId: string): Promise<Snapshot | null> {
+  identity: NativeLiveBackgroundIdentity, preparedContext: Snapshot,
+  coveringCheckpointId: string, nativeForegroundParentCheckpointId: string): Promise<Snapshot | null> {
   // Serialize head selection with normal foreground commits, rewind/handoff,
   // and concurrent background publishers. Never query a moving head then
   // append under an unrelated later branch.
@@ -147,7 +148,30 @@ async function coveringSnapshot(tx: Transaction, userId: string, origin: Source,
           AND fc.canonical_message_id=witness.id AND fc.provider='claude_code'
         WHERE foreground.runtime_metadata->'native_live_input_binding'->>'started'='true'
           AND foreground.parent_provider_session_id=${preparedContext.providerSessionId}
-          AND foreground.parent_provider_checkpoint_id=${nativeForegroundParentCheckpointId}
+          AND (
+            foreground.parent_provider_checkpoint_id=${nativeForegroundParentCheckpointId}
+            OR EXISTS (
+              -- F began natively after B1/B2 were queued. Its parent cursor
+              -- is the last producer B, while accepted user U still belongs
+              -- canonically to H. Require that producer's own prior
+              -- authenticated, same-owner native receipt (never a guess).
+              SELECT 1 FROM native_live_runtime_events producer
+              WHERE producer.user_id=${userId}::uuid
+                AND producer.prepare_id=${origin.id}::uuid
+                AND producer.event_type='runtime'
+                AND producer.payload->>'kind'='persistent_background_receipt_v1'
+                AND producer.payload->>'phase' IN ('queued','committed')
+                AND producer.payload->>'executionStart'='true'
+                AND producer.payload->>'deferred'='true'
+                AND producer.payload->'identity'->>'listenerInstanceId'=${identity.listenerInstanceId}
+                AND producer.payload->'identity'->>'generationId'=${identity.generationId}
+                AND producer.payload->'context'->>'providerSessionId'=${preparedContext.providerSessionId}
+                AND producer.payload->'context'->>'canonicalMessageId'=${origin.assistantId}
+                AND producer.payload->'context'->>'presentationOwnerId'=foreground.id::text
+                AND producer.payload->'context'->>'sourceRevision' IS NOT DISTINCT FROM ${preparedContext.sourceRevision}
+                AND producer.payload->'result'->>'provider_checkpoint_id'=foreground.parent_provider_checkpoint_id
+            )
+          )
           AND fc.provider_session_id=${preparedContext.providerSessionId}
           AND fc.provider_checkpoint_id=${coveringCheckpointId}
       )
@@ -315,7 +339,7 @@ export async function submitNativeLiveBackgroundResult(db: Database, input: Nati
         if (!predecessor)
           return { outcome: "queued", duplicate: true, providerCheckpointId: null };
       }
-      const covering = await coveringSnapshot(tx, userId, origin, stored.context,
+      const covering = await coveringSnapshot(tx, userId, origin, identity, stored.context,
         requireUuid(input.coveringCheckpointId, "coveringCheckpointId"),
         stored.nativeForegroundParentCheckpointId ?? stored.context.parentProviderCheckpointId);
       if (!covering) return { outcome: "queued", duplicate: true, providerCheckpointId: null };
