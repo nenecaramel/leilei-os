@@ -13,7 +13,7 @@ type Transaction = Parameters<Database["transaction"]>[0] extends (tx: infer T) 
 type Source = { id: string; requestId: string; conversationId: string; sessionId: string | null; assistantId: string | null; listenerId: string | null; status: string; dispatch: string };
 type Snapshot = { id: string; canonicalMessageId: string; providerSessionId: string; baseCheckpointId: string; parentProviderCheckpointId: string; cwd: string | null; presentationOwnerId: string | null; sourceRevision: string | null };
 export type NativeLiveBackgroundReceipt = Record<string, unknown> & { kind: "persistent_background_receipt_v1"; phase: "prepared" | NativeLiveBackgroundAck["outcome"];
-  identity: NativeLiveBackgroundIdentity; prepareHash: string; resultHash: string | null; context: Snapshot; expiresAt: string; providerCheckpointId: string | null; executionStart?: boolean; deferred?: boolean; coveringCheckpointId?: string };
+  identity: NativeLiveBackgroundIdentity; prepareHash: string; resultHash: string | null; context: Snapshot; expiresAt: string; providerCheckpointId: string | null; executionStart?: boolean; deferred?: boolean; coveringCheckpointId?: string; nativeForegroundParentCheckpointId?: string };
 type Receipt = NativeLiveBackgroundReceipt;
 const conflict = () => new NativeLiveBackgroundResultError("BACKGROUND_CONFLICT");
 
@@ -93,7 +93,7 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
  * This is still server-side ancestry, not an independent proof of the CLI
  * producer checkpoint: Mac verifies B -> F before journaling the cover. */
 async function coveringSnapshot(tx: Transaction, userId: string, origin: Source,
-  preparedContext: Snapshot, coveringCheckpointId: string): Promise<Snapshot | null> {
+  preparedContext: Snapshot, coveringCheckpointId: string, nativeForegroundParentCheckpointId: string): Promise<Snapshot | null> {
   const [lease] = await tx.execute(sql`SELECT 1 FROM native_live_runtime_listener_leases WHERE user_id=${userId}::uuid
     AND dispatch_target='claude_code' AND listener_instance_id=${origin.listenerId}::uuid
       AND lease_expires_at>clock_timestamp() FOR SHARE`);
@@ -137,7 +137,7 @@ async function coveringSnapshot(tx: Transaction, userId: string, origin: Source,
           AND fc.canonical_message_id=witness.id AND fc.provider='claude_code'
         WHERE foreground.runtime_metadata->'native_live_input_binding'->>'started'='true'
           AND foreground.parent_provider_session_id=${preparedContext.providerSessionId}
-          AND foreground.parent_provider_checkpoint_id=${preparedContext.parentProviderCheckpointId}
+          AND foreground.parent_provider_checkpoint_id=${nativeForegroundParentCheckpointId}
           AND fc.provider_session_id=${preparedContext.providerSessionId}
           AND fc.provider_checkpoint_id=${coveringCheckpointId}
       )
@@ -168,8 +168,31 @@ export async function prepareNativeLiveBackgroundResult(db: Database, input: Nat
     const origin = await source(tx, userId, identity.sourcePrepareId);
     const existing = await receipt(tx, userId, identity);
     if (existing) { if (existing.prepareHash !== prepareHash) throw conflict(); return prepared(identity, existing); }
-    const context = await snapshot(tx, userId, identity, origin, input.executionStart, input.deferred);
-    if (!context || context.parentProviderCheckpointId !== parent) throw conflict();
+    const root = await snapshot(tx, userId, identity, origin, input.executionStart, input.deferred);
+    if (!root) throw conflict();
+    let context = root;
+    // Several autonomous SDK segments can complete inside one foreground F.
+    // B2's parent is the queued producer B1, not the still-current canonical
+    // checkpoint. The earlier receipt's exact identity/session/generation
+    // proves the native producer chain without prematurely publishing B1.
+    if (input.deferred && root.parentProviderCheckpointId !== parent) {
+      const [prior] = await tx.execute<{ receipt: Receipt }>(sql`
+        SELECT e.payload AS receipt FROM native_live_runtime_events e
+        WHERE e.user_id=${userId}::uuid AND e.prepare_id=${identity.sourcePrepareId}::uuid
+          AND e.event_type='runtime'
+          AND e.payload->>'kind'='persistent_background_receipt_v1'
+          AND e.payload->>'phase'='queued'
+          AND e.payload->'result'->>'provider_checkpoint_id'=${parent}
+          AND e.payload->'identity'->>'listenerInstanceId'=${identity.listenerInstanceId}
+          AND e.payload->'identity'->>'generationId'=${identity.generationId}
+          AND e.payload->'context'->>'providerSessionId'=${root.providerSessionId}
+          AND e.payload->'context'->>'sourceRevision' IS NOT DISTINCT FROM ${root.sourceRevision}
+        ORDER BY e.sequence DESC LIMIT 1
+      `);
+      if (!prior?.receipt) throw conflict();
+      context = { ...root, parentProviderCheckpointId: parent };
+    }
+    if (context.parentProviderCheckpointId !== parent) throw conflict();
     if (input.executionStart) {
       const [busy] = await tx.execute(sql`SELECT 1 FROM native_live_runtime_events e JOIN native_live_turn_preparations p ON p.id=e.prepare_id AND p.user_id=e.user_id
         WHERE e.user_id=${userId}::uuid AND p.conversation_id=${origin.conversationId}::uuid
@@ -177,7 +200,7 @@ export async function prepareNativeLiveBackgroundResult(db: Database, input: Nat
           AND e.payload->>'executionStart'='true' AND (e.payload->>'expiresAt')::timestamptz>clock_timestamp() LIMIT 1`);
       if (busy) throw conflict();
     }
-    const value: Receipt = { ...(input.executionStart ? { executionStart: true } : {}), ...(input.deferred ? { deferred: true } : {}), kind: "persistent_background_receipt_v1", phase: "prepared", identity, prepareHash, resultHash: null, context,
+    const value: Receipt = { ...(input.executionStart ? { executionStart: true } : {}), ...(input.deferred ? { deferred: true, nativeForegroundParentCheckpointId: root.parentProviderCheckpointId } : {}), kind: "persistent_background_receipt_v1", phase: "prepared", identity, prepareHash, resultHash: null, context,
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(), providerCheckpointId: null };
     await tx.execute(sql`INSERT INTO native_live_runtime_events(id,user_id,prepare_id,sequence,event_type,provider_session_id,payload)
       SELECT ${identity.receiptId}::uuid,${userId}::uuid,${identity.sourcePrepareId}::uuid,coalesce(max(sequence),0)+1,'runtime',${context.providerSessionId},${JSON.stringify(value)}::jsonb
@@ -227,7 +250,8 @@ export async function submitNativeLiveBackgroundResult(db: Database, input: Nati
       // and its checkpoint are unchanged until F is committed and covered.
       if (!input.coveringCheckpointId) return { outcome: "queued", duplicate, providerCheckpointId: null };
       const covering = await coveringSnapshot(tx, userId, origin, stored.context,
-        requireUuid(input.coveringCheckpointId, "coveringCheckpointId"));
+        requireUuid(input.coveringCheckpointId, "coveringCheckpointId"),
+        stored.nativeForegroundParentCheckpointId ?? stored.context.parentProviderCheckpointId);
       if (!covering) return { outcome: "queued", duplicate: true, providerCheckpointId: null };
       if (result.status !== "success") throw conflict();
       const terminal: Receipt = {
