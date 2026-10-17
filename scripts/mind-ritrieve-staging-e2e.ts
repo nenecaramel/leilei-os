@@ -24,6 +24,22 @@ if (!token || token.length < 32) {
   throw new Error("Staging relay token is required; read it privately from the staging Railway service.");
 }
 const scorer = new LocalRitrieveBreathSemanticScorer();
+let phase = "start";
+let phaseStarted = performance.now();
+// Print only HTTP status/elapsed time, never URL, token, or memory text.
+const diagnosticFetch: typeof fetch = async (input, init) => {
+  const started = performance.now();
+  try {
+    const response: Response = await fetch(input, init);
+    console.error(`Staging snapshot HTTP status=${response.status} elapsed_ms=${Math.round(performance.now() - started)}`);
+    return response;
+  } catch (error) {
+    const kind = error instanceof Error && /^[A-Za-z0-9_.-]{1,64}$/.test(error.name)
+      ? error.name : "UNKNOWN";
+    console.error(`Staging snapshot HTTP failed kind=${kind} elapsed_ms=${Math.round(performance.now() - started)}`);
+    throw error;
+  }
+};
 const checks = [
   {tag: "promise", query: "我还是在意以前答应过的事", expected: VISIBLE_PROMISE},
   {tag: "baking", query: "怎么让面包发得更好", expected: VISIBLE_BAKING},
@@ -31,17 +47,23 @@ const checks = [
 ] as const;
 
 try {
+  phase = "model_warmup";
+  phaseStarted = performance.now();
   const first = performance.now();
   await scorer.warmup();
   const warmedMs = Math.round(performance.now() - first);
+  phase = "snapshot_sync";
+  phaseStarted = performance.now();
   const indexStarted = performance.now();
-  await new MacMindSnapshotSync(STAGING_URL, token, scorer).refresh();
+  await new MacMindSnapshotSync(STAGING_URL, token, scorer, diagnosticFetch).refresh();
   const indexedMs = Math.round(performance.now() - indexStarted);
   assert.equal(scorer.isSnapshotReady(), true);
 
   const output: Array<Record<string, unknown>> = [];
   const failedCases: string[] = [];
   for (const c of checks) {
+    phase = `local_search_${c.tag}`;
+    phaseStarted = performance.now();
     const queryStarted = performance.now();
     const result = await scorer.searchSnapshot(c.query, 48);
     const queryMs = Math.round(performance.now() - queryStarted);
@@ -57,6 +79,8 @@ try {
       ? eligibleHits[0]?.stateId === c.expected
       : null;
 
+    phase = `railway_recall_${c.tag}`;
+    phaseStarted = performance.now();
     const responseStarted = performance.now();
     const response: Response = await fetch(`${STAGING_URL}/internal/mind/recall`, {
       method: "POST",
@@ -128,7 +152,7 @@ try {
   // Avoid printing prompt, model response, or credentials in terminal logs.
   const name = error instanceof Error && /^[A-Za-z0-9_.-]{1,64}$/.test(error.name)
     ? error.name : "UNKNOWN";
-  console.error(`Staging Mac E2E failed: ${name}`);
+  console.error(`Staging Mac E2E failed: ${name} phase=${phase} phase_elapsed_ms=${Math.round(performance.now() - phaseStarted)}`);
   process.exitCode = 1;
 } finally {
   await scorer.close();
