@@ -81,11 +81,11 @@ export class NativeLiveMacBackgroundResultOutbox {
   /** Record the verified foreground descendant before transmitting the
    * foreground result. A crash cannot leave a committed F without the B=>F
    * coverage evidence if this write is required before that commit. */
-  async cover(conversationId: string, coveringCheckpointId: string): Promise<number> {
+  async cover(conversationId: string, generationId: string, coveringCheckpointId: string): Promise<number> {
     const covering = requireUuid(coveringCheckpointId, "coveringCheckpointId");
     let updated = 0;
     for (const original of await this.list()) {
-      if (original.result.conversation_id !== conversationId || original.deferred !== true) continue;
+      if (original.result.conversation_id !== conversationId || original.generationId !== generationId || original.deferred !== true) continue;
       if (original.coveringCheckpointId) {
         if (original.coveringCheckpointId !== covering) throw new Error("Conflicting background covering checkpoint.");
         continue;
@@ -206,8 +206,8 @@ export class NativeLiveMacBackgroundResultSink {
       }
     });
   }
-  async cover(conversationId: string, coveringCheckpointId: string): Promise<number> {
-    return this.serial(() => this.input.outbox.cover(conversationId, coveringCheckpointId));
+  async cover(conversationId: string, generationId: string, coveringCheckpointId: string): Promise<number> {
+    return this.serial(() => this.input.outbox.cover(conversationId, generationId, coveringCheckpointId));
   }
 
   /** Re-deliver immutable receipts after a restart; never restart provider work. */
