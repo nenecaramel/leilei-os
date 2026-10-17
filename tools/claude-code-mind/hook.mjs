@@ -610,7 +610,10 @@ async function indexedSearch(config, query, timeoutMs) {
           if (response.statusCode !== 200) throw new Error("Index unavailable.");
           const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
           if (!/^[a-f0-9]{64}$/.test(value?.version) || !Array.isArray(value.hits) ||
-              value.hits.length > 48 || !value.hits.every(hit =>
+              value.hits.length > 48 ||
+              (value.floor !== undefined && (typeof value.floor !== "number" ||
+                !Number.isFinite(value.floor) || value.floor < 0 || value.floor > 1)) ||
+              !value.hits.every(hit =>
                 UUID.test(hit?.stateId) && typeof hit.score === "number" &&
                 Number.isFinite(hit.score) && hit.score >= 0 && hit.score <= 1)) {
             throw new Error("Invalid indexed result.");
