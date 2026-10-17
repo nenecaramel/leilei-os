@@ -3,6 +3,8 @@ import type { NativeLiveDaemonLeaseState } from "./native-live-mac-daemon-loop.j
 /**
  * The broker can park an idle Mac daemon past the 60s listener lease.
  * Replay a durable SDK background receipt only after reacquiring that lease.
+ * This helper is also injected into the real-loop VM regression fixture so
+ * an idle broker's lease expiration is covered by the deployment test gate.
  * On takeover, leave every receipt on disk and let the active listener own
  * the conversation; do not run Claude or steal a live owner's lease.
  */
