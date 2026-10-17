@@ -265,7 +265,7 @@ test("expired Cron receipt reclaims only a rejected unstarted send owner after l
     { outcome: "committed", duplicate: true, providerCheckpointId: f.submit.result.provider_checkpoint_id });
 });
 
-for (const mutated of ["started input", "changed revision", "competing foreground"] as const)
+for (const mutated of ["started input", "runtime evidence", "changed revision", "competing foreground"] as const)
   test(`recovery refuses ${mutated} after rejected foreground`, { skip: !enabled }, async t => {
     const f = await strandedRejectedWake(t);
     if (mutated === "started input") {
@@ -274,6 +274,13 @@ for (const mutated of ["started input", "changed revision", "competing foregroun
         SET runtime_metadata=jsonb_set(coalesce(runtime_metadata,'{}'::jsonb),
           '{native_live_input_binding}', '{"started":true}'::jsonb)
         WHERE id=${f.rejectedId}::uuid
+      `);
+    } else if (mutated === "runtime evidence") {
+      await f.database.db.execute(sql`
+        INSERT INTO native_live_runtime_events
+          (id,user_id,prepare_id,sequence,event_type,provider_session_id,payload)
+        VALUES (${crypto.randomUUID()}::uuid,${f.user.id}::uuid,
+          ${f.rejectedId}::uuid,1,'runtime',NULL,'{}'::jsonb)
       `);
     } else if (mutated === "changed revision") {
       await f.database.db.execute(sql`
