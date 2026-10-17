@@ -1,6 +1,7 @@
 import { NativeLiveMacPersistentRuntime } from "../src/domains/bridge/mac/native-live-mac-persistent-runtime.js";
 import { createNativeSessionDrainServer } from "../tools/claude-bridge/src/native-session-daemon-drain.mjs";
 import { startMindRecallSemanticServer } from "../src/domains/bridge/mac/native-live-mac-mind-recall-server.js";
+import { MacMindSnapshotSync } from "../src/domains/bridge/mac/native-live-mac-mind-snapshot-sync.js";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -243,10 +244,16 @@ const backgroundModelExecutor =
 const semanticScorer = process.env.LEILEI_MIND_EMBEDDING_PROVIDER === "ritrieve"
   ? new LocalRitrieveBreathSemanticScorer()
   : new LocalE5BreathSemanticScorer();
-// Warm the local Python worker without delaying the daemon's event loop.
-// An unprepared model must not block chat or prevent the existing lexical fallback.
+// Prepare and periodically refresh the canonical, user-scoped Mind index.
+// This is best-effort: local failures never block live chat or expose plaintext.
+let mindSnapshotTimer: ReturnType<typeof setInterval> | null = null;
 if (semanticScorer instanceof LocalRitrieveBreathSemanticScorer) {
-  void semanticScorer.warmup().catch(() => undefined);
+  const synchronizer = new MacMindSnapshotSync(relayBaseUrl, relayToken, semanticScorer);
+  void semanticScorer.warmup().then(() => synchronizer.refresh()).catch(() => undefined);
+  mindSnapshotTimer = setInterval(() => {
+    void synchronizer.refresh().catch(() => undefined);
+  }, 60_000);
+  mindSnapshotTimer.unref();
 }
 // Optional hook transport: failures must not stop the canonical daemon.
 const closeMindRecallServer = await startMindRecallSemanticServer(semanticScorer).catch(() => null);
@@ -700,6 +707,7 @@ while (!stopping) {
 
 await closeHandoffServer();
 await persistentRuntime.closeAll();
+if (mindSnapshotTimer) clearInterval(mindSnapshotTimer);
 await closeMindRecallServer?.();
 if (semanticScorer instanceof LocalRitrieveBreathSemanticScorer) await semanticScorer.close();
 daemonLock.release();
