@@ -198,6 +198,56 @@ export async function submitNativeLiveBackgroundResult(db: Database, input: Nati
     const origin = await source(tx, userId, identity.sourcePrepareId), stored = await receipt(tx, userId, identity);
     if (!stored) throw new NativeLiveBackgroundResultError("BACKGROUND_NOT_FOUND");
     if (result.prepare_id !== origin.id || result.request_id !== origin.requestId || result.conversation_id !== origin.conversationId) throw conflict();
+    if (stored.deferred === true && (stored.phase === "prepared" || stored.phase === "queued")) {
+      if (stored.phase === "queued" && stored.resultHash !== resultHash) throw conflict();
+      if (result.status === "success" && (
+        result.provider_session_id !== stored.context.providerSessionId
+        || result.effective_working_directory !== stored.context.cwd
+        || result.provider_checkpoint_id === stored.context.parentProviderCheckpointId
+      )) throw conflict();
+      let queued = stored;
+      let duplicate = stored.phase === "queued";
+      if (!duplicate) {
+        if (new Date(stored.expiresAt).getTime() <= Date.now()) throw conflict();
+        queued = {
+          ...stored, phase: result.status === "success" ? "queued" : "failed",
+          resultHash, providerCheckpointId: null,
+        };
+        const queuedRow = await tx.execute(sql`
+          UPDATE native_live_runtime_events
+          SET payload=${JSON.stringify({ ...queued, result })}::jsonb
+          WHERE id=${identity.receiptId}::uuid AND user_id=${userId}::uuid
+            AND prepare_id=${identity.sourcePrepareId}::uuid
+            AND payload->>'phase'='prepared' RETURNING id
+        `);
+        if (queuedRow.length !== 1) throw conflict();
+      }
+      if (queued.phase === "failed") return { outcome: "failed", duplicate, providerCheckpointId: null };
+      // Queued means transport custody only; the canonical conversation head
+      // and its checkpoint are unchanged until F is committed and covered.
+      if (!input.coveringCheckpointId) return { outcome: "queued", duplicate, providerCheckpointId: null };
+      const covering = await coveringSnapshot(tx, userId, origin, stored.context,
+        requireUuid(input.coveringCheckpointId, "coveringCheckpointId"));
+      if (!covering) return { outcome: "queued", duplicate: true, providerCheckpointId: null };
+      if (result.status !== "success") throw conflict();
+      const terminal: Receipt = {
+        ...queued, phase: "committed", context: covering,
+        coveringCheckpointId: input.coveringCheckpointId,
+        providerCheckpointId: input.coveringCheckpointId,
+      };
+      await appendBackgroundMessage(tx, {
+        userId, conversationId: origin.conversationId, receipt: terminal, result,
+      });
+      const written = await tx.execute(sql`
+        UPDATE native_live_runtime_events
+        SET payload=${JSON.stringify({ ...terminal, result })}::jsonb
+        WHERE id=${identity.receiptId}::uuid AND user_id=${userId}::uuid
+          AND prepare_id=${identity.sourcePrepareId}::uuid
+          AND payload->>'phase'='queued' RETURNING id
+      `);
+      if (written.length !== 1) throw conflict();
+      return { outcome: "committed", duplicate: false, providerCheckpointId: input.coveringCheckpointId };
+    }
     if (stored.phase !== "prepared") {
       if (stored.resultHash !== resultHash) throw conflict();
       return { outcome: stored.phase, duplicate: true, providerCheckpointId: stored.providerCheckpointId };
