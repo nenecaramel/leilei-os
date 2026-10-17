@@ -140,6 +140,9 @@ export async function finalizeSuccess(
               .select({
                 currentHeadMessageId:
                   conversationTable.currentHeadMessageId,
+                presentationOwnerId: sql<string | null>`provider_metadata->'native_live_presentation_owner'->>'prepareId'`,
+                presentationAnchorId: sql<string | null>`provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId'`,
+                sourceRevision: sql<string | null>`provider_metadata->'nativeSessionSource'->>'revision'`,
               })
               .from(conversationTable)
               .where(
@@ -187,11 +190,25 @@ export async function finalizeSuccess(
               )
               .limit(1);
 
+            const wakeGeneration = row.wakeContext?.runtime_generation;
+            const wakeOwner = wakeGeneration && typeof wakeGeneration === "object" && !Array.isArray(wakeGeneration)
+              ? wakeGeneration as Record<string, unknown> : null;
+            // The visible Wake still belongs to the previous presentation
+            // owner. A success must advance that owner's anchor from H to
+            // Wake's assistant head; otherwise a later native Cron prepares
+            // against H->Wake but its canonical background append gets 409.
+            // Reject generation/owner changes before writing any visible row.
             if (
               !surface
               || surface.currentHeadMessageId
                 !== wake.sourceHeadMessageId
               || latestUser?.id !== wake.sourceUserMessageId
+              || !wakeOwner
+              || !Object.hasOwn(wakeOwner, "presentation_owner_id")
+              || !Object.hasOwn(wakeOwner, "source_revision")
+              || surface.presentationOwnerId !== (wakeOwner.presentation_owner_id ?? null)
+              || surface.sourceRevision !== (wakeOwner.source_revision ?? null)
+              || surface.presentationAnchorId !== wake.sourceHeadMessageId
             ) {
               canonicalWritePhase = "wake_stale_cursor";
               // A later user message can make the visible Wake obsolete
@@ -376,13 +393,16 @@ export async function finalizeSuccess(
             messageId: assistantMessage.id,
           });
 
-          // Preparation installs the presentation owner with the PREVIOUS
-          // canonical head as its anchor. After F commits, the same owner
-          // must point at F, or a later autonomous B cannot atomically append
-          // on top of F. Update the anchor under this existing turn/CP/head
-          // transaction; an unrelated new owner must never be overwritten.
+          // Both foreground F and a visible Wake advance the canonical head.
+          // F owns a newly prepared presentation slot; a Wake does NOT replace
+          // its source owner, but must advance that owner's anchor from H to
+          // Wake's new assistant head. Without this, native Cron's later
+          // background prepare is accepted, then its result fails the anchor
+          // CAS and permanently fences the persistent SDK writer.
           canonicalWritePhase = "advance_presentation_anchor";
-          if (sessionGeneration?.presentation_owner_id === row.id) {
+          if (sessionGeneration?.presentation_owner_id === row.id || row.operation === "wake") {
+            const expectedOwner = row.operation === "wake"
+              ? sessionGeneration?.presentation_owner_id ?? null : row.id;
             const anchors = await transaction.execute(sql`
               UPDATE conversations
               SET provider_metadata=jsonb_set(
@@ -393,11 +413,15 @@ export async function finalizeSuccess(
               WHERE id=${row.conversationId}::uuid
                 AND user_id=${input.userId}::uuid
                 AND current_head_message_id=${assistantMessage.id}::uuid
-                AND provider_metadata->'native_live_presentation_owner'->>'prepareId'=${row.id}::text
+                AND (provider_metadata->'native_live_presentation_owner'->>'prepareId')
+                  IS NOT DISTINCT FROM ${expectedOwner}::text
+                AND (${row.operation === "wake"
+                  ? sql`(provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM ${wakeSourceHeadMessageId}::text`
+                  : sql`true`})
               RETURNING id
             `);
             if (anchors.length !== 1)
-              throw new Error("Native live presentation owner changed during foreground finalization.");
+              throw new Error("Native live presentation anchor changed before canonical finalization.");
           } else if (nativeInputBinding) {
             // A started native F must leave behind an unambiguous covering
             // owner for every deferred B that the SDK already generated.
