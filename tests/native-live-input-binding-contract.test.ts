@@ -56,6 +56,12 @@ test("native started UUID is required before the result can finalize, and detach
   assert.match(router, /phase: "started", commandUuid: frame\.inputId/);
   assert.match(router, /if \(!slot\.nativeStarted \|\| !slot\.startedBinding\) throw/);
   assert.match(router, /removeCommandStartedListener\?\.\(\)/);
+  // A queued command may wait while a native background completion advances
+  // the local checkpoint; reject non-queued modes but allow input admission
+  // long enough to receive and authoritatively bind command_lifecycle.started.
+  assert.match(router, /context\.phase === "input" && this\.binding[\s\S]*?!slot\.nativeStarted/);
+  assert.match(router, /context\.phase !== "input"[\s\S]*?await slot\.startedBinding/);
+
   assert.match(host, /message\.command_uuid !== ZERO_UUID/);
   assert.match(host, /!this\.startedCommands\.has\(message\.command_uuid\)/);
 });
