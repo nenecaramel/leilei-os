@@ -60,6 +60,33 @@ test('native command start correlates exact CLI input UUID before provider outpu
   await foreground;
 });
 
+test('send_file early owner uses the exact native foreground start, never a queued or unrelated background command',async t=>{
+ const f=await fixture();t.after(()=>f.host.close());
+ const pending=f.host.submit('send a file',{id:'file-turn'});
+ await f.event({type:'command_lifecycle',state:'queued',command_uuid:'file-turn',session_id:'s'});
+ assert.equal(f.host.fileToolOwnerInputId(),null,'queued does not prove SDK execution');
+ await f.event({type:'command_lifecycle',state:'started',command_uuid:'foreign-cron',session_id:'s'});
+ assert.equal(f.host.fileToolOwnerInputId(),null,'foreign Cron cannot borrow active turn');
+ await f.event({type:'command_lifecycle',state:'started',command_uuid:'file-turn',session_id:'s'});
+ assert.equal(f.host.ownedInputId(),null,'unstamped response must not stream as foreground');
+ assert.equal(f.host.fileToolOwnerInputId(),'file-turn','exact native start authorizes first tool');
+ await f.event({type:'system',subtype:'tool_search_loaded',session_id:'s'});
+ assert.equal(f.host.fileToolOwnerInputId(),'file-turn','tool discovery is not a new logical user turn');
+ await f.event({type:'command_lifecycle',state:'started',command_uuid:'next-autonomous',session_id:'s'});
+ assert.equal(f.host.fileToolOwnerInputId(),null,'new background command revokes early owner');
+ await f.event(stamped('file-turn','resumed user reply'));
+ assert.equal(f.host.fileToolOwnerInputId(),'file-turn','fresh stamped assistant reply reclaims exact user turn');
+ await f.event(stamped('not-this-turn','foreign reply'));
+ assert.equal(f.host.fileToolOwnerInputId(),null,'foreign stamped reply revokes ownership');
+ await f.event({...result(),user_message_uuid:'not-this-turn'});
+ assert.equal(f.host.fileToolOwnerInputId(),null,'background completion cannot keep a prior grant');
+ await f.event(stamped('file-turn','my reply'));
+ assert.equal(f.host.fileToolOwnerInputId(),'file-turn');
+ await f.event({...result(),user_message_uuid:'file-turn'});
+ await pending;
+ assert.equal(f.host.fileToolOwnerInputId(),null,'completed turn cannot invoke send_file');
+});
+
 test('autonomous result during idle remains a session event',async t=>{
  const f=await fixture();t.after(()=>f.host.close());await Promise.race([f.event({...result(),user_message_uuid:'autonomous'}),f.host.completion.catch(()=>null)]);assert.equal(f.host.state,'idle');assert.equal(f.closed,0);
 });
