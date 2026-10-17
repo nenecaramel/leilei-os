@@ -3,6 +3,7 @@ import test from 'node:test';
 import { chmod, mkdtemp, mkdir, writeFile, readFile, readdir, rm, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { runNativeTranscriptArchive } from '../scripts/native-transcript-archive.mjs';
 
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -98,13 +99,14 @@ test('unreadable Desktop accounts cannot disappear from protection', {skip:proce
 });
 
 const safeReceipt = sessionId => ({
-  sourcePrepareId: id(201), receiptId: id(202),
+  sourcePrepareId: id(201), receiptId: id(202), listenerInstanceId: id(206), generationId: id(207),
   parentProviderCheckpointId: id(203),
-  result: { conversation_id: id(204), provider_session_id: sessionId,
+  result: { prepare_id: id(201), conversation_id: id(204), provider_session_id: sessionId,
     provider_checkpoint_id: id(205), status: 'success', normalized_events: [] },
 });
 const blockedPath = (f, name = 'a'.repeat(64)) =>
-  path.join(f.recoveryDirectory, 'background-results', name, 'blocked', 'b'.repeat(64) + '.json');
+  path.join(f.recoveryDirectory, 'background-results', name, 'blocked',
+    createHash('sha256').update(JSON.stringify([id(206), id(207), id(202)])).digest('hex') + '.json');
 async function writeBlocked(f, sessionId, name) {
   const file = blockedPath(f, name);
   await mkdir(path.dirname(file), { recursive: true });
