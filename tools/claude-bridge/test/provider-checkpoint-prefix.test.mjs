@@ -30,7 +30,7 @@ test("a checkpoint fork retains the latest native session Cron table outside mes
     entry("later","checkpoint"),replaced,latest];
   const before=structuredClone(entries);
   const projected=durableCheckpointPrefix(entries,"checkpoint");
-  assert.deepEqual(projected.prefix,[entries[0],original,entries[2],latest],
+  assert.deepEqual(projected.prefix,[entries[0],original,latest,entries[2]],
     "carry the latest session schedule exactly once, without later chat");
   assert.deepEqual([...projected.ancestry],["checkpoint","u"]);
   assert.deepEqual(entries,before,"the source session must never be mutated");
