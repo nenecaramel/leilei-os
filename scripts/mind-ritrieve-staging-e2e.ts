@@ -100,6 +100,8 @@ try {
       query_type: c.tag,
       passed,
       relevance_floor: floor,
+      raw_top_score: result.hits[0] ? Number(result.hits[0].score.toFixed(4)) : null,
+      raw_expected_score: c.expected ? Number((result.hits.find(hit => hit.stateId === c.expected)?.score ?? 0).toFixed(4)) : null,
       local_raw_hits: result.hits.length,
       local_hits: eligibleHits.length,
       local_top_matches_label: localTopMatchesLabel,
