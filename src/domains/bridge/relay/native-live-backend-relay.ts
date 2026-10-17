@@ -1046,9 +1046,17 @@ export class NativeLiveBackendRelayService {
     if (!this.repository.prepareBackgroundResult) throw new NativeLiveBackgroundResultError("BACKGROUND_UNAVAILABLE");
     return this.repository.prepareBackgroundResult(input);
   }
-  submitBackgroundResult(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck> {
+  async submitBackgroundResult(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck> {
     if (!this.repository.submitBackgroundResult) throw new NativeLiveBackgroundResultError("BACKGROUND_UNAVAILABLE");
-    return this.repository.submitBackgroundResult(input);
+    const receipt = await this.repository.submitBackgroundResult(input);
+    if (receipt.outcome === "committed" && !receipt.duplicate) {
+      // The existing iOS screen long-polls the canonical conversation head.
+      // The database write is already authoritative; waking that observer is
+      // advisory and must never turn a committed message into a failed
+      // delivery if notification is temporarily unavailable.
+      await this.bestEffortTurnTerminalWake(input.userId, input.sourcePrepareId);
+    }
+    return receipt;
   }
 
   async renewSessionLease(input: {userId:string;listenerInstanceId:string}): Promise<boolean> {
