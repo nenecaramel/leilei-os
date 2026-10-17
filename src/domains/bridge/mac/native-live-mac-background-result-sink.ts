@@ -256,7 +256,11 @@ export class NativeLiveMacBackgroundResultSink {
       // outbox record here permanently loses the only recoverable output.
       throw new NativeBackgroundStaleReceipt();
     }
-    if (ack.outcome === "queued") return ack; // Only commit success deletes outbox evidence.
+    if (ack.outcome === "queued") {
+      if (value.coveringCheckpointId)
+        throw new Error("Covered background reply is still queued; retain outbox and fence further input.");
+      return ack; // Uncovered native producer is durable, not canonically published.
+    }
     await this.input.outbox.acknowledge(value);
     return ack;
   }
