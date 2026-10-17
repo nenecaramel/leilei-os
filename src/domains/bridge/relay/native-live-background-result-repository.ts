@@ -177,7 +177,31 @@ export async function prepareNativeLiveBackgroundResult(db: Database, input: Nat
     }
     const origin = await source(tx, userId, identity.sourcePrepareId);
     const existing = await receipt(tx, userId, identity);
-    if (existing) { if (existing.prepareHash !== prepareHash) throw conflict(); return prepared(identity, existing); }
+    if (existing) {
+      if (existing.prepareHash !== prepareHash) throw conflict();
+      if (existing.phase !== "prepared" || new Date(existing.expiresAt).getTime() > Date.now())
+        return prepared(identity, existing);
+      // HTTP preparation may have succeeded before a prolonged network outage.
+      // Its local outbox receipt must be retryable without re-running Claude,
+      // but an expired lease alone cannot authorize it. Re-check the exact
+      // live source/head/generation/foreground ownership under the same locks
+      // before extending only its transport deadline; never reset committed
+      // or queued outcomes or switch the producer checkpoint.
+      const live = await snapshot(tx, userId, identity, origin,
+        existing.executionStart === true, existing.deferred === true);
+      if (!live || !isDeepStrictEqual(live, existing.context)) throw conflict();
+      const renewed: Receipt = {
+        ...existing, expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+      };
+      const updated = await tx.execute(sql`
+        UPDATE native_live_runtime_events SET payload=${JSON.stringify(renewed)}::jsonb
+        WHERE id=${identity.receiptId}::uuid AND user_id=${userId}::uuid
+          AND prepare_id=${identity.sourcePrepareId}::uuid
+          AND payload->>'phase'='prepared' RETURNING id
+      `);
+      if (updated.length !== 1) throw conflict();
+      return prepared(identity, renewed);
+    }
     const root = await snapshot(tx, userId, identity, origin, input.executionStart, input.deferred);
     if (!root) throw conflict();
     let context = root;
