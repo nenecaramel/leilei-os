@@ -178,7 +178,7 @@ test("authenticated HTTP background preparation and submission return the durabl
   const { NativeLiveBackendRelayService } = await import("../src/domains/bridge/relay/native-live-backend-relay.js");
   const notifications: Array<{ userId: string; kind: string; prepareId: string }> = [];
   const service = new NativeLiveBackendRelayService(f.repository, f.coordinator, {
-    async notify(input) { notifications.push(input); },
+    async notify(input) { if (input.kind === "turn_terminal") notifications.push(input); },
   });
   await withServer(app => {
     app.use((request, _response, next) => { request.mcpUserId = f.user.id; next(); });
