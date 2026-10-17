@@ -166,6 +166,7 @@ export class NativeLiveMacBackgroundResultSink {
   private readonly retryAfter = new Map<string,number>();
   constructor(private readonly input: { listenerInstanceId: string; relay: Relay; outbox: NativeLiveMacBackgroundResultOutbox;
     now?:()=>number; isForegroundActive?(conversationId:string):boolean;
+    onImmediateFence?(conversationId:string):void;
     onRecoveryBlocked?(conversationId:string):Promise<void>; onRecovered?(conversationId:string):Promise<void>;
   }) {}
   async commit(owner: NativeLiveMacPersistentBackgroundOwner, frame: Frame): Promise<NativeLiveMacPersistentAcknowledgement> {
@@ -187,6 +188,10 @@ export class NativeLiveMacBackgroundResultSink {
             ? { status: ack.duplicate ? "idempotent" : "applied", providerCheckpointId: ack.providerCheckpointId! }
             : { status: "rejected" };
       } catch (error) {
+        // No asynchronous retirement from inside this ACK lock. Suspended
+        // dispatch is synchronous, so a foreground send cannot slip in
+        // before the next periodic recovery flush observes the saved receipt.
+        this.input.onImmediateFence?.(pending.result.conversation_id);
         if (error instanceof NativeBackgroundStaleReceipt) {
           // Never lose a generated result just because the backend rejected its
           // old parent. Quarantine the immutable evidence and fence this
@@ -210,8 +215,13 @@ export class NativeLiveMacBackgroundResultSink {
         value.result.conversation_id === conversationId && value.generationId === generationId
         && value.deferred === true && Boolean(value.coveringCheckpointId));
       for (const value of pending) {
-        const ack = await this.deliver(value);
-        if (ack.outcome !== "committed") throw new Error("Deferred background result is not canonically published.");
+        try {
+          const ack = await this.deliver(value);
+          if (ack.outcome !== "committed") throw new Error("Deferred background result is not canonically published.");
+        } catch (error) {
+          this.input.onImmediateFence?.(conversationId);
+          throw error;
+        }
       }
     });
   }
