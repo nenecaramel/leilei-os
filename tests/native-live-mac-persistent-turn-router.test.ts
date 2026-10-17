@@ -634,6 +634,29 @@ for (const source of ["schedule_wakeup", undefined] as const) test(`one-shot nat
   assert.equal(f.closes, 0, "ordinary foreground conversation must retain the scheduled writer");
 });
 
+test("a scheduled one-shot still uses the same session and latest source after an intervening completed chat", async t => {
+  let checks = 0;
+  const f = await fixture(t, async () => { checks++; return true; });
+  const first = f.run(command(1)); f.finish((await f.inputs.next()).value!.uuid); await first;
+  const conversation = f.run(command(2)); f.finish((await f.inputs.next()).value!.uuid); await conversation;
+  assert.equal(f.launches, 1, "ordinary chat must not close the native Cron writer");
+  const hook = f.sdk.hooks.UserPromptSubmit[0].hooks[0];
+  assert.notEqual((await hook({
+    hook_event_name: "UserPromptSubmit", session_id: sid,
+    source: "schedule_wakeup", prompt_id: "after-another-human-turn", prompt: "TIMER_OK",
+  })).decision, "block");
+  assert.equal(checks, 1);
+  const delivered = f.registry.snapshot()[0]!.session.events;
+  const settled = new Promise(resolve => delivered.once("background-result", resolve));
+  f.finish(id(901)); await settled;
+  assert.deepEqual(f.background, [id(901)]);
+  assert.equal(f.backgroundOwners.at(-1)?.deferred, undefined);
+  const next = f.run({ ...command(3), parent_provider_checkpoint_id: id(103) });
+  f.finish((await f.inputs.next()).value!.uuid); await next;
+  assert.equal(f.launches, 1);
+  assert.deepEqual(f.results, [id(1), id(2), id(3)]);
+});
+
 test("scheduled prompt cannot borrow an admission through foreground rotation or handoff", async t => {
  const entered=deferred<void>(),release=deferred<boolean>();
  const f=await fixture(t,async()=>{entered.resolve();return release.promise;});
