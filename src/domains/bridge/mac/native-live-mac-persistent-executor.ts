@@ -82,6 +82,19 @@ export class NativeLiveMacPersistentExecutor {
     return router ? router.matches(command) : this.input.hasCapacity?.() !== false;
   }
 
+  /** A Wake blocked only by ongoing work or finite session capacity is
+   * deferred durably by the relay; neither branch nor native Cron is touched. */
+  shouldDeferWake(rawCommand: unknown): boolean {
+    let command: NativeLiveRuntimeCommand;
+    try { command = parseNativeLiveRuntimeCommand(rawCommand); } catch { return false; }
+    if (command.operation !== "wake" || command.runtime_mode !== "resume"
+      || this.shutDown || this.suspended.has(command.conversation_id)) return false;
+    const id = command.conversation_id;
+    if (this.retiring.has(id)) return true;
+    const router = this.routers.get(id);
+    return router ? router.hasActiveTurn?.() === true : this.input.hasCapacity?.() === false;
+  }
+
   /** Close the conversation's writer before a legacy operation touches its session. */
   async retire(conversationId: string): Promise<void> {
     const router = this.routers.get(conversationId);
