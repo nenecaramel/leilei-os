@@ -44,11 +44,16 @@ export async function appendBackgroundMessage(tx: Transaction, input: {
     userId: input.userId, conversationId: input.conversationId, canonicalMessageId: receipt.identity.receiptId,
     checkpoint: {
       provider: "claude_code", providerSessionId: result.provider_session_id,
-      providerCheckpointId: result.provider_checkpoint_id!, effectiveWorkingDirectory: result.effective_working_directory,
+      providerCheckpointId: receipt.coveringCheckpointId ?? result.provider_checkpoint_id!, effectiveWorkingDirectory: result.effective_working_directory,
       runtimeMetadata: {
         provider_checkpoint_version: 1,
         native_live_generation: { presentation_owner_id: receipt.context.presentationOwnerId, source_revision: receipt.context.sourceRevision },
         native_live_background_receipt: receipt,
+        ...(receipt.coveringCheckpointId ? {
+          // Producer B is an earlier SDK record; F's verified descendant is
+          // the latest safe continuation. Never roll the canonical head to B.
+          native_live_background_producer_checkpoint_id: result.provider_checkpoint_id,
+        } : {}),
       },
     },
   });
