@@ -315,8 +315,31 @@ for (const competitor of ["lease takeover", "head rotation", "second receipt"] a
     assert.deepEqual(await commit, { outcome: "committed", duplicate: false, providerCheckpointId: f.next });
     const other = await competingWork;
     if (competitor === "second receipt") assert.deepEqual(other, { outcome: "stale", duplicate: false, providerCheckpointId: null });
-    const [cp] = await f.database.db.select().from(conversationProviderSessionCheckpoints).where(eq(conversationProviderSessionCheckpoints.conversationId, f.conversation.id));
-    assert.equal((cp!.runtimeMetadata?.native_live_resume_tail as { checkpoint_id: string }).checkpoint_id, f.next);
+    // A visible B is a durable canonical assistant with its OWN checkpoint,
+    // not a resume_tail mutation on H's provider checkpoint. All competitors
+    // must preserve that completed receipt even when the subsequent head or
+    // listener lease is rotated.
+    const [message] = await f.database.db.select({
+      id: conversationMessages.id, parent: conversationMessages.parentMessageId,
+      role: conversationMessages.role,
+    }).from(conversationMessages).where(eq(conversationMessages.id, f.prepare.receiptId));
+    assert.equal(message?.id, f.prepare.receiptId);
+    assert.equal(message?.role, "assistant");
+    assert.equal(message?.parent, f.completed.assistantMessageId);
+    const [cp] = await f.database.db.select().from(conversationProviderSessionCheckpoints)
+      .where(eq(conversationProviderSessionCheckpoints.canonicalMessageId, f.prepare.receiptId));
+    assert.ok(cp, "committed B must retain its own durable checkpoint through competing mutations");
+    assert.equal(cp.providerCheckpointId, f.next);
+    assert.equal((cp.runtimeMetadata?.native_live_background_receipt as { phase?: string } | undefined)?.phase, "committed");
+    const [head] = await f.database.db.select({ head: conversations.currentHeadMessageId })
+      .from(conversations).where(eq(conversations.id, f.conversation.id));
+    assert.equal(head?.head, competitor === "head rotation" ? null : f.prepare.receiptId,
+      "only an explicitly later head rotation may move the canonical head away from B");
+    if (competitor === "second receipt") {
+      const [otherMessage] = await f.database.db.select({ id: conversationMessages.id })
+        .from(conversationMessages).where(eq(conversationMessages.id, otherReceipt));
+      assert.equal(otherMessage, undefined, "a stale sibling B cannot create another canonical message");
+    }
     assert.deepEqual(await f.repository.submitBackgroundResult(f.submit), { outcome: "committed", duplicate: true, providerCheckpointId: f.next });
   } finally {
     release(); await blocker;
