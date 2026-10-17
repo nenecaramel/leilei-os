@@ -164,6 +164,11 @@ export class NativeLiveMacBackgroundResultOutbox {
 export class NativeLiveMacBackgroundResultSink {
   private queue = Promise.resolve();
   private readonly retryAfter = new Map<string,number>();
+  // A successful receipt replay is not enough to release the conversation fence:
+  // writer retirement can fail independently. Retry recovery completion even
+  // when the outbox is now empty (and there is no receipt left to trigger it).
+  private readonly recoveryCandidates = new Set<string>();
+  private readonly recoveryInProgress = new Set<string>();
   constructor(private readonly input: { listenerInstanceId: string; relay: Relay; outbox: NativeLiveMacBackgroundResultOutbox;
     now?:()=>number; isForegroundActive?(conversationId:string):boolean;
     onImmediateFence?(conversationId:string):void;
@@ -252,7 +257,6 @@ export class NativeLiveMacBackgroundResultSink {
    * that lock. All fencing happens after the operation has left the queue. */
   async flush(): Promise<number> {
     const blocked = new Set<string>();
-    const recovered = new Set<string>();
     const settled = await this.serial(async () => {
       let completed = 0;
       const quarantined = await this.input.outbox.listQuarantined();
@@ -283,7 +287,7 @@ export class NativeLiveMacBackgroundResultSink {
         this.retryAfter.delete(value.receiptId);
         if (![...quarantined, ...await this.input.outbox.list()].some(
           v => v.result.conversation_id === value.result.conversation_id,
-        )) recovered.add(value.result.conversation_id);
+        )) this.recoveryCandidates.add(value.result.conversation_id);
       } catch (error) {
         this.retryAfter.set(value.receiptId, now + 30_000);
         blocked.add(value.result.conversation_id);
@@ -299,9 +303,27 @@ export class NativeLiveMacBackgroundResultSink {
     // we were flushing is free to finish before any recovery retirement.
     for (const conversationId of blocked)
       await this.input.onRecoveryBlocked?.(conversationId).catch(() => {});
-    for (const conversationId of recovered) {
-      if (!blocked.has(conversationId))
-        await this.input.onRecovered?.(conversationId).catch(() => {});
+    // Callbacks run outside serial(). A failed retirement must be retried on
+    // a later timer tick even if the last durable receipt was already deleted.
+    // Recheck both stores: a newly pending or quarantined receipt must keep
+    // the conversation fenced. Guard concurrent flushes from double-retiring.
+    for (const conversationId of this.recoveryCandidates) {
+      if (blocked.has(conversationId) || this.recoveryInProgress.has(conversationId)) continue;
+      let outstanding: boolean;
+      try {
+        outstanding = [...await this.input.outbox.list(), ...await this.input.outbox.listQuarantined()]
+          .some(value => value.result.conversation_id === conversationId);
+      } catch {
+        await this.input.onRecoveryBlocked?.(conversationId).catch(() => {});
+        continue;
+      }
+      if (outstanding) continue;
+      this.recoveryInProgress.add(conversationId);
+      try {
+        await this.input.onRecovered?.(conversationId);
+        this.recoveryCandidates.delete(conversationId);
+      } catch { /* Keep the recovery fence and retry this callback next tick. */ }
+      finally { this.recoveryInProgress.delete(conversationId); }
     }
     return settled;
   }
