@@ -80,7 +80,7 @@ export class NativeLiveMacPersistentTurnRouter {
       frame: Parameters<NativeLiveMacPersistentSessionOptions["onBackgroundResult"]>[0] & { providerCheckpointId: string },
     ): Promise<NativeLiveMacPersistentAcknowledgement>;
     onForegroundCoverage?(conversationId: string, generationId: string, coveringCheckpointId: string): Promise<number>;
-    onForegroundPublished?(conversationId: string): Promise<void>;
+    onForegroundPublished?(conversationId: string, generationId: string): Promise<void>;
   }) {
     if (!input.listenerInstanceId.trim() || typeof input.onBackgroundResult !== "function") throw new Error("Listener and durable background sink are required.");
     this.input = { ...input };
@@ -226,7 +226,7 @@ export class NativeLiveMacPersistentTurnRouter {
         if (command.operation === "send" && outcome.status !== "rejected") {
           // F is now a canonical head, so buffered autonomous B can be
           // published as the next real message using F's covering checkpoint.
-          await this.input.onForegroundPublished?.(command.conversation_id);
+          await this.input.onForegroundPublished?.(command.conversation_id, this.generationId!);
           this.assertSlot(slot, "acknowledging");
         }
       });
