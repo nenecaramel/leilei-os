@@ -10,8 +10,8 @@ test("Wake requires modern persistent session; never dispatch a fork",{skip:proc
  t.after(async()=>{try{await db.delete(leases).where(eq(leases.userId,userId));await db.delete(conversations).where(eq(conversations.id,conversationId));await db.delete(users).where(eq(users.id,userId));}finally{await database.close();}});
  await db.insert(users).values({id:userId,email:`persistent-wake-${userId}@example.com`,displayName:"Synthetic"});await db.insert(conversations).values({id:conversationId,userId,origin:"native_live"});await db.insert(leases).values({userId,dispatchTarget:"claude_code",listenerInstanceId,leaseExpiresAt:new Date(Date.now()+60000)});
  const repository=new DrizzleNativeLiveBackendRelayRepository(db);
- for(const [capable,modern,expected] of [[false,true,null],[true,false,null],[true,true,"resume"]] as const){
-  const id=crypto.randomUUID();await db.insert(preparations).values({id,userId,requestId:crypto.randomUUID(),conversationId,operation:"wake",requestHash:"a".repeat(64),runtimeMode:"fork",parentProviderSessionId:crypto.randomUUID(),parentProviderCheckpointId:crypto.randomUUID(),prompt:"synthetic",wakeContext:modern?{runtime_generation:{presentation_owner_id:crypto.randomUUID(),source_revision:null}}:{},dispatchStatus:"pending"});
+ for(const [capable,modern,expected] of [[false,true,null],[true,false,null],[true,true,"resume"],[true,"null-owner","resume"]] as const){
+  const id=crypto.randomUUID();await db.insert(preparations).values({id,userId,requestId:crypto.randomUUID(),conversationId,operation:"wake",requestHash:"a".repeat(64),runtimeMode:"fork",parentProviderSessionId:crypto.randomUUID(),parentProviderCheckpointId:crypto.randomUUID(),prompt:"synthetic",wakeContext:modern?{runtime_generation:{presentation_owner_id:modern==="null-owner"?null:crypto.randomUUID(),source_revision:null}}:{},dispatchStatus:"pending"});
   const row=await repository.reserveNext({userId,listenerInstanceId,...(capable?{persistentSessions:true}:{})});
   assert.equal(row?.runtimeMode??null,expected,"Wake may never dispatch as fork");
   const [stored]=await db.select().from(preparations).where(eq(preparations.id,id));
