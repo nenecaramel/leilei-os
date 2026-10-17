@@ -42,7 +42,7 @@ async function main(): Promise<void> {
              settlement_status, path_status, validity_status, envelope)
           values (
             ${state.id}::uuid, ${fixtureUser}::uuid, 'G', 'memory',
-            ${state.text}, ${JSON.stringify(state.payload ?? null)}::jsonb,
+            ${state.text ?? text}, ${JSON.stringify(state.payload ?? null)}::jsonb,
             ${state.envelope.scope.applicability}, null, null,
             ${state.envelope.status.settlementStatus},
             ${state.envelope.status.pathStatus},
