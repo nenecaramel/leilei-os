@@ -23,6 +23,9 @@ import {
   LocalE5BreathSemanticScorer,
 } from "../src/domains/runtime/breath/local-e5-embedding.js";
 import {
+  LocalRitrieveBreathSemanticScorer,
+} from "../src/domains/runtime/breath/local-ritrieve-embedding.js";
+import {
   resolveNativeLiveMacDaemonConfig,
 } from "../src/domains/bridge/mac/native-live-mac-daemon-config.js";
 import {
@@ -236,7 +239,15 @@ const closeHandoffServer = await createNativeSessionDrainServer({
 });
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);
-const semanticScorer = new LocalE5BreathSemanticScorer();
+// Explicit opt-in until ritrieve is prepared and benchmarked on this Mac.
+const semanticScorer = process.env.LEILEI_MIND_EMBEDDING_PROVIDER === "ritrieve"
+  ? new LocalRitrieveBreathSemanticScorer()
+  : new LocalE5BreathSemanticScorer();
+// Warm the local Python worker without delaying the daemon's event loop.
+// An unprepared model must not block chat or prevent the existing lexical fallback.
+if (semanticScorer instanceof LocalRitrieveBreathSemanticScorer) {
+  void semanticScorer.warmup().catch(() => undefined);
+}
 // Optional hook transport: failures must not stop the canonical daemon.
 const closeMindRecallServer = await startMindRecallSemanticServer(semanticScorer).catch(() => null);
 const loop = new NativeLiveMacDaemonLoop(
@@ -690,4 +701,5 @@ while (!stopping) {
 await closeHandoffServer();
 await persistentRuntime.closeAll();
 await closeMindRecallServer?.();
+if (semanticScorer instanceof LocalRitrieveBreathSemanticScorer) await semanticScorer.close();
 daemonLock.release();
