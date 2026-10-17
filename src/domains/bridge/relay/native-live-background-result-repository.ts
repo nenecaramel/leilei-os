@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import { nativeResumeCheckpointSql } from "../turn/native-live-resume-checkpoint.js";
 import { hashJson } from "../turn/turn-repository/records.js";
+import { canonicalizeNativeLiveEvents } from "../../conversation/native-live-conversation-orchestrator.js";
 import { backgroundIdentity, backgroundResult, NativeLiveBackgroundResultError, type NativeLiveBackgroundIdentity, type NativeLiveBackgroundPrepare,
   type NativeLiveBackgroundSubmit, type NativeLiveBackgroundPrepared, type NativeLiveBackgroundAck } from "../protocol/native-live-background-result.js";
 import { requireUuid } from "../protocol/runtime-protocol/parsing.js";
@@ -270,14 +271,21 @@ export async function submitNativeLiveBackgroundResult(db: Database, input: Nati
         stored.nativeForegroundParentCheckpointId ?? stored.context.parentProviderCheckpointId);
       if (!covering) return { outcome: "queued", duplicate: true, providerCheckpointId: null };
       if (result.status !== "success") throw conflict();
+      // A queued receipt with no canonical body cannot be represented as a
+      // durable ordinary message. Do not mark it committed and allow the Mac
+      // to delete the only replayable evidence; leave it queued for a later
+      // explicit quiet-continuation policy instead.
+      const canonical = canonicalizeNativeLiveEvents(result.normalized_events);
+      if (canonical.error || canonical.blocks.length === 0) throw new NativeLiveBackgroundResultError("INVALID_BACKGROUND_RESULT");
       const terminal: Receipt = {
         ...queued, phase: "committed", context: covering,
         coveringCheckpointId: input.coveringCheckpointId,
         providerCheckpointId: input.coveringCheckpointId,
       };
-      await appendBackgroundMessage(tx, {
+      const visible = await appendBackgroundMessage(tx, {
         userId, conversationId: origin.conversationId, receipt: terminal, result,
       });
+      if (!visible) throw new NativeLiveBackgroundResultError("INVALID_BACKGROUND_RESULT");
       const written = await tx.execute(sql`
         UPDATE native_live_runtime_events
         SET payload=${JSON.stringify({ ...terminal, result })}::jsonb
