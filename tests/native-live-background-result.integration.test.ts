@@ -283,6 +283,9 @@ test("started foreground commits before queued autonomous output, with F coverin
   assert.equal((await f.canonical.getConversation({userId:f.user.id,conversationId:f.conversation.id}))!.currentHeadMessageId,
     f.completed.assistantMessageId, "queued does not advance the canonical head");
   const covering = crypto.randomUUID();
+  assert.deepEqual(await f.repository.submitBackgroundResult({ ...f.submit, coveringCheckpointId: covering }),
+    { outcome: "queued", duplicate: true, providerCheckpointId: null },
+    "a proposed covering cursor cannot publish before F becomes canonical");
   const finished = await f.coordinator.finalize(f.user.id, {
     protocol_version: 4, prepare_id: command.prepare_id, request_id: command.request_id,
     conversation_id: f.conversation.id, status: "success", provider_session_id: "synthetic-session",
@@ -293,6 +296,10 @@ test("started foreground commits before queued autonomous output, with F coverin
   if (!finished.ok || finished.outcome !== "completed") throw Error("foreground completion unavailable");
   await f.repository.markCompleted({ userId: f.user.id,
     listenerInstanceId: f.prepare.listenerInstanceId, reservationId: command.prepare_id });
+  assert.deepEqual(await f.repository.submitBackgroundResult({
+    ...f.submit, coveringCheckpointId: crypto.randomUUID(),
+  }), { outcome: "queued", duplicate: true, providerCheckpointId: null },
+  "wrong covering checkpoint cannot be used to advance history");
   const published = await f.repository.submitBackgroundResult({
     ...f.submit, coveringCheckpointId: covering,
   });
