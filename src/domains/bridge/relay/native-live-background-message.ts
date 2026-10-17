@@ -58,9 +58,16 @@ export async function appendBackgroundMessage(tx: Transaction, input: {
     },
   });
   await repository.setCurrentHead({ userId: input.userId, conversationId: input.conversationId, messageId: receipt.identity.receiptId });
-  await tx.execute(sql`UPDATE conversations SET provider_metadata=jsonb_set(provider_metadata,'{native_live_presentation_owner,anchorHeadMessageId}',to_jsonb(${receipt.identity.receiptId}::text))
+  const anchored = await tx.execute(sql`UPDATE conversations
+    SET provider_metadata=jsonb_set(provider_metadata,'{native_live_presentation_owner,anchorHeadMessageId}',to_jsonb(${receipt.identity.receiptId}::text))
     WHERE id=${input.conversationId}::uuid AND user_id=${input.userId}::uuid
+      AND current_head_message_id=${receipt.identity.receiptId}::uuid
       AND provider_metadata->'native_live_presentation_owner'->>'prepareId'=${receipt.context.presentationOwnerId}::text
-      AND (provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM ${receipt.context.canonicalMessageId}::text`);
+      AND (provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM ${receipt.context.canonicalMessageId}::text
+    RETURNING id`);
+  // This update and the message/checkpoint/head append share one SERIALIZABLE
+  // transaction. Never commit an unowned head whose presentation owner still
+  // points to the previous assistant: the next input would use a stale anchor.
+  if (anchored.length !== 1) throw new NativeLiveBackgroundResultError("BACKGROUND_CONFLICT");
   return true;
 }
