@@ -22,6 +22,15 @@ test("Wake requires modern persistent session; never dispatch a fork",{skip:proc
   }else{
    assert.equal(row?.prepareId,id);
    assert.equal(stored?.runtimeMode,"resume");
+   const deferred=await repository.rejectReservation({
+     userId,listenerInstanceId,reservationId:id,code:"EXECUTION_START_FAILED"});
+   assert.equal(deferred,"applied");
+   const [waiting]=await db.select().from(preparations).where(eq(preparations.id,id));
+   assert.equal(waiting?.dispatchStatus,"pending","busy Wake must remain durable");
+   assert.ok(waiting?.reservationExpiresAt && waiting.reservationExpiresAt.getTime()>Date.now(),
+     "a retry-after is persisted to avoid an immediate polling loop");
+   assert.equal(await repository.reserveNext({userId,listenerInstanceId,persistentSessions:true}),null,
+     "deferred Wake must not be reserved again before retry-after");
   }
   await db.delete(preparations).where(eq(preparations.id,id));
  }
