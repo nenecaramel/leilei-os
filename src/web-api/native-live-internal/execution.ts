@@ -258,7 +258,7 @@ export function submitResultHandler(
           canonicalOutcome: finalized.ok
             ? finalized.outcome
             : finalized.code,
-          ...(finalized.ok && finalized.outcome === "wake_quiet" && finalized.nativeResumeCheckpointId
+          ...(finalized.ok && (finalized.outcome === "wake_quiet" || finalized.outcome === "wake_stale") && finalized.nativeResumeCheckpointId
             ? { nativeResumeCheckpointId: finalized.nativeResumeCheckpointId } : {}),
         },
       });
