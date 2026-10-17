@@ -24,7 +24,9 @@ function command(n: number, wake = false): NativeLiveRuntimeCommand {
     operation: wake ? "wake" : "send", runtime_mode: n === 1 ? "new" : "resume", canonical_user_message_id: wake ? null : id(n + 20),
     parent_provider_session_id: n === 1 ? null : sid, parent_provider_checkpoint_id: n === 1 ? null : id(99 + n), expected_working_directory: null, prompt: "synthetic" };
 }
-async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolean>) {
+type BindInput = (input: { phase: "queued" | "started"; commandUuid: string;
+  command: NativeLiveRuntimeCommand }) => Promise<{ userMessageId: string; parentProviderCheckpointId: string | null } | null>;
+async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolean>, bindInput?: BindInput) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "persistent-turn-router-")));
   const output = queue<Record<string, unknown>>(), inputs = queue<{ uuid: string; origin: { kind: string } }>();
   const backgroundObserved = queue<string>();
@@ -58,7 +60,7 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
   let backgroundSink: (() => Promise<NativeLiveMacPersistentAcknowledgement>) | null = null;
   let allow = true;
   let admissionSink: ((command: NativeLiveRuntimeCommand) => Promise<boolean>) | null = null;
-  const router = new NativeLiveMacPersistentTurnRouter({ registry, listenerInstanceId: "listener", relay: { ...(idleAdmission ? { checkTaskAdmission:idleAdmission } : {}), async checkExecutionAdmission(input) { admissions.push(input.command.prepare_id); return admissionSink ? admissionSink(input.command) : allow; } },
+  const router = new NativeLiveMacPersistentTurnRouter({ registry, listenerInstanceId: "listener", relay: { ...(idleAdmission ? { checkTaskAdmission:idleAdmission } : {}), ...(bindInput ? { bindInput } : {}), async checkExecutionAdmission(input) { admissions.push(input.command.prepare_id); return admissionSink ? admissionSink(input.command) : allow; } },
     async onBackgroundResult(owner, frame) { backgroundOwners.push(structuredClone(owner)); assert.equal(owner.conversationId, conversation); assert.ok(owner.generationId); background.push(frame.result.user_message_uuid as string); return backgroundSink ? backgroundSink() : acknowledged(frame.events.findLast(event => event.type === "assistant")?.uuid as string); } });
   const run = (c: NativeLiveRuntimeCommand, extra = {}) => router.execute({ command: c, async onResult(frame) { results.push(frame.command.prepare_id); return acknowledged(frame.result.events.findLast(event => event.type === "assistant")?.uuid as string); }, ...extra });
   const finish = (uuid: string) => {
@@ -70,6 +72,45 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
   t.after(async () => { await router.close(); await registry.closeAll(); await rm(root, { recursive: true, force: true }); });
   return { router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
 }
+
+test("started UUID binds an exact pre-start background advancement before foreground finalization", async t => {
+  const bindings: Array<{ phase: string; inputId: string }> = [];
+  const started = deferred<void>();
+  const f = await fixture(t, undefined, async input => {
+    bindings.push({ phase: input.phase, inputId: input.commandUuid });
+    return { userMessageId: input.commandUuid, parentProviderCheckpointId: input.phase === "queued" ? checkpoint : id(103) };
+  });
+  const first = f.run(command(1));
+  f.finish((await f.inputs.next()).value!.uuid); await first;
+  f.setBackground(async () => { started.resolve(); return acknowledged(id(103)); });
+  const second = f.run(command(2)), pending = (await f.inputs.next()).value!;
+  assert.equal(pending.uuid, id(22));
+  f.finish(id(77)); await started.promise;
+  assert.equal(f.backgroundOwners.at(-1)?.executionStart, true, "background finished before the actual native start");
+  f.output.push({ type: "command_lifecycle", state: "started", command_uuid: pending.uuid, session_id: sid });
+  f.finish(pending.uuid);
+  assert.equal((await second).providerCheckpointId, undefined);
+  assert.deepEqual(bindings, [
+    { phase: "queued", inputId: id(22) },
+    { phase: "started", inputId: id(22) },
+  ]);
+  assert.deepEqual(f.results, [id(1), id(2)]);
+});
+
+test("native started binding missing or disagreeing with live cursor rejects the foreground result", async t => {
+  const f = await fixture(t, undefined, async input => ({
+    userMessageId: input.commandUuid,
+    parentProviderCheckpointId: input.phase === "queued" ? checkpoint : id(999),
+  }));
+  const first = f.run(command(1));
+  f.finish((await f.inputs.next()).value!.uuid); await first;
+  const second = f.run(command(2)), pending = (await f.inputs.next()).value!;
+  const rejected = assert.rejects(second, /latest checkpoint/);
+  f.output.push({ type: "command_lifecycle", state: "started", command_uuid: pending.uuid, session_id: sid });
+  f.finish(pending.uuid);
+  await rejected;
+  assert.deepEqual(f.results, [id(1)]);
+});
 
 test("two reservations and wake reuse one SDK query and rotate execution admission", async t => {
   const f = await fixture(t);
