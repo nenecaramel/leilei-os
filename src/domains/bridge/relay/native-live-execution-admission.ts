@@ -106,7 +106,7 @@ export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "exec
                             c.provider_metadata->'nativeSessionSource'->>'revision'
                           AND producer.payload->'result'->>'provider_checkpoint_id'=p.parent_provider_checkpoint_id
                       )
-                    )))
+                    ))))
                 AND cp.effective_working_directory IS NOT DISTINCT FROM p.expected_working_directory
             ))
         )
