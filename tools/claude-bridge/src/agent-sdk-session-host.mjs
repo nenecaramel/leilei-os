@@ -27,7 +27,7 @@ class SessionHost {
     this.perTaskStopAffordance = perTaskStopAffordance;
     this.observeOutput = observeOutput;
     this.beforeSubmit = beforeSubmit; this.onBackgroundResult = onBackgroundResult;
-    this.events = new EventEmitter(); this.ids = new Set();
+    this.events = new EventEmitter(); this.ids = new Set(); this.startedCommands = new Set();
     this.taskState = new AgentSdkTaskState(() => this.publishTaskState());
     this.pending = []; this.active = null; this.state = 'starting'; this.sessionId = null;
     this.segment = newSegment();
@@ -241,7 +241,9 @@ class SessionHost {
           && message.state === 'started'
           && typeof message.command_uuid === 'string'
           && message.command_uuid.trim()
-          && message.command_uuid !== ZERO_UUID) {
+          && message.command_uuid !== ZERO_UUID
+          && !this.startedCommands.has(message.command_uuid)) {
+          this.startedCommands.add(message.command_uuid);
           this.events.emit('command-started', Object.freeze({
             inputId: message.command_uuid,
             source: this.active?.dispatched && this.active.commandIds.has(message.command_uuid)
