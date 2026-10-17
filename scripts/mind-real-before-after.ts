@@ -3,7 +3,8 @@
  *
  * pnpm exec tsx scripts/mind-real-before-after.ts "/private/path/leileios-full-backup_*.json"
  *
- * No DB access, tokens, remote requests, output files or production changes.
+ * No DB access, tokens, personal-data uploads, output files or production changes.
+ * E5 may retrieve public model weights if the local model cache is incomplete.
  * Runs original local E5 scorer and new ritrieve snapshot index against the
  * SAME sampled eligible Mind Memory records and SAME automatically derived
  * query probes. Labels derived from message provenance are WEAK ground truth;
@@ -191,6 +192,11 @@ try {
     memories:corpus.map(x=>({stateId:x.id,text:x.text})),
   });
   const ritrieveIndexMs=Math.round(performance.now()-indexStarted);
+  // Warm the E5 provider and pre-encode the identical comparison corpus.
+  // Exclude cold model/index cost from BOTH models' per-query measurements.
+  const e5PrepareStarted=performance.now();
+  await scoreE5(e5,"语义模型准备完成",candidates);
+  const e5PrepareMs=Math.round(performance.now()-e5PrepareStarted);
   const experiment=new Map<string,Outcome[]>();
   const names=["before_E5_0.80","after_ritrieve_0.68","after_ritrieve_0.76","after_ritrieve_0.78","after_ritrieve_0.80"] as const;
   for(const n of names)experiment.set(n,[]);
@@ -222,12 +228,14 @@ try {
     source_linked_probes_used:probes.filter(x=>x.type==="source_linked").length,
     self_quote_controls:probes.filter(x=>x.type==="self_quote").length,
     unlabelled_generic_probes:probes.filter(x=>x.type==="generic_unlabelled").length,
-    ritrieve_warmup_ms:ritrieveWarmupMs,ritrieve_index_ms:ritrieveIndexMs,
+    before_e5_model_and_corpus_prepare_ms:e5PrepareMs,
+    after_ritrieve_warmup_ms:ritrieveWarmupMs,after_ritrieve_index_ms:ritrieveIndexMs,
     results,
     caveats:[
       "E5 and ritrieve compare embedding retrieval on identical sampled candidates, not complete old vs new production Hook implementations.",
       "Source-message links are weak proxy labels. Self-quote controls are trivial. Generic probes are NOT confirmed negative labels.",
       "No personal Memory, chat excerpts, file paths, source IDs or tokens are printed, saved, or transmitted.",
+      "This script compares warm query latency after both models have encoded the same corpus; E5 full cold setup and ritrieve full-index costs are separate.",
       "The complete ritrieve 30k-index, background refresh and actual hook+Railway timings are not measured by this script.",
     ],
   },null,2));
