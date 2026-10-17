@@ -55,6 +55,54 @@ for (const [name, patch] of [
   assert.throws(() => backgroundResult({ ...result, ...patch }), { code: "INVALID_BACKGROUND_RESULT" });
 });
 
+test("input binding HTTP route authenticates and rejects foreign native UUIDs", async () => {
+  const commandId="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const body={
+    listener_instance_id:listenerId,request_id:requestId,conversation_id:conversationId,
+    runtime_mode:"resume",canonical_user_message_id:commandId,
+    parent_provider_session_id:"synthetic",parent_provider_checkpoint_id:checkpoint,
+    command_uuid:commandId,phase:"started",
+  };
+  const seen:unknown[]=[];
+  const service=Object.assign(new FakeRelayService(),{
+    async bindInput(input:unknown){
+      seen.push(input);
+      return{userMessageId:commandId,parentProviderCheckpointId:checkpoint};
+    },
+  });
+  await withServer(app=>{app.use("/relay",createNativeLiveRelayInternalRouter({relayService:service}));},async url=>{
+    const response=await fetch(`${url}/relay/reservations/${prepareId}/input-binding`,{
+      method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body),
+    });
+    assert.equal(response.status,401);
+    assert.deepEqual(seen,[]);
+  });
+  await withServer(app=>{
+    app.use((request,_response,next)=>{request.mcpUserId=userId;next();});
+    app.use("/relay",createNativeLiveRelayInternalRouter({relayService:service}));
+  },async url=>{
+    const post=(candidate:unknown)=>fetch(`${url}/relay/reservations/${prepareId}/input-binding`,{
+      method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(candidate),
+    });
+    for(const invalid of [
+      {...body,command_uuid:"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"},
+      {...body,phase:"finished"},
+      {...body,extra:true},
+      {...body,runtime_mode:"new"},
+    ]) assert.equal((await post(invalid)).status,400);
+    assert.deepEqual(seen,[]);
+    const valid=await post(body);
+    assert.equal(valid.status,200);
+    assert.deepEqual((await valid.json() as {data:{bound:{userMessageId:string}}}).data.bound.userMessageId,commandId);
+    assert.equal(seen.length,1);
+    const binding=seen[0] as Record<string,unknown>;
+    assert.equal(binding.userId,userId);
+    assert.equal(binding.reservationId,prepareId);
+    assert.equal(binding.phase,"started");
+    assert.equal(Object.hasOwn(binding,"commandUuid"),false,"untrusted UUID must not replace the exact canonical reservation");
+  });
+});
+
 test("HTTP background routes authenticate first and do not accept caller-supplied user identity", async () => {
   await withServer(app => { app.use("/relay", createNativeLiveRelayInternalRouter({ relayService: new FakeRelayService() })); }, async baseUrl => {
     const response = await fetch(`${baseUrl}/relay/reservations/${prepareId}/background-results/prepare`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(prepare) });
