@@ -512,7 +512,26 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       prefix: preflight?.prefix ?? null, cwd: this.cwd, environment: this.environment,
     });
     if (!prepared || !uuid.test(prepared.sessionId ?? "")) throw new Error("Persistent fork transcript preflight failed.");
-    return this.#openPersistentSession(options, null, { checkpointId: fork.checkpointId, localSessionId: prepared.sessionId });
+    let cleaned = false;
+    const cleanup = async () => {
+      if (cleaned) return;
+      cleaned = true;
+      await prepared.cleanup();
+    };
+    try {
+      const host = await this.#openPersistentSession(options, null, {
+        checkpointId: fork.checkpointId, localSessionId: prepared.sessionId,
+      });
+      // The synthetic prefix is necessary only until the first native result.
+      // Retain crash-cleanup receipts during startup; never leak an extra
+      // transcript indefinitely, and never remove a still-loading prefix.
+      host.events.once("turn-result", () => { void cleanup().catch(() => {}); });
+      void host.completion.then(cleanup, cleanup).catch(() => {});
+      return host;
+    } catch (error) {
+      await cleanup().catch(() => {});
+      throw error;
+    }
   }
 
   async #openPersistentSession(options = {}, restore = null, fork = null) {
