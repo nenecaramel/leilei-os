@@ -475,7 +475,7 @@ test("each turn streams its own live output and returns the normalized events it
   assert.equal(new Set([...live[0]!, ...live[1]!]).size, live[0]!.length + live[1]!.length, "no event is delivered to two turns");
 });
 
-test("output attachment handlers require explicit capability opt-in", async t => {
+test("output attachment handlers default enabled and only explicit false disables them", async t => {
  for (const enabled of [undefined, false, true]) await t.test(String(enabled), async t => {
   const f = await fixture(t), forwarded: string[] = [];
   const commandWithOutput = { ...command(1), ...(enabled === undefined ? {} : { output_attachments_enabled: enabled }) };
@@ -487,7 +487,7 @@ test("output attachment handlers require explicit capability opt-in", async t =>
     content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "aGk=" } }] }] } });
   f.finish(input.uuid);
   await running;
-  assert.deepEqual(forwarded, enabled === true ? ["image/png"] : []);
+  assert.deepEqual(forwarded, enabled !== false ? ["image/png"] : []);
  });
 });
 
