@@ -432,7 +432,8 @@ export class NativeLiveMacPersistentTurnRouter {
             generationId: this.generationId!, source: this.backgroundSource, providerSessionId: this.binding!.session.sessionId!,
             ...(stillWithinForeground && foreground.command.operation === "send" && !startedBeforeReceipt
               ? { executionStart: true } : {}),
-            ...(stillWithinForeground && startedBeforeReceipt ? { deferred: true } : {}),
+            ...(stillWithinForeground && foreground.command.operation === "send"
+              ? { deferred: true } : {}),
             parentProviderCheckpointId: this.providerCheckpointId, workingDirectory: this.binding!.workingDirectory });
           const outcome = await this.input.onBackgroundResult(owner, { ...frame, providerCheckpointId });
           this.assertLive();
