@@ -94,7 +94,9 @@ export class NativeLiveMacPersistentTurnRouter {
     if (this.active) throw new Error("Persistent turn is active or awaiting durable acknowledgement.");
     const command = freezeCommand(parseNativeLiveRuntimeCommand(input.command));
     const ordinary = ["send", "wake"].includes(command.operation) && ["new", "resume"].includes(command.runtime_mode);
-    const replacement = ["edit", "retry"].includes(command.operation) && ["new", "fork"].includes(command.runtime_mode);
+    const replacement = ["edit", "retry"].includes(command.operation)
+      && (command.runtime_mode === "new" || (command.runtime_mode === "fork"
+        && !!command.parent_provider_session_id && !!command.parent_provider_checkpoint_id));
     if (!(ordinary || replacement)
       || (command.attachments?.length && typeof input.prompt !== "string") || command.failed_user_message_uuids?.length
       || command.parent_provider_checkpoint_id === undefined) throw new Error("Unsupported command for persistent turn routing.");
