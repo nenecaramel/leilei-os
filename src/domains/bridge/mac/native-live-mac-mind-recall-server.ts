@@ -4,17 +4,24 @@ import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { z } from "zod";
 import type { BreathSemanticScorer } from "../../runtime/breath/breath-semantic-recall.js";
+import type { RitrieveSearchResult } from "../../runtime/breath/local-ritrieve-embedding.js";
 
 export function defaultMindRecallSocket() {
   return join(homedir(), ".leileios", "claude-code-mind", "semantic.sock");
 }
+const searchSchema = z.object({
+  query: z.string().trim().min(1).max(16000),
+  limit: z.number().int().min(1).max(48).optional(),
+}).strict();
 const schema = z.object({
   query: z.string().min(1).max(16000),
   candidates: z.array(z.object({stateId: z.string().uuid(), kind: z.literal("memory"), text: z.string().max(2000)}).strict()).min(1).max(256),
 }).strict();
 
 /** Local-only transport for the daemon's existing warm scorer; no Mind storage or queue. */
-export async function startMindRecallSemanticServer(scorer: BreathSemanticScorer, socketPath = defaultMindRecallSocket()) {
+export async function startMindRecallSemanticServer(scorer: BreathSemanticScorer & {
+  searchSnapshot?: (query: string, limit: number) => Promise<RitrieveSearchResult>;
+}, socketPath = defaultMindRecallSocket()) {
   await mkdir(dirname(socketPath), {recursive: true, mode: 0o700});
   await chmod(dirname(socketPath), 0o700);
   // The caller holds the existing single-owner daemon lock. Remove only its old socket.
@@ -27,7 +34,7 @@ export async function startMindRecallSemanticServer(scorer: BreathSemanticScorer
   }
   let busy = false;
   const server = createServer(async (request, response) => {
-    if (request.method !== "POST" || request.url !== "/score") { response.writeHead(404).end(); return; }
+    if (request.method !== "POST" || !["/score", "/search"].includes(request.url ?? "")) { response.writeHead(404).end(); return; }
     if (busy) { response.writeHead(503).end(); return; }
     busy = true;
     try {
@@ -38,12 +45,23 @@ export async function startMindRecallSemanticServer(scorer: BreathSemanticScorer
         if (size > 4 * 1024 * 1024) throw new Error("Body too large.");
         chunks.push(chunk);
       }
-      const input = schema.parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      const payload: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
       if (response.destroyed) return;
-      const scores = await scorer.score(input);
-      if (!response.destroyed) {
-        response.setHeader("Content-Type", "application/json");
-        response.end(JSON.stringify({scores: Object.fromEntries(scores)}));
+      if (request.url === "/search") {
+        if (!scorer.searchSnapshot) throw new Error("Index unavailable");
+        const input = searchSchema.parse(payload);
+        const result = await scorer.searchSnapshot(input.query, input.limit ?? 48);
+        if (!response.destroyed) {
+          response.setHeader("Content-Type", "application/json");
+          response.end(JSON.stringify(result));
+        }
+      } else {
+        const input = schema.parse(payload);
+        const scores = await scorer.score(input);
+        if (!response.destroyed) {
+          response.setHeader("Content-Type", "application/json");
+          response.end(JSON.stringify({scores: Object.fromEntries(scores)}));
+        }
       }
     } catch { if (!response.destroyed) response.writeHead(503).end(); }
     finally { busy = false; }
