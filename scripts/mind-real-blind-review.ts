@@ -154,7 +154,7 @@ const argv=process.argv.slice(2);
 const path=argv.find(x=>!x.startsWith("--"));
 const countString=argv.find(x=>x.startsWith("--count="));
 const limitString=argv.find(x=>x.startsWith("--limit="));
-const count=countString?Number(countString.slice(8)):12;
+const count=countString?Number(countString.slice(8)):8;
 const limit=limitString?Number(limitString.slice(8)):256;
 if(!path || !Number.isInteger(count) || count<4 || count>24
     || !Number.isInteger(limit) || limit<20 || limit>256) {
@@ -205,18 +205,20 @@ try {
     for(const values of selections.values())for(const id of values)union.add(id);
     const displayed=[...union].sort((a,b)=>digest(probe.query+a).localeCompare(digest(probe.query+b)));
     console.log(`\n========== ${i+1}/${probes.length} · ${probe.group} ==========\n历史问题：${probe.query}`);
-    if(!displayed.length)console.log("两种模型都没有选出记忆。");
+    if(!displayed.length)console.log("两种模型都没有选出记忆，无法形成有标签的候选池；跳过本题。");
     for(let j=0;j<displayed.length;j++){
       const memory=byId.get(displayed[j]!);
       if(!memory)throw new Error("Blind review index mismatch.");
       const visible=memory.text.length>450?memory.text.slice(0,450)+"……":memory.text;
       console.log(`\n[${j+1}] ${visible}`);
     }
+    if(displayed.length===0)continue;
     let relevant=new Set<string>();
+    let skipped=false;
     if(displayed.length>0) {
       while(true){
         const answer=(await rl.question("\n确实相关的记忆编号（如 1,3；全无关输入 0；跳过输入 s）：")).trim();
-        if(answer.toLowerCase()==="s"){relevant=new Set();break}
+        if(answer.toLowerCase()==="s"){skipped=true;break}
         if(answer==="0"){relevant=new Set();break}
         const pieces=answer.split(/[,，\s]+/u).filter(Boolean);
         const numbers=pieces.map(x=>Number(x));
@@ -227,12 +229,7 @@ try {
         console.log("输入无效，请只填写屏幕上出现的编号。");
       }
     }
-    // An explicit skip must NOT be counted as an all-irrelevant label.
-    if(displayed.length>0){
-      const last = relevant; // labeled nonempty or none; skip recorded via separate sentinel below
-      void last;
-    }
-    reviews.push({relevant,selections,group:probe.group});
+    if(!skipped)reviews.push({relevant,selections,group:probe.group});
   }
   console.log("\nAGGREGATE_RESULT_JSON_START");
   console.log(JSON.stringify({
@@ -240,9 +237,12 @@ try {
     input_eligible_total:loaded.memories.length,
     sampled_corpus_count:corpus.length,
     available_user_queries:loaded.prompts.length,
+    proposed_query_count:probes.length,
     reviewed_query_count:reviews.length,
+    skipped_or_unjudgeable_queries:probes.length-reviews.length,
     summary:summarize(reviews),
     limitations:[
+      "Unreviewed questions (human skipped or neither model offered a candidate) are excluded, not counted as true negatives.",
       "Queries are real historical user messages; user grades relevance of the UNION of methods' proposed memories.",
       "No candidate outside the shown union is manually judged; recall is conditional on this candidate pool.",
       "This compares old E5 embedding and new ritrieve embedding retrieval, not full old/new production Hook behavior.",
