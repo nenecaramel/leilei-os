@@ -1267,6 +1267,37 @@ test("persistent unknown result is retained for delivery replay without re-execu
   relay.submitError=null; assert.equal((await loop.runOnce()).outcome,"completed"); assert.equal(executions,1);
 });
 
+test("an edited branch retires the OLD writer before running the replacement in a NEW persistent fork", async () => {
+  const relay = new FakeRelay(); relay.canonicalOutcome = "completed";
+  relay.reservation = { reservationId, command: {
+    ...command(), operation: "edit", runtime_mode: "fork",
+    parent_provider_session_id: "original-session", parent_provider_checkpoint_id: "original-checkpoint",
+  } };
+  const steps: string[] = [];
+  let oldWriterRetired = false;
+  const persistent = {
+    assertAccepting() { steps.push("accepting"); },
+    async retire() { steps.push("retire-old"); oldWriterRetired = true; },
+    canRoute(c: NativeLiveRuntimeCommand) {
+      steps.push("canRoute"); assert.equal(c.operation, "edit");
+      return oldWriterRetired;
+    },
+    async execute(_c: NativeLiveRuntimeCommand, options: any) {
+      steps.push("execute-new-fork");
+      const receipt = await options.commit(success());
+      assert.equal(receipt.canonicalOutcome, "completed");
+      return { result: success(), delivery: "committed" as const, canonicalOutcome: "completed" };
+    },
+  };
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay,
+    {async execute() { throw Error("a branch edit must not use a one-shot SDK query"); }},
+    null, null, null, null, null, null, null, persistent as never);
+  const outcome = await loop.runOnce();
+  assert.equal(outcome.outcome, "completed");
+  assert.deepEqual(steps, ["accepting", "retire-old", "canRoute", "execute-new-fork"]);
+  assert.equal(relay.calls.filter(c => c.name === "submitResult").length, 1);
+});
+
 test("legacy fallback never starts if retiring the persistent writer failed",async()=>{
   const relay=new FakeRelay();let legacy=0;
   const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){legacy++;return success();}},null,null,null,null,null,null,null,
