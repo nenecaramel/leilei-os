@@ -58,12 +58,22 @@ export function durableCheckpointPrefix(entries, checkpointId) {
     for (const call of new Set(content.map(block => block.tool_use_id))) claims.set(call, (claims.get(call) ?? 0) + 1);
   }
   const results = new Set([...candidates].filter(([, ids]) => ids.every(call => claims.get(call) === 1)).map(([uuid]) => uuid));
+  // Claude CLI serializes native Cron separately from the user/assistant
+  // message ancestry. A historical edit/retry fork must carry the most recent
+  // session-level schedule snapshot even when that metadata was appended
+  // AFTER the selected assistant checkpoint. Otherwise creating a new branch
+  // silently strips still-valid timers. This is an exact copy of the CLI's
+  // own record, not a LeileiOS scheduler or a rescheduled CronCreate.
+  const latestCronCarry = entries.slice(index + 1).findLast(entry =>
+    entry && typeof entry === "object" && !entry.isSidechain
+      && entry.type === "session_cron_carry") ?? null;
+  const projected = prefix.filter(entry => !entry.isSidechain
+    && (!carriers.has(entry.uuid) || ancestry.has(entry.uuid) || results.has(entry.uuid)));
+  if (latestCronCarry) projected.push(latestCronCarry);
   // Older failed branches can precede a later recovered checkpoint in storage.
-  // Only its ancestry is conversation input; auxiliary records stay available.
-  return {
-    prefix: prefix.filter(entry => !entry.isSidechain && (!carriers.has(entry.uuid) || ancestry.has(entry.uuid) || results.has(entry.uuid))),
-    ancestry,
-  };
+  // Only their user-visible ancestry is conversation input; the Cron table is
+  // deliberately session-scoped, not tied to a discarded message branch.
+  return { prefix: projected, ancestry };
 }
 
 export function checkpointForkSessionStore(store, sessionId, checkpointId, validatePrefix = false) {
