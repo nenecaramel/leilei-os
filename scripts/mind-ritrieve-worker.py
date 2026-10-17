@@ -144,8 +144,12 @@ def main():
                             raise ValueError("invalid score")
                         hits.append((state_id, score))
                     hits.sort(key=lambda row: (-row[1], row[0]))
+                # Robust distractor rejection. This is only a first-stage
+                # unsupervised floor; production activation needs labelled calibration.
+                baseline = float(np.median([score for _, score in hits])) if len(hits) >= 8 else 0.0
+                floor = min(0.98, max(0.68, baseline + 0.07))
                 result = {"id": request_id, "version": active_version,
-                          "hits": hits[:limit], "count": len(active)}
+                          "hits": hits[:limit], "count": len(active), "floor": floor}
 
             else:
                 raise ValueError("unsupported operation")
