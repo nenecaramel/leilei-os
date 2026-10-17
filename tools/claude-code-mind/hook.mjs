@@ -593,6 +593,55 @@ async function acknowledgeStop(config, sessionId, invocationStarted) {
   await recordDiagnostic(config, "Stop", reason);
 }
 
+async function indexedSearch(config, query, timeoutMs) {
+  const socketPath = config.semantic_socket || join(homedir(), ".leileios", "claude-code-mind", "semantic.sock");
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({socketPath, path: "/search", method: "POST",
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: {"content-type": "application/json"}}, response => {
+      const chunks = []; let size = 0;
+      response.on("data", chunk => {
+        size += chunk.length;
+        if (size > 20000) request.destroy(new Error("Oversized index response."));
+        else chunks.push(chunk);
+      });
+      response.on("end", () => {
+        try {
+          if (response.statusCode !== 200) throw new Error("Index unavailable.");
+          const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          if (!/^[a-f0-9]{64}$/.test(value?.version) || !Array.isArray(value.hits) ||
+              value.hits.length > 48 || !value.hits.every(hit =>
+                UUID.test(hit?.stateId) && typeof hit.score === "number" &&
+                Number.isFinite(hit.score) && hit.score >= 0 && hit.score <= 1)) {
+            throw new Error("Invalid indexed result.");
+          }
+          resolve(value);
+        } catch (error) { reject(error); }
+      });
+      response.on("error", reject);
+    });
+    request.on("error", reject);
+    request.end(JSON.stringify({query, limit: 48}));
+  });
+}
+
+async function commitRecallContext(config, input, snapshot, data, exclude, output) {
+  await withState(config, input.session_id, async (state, save) => {
+    const seen = new Set(state.written_ids);
+    if (state.epoch !== snapshot.epoch || state.active_turn !== snapshot.active_turn ||
+        data.memory_ids.some(id => seen.has(id) || exclude.includes(id))) return;
+    if (seen.size + data.memory_ids.length > MAX_SEEN) return;
+    const issuedAt = Date.now();
+    await output(`${data.context}\n`);
+    await recordDelivery(config, hash(data.context), data.memory_ids, issuedAt).catch(() => undefined);
+    if (data.recall_id) state.pending_recalls = [{recall_id: data.recall_id, context_sha256: data.context_sha256,
+      ...(data.recall_token ? {recall_token: data.recall_token} : {}),
+      memory_ids: data.memory_ids, epoch: state.epoch, context_epoch: state.context_epoch,
+      turn_id: state.active_turn, issued_at: issuedAt}];
+    await save(state);
+  });
+}
+
 export async function runHook(input, output = text => new Promise((resolve, reject) => process.stdout.write(text, error => error ? reject(error) : resolve()))) {
   const invocationStarted = Date.now();
   if (process.env.LEILEI_MIND_HOOK_DISABLED === "1" ||
