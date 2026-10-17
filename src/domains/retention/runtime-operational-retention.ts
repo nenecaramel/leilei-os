@@ -141,7 +141,7 @@ export async function deleteExpiredRuntimeOperationalRecordsBatch(
                 AND receipt.user_id = preparation.user_id
                 AND receipt.event_type = 'runtime'
                 AND receipt.payload->>'kind' = 'persistent_background_receipt_v1'
-                AND receipt.payload->>'phase' = 'queued'
+                AND receipt.payload->>'phase' IN ('prepared', 'queued')
             )
           ORDER BY preparation.updated_at ASC, preparation.id ASC
           LIMIT ${remaining}
