@@ -35,6 +35,7 @@ test('a LeileiOS fork with no Desktop window is selected by its local transcript
       expectedSessionId: A, expectedCheckpointId: CP, expectedRevision: resolved.inspection.nativeRevision };
     const routes = [], launches = [];
     const result = await handoffNativeSessionToDesktop({ input, conversationId: D, relayUrl: 'https://relay.invalid', relayToken: 'PRIVATE_TOKEN',
+      recoveryDirectory: input.recoveryDirectory,
       launchImpl: async selection => { launches.push(selection); },
       fetchImpl: async (url, options) => {
         const route = url.split('/native-history/')[1];
