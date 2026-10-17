@@ -78,18 +78,20 @@ test("started UUID binds an exact pre-start background advancement before foregr
   const started = deferred<void>();
   const f = await fixture(t, undefined, async input => {
     bindings.push({ phase: input.phase, inputId: input.commandUuid });
-    return { userMessageId: input.commandUuid, parentProviderCheckpointId: input.phase === "queued" ? checkpoint : id(103) };
+    return { userMessageId: input.commandUuid, parentProviderCheckpointId: input.phase === "queued" ? checkpoint : id(102) };
   });
   const first = f.run(command(1));
   f.finish((await f.inputs.next()).value!.uuid); await first;
-  f.setBackground(async () => { started.resolve(); return acknowledged(id(103)); });
+  f.setBackground(async () => { started.resolve(); return acknowledged(id(102)); });
   const second = f.run(command(2)), pending = (await f.inputs.next()).value!;
   assert.equal(pending.uuid, id(22));
   f.finish(id(77)); await started.promise;
+  for (let i = 0; i < 100 && f.router.providerCheckpointId !== id(102); i++) await new Promise(setImmediate);
+  assert.equal(f.router.providerCheckpointId, id(102), "earlier background must be acknowledged before the input starts");
   assert.equal(f.backgroundOwners.at(-1)?.executionStart, true, "background finished before the actual native start");
   f.output.push({ type: "command_lifecycle", state: "started", command_uuid: pending.uuid, session_id: sid });
   f.finish(pending.uuid);
-  assert.equal((await second).providerCheckpointId, undefined);
+  await second;
   assert.deepEqual(bindings, [
     { phase: "queued", inputId: id(22) },
     { phase: "started", inputId: id(22) },
