@@ -40,6 +40,7 @@ test("a completed commit acknowledges the verified checkpoint and is never resub
 
 test("a wake outcome that commits no checkpoint retires the writer; the submitted result stands", async () => {
   const f = fixture(async input => { const ack = await frame(input) as { status: string }; if (ack.status === "rejected") throw new Error("Persistent turn finalization was rejected."); return {}; });
+  await f.executor.execute(command(), { async commit() { return { canonicalOutcome: "completed" }; } });
   const run = await f.executor.execute(command({ operation: "wake", canonical_user_message_id: null }), { async commit() { return { canonicalOutcome: "wake_quiet" }; } });
   assert.equal(run.delivery, "committed"); assert.equal(run.result.status, "success"); assert.equal(run.canonicalOutcome, "wake_quiet");
   assert.equal(f.executor.canRoute(command()), true, "the retired router is gone; a new one may restore");
@@ -74,6 +75,28 @@ test("edited and retried forks may own a fresh persistent writer without evictin
   assert.equal(f.executor.canRoute(command({ operation: "retry", runtime_mode: "fork" })), true);
 });
 
+test("Wake uses the current matching writer, or restores its original SID after restart; never forks", async () => {
+  const wake = command({ operation:"wake", runtime_mode:"resume", canonical_user_message_id:null });
+  const restored = fixture(async input => {
+    assert.equal(input.command.operation, "wake");
+    assert.equal(input.command.runtime_mode, "resume");
+    assert.equal(input.command.parent_provider_session_id, id(5));
+    await frame(input);
+    return {};
+  });
+  assert.equal(restored.executor.canRoute(wake), true, "after daemon restart Wake can restore same session");
+  const run = await restored.executor.execute(wake,{async commit(){return {canonicalOutcome:"completed"};}});
+  assert.equal(run.canonicalOutcome, "completed");
+  assert.equal(restored.routers[0]!.closed,0, "restored same-session writer survives Wake");
+  assert.equal(restored.executor.canRoute({...wake,runtime_mode:"fork"}), false, "Wake must never fork");
+
+  const mismatched = fixture(async input => { await frame(input); return {}; }, { matches: false });
+  await mismatched.executor.execute(command(), {async commit(){return {canonicalOutcome:"completed"};}});
+  assert.equal(mismatched.executor.canRoute(wake), false, "an existing mismatched writer cannot be replaced");
+  await assert.rejects(mismatched.executor.execute(wake, {async commit(){}}),/cannot use the persistent writer/);
+  assert.equal(mismatched.routers[0]!.closed,0, "a stale Wake cannot close an existing Cron writer");
+});
+
 test("only continuing send/wake commands route; a legacy operation retires the writer first", async () => {
   const f = fixture(async input => { await frame(input); return {}; }, { matches: false });
   assert.equal(f.executor.canRoute(command({ runtime_mode: "fork" })), false);
@@ -106,6 +129,7 @@ test("attachments are materialized into the prompt and cleaned up; outputs are c
 
 test("verified quiet resume commits its exact cursor without retiring the same-session writer", async () => {
   const f = fixture(async input => { const ack = await frame(input); assert.deepEqual(ack,{status:"applied",providerCheckpointId:id(9),...(input.command.operation === "wake" ? {continuationOnly:true} : {})}); return {}; });
+  await f.executor.execute(command(), { async commit() { return { canonicalOutcome: "completed" }; } });
   const run=await f.executor.execute(command({operation:"wake",canonical_user_message_id:null}),{async commit(){return {canonicalOutcome:"wake_quiet",nativeResumeCheckpointId:id(9)};}});
   assert.equal(run.delivery,"committed");assert.equal(run.canonicalOutcome,"wake_quiet");
   assert.equal(f.routers[0]!.closed,0);

@@ -22,6 +22,23 @@ test("canonical ancestry excludes failed branches and sidechains without mutatin
   assert.deepEqual(entries, before);
 });
 
+test("a checkpoint fork retains the latest native session Cron table outside message ancestry",async()=>{
+  const original={type:"session_cron_carry",jobs:[{id:"first",cron:"0 9 * * *",recurring:true,createdAt:100}]};
+  const replaced={type:"session_cron_carry",jobs:[{id:"first",cron:"0 9 * * *",recurring:true,createdAt:100},{id:"second",cron:"0 10 * * *",createdAt:200}]};
+  const latest={type:"session_cron_carry",jobs:[{id:"first",cron:"0 9 * * *",recurring:true,createdAt:100}]};
+  const entries=[entry("u",null,"user"),original,entry("checkpoint","u"),
+    entry("later","checkpoint"),replaced,latest];
+  const before=structuredClone(entries);
+  const projected=durableCheckpointPrefix(entries,"checkpoint");
+  assert.deepEqual(projected.prefix,[entries[0],original,latest,entries[2]],
+    "carry the latest session schedule exactly once, without later chat");
+  assert.deepEqual([...projected.ancestry],["checkpoint","u"]);
+  assert.deepEqual(entries,before,"the source session must never be mutated");
+  const store={async load(){return entries;}};
+  assert.deepEqual(await checkpointForkSessionStore(store,"parent","checkpoint",true).load({sessionId:"parent"}),
+    projected.prefix);
+});
+
 test("attachment and compact system ancestry remain valid carriers", () => {
   const entries = [entry("u", null, "user"), entry("file", "u", "attachment"), entry("compact", "file", "system"), entry("a", "compact")];
   assert.deepEqual(durableCheckpointPrefix(entries, "a").prefix, entries);

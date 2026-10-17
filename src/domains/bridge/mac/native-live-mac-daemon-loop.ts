@@ -1,4 +1,5 @@
 import type { NativeLiveMacPersistentExecutor, NativeLiveMacPersistentExecution } from "./native-live-mac-persistent-executor.js";
+import { failure as runtimeFailure } from "./native-live-mac-runtime-executor.js";
 import type { NativeLiveMacResultOutbox } from "./native-live-mac-result-outbox.js";
 import type {
   NativeLiveRuntimeCommand,
@@ -413,7 +414,7 @@ export class NativeLiveMacDaemonLoop {
     private readonly externalSessionExecutor:
       NativeLiveExternalSessionExecutor | null = null,
     private readonly resultOutbox: NativeLiveMacResultOutbox | null = null,
-    private readonly persistentExecutor: (Pick<NativeLiveMacPersistentExecutor, "canRoute" | "execute" | "retire"> & Partial<Pick<NativeLiveMacPersistentExecutor, "assertAccepting" | "retireSession">>) | null = null,
+    private readonly persistentExecutor: (Pick<NativeLiveMacPersistentExecutor, "canRoute" | "execute" | "retire"> & Partial<Pick<NativeLiveMacPersistentExecutor, "assertAccepting" | "retireSession" | "shouldDeferWake">>) | null = null,
   ) {}
 
   async runOnce(): Promise<NativeLiveDaemonRunOutcome> {
@@ -756,6 +757,15 @@ export class NativeLiveMacDaemonLoop {
         return { outcome: "idle" };
       }
 
+      if (reservation.command.operation === "wake"
+        && !this.persistentExecutor?.canRoute(reservation.command)
+        && this.persistentExecutor?.shouldDeferWake?.(reservation.command)) {
+        // Foreground work or the bounded writer capacity is temporarily busy.
+        // Do not mark this Wake started, submit a model request or close any
+        // SDK writer. Keep the same durable reservation pending for retry.
+        await this.bestEffortReject(reservation.reservationId, "EXECUTION_START_FAILED");
+        return { outcome: "rejected", reservationId: reservation.reservationId, code: "EXECUTION_START_FAILED" };
+      }
       try {
         await this.relay.markExecutionStarted({
           listenerInstanceId: this.listenerInstanceId,
@@ -840,6 +850,16 @@ export class NativeLiveMacDaemonLoop {
         // keep running in parallel with a different presentation branch.
         if (command.operation === "edit" || command.operation === "retry") {
           await this.persistentExecutor?.retire(command.conversation_id);
+        }
+        if (command.operation === "wake") {
+          // Wake NEVER reaches the branch/fork/one-shot execution below.
+          // A missing or mismatched live writer is a failed Wake, not a
+          // reason to close the writer currently holding native schedules.
+          if (command.runtime_mode !== "resume" || !this.persistentExecutor?.canRoute(command)) {
+            return runtimeFailure(command, "NO_PROVIDER_SESSION");
+          }
+          persistentRun = await this.persistentExecutor.execute(command, { ...options, commit });
+          return persistentRun.result;
         }
         if (this.persistentExecutor?.canRoute(command)) {
           persistentRun = await this.persistentExecutor.execute(command, { ...options, commit });

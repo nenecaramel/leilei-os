@@ -487,6 +487,7 @@ implements NativeLiveBackendRelayPort {
           WHERE user_id = ${input.userId}::uuid
             AND status = 'prepared'
             AND dispatch_status = 'pending'
+            AND (reservation_expires_at IS NULL OR reservation_expires_at <= now())
           ORDER BY (operation = 'wake') ASC, created_at ASC, id ASC
           FOR UPDATE SKIP LOCKED
           LIMIT 1
@@ -518,14 +519,34 @@ implements NativeLiveBackendRelayPort {
           AND operation = 'wake' AND runtime_mode = 'fork'
           AND dispatch_status = 'reserved' AND reserved_by = ${input.listenerInstanceId}::uuid
           AND parent_provider_session_id IS NOT NULL AND parent_provider_checkpoint_id IS NOT NULL
-          AND jsonb_typeof(wake_context->'runtime_generation'->'presentation_owner_id') = 'string'
+          AND (wake_context->'runtime_generation') ? 'presentation_owner_id'
+          AND jsonb_typeof(wake_context->'runtime_generation'->'presentation_owner_id') IN ('string', 'null')
           AND (wake_context->'runtime_generation') ? 'source_revision'
+          AND jsonb_typeof(wake_context->'runtime_generation'->'source_revision') IN ('string', 'null')
       `);
       const row = await this.findPreparation(
         transaction as Transaction,
         input.userId,
         reserved[0].id,
       );
+      if (row?.operation === "wake" && row.runtimeMode !== "resume") {
+        // An autonomous Wake is never a fork. A legacy listener, a missing
+        // checkpoint or a pre-generation wake must fail closed, rather than
+        // launching a one-shot CLI that can retire a Cron-owning writer.
+        await transaction.execute(sql`
+          UPDATE native_live_turn_preparations
+          SET dispatch_status = 'rejected',
+              dispatch_error_code = 'WAKE_REQUIRES_LIVE_SESSION',
+              reserved_by = NULL,
+              reserved_at = NULL,
+              reservation_expires_at = NULL,
+              updated_at = now()
+          WHERE id = ${reserved[0].id}::uuid AND user_id = ${input.userId}::uuid
+            AND dispatch_status = 'reserved'
+            AND operation = 'wake'
+        `);
+        return null;
+      }
       return row;
     });
   }
@@ -850,7 +871,11 @@ implements NativeLiveBackendRelayPort {
         dispatchStatus: nextStatus,
         reservedBy: null,
         reservedAt: null,
-        reservationExpiresAt: null,
+        // A transiently busy Wake remains a single durable pending request.
+        // Back off rather than spinning on the same reservation every poll.
+        reservationExpiresAt: input.code === "EXECUTION_START_FAILED"
+          ? sql`CASE WHEN ${nativeLiveTurnPreparations.operation} = 'wake' THEN now() + interval '3 seconds' ELSE NULL END`
+          : null,
         executionStartedAt: null,
         dispatchErrorCode: input.code,
         updatedAt: sql`now()`,
