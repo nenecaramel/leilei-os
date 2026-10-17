@@ -66,7 +66,7 @@ test('iMessage Composer uses Apple-native controls while retaining existing acti
   assert.match(imessageBody, /Text\("Message"\)\s*\.foregroundStyle\(Color\.primary\.opacity\(0\.35\)\)/);
   assert.match(imessageBody, /TextField\(/);
   assert.match(imessageBody, /\.lineLimit\(1\.\.\.6\)/);
-  assert.match(imessageBody, /\.glassEffect\(\.regular, in: Capsule\(\)\)/);
+  assert.match(imessageBody, /\.glassEffect\(\.regular, in: RoundedRectangle\(cornerRadius: 22, style: \.continuous\)\)/);
   assert.match(imessageBody, /\.glassEffect\(\.regular, in: Circle\(\)\)/);
   assert.doesNotMatch(imessageBody, /\.regularMaterial/);
   assert.match(imessageBody, /private var iMessagePlusMenu: some View \{\s*Menu \{/);
