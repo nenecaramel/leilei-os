@@ -68,6 +68,41 @@ test("network-unknown recovery is backed off and later replays its original rece
  available=true;now+=30000;assert.equal(await sink.flush(),1);assert.equal(f.committed.size,1);assert.deepEqual(recovered,[id(1)]);assert.ok(blocks.length>0);
 });
 
+test("deferred background is acknowledged queued but is only deleted after F covering checkpoint commits",async t=>{
+  const f=await fixture(t);const checks:Array<string|null>=[];
+  const relay={...f.relay,async submitBackgroundResult(input:any){
+    checks.push(input.coveringCheckpointId??null);
+    return input.coveringCheckpointId
+      ?{outcome:"committed" as const,duplicate:false,providerCheckpointId:input.coveringCheckpointId}
+      :{outcome:"queued" as const,duplicate:false,providerCheckpointId:null};
+  }};
+  const sink=new NativeLiveMacBackgroundResultSink({listenerInstanceId:id(7),relay,outbox:f.outbox});
+  assert.deepEqual(await sink.commit({...owner,deferred:true},frame),{status:"queued",providerCheckpointId:id(6)});
+  assert.equal((await f.outbox.list()).length,1,"queued is not canonical completion");
+  assert.deepEqual(checks,[null]);
+  assert.equal(await sink.cover(id(1),id(8)),1);
+  assert.equal((await f.outbox.list())[0]!.coveringCheckpointId,id(8),"covering F checkpoint is fsynced before F publication");
+  await sink.publishCovered(id(1));
+  assert.deepEqual(checks,[null,id(8)]);
+  assert.equal((await f.outbox.list()).length,0,"only a committed durable reply clears outbox evidence");
+});
+
+test("orphaned deferred background is fenced after foreground failure or daemon restart",async t=>{
+  const f=await fixture(t);let active=true;const blocked:string[]=[];
+  const relay={...f.relay,async submitBackgroundResult(){
+    return{outcome:"queued" as const,duplicate:false,providerCheckpointId:null};
+  }};
+  const sink=new NativeLiveMacBackgroundResultSink({listenerInstanceId:id(7),relay,outbox:f.outbox,
+    isForegroundActive:()=>active,onRecoveryBlocked:async id=>{blocked.push(id);}});
+  await sink.commit({...owner,deferred:true},frame);
+  assert.equal(await sink.flush(),0);
+  assert.deepEqual(blocked,[],"live foreground F must not be retired by the periodic outbox scan");
+  active=false;
+  assert.equal(await sink.flush(),0);
+  assert.deepEqual(blocked,[id(1)]);
+  assert.equal((await f.outbox.list()).length,1,"uncertain result remains durable until covering proof can be recovered");
+});
+
 test("restart replays background segments in persisted SDK order, not hash filename order", async t => {
   const f = await fixture(t);
   const listenerInstanceId = id(7), generationId = id(2);
