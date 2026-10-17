@@ -11,7 +11,7 @@ import type { NativeLiveMacOutputAttachmentSender } from "./native-live-mac-outp
 import type { NativeLiveMacPersistentAcknowledgement, NativeLiveMacPersistentTurnRouter } from "./native-live-mac-persistent-turn-router.js";
 import { buildNativeLiveRuntimeMetadata, failure, runtimeFailureCode, runtimeFailureDiagnostics, terminalFallbackEvents, type NativeLiveMacRuntimeFailureDiagnostics } from "./native-live-mac-runtime-executor.js";
 
-type Router = Pick<NativeLiveMacPersistentTurnRouter, "execute" | "close" | "matches" | "workingDirectory"> & Partial<Pick<NativeLiveMacPersistentTurnRouter, "suspend" | "settle" | "providerSessionId">>;
+type Router = Pick<NativeLiveMacPersistentTurnRouter, "execute" | "close" | "matches" | "workingDirectory"> & Partial<Pick<NativeLiveMacPersistentTurnRouter, "suspend" | "settle" | "providerSessionId" | "hasActiveTurn">>;
 type Handler = (request: Record<string, unknown>, context: { signal: AbortSignal | null }) => Promise<Record<string, unknown>>;
 export type NativeLiveMacPersistentCommit = (result: NativeLiveRuntimeExecutionResult) => Promise<{ canonicalOutcome: string | null; nativeResumeCheckpointId?: string } | void>;
 /**
@@ -44,6 +44,7 @@ export class NativeLiveMacPersistentExecutor {
     const reasons=this.suspended.get(conversationId);if(!reasons)return;
     reasons.delete("handoff");if(!reasons.size)this.suspended.delete(conversationId);
   }
+  isForegroundActive(conversationId: string): boolean { return this.routers.get(conversationId)?.hasActiveTurn?.() === true; }
   assertAccepting(conversationId: string): void { if (this.shutDown || this.suspended.has(conversationId)) throw new Error("Persistent session is fenced for handoff."); }
 
   constructor(private readonly input: {
