@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { commitWakeResumeCursorLocked } from "../src/domains/bridge/turn/turn-repository/wake-resume-cursor.js";
+import { commitWakeResumeCursorLocked } from "../src/domains/bridge/turn/turn-repository/wake-resume-cursor.ts";
 import type { PreparationRow, Transaction } from "../src/domains/bridge/turn/turn-repository/types.js";
 
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,"0")}`;
