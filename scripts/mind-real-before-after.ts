@@ -45,8 +45,8 @@ function readMemories(document: unknown): {memories: Memory[]; messages: Map<str
     const envelope = raw.envelope;
     if (!record(envelope.scope) || !record(envelope.status)) continue;
     // This function performs the exact full eligibility check used by the new snapshot API.
-    all.push({id:raw.id,kind:"memory",text:raw.text,envelope:envelope as SubjectStateWrite["envelope"]});
-    const provenance = record(envelope.provenance) ? envelope.provenance : {};
+    all.push({id:raw.id,kind:"memory",text:raw.text,envelope:envelope as unknown as SubjectStateWrite["envelope"]});
+    const provenance: Json = record(envelope.provenance) ? envelope.provenance : {};
     const rawSources = Array.isArray(provenance.sources) ? provenance.sources : [];
     const ids = rawSources.filter((x:unknown): x is Json => record(x))
       .filter((x:Json) => x.kind === "message" && uuid(x.id))
@@ -56,7 +56,7 @@ function readMemories(document: unknown): {memories: Memory[]; messages: Map<str
   const eligible = snapshotMemories(all);
   const memories = eligible.map(x=>({id:x.stateId,text:x.text,sourceMessageIds:sources.get(x.stateId) ?? []}));
   const messages = new Map<string,Json>();
-  const conversationData = record(document.data.conversations) ? document.data.conversations : {};
+  const conversationData: Json = record(document.data.conversations) ? document.data.conversations : {};
   const allMessages = Array.isArray(conversationData.messages) ? conversationData.messages : [];
   for (const item of allMessages) {
     if (record(item) && uuid(item.id)) messages.set(item.id,item);
