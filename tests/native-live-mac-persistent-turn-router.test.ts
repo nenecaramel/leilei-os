@@ -135,8 +135,8 @@ test("started UUID binds an exact pre-start background advancement before foregr
   const second = f.run(command(2)), pending = (await f.inputs.next()).value!;
   assert.equal(pending.uuid, id(22));
   f.finish(id(77)); await started.promise;
-  for (let i = 0; i < 100 && f.router.providerCheckpointId !== id(102); i++) await new Promise(setImmediate);
-  assert.equal(f.router.providerCheckpointId, id(102), "earlier background must be acknowledged before the input starts");
+  for (let i = 0; i < 100 && (f.router as unknown as { providerCheckpointId: string | null }).providerCheckpointId !== id(102); i++) await new Promise(setImmediate);
+  assert.equal((f.router as unknown as { providerCheckpointId: string | null }).providerCheckpointId, id(102), "earlier background must be acknowledged before the input starts");
   assert.equal(f.backgroundOwners.at(-1)?.executionStart, true, "background finished before the actual native start");
   f.output.push({ type: "command_lifecycle", state: "started", command_uuid: pending.uuid, session_id: sid });
   f.finish(pending.uuid);
@@ -191,7 +191,7 @@ test("native background after started foreground advances only queued provider e
   assert.equal(f.backgroundOwners.at(-1)?.deferred,true);
   f.finish(input.uuid);
   await second;
-  assert.equal(f.router.providerCheckpointId,id(103),"F's verified descendant replaces the queued producer cursor");
+  assert.equal((f.router as unknown as { providerCheckpointId: string | null }).providerCheckpointId,id(103),"F's verified descendant replaces the queued producer cursor");
   assert.deepEqual(f.results,[id(1),id(2)]);
 });
 
@@ -230,7 +230,7 @@ test("queued transport acknowledgement cannot satisfy canonical foreground final
   const failed=assert.rejects(running,/finalization was rejected/);
   f.finish((await f.inputs.next()).value!.uuid);
   await failed;
-  assert.equal(f.router.providerCheckpointId,null,"never advance to an uncommitted foreground cursor");
+  assert.equal((f.router as unknown as { providerCheckpointId: string | null }).providerCheckpointId,null,"never advance to an uncommitted foreground cursor");
 });
 
 test("native started binding missing or disagreeing with live cursor rejects the foreground result", async t => {
