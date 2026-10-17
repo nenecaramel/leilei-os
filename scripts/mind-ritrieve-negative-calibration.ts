@@ -14,6 +14,17 @@ import { LocalRitrieveBreathSemanticScorer } from "../src/domains/runtime/breath
 
 type Label = "promise" | "baking" | "none";
 type LabeledQuery = {tag: string; query: string; relevant: Label};
+type Observation = {
+  tag: string;
+  label: Label;
+  expectedId: string | null;
+  hits: Array<{stateId: string; score: number}>;
+  baseFloor: number;
+  queryMs: number;
+  rawTopScore: number | null;
+  expectedScore: number | null;
+  rawTopCorrect: boolean | null;
+};
 const memories = [
   {stateId: "11111111-1111-4111-8111-111111111111", text: "做面包时面团需要充分发酵。", label: "baking"},
   {stateId: "22222222-2222-4222-8222-222222222222", text: "过去曾经因为承诺被反复打破而发生争执。", label: "promise"},
@@ -81,7 +92,7 @@ try {
   });
   const indexMs = Math.round(performance.now() - indexStarted);
 
-  const observations = [];
+  const observations: Observation[] = [];
   for (const c of cases) {
     const started = performance.now();
     const r = await scorer.searchSnapshot(c.query, 48);
