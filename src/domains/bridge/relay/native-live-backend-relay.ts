@@ -1,3 +1,4 @@
+import { bindNativeLiveInput, type NativeLiveInputBindingRequest, type NativeLiveInputBinding } from "./native-live-input-binding.js";
 import { renewNativeLiveSessionLease, renewNativeLiveExecutionLease, NATIVE_LIVE_EXECUTION_LEASE_MS } from "./native-live-execution-lease.js";
 import { NativeLiveBackgroundResultError } from "../protocol/native-live-background-result.js";
 import { prepareNativeLiveBackgroundResult, submitNativeLiveBackgroundResult } from "./native-live-background-result-repository.js";
@@ -42,6 +43,7 @@ type RelayMutationOutcome =
   | "conflict";
 
 export interface NativeLiveBackendRelayPort {
+  bindInput?(input: NativeLiveInputBindingRequest & { userId: string }): Promise<NativeLiveInputBinding | null>;
   prepareBackgroundResult?(input: NativeLiveBackgroundPrepare & { userId: string }): Promise<NativeLiveBackgroundPrepared>;
   submitBackgroundResult?(input: NativeLiveBackgroundSubmit & { userId: string }): Promise<NativeLiveBackgroundAck>;
   checkExecutionAdmission?(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean>;
@@ -527,6 +529,8 @@ implements NativeLiveBackendRelayPort {
       return row;
     });
   }
+
+  bindInput(input: NativeLiveInputBindingRequest & { userId: string }) { return bindNativeLiveInput(this.db, input); }
 
   prepareBackgroundResult(input: NativeLiveBackgroundPrepare & { userId: string }): Promise<NativeLiveBackgroundPrepared> {
     return prepareNativeLiveBackgroundResult(this.db, input);
@@ -1031,6 +1035,8 @@ export class NativeLiveBackendRelayService {
       ),
     };
   }
+
+  bindInput(input: NativeLiveInputBindingRequest & { userId: string }) { return this.repository.bindInput?.(input) ?? Promise.resolve(null); }
 
   prepareBackgroundResult(input: NativeLiveBackgroundPrepare & { userId: string }): Promise<NativeLiveBackgroundPrepared> {
     if (!this.repository.prepareBackgroundResult) throw new NativeLiveBackgroundResultError("BACKGROUND_UNAVAILABLE");
