@@ -75,6 +75,8 @@ export class NativeLiveMacPersistentRuntime {
           try { await this.backgroundResults.publishCovered(conversationId, generationId); }
           catch (error) { this.executor.suspend(conversationId, "recovery"); throw error; }
         },
+        hasUnpublishedDeferred: (conversationId, generationId) =>
+          this.backgroundResults.hasUnpublishedDeferred(conversationId, generationId),
         onForegroundUnpublished: conversationId => this.executor.suspend(conversationId, "recovery") }); } });
     for (const conversationId of new Set(pendingRecovery.map(value => value.result.conversation_id)))
       this.executor.suspend(conversationId, "recovery");
