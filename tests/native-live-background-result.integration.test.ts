@@ -366,6 +366,14 @@ test("pre-start native B queues and later publishes H -> U -> F -> B without rep
   const started=await f.repository.bindInput({...binding,phase:"started"});
   assert.equal(started?.parentProviderCheckpointId,f.next,
     "native F must resume the queued B producer checkpoint, not stale canonical H");
+  assert.equal(await f.repository.checkExecutionAdmission({
+    ...binding,parentProviderCheckpointId:f.next,
+  }),true,"started F tools must be admitted against B's durable producer cursor");
+  assert.equal(await f.repository.renewExecutionLease({
+    ...binding,parentProviderCheckpointId:f.next,
+  }),true,"lease renewal must follow F's started native cursor without rewriting U");
+  assert.equal(await f.repository.checkExecutionAdmission(binding),false,
+    "F's old prepared checkpoint is no longer authorized once native B has advanced");
   assert.equal(await parent(),originalParent,"accepted U's parent is immutable");
   const covering=crypto.randomUUID();
   const finished=await f.coordinator.finalize(f.user.id,{
