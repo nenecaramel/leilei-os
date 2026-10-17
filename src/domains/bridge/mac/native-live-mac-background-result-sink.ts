@@ -12,6 +12,11 @@ type Relay = {
   submitBackgroundResult(input: NativeLiveBackgroundSubmit): Promise<NativeLiveBackgroundAck>;
 };
 type Frame = Parameters<NativeLiveMacPersistentSessionOptions["onBackgroundResult"]>[0] & { providerCheckpointId: string };
+class NativeBackgroundStaleReceipt extends Error {
+  readonly relayCode = "BACKGROUND_STALE";
+  constructor() { super("Background result was rejected as stale; retained for manual recovery."); }
+}
+
 function entry(value: Entry): Entry {
   const identity = backgroundIdentity(value), result = backgroundResult(value.result);
   if (result.prepare_id !== identity.sourcePrepareId) throw new Error("Background receipt source mismatch.");
@@ -136,10 +141,21 @@ export class NativeLiveMacBackgroundResultSink {
         provider_checkpoint_id: frame.providerCheckpointId, normalized_events: frame.normalizedEvents } });
     return this.serial(async () => {
       await this.input.outbox.save(pending); // Preserve identity before either HTTP response can be lost.
-      const ack = await this.deliver(pending);
-      return ack.outcome === "committed"
-        ? { status: ack.duplicate ? "idempotent" : "applied", providerCheckpointId: ack.providerCheckpointId! }
-        : { status: "rejected" };
+      try {
+        const ack = await this.deliver(pending);
+        return ack.outcome === "committed"
+          ? { status: ack.duplicate ? "idempotent" : "applied", providerCheckpointId: ack.providerCheckpointId! }
+          : { status: "rejected" };
+      } catch (error) {
+        if (error instanceof NativeBackgroundStaleReceipt) {
+          // Never lose a generated result just because the backend rejected its
+          // old parent. Quarantine the immutable evidence and fence this
+          // conversation; the SDK writer must not treat it as a committed turn.
+          await this.input.outbox.quarantine(pending);
+          await this.input.onRecoveryBlocked?.(pending.result.conversation_id).catch(() => {});
+        }
+        throw error;
+      }
     });
   }
   /** Re-deliver immutable receipts after a restart; never restart provider work. */
@@ -161,7 +177,7 @@ export class NativeLiveMacBackgroundResultSink {
         this.retryAfter.set(value.receiptId,now+30_000);
         await this.input.onRecoveryBlocked?.(value.result.conversation_id).catch(()=>{});
         const code=error&&typeof error==="object"&&"relayCode" in error?error.relayCode:null;
-        if(code==="BACKGROUND_CONFLICT"||code==="BACKGROUND_NOT_FOUND")await this.input.outbox.quarantine(value);
+        if(code==="BACKGROUND_CONFLICT"||code==="BACKGROUND_NOT_FOUND"||code==="BACKGROUND_STALE")await this.input.outbox.quarantine(value);
       }
       return settled;
     });
@@ -173,6 +189,11 @@ export class NativeLiveMacBackgroundResultSink {
     const ack = await this.input.relay.submitBackgroundResult(value);
     if (!["committed", "stale", "failed"].includes(ack.outcome) || (ack.outcome === "committed"
       ? ack.providerCheckpointId !== value.result.provider_checkpoint_id : ack.providerCheckpointId !== null)) throw new Error("Background acknowledgement binding changed.");
+    if (ack.outcome === "stale") {
+      // An HTTP 200 with outcome=stale did not deliver the reply. Deleting its
+      // outbox record here permanently loses the only recoverable output.
+      throw new NativeBackgroundStaleReceipt();
+    }
     await this.input.outbox.acknowledge(value);
     return ack;
   }
