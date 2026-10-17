@@ -96,9 +96,28 @@ for (const mode of ['cron', 'cron-after-chat', 'loop']) test(`real native CLI ${
         'we are verifying idle Cron AFTER another finished turn, never mid-turn admission');
       assert.equal(toolErrors, 0);
     }
-    const frame = await Promise.race([background, host.completion.then(() => {
-      throw new Error('Native CLI closed before the one-shot result');
-    })]);
+    let frame;
+    try {
+      frame = await Promise.race([
+        background,
+        host.completion.then(() => { throw new Error('Native CLI closed before the one-shot result'); }),
+        new Promise((_, reject) => {
+          if (abort.signal.aborted) reject(new Error('Native CLI timer deadline expired'));
+          else abort.signal.addEventListener('abort',
+            () => reject(new Error('Native CLI timer deadline expired')), { once: true });
+        }),
+      ]);
+    } catch (error) {
+      // A failure must say WHERE the timer disappeared: no hook, hook but no
+      // admission, or admitted callback with no model/result. No prompts or
+      // transcript content are recorded, and the model endpoint is loopback.
+      console.error('native-offline-cron-diag', JSON.stringify({
+        mode, modelRequests: requests, hookCallbacks: hooks.length,
+        scheduledAdmissions: phases.filter(phase => phase === 'scheduled').length,
+        hostState: host.state, toolErrors, observedJobCounts: jobCounts,
+      }));
+      throw error;
+    }
     assert.equal(frame.result.subtype, 'success');
     assert.equal(requests, mode === 'cron-after-chat' ? 5 : 4, 'one native fire plus native list/stop, using local responses only');
     if (mode !== 'loop') assert.deepEqual(jobCounts, [0], 'native one-shot is automatically removed');
