@@ -593,11 +593,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         permissionHandler: permissionHandler ?? (async () => ({ decision: "deny", message: "No permission handler is configured.", interrupt: false })),
       });
       const question = questionHandler ? createAgentSdkQuestionCallback({ questionHandler, events: this.events }) : null;
-      // One send_file server for the whole session; each call goes to the turn
-      // that owns the live reply (SDK-stamped), never to background work.
+      // One send_file server for the whole session; authorize by the exact
+      // SDK-stamped reply OR the native-started foreground input before its
+      // first assistant frame. Background commands cannot borrow that grant.
       const sendFiles = new Map();
       const sendFileServer = await this.createSendFileMcpServerImpl(async input => {
-        const id = host?.ownedInputId?.() ?? null;
+        const id = host?.fileToolOwnerInputId?.() ?? null;
         const handler = id === null ? null : sendFiles.get(id);
         if (!handler) throw new Error("send_file is only available to the turn that owns the current reply.");
         assertLive("tool");
