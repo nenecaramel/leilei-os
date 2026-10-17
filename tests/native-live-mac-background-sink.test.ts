@@ -284,6 +284,65 @@ test("orphaned deferred background is fenced after foreground failure or daemon 
   assert.equal((await f.outbox.list()).length,1,"uncertain result remains durable until covering proof can be recovered");
 });
 
+test("post-F drain never publishes B2 from a partially written covering journal", async t => {
+  const f = await fixture(t), fences: string[] = [];
+  const saved = (receiptId: string, parent: string, produced: string, covered?: string) => ({
+    sourcePrepareId: id(3), receiptId, listenerInstanceId: id(7),
+    generationId: id(2), parentProviderCheckpointId: parent, deferred: true,
+    ...(covered ? { coveringCheckpointId: covered } : {}),
+    result: {
+      protocol_version: 4 as const, prepare_id: id(3), request_id: id(4),
+      conversation_id: id(1), status: "success" as const,
+      provider_session_id: "synthetic", effective_working_directory: "/synthetic",
+      provider_checkpoint_id: produced, normalized_events: frame.normalizedEvents,
+    },
+  });
+  await f.outbox.save(saved(id(80), id(5), id(6)));
+  await f.outbox.save(saved(id(81), id(6), id(9), id(8)));
+  const sink = new NativeLiveMacBackgroundResultSink({
+    listenerInstanceId: id(7), relay: f.relay, outbox: f.outbox,
+    onImmediateFence: value => fences.push(value),
+  });
+  await assert.rejects(sink.publishCovered(id(1), id(2)), /Uncovered autonomous output/);
+  assert.equal(f.calls.length, 0, "B2 must not even reach HTTP before B1 has coverage");
+  assert.deepEqual(fences, [id(1)]);
+  assert.deepEqual((await f.outbox.list()).map(x => x.receiptId), [id(80), id(81)]);
+});
+
+test("recovery cannot skip an earlier queued B1 to publish covered B2 in the same conversation", async t => {
+  const f = await fixture(t), submitted: string[] = [];
+  const saved = (receiptId: string, conversationId: string, parent: string, produced: string, deferred = false, covered?: string) => ({
+    sourcePrepareId: id(3), receiptId, listenerInstanceId: id(7),
+    generationId: id(2), parentProviderCheckpointId: parent,
+    ...(deferred ? { deferred: true } : {}),
+    ...(covered ? { coveringCheckpointId: covered } : {}),
+    result: {
+      protocol_version: 4 as const, prepare_id: id(3), request_id: id(4),
+      conversation_id: conversationId, status: "success" as const,
+      provider_session_id: "synthetic", effective_working_directory: "/synthetic",
+      provider_checkpoint_id: produced, normalized_events: frame.normalizedEvents,
+    },
+  });
+  await f.outbox.save(saved(id(80), id(1), id(5), id(6), true));
+  await f.outbox.save(saved(id(81), id(1), id(6), id(9), true, id(8)));
+  await f.outbox.save(saved(id(82), id(20), id(5), id(10)));
+  const relay = {
+    async prepareBackgroundResult(value: any) {
+      return { receiptId: value.receiptId, providerSessionId: "synthetic",
+        parentProviderCheckpointId: value.parentProviderCheckpointId, expiresAt: new Date(Date.now() + 600000).toISOString() };
+    },
+    async submitBackgroundResult(value: any) {
+      submitted.push(value.receiptId);
+      return { outcome: "committed" as const, duplicate: false,
+        providerCheckpointId: value.coveringCheckpointId ?? value.result.provider_checkpoint_id };
+    },
+  };
+  const sink = new NativeLiveMacBackgroundResultSink({ listenerInstanceId: id(7), relay, outbox: f.outbox });
+  assert.equal(await sink.flush(), 1, "an independent conversation remains recoverable");
+  assert.deepEqual(submitted, [id(82)], "B2 cannot bypass still-uncovered B1");
+  assert.deepEqual((await f.outbox.list()).map(x => x.receiptId), [id(80), id(81)]);
+});
+
 test("restart replays background segments in persisted SDK order, not hash filename order", async t => {
   const f = await fixture(t);
   const listenerInstanceId = id(7), generationId = id(2);
