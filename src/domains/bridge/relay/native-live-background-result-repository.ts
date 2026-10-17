@@ -13,7 +13,7 @@ type Transaction = Parameters<Database["transaction"]>[0] extends (tx: infer T) 
 type Source = { id: string; requestId: string; conversationId: string; sessionId: string | null; assistantId: string | null; listenerId: string | null; status: string; dispatch: string };
 type Snapshot = { id: string; canonicalMessageId: string; providerSessionId: string; baseCheckpointId: string; parentProviderCheckpointId: string; cwd: string | null; presentationOwnerId: string | null; sourceRevision: string | null };
 export type NativeLiveBackgroundReceipt = Record<string, unknown> & { kind: "persistent_background_receipt_v1"; phase: "prepared" | NativeLiveBackgroundAck["outcome"];
-  identity: NativeLiveBackgroundIdentity; prepareHash: string; resultHash: string | null; context: Snapshot; expiresAt: string; providerCheckpointId: string | null; executionStart?: boolean };
+  identity: NativeLiveBackgroundIdentity; prepareHash: string; resultHash: string | null; context: Snapshot; expiresAt: string; providerCheckpointId: string | null; executionStart?: boolean; deferred?: boolean; coveringCheckpointId?: string };
 type Receipt = NativeLiveBackgroundReceipt;
 const conflict = () => new NativeLiveBackgroundResultError("BACKGROUND_CONFLICT");
 
@@ -46,7 +46,7 @@ async function receipt(tx: Transaction, userId: string, identity: NativeLiveBack
   if (row.payload.kind !== "persistent_background_receipt_v1" || !isDeepStrictEqual(row.payload.identity, identity)) throw conflict();
   return row.payload;
 }
-async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBackgroundIdentity, origin: Source, executionStart = false): Promise<Snapshot | null> {
+async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBackgroundIdentity, origin: Source, executionStart = false, deferred = false): Promise<Snapshot | null> {
   if (origin.status !== "finalized_success" || origin.dispatch !== "completed" || origin.listenerId !== identity.listenerInstanceId || !origin.assistantId) return null;
   await tx.execute(sql`SELECT id FROM conversations WHERE user_id=${userId}::uuid AND id=${origin.conversationId}::uuid FOR UPDATE`);
   // Lease takeover cannot commit between this check and the cursor transaction.
@@ -58,7 +58,8 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
     WHERE pending.user_id=c.user_id AND pending.conversation_id=c.id AND pending.id::text=c.provider_metadata->'native_live_presentation_owner'->>'prepareId'
       AND pending.operation='send' AND pending.runtime_mode='resume' AND pending.status='prepared'
       AND pending.dispatch_status IN ('staged','pending','reserved','executing')
-      AND coalesce(pending.runtime_metadata->'native_live_input_binding'->>'started','false')='false'
+      AND ((${executionStart} AND coalesce(pending.runtime_metadata->'native_live_input_binding'->>'started','false')='false')
+        OR (${deferred} AND pending.runtime_metadata->'native_live_input_binding'->>'started'='true'))
       AND pending.parent_provider_session_id=cp.provider_session_id
       AND pending.expected_working_directory IS NOT DISTINCT FROM cp.effective_working_directory
       AND u.parent_message_id=cp.canonical_message_id
@@ -74,14 +75,15 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
       AND c.current_head_message_id=cp.canonical_message_id AND c.origin='native_live' AND c.lifecycle_status='active'
       AND coalesce(c.provider_metadata->'nativeSessionSource'->>'owner','leileios')='leileios'
       AND jsonb_typeof(${gen})='object' AND ${gen} ? 'presentation_owner_id' AND ${gen} ? 'source_revision'
-      AND ((${gen}->>'presentation_owner_id') IS NOT DISTINCT FROM (c.provider_metadata->'native_live_presentation_owner'->>'prepareId') OR (${executionStart} AND ${pendingOwner}))
+      AND ((${gen}->>'presentation_owner_id') IS NOT DISTINCT FROM (c.provider_metadata->'native_live_presentation_owner'->>'prepareId') OR ((${executionStart} OR ${deferred}) AND ${pendingOwner}))
       AND (${gen}->>'source_revision') IS NOT DISTINCT FROM (c.provider_metadata->'nativeSessionSource'->>'revision')
       AND NOT EXISTS (SELECT 1 FROM native_live_turn_preparations busy WHERE busy.user_id=${userId}::uuid AND busy.conversation_id=c.id
         AND busy.status='prepared' AND busy.operation<>'wake' AND busy.dispatch_status IN ('staged','pending','reserved','executing','delivery_unknown')
-        AND (NOT ${executionStart} OR busy.operation<>'send' OR busy.runtime_mode<>'resume' OR busy.dispatch_status='delivery_unknown'
+        AND (NOT (${executionStart} OR ${deferred}) OR busy.operation<>'send' OR busy.runtime_mode<>'resume' OR busy.dispatch_status='delivery_unknown'
           OR busy.id::text IS DISTINCT FROM (c.provider_metadata->'native_live_presentation_owner'->>'prepareId')
           OR busy.parent_provider_session_id IS DISTINCT FROM cp.provider_session_id
-          OR coalesce(busy.runtime_metadata->'native_live_input_binding'->>'started','false')<>'false'))
+          OR NOT ((${executionStart} AND coalesce(busy.runtime_metadata->'native_live_input_binding'->>'started','false')='false')
+            OR (${deferred} AND busy.runtime_metadata->'native_live_input_binding'->>'started'='true')))
     LIMIT 1 FOR UPDATE OF cp`);
   return row ?? null;
 }
@@ -91,7 +93,7 @@ function prepared(identity: NativeLiveBackgroundIdentity, value: Receipt): Nativ
 
 export async function prepareNativeLiveBackgroundResult(db: Database, input: NativeLiveBackgroundPrepare & { userId: string }): Promise<NativeLiveBackgroundPrepared> {
   const identity = backgroundIdentity(input), userId = requireUuid(input.userId, "userId"), parent = requireUuid(input.parentProviderCheckpointId, "parentProviderCheckpointId");
-  const prepareHash = hashJson("background-prepare-v1", { ...identity, parentProviderCheckpointId: parent, ...(input.executionStart ? { executionStart: true } : {}) });
+  const prepareHash = hashJson("background-prepare-v1", { ...identity, parentProviderCheckpointId: parent, ...(input.executionStart ? { executionStart: true } : {}), ...(input.deferred ? { deferred: true } : {}) });
   return transaction(db, async tx => {
     const durable = await readDurableBackgroundReceipt(tx, userId, identity);
     if (durable) {
@@ -101,7 +103,7 @@ export async function prepareNativeLiveBackgroundResult(db: Database, input: Nat
     const origin = await source(tx, userId, identity.sourcePrepareId);
     const existing = await receipt(tx, userId, identity);
     if (existing) { if (existing.prepareHash !== prepareHash) throw conflict(); return prepared(identity, existing); }
-    const context = await snapshot(tx, userId, identity, origin, input.executionStart);
+    const context = await snapshot(tx, userId, identity, origin, input.executionStart, input.deferred);
     if (!context || context.parentProviderCheckpointId !== parent) throw conflict();
     if (input.executionStart) {
       const [busy] = await tx.execute(sql`SELECT 1 FROM native_live_runtime_events e JOIN native_live_turn_preparations p ON p.id=e.prepare_id AND p.user_id=e.user_id
@@ -110,7 +112,7 @@ export async function prepareNativeLiveBackgroundResult(db: Database, input: Nat
           AND e.payload->>'executionStart'='true' AND (e.payload->>'expiresAt')::timestamptz>clock_timestamp() LIMIT 1`);
       if (busy) throw conflict();
     }
-    const value: Receipt = { ...(input.executionStart ? { executionStart: true } : {}), kind: "persistent_background_receipt_v1", phase: "prepared", identity, prepareHash, resultHash: null, context,
+    const value: Receipt = { ...(input.executionStart ? { executionStart: true } : {}), ...(input.deferred ? { deferred: true } : {}), kind: "persistent_background_receipt_v1", phase: "prepared", identity, prepareHash, resultHash: null, context,
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(), providerCheckpointId: null };
     await tx.execute(sql`INSERT INTO native_live_runtime_events(id,user_id,prepare_id,sequence,event_type,provider_session_id,payload)
       SELECT ${identity.receiptId}::uuid,${userId}::uuid,${identity.sourcePrepareId}::uuid,coalesce(max(sequence),0)+1,'runtime',${context.providerSessionId},${JSON.stringify(value)}::jsonb
