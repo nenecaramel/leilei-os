@@ -97,6 +97,62 @@ test("completed source remains usable on the same session after another ordinary
  assert.equal((await repo.createForUser(request(f))).outcome,"created");
 });
 
+test("idle native Cron admission survives a SECOND fully committed foreground chat", {skip: !enabled}, async t => {
+  const f = await fixture(t);
+  const controls = new DrizzleNativeLiveRuntimeControlRepository(f.database.db);
+  const second = await f.coordinator.prepare(f.user.id, {
+    dispatch_target: "claude_code", request_id: crypto.randomUUID(),
+    conversation_id: f.conversation.id, operation: "send",
+    expected_head_message_id: f.completed.assistantMessageId,
+    text: "ordinary chat before the timer fires",
+  });
+  assert.ok(second.ok);
+  if (!second.ok) throw Error("second foreground preparation failed");
+  const c = second.command;
+  await f.database.db.update(nativeLiveTurnPreparations).set({
+    reservedBy: f.prepare.listenerInstanceId, reservedAt: new Date(),
+    reservationExpiresAt: new Date(Date.now() + 600_000),
+    executionStartedAt: new Date(), dispatchStatus: "executing",
+  }).where(eq(nativeLiveTurnPreparations.id, c.prepare_id));
+
+  const binding = {
+    userId: f.user.id, listenerInstanceId: f.prepare.listenerInstanceId,
+    reservationId: c.prepare_id, requestId: c.request_id, conversationId: f.conversation.id,
+    runtimeMode: "resume" as const, canonicalUserMessageId: c.canonical_user_message_id,
+    parentProviderSessionId: c.parent_provider_session_id,
+    parentProviderCheckpointId: c.parent_provider_checkpoint_id,
+    commandUuid: c.canonical_user_message_id!,
+  };
+  assert.equal((await f.repository.bindInput({...binding, phase: "queued"}))?.parentProviderCheckpointId, f.base);
+  assert.equal((await f.repository.bindInput({...binding, phase: "started"}))?.parentProviderCheckpointId, f.base);
+
+  const resumed = await f.coordinator.finalize(f.user.id, {
+    protocol_version: 4, prepare_id: c.prepare_id, request_id: c.request_id,
+    conversation_id: f.conversation.id, status: "success",
+    provider_session_id: "synthetic-session", provider_checkpoint_id: crypto.randomUUID(),
+    effective_working_directory: "/synthetic",
+    normalized_events: [{type: "text", payload: {text: "ordinary foreground F completed"}}],
+  });
+  assert.ok(resumed.ok && resumed.outcome === "completed");
+  if (!resumed.ok || resumed.outcome !== "completed") throw Error("second foreground finalization failed");
+  await f.repository.markCompleted({
+    userId: f.user.id, listenerInstanceId: f.prepare.listenerInstanceId,
+    reservationId: c.prepare_id,
+  });
+
+  assert.equal((await f.canonical.getConversation({
+    userId: f.user.id, conversationId: f.conversation.id,
+  }))?.currentHeadMessageId, resumed.assistantMessageId);
+  const admission = {
+    userId: f.user.id, listenerInstanceId: f.prepare.listenerInstanceId,
+    providerSessionId: "synthetic-session",
+  };
+  assert.equal(await controls.checkTaskAdmission({...admission, prepareId: c.prepare_id}), true,
+    "after F2 is fully finished, its SDK scheduled input must still be admitted");
+  assert.equal(await controls.checkTaskAdmission({...admission, prepareId: f.prepare.sourcePrepareId}), true,
+    "the original Cron-creating F1 remains an ancestor in the same live session");
+});
+
 test("task commands cross the authenticated HTTP boundary without creating a Claude turn",{skip:!enabled},async t=>{
  const f=await fixture(t);
  const {NativeLiveRuntimeControlService}=await import("../src/domains/bridge/runtime-interaction/native-live-runtime-control.js");
