@@ -65,8 +65,12 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
       AND u.parent_message_id=cp.canonical_message_id
       AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId')=cp.canonical_message_id::text)`;
   const gen = sql`cp.runtime_metadata->'native_live_generation'`;
+  // Foreground reservation changes the presentation owner before the native
+  // input starts. A quiet tail from the same source session still counts, but
+  // only with the explicit pending-owner and source-revision fences below.
+  const resume = nativeResumeCheckpointSql("cp", "c", !(executionStart || deferred));
   const [row] = await tx.execute<Snapshot>(sql`SELECT cp.id, cp.canonical_message_id::text AS "canonicalMessageId", cp.provider_session_id AS "providerSessionId",
-    cp.provider_checkpoint_id AS "baseCheckpointId", ${nativeResumeCheckpointSql("cp", "c")} AS "parentProviderCheckpointId", cp.effective_working_directory AS cwd,
+    cp.provider_checkpoint_id AS "baseCheckpointId", ${resume} AS "parentProviderCheckpointId", cp.effective_working_directory AS cwd,
     c.provider_metadata->'native_live_presentation_owner'->>'prepareId' AS "presentationOwnerId", c.provider_metadata->'nativeSessionSource'->>'revision' AS "sourceRevision"
     FROM conversation_provider_session_checkpoints cp JOIN conversations c ON c.id=cp.conversation_id AND c.user_id=cp.user_id
     WHERE cp.user_id=${userId}::uuid AND cp.conversation_id=${origin.conversationId}::uuid AND (cp.canonical_message_id=${origin.assistantId}::uuid
