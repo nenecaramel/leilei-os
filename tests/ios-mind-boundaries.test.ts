@@ -33,7 +33,7 @@ test("Mind memory feed owns loading, retry, pagination and useful row metadata",
   assert.match(source, /!existing\.contains\(\$0\.id\)/);
   assert.match(source, /MindPresentation\.sourceLabel\(item\.source\)/);
   assert.match(source, /MindPresentation\.dateText/);
-  assert.match(source, /onDeleted: \{\s*reloadToken = UUID\(\)/);
+  assert.match(source, /onDeleted: \{\s*removeMindItem\(id: item\.id\)/);\n  assert.match(source, /onUpdated: \{ updated in\s*updateMindItem\(updated\)/);
   assert.doesNotMatch(source, /createManualMind|deleteMind|let kind: MindProductKind/);
 });
 
