@@ -30,14 +30,14 @@ export class NativeLiveMacBackgroundResultOutbox {
     if (existsSync(this.orderPath)) {
       if (lstatSync(this.orderPath).isSymbolicLink()) throw new Error("Invalid background delivery-order index.");
       const data: unknown = JSON.parse(readFileSync(this.orderPath, "utf8"));
-      if (!Array.isArray(data) || !data.every(v => typeof v === "string" && /^[a-f0-9]{64}\\.json$/.test(v))
+      if (!Array.isArray(data) || !data.every(v => typeof v === "string" && /^[a-f0-9]{64}\.json$/.test(v))
         || new Set(data).size !== data.length) throw new Error("Corrupt background delivery-order index.");
       return data;
     }
     // A pre-upgrade outbox has no order index. Recover its existing records
     // using recorded filesystem creation order instead of their random hashes.
     if (!existsSync(this.directory)) return [];
-    return readdirSync(this.directory).filter(name => /^[a-f0-9]{64}\\.json$/.test(name))
+    return readdirSync(this.directory).filter(name => /^[a-f0-9]{64}\.json$/.test(name))
       .sort((a,b) => {
         const lhs = lstatSync(join(this.directory,a)).birthtimeMs;
         const rhs = lstatSync(join(this.directory,b)).birthtimeMs;
@@ -74,7 +74,7 @@ export class NativeLiveMacBackgroundResultOutbox {
   async listQuarantined(): Promise<Entry[]> { return this.listDirectory(join(this.directory,"blocked")); }
   private listDirectory(directory: string): Entry[] {
     if (!existsSync(directory)) return [];
-    const names = readdirSync(directory).filter(name => /^[a-f0-9]{64}\\.json$/.test(name));
+    const names = readdirSync(directory).filter(name => /^[a-f0-9]{64}\.json$/.test(name));
     let ordered = names.sort();
     if (directory === this.directory) {
       const journal = this.order();
