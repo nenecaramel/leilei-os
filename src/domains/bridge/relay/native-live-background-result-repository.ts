@@ -59,6 +59,66 @@ async function reconcileRejectedWakePresentationOwner(
 ): Promise<boolean> {
   if (origin.operation !== "wake" || origin.assistantId !== context.canonicalMessageId
     || !context.presentationOwnerId) return false;
+
+  // The original foreground assistant need not be Wake's *immediate* source:
+  // one or more earlier visible Wake / Cron assistants can advance the same
+  // immutable SDK generation. Verify the actual canonical parent chain, with
+  // a same-session, same-generation checkpoint for every intermediate node.
+  // Do not accept matching timestamps, textual history or unrelated branches.
+  const verifiedWakeSourceLineage = sql`
+    EXISTS (
+      SELECT 1 FROM conversation_messages wake_message
+      WHERE wake_message.user_id=c.user_id AND wake_message.conversation_id=c.id
+        AND wake_message.id=c.current_head_message_id
+        AND wake_message.role='assistant' AND wake_message.status='completed'
+        AND wake_message.parent_message_id::text=wake.wake_context->>'source_head_message_id'
+    )
+    AND (
+      wake.wake_context->>'source_head_message_id'=owner.assistant_message_id::text
+      OR EXISTS (
+        WITH RECURSIVE assistants AS (
+          SELECT m.id, m.parent_message_id, ARRAY[m.id] AS visited, 1 AS depth
+          FROM conversation_messages m
+          JOIN conversation_provider_session_checkpoints start_cp
+            ON start_cp.user_id=m.user_id
+            AND start_cp.conversation_id=m.conversation_id
+            AND start_cp.canonical_message_id=m.id
+          WHERE m.user_id=c.user_id AND m.conversation_id=c.id
+            AND m.id::text=wake.wake_context->>'source_head_message_id'
+            AND m.role='assistant' AND m.status='completed'
+            AND start_cp.provider='claude_code'
+            AND start_cp.provider_session_id=cp.provider_session_id
+            AND start_cp.effective_working_directory IS NOT DISTINCT FROM cp.effective_working_directory
+            AND start_cp.runtime_metadata->'native_live_generation'->>'presentation_owner_id'
+              =${context.presentationOwnerId}
+            AND start_cp.runtime_metadata->'native_live_generation'->>'source_revision'
+              IS NOT DISTINCT FROM ${context.sourceRevision}::text
+          UNION ALL
+          SELECT parent.id, parent.parent_message_id,
+            chain.visited||parent.id, chain.depth+1
+          FROM assistants chain
+          JOIN conversation_messages parent
+            ON parent.id=chain.parent_message_id
+            AND parent.user_id=c.user_id AND parent.conversation_id=c.id
+          JOIN conversation_provider_session_checkpoints parent_cp
+            ON parent_cp.user_id=parent.user_id
+            AND parent_cp.conversation_id=parent.conversation_id
+            AND parent_cp.canonical_message_id=parent.id
+          WHERE chain.depth<128 AND NOT parent.id=ANY(chain.visited)
+            AND parent.role='assistant' AND parent.status='completed'
+            AND parent_cp.provider='claude_code'
+            AND parent_cp.provider_session_id=cp.provider_session_id
+            AND parent_cp.effective_working_directory IS NOT DISTINCT FROM cp.effective_working_directory
+            AND parent_cp.runtime_metadata->'native_live_generation'->>'presentation_owner_id'
+              =${context.presentationOwnerId}
+            AND parent_cp.runtime_metadata->'native_live_generation'->>'source_revision'
+              IS NOT DISTINCT FROM ${context.sourceRevision}::text
+        )
+        SELECT 1 FROM assistants WHERE id=owner.assistant_message_id
+      )
+    )
+  `;
+
   const rows = await tx.execute<{ id: string }>(sql`
     UPDATE conversations c
     SET provider_metadata=jsonb_set(
@@ -105,7 +165,7 @@ async function reconcileRejectedWakePresentationOwner(
         =${context.presentationOwnerId}
       AND wake.wake_context->'runtime_generation'->>'source_revision'
         IS NOT DISTINCT FROM ${context.sourceRevision}::text
-      AND wake.wake_context->>'source_head_message_id'=owner.assistant_message_id::text
+      AND ${verifiedWakeSourceLineage}
       AND owner.status='finalized_success' AND owner.dispatch_status='completed'
       AND owner.provider_session_id=cp.provider_session_id
       AND rejected.operation='send' AND rejected.runtime_mode='resume'
@@ -172,6 +232,7 @@ async function reconcileRejectedWakePresentationOwner(
         wake.wake_context->'runtime_generation'->>'source_revision'
           IS NOT DISTINCT FROM ${context.sourceRevision}::text AS "wakeRevisionMatches",
         wake.wake_context->>'source_head_message_id'=owner.assistant_message_id::text AS "wakeSourceMatches",
+        (${verifiedWakeSourceLineage}) AS "wakeSourceVerifiedLineage",
         owner.status='finalized_success' AND owner.dispatch_status='completed' AS "savedOwnerCompleted",
         owner.provider_session_id=cp.provider_session_id AS "savedOwnerSessionMatches",
         NOT EXISTS (
