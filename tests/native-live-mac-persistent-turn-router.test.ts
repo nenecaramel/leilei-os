@@ -99,6 +99,30 @@ test("started UUID binds an exact pre-start background advancement before foregr
   assert.deepEqual(f.results, [id(1), id(2)]);
 });
 
+test("native started binding waits for earlier background acknowledgement without waiting for its own result", async t => {
+  const stages: string[] = [], backgroundEntered = deferred<void>();
+  const release = deferred<NativeLiveMacPersistentAcknowledgement>();
+  const f = await fixture(t, undefined, async input => {
+    stages.push(input.phase);
+    return { userMessageId: input.commandUuid,
+      parentProviderCheckpointId: input.phase === "queued" ? id(101) : id(102) };
+  });
+  const first = f.run(command(1));
+  f.finish((await f.inputs.next()).value!.uuid); await first;
+  f.setBackground(async () => { backgroundEntered.resolve(); return release.promise; });
+  const second = f.run(command(2)), pending = (await f.inputs.next()).value!;
+  f.finish(id(77)); await backgroundEntered.promise;
+  f.output.push({ type: "command_lifecycle", state: "started", command_uuid: pending.uuid, session_id: sid });
+  await new Promise(setImmediate);
+  assert.deepEqual(stages, ["queued"], "cannot bind started before prior background checkpoint is acknowledged");
+  release.resolve(acknowledged(id(102)));
+  for (let i = 0; i < 100 && stages.length === 1; i++) await new Promise(setImmediate);
+  assert.deepEqual(stages, ["queued", "started"]);
+  f.finish(pending.uuid);
+  await second;
+  assert.deepEqual(f.results, [id(1),id(2)]);
+});
+
 test("native started binding missing or disagreeing with live cursor rejects the foreground result", async t => {
   const f = await fixture(t, undefined, async input => ({
     userMessageId: input.commandUuid,
