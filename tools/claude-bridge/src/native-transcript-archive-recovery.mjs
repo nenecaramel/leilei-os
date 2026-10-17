@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 
 const fail = code => Object.assign(new Error(code), { code });
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const digest = /^[a-f0-9]{64}$/;
 const receipt = /^[a-f0-9]{64}\.json$/;
 const MAX_RECORD_BYTES = 64 * 1024 * 1024;
