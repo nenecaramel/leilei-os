@@ -27,7 +27,7 @@ function command(n: number, wake = false): NativeLiveRuntimeCommand {
 type BindInput = (input: { phase: "queued" | "started"; commandUuid: string;
   command: NativeLiveRuntimeCommand }) => Promise<{ userMessageId: string; parentProviderCheckpointId: string | null } | null>;
 async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolean>, bindInput?: BindInput,
-  callbacks?: Partial<Pick<ConstructorParameters<typeof NativeLiveMacPersistentTurnRouter>[0], "onForegroundCoverage" | "onForegroundPublished" | "onForegroundUnpublished">>) {
+  callbacks?: Partial<Pick<ConstructorParameters<typeof NativeLiveMacPersistentTurnRouter>[0], "onForegroundCoverage" | "onForegroundPublished" | "onForegroundUnpublished" | "hasUnpublishedDeferred">>) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "persistent-turn-router-")));
   const output = queue<Record<string, unknown>>(), inputs = queue<{ uuid: string; origin: { kind: string } }>();
   const backgroundObserved = queue<string>();
@@ -88,6 +88,20 @@ test("failed post-F background publication synchronously fences the next foregro
   await failed;
   assert.deepEqual(fenced, [conversation], "committed F must not admit G while B publication is unknown");
   assert.deepEqual(f.results, [id(1)], "foreground F may already have committed");
+});
+
+test("foreground failure before coverage fences an already-queued native B receipt", async t => {
+  const fenced: string[] = [];
+  const f=await fixture(t,undefined,undefined,{
+    onForegroundCoverage:async()=>0,
+    hasUnpublishedDeferred:()=>true,
+    onForegroundUnpublished:conversationId=>fenced.push(conversationId),
+  });
+  const run=f.run(command(1),{async onResult(){throw new Error("F died before covering B");}});
+  const failed=assert.rejects(run,/F died before covering B/);
+  f.finish((await f.inputs.next()).value!.uuid);
+  await failed;
+  assert.deepEqual(fenced,[conversation],"a queued B without F's proof must prevent the next send");
 });
 
 test("foreground failure after fsynced B coverage fences the session without publishing B", async t => {
