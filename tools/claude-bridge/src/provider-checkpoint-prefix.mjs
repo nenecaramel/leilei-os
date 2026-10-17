@@ -69,7 +69,10 @@ export function durableCheckpointPrefix(entries, checkpointId) {
       && entry.type === "session_cron_carry") ?? null;
   const projected = prefix.filter(entry => !entry.isSidechain
     && (!carriers.has(entry.uuid) || ancestry.has(entry.uuid) || results.has(entry.uuid)));
-  if (latestCronCarry) projected.push(latestCronCarry);
+  // The SDK's resumeSessionAt checkpoint can truncate following records.
+  // Put the schedule metadata BEFORE that checkpoint so the native reader
+  // sees it while keeping the selected assistant as the transcript tail.
+  if (latestCronCarry) projected.splice(projected.length - 1, 0, latestCronCarry);
   // Older failed branches can precede a later recovered checkpoint in storage.
   // Only their user-visible ancestry is conversation input; the Cron table is
   // deliberately session-scoped, not tied to a discarded message branch.
