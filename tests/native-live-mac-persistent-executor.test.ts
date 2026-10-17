@@ -75,16 +75,26 @@ test("edited and retried forks may own a fresh persistent writer without evictin
   assert.equal(f.executor.canRoute(command({ operation: "retry", runtime_mode: "fork" })), true);
 });
 
-test("Wake cannot start a fresh SDK process and cannot fork or replace an existing writer", async () => {
-  const f = fixture(async input => { await frame(input); return {}; }, { matches: false });
+test("Wake uses the current matching writer, or restores its original SID after restart; never forks", async () => {
   const wake = command({ operation:"wake", runtime_mode:"resume", canonical_user_message_id:null });
-  assert.equal(f.executor.canRoute(wake), false, "no live writer means no Wake");
-  await f.executor.execute(command(), { async commit() { return {canonicalOutcome:"completed"}; } });
-  assert.equal(f.executor.canRoute(wake), false, "mismatched live writer cannot receive Wake");
-  assert.equal(f.executor.canRoute({...wake,runtime_mode:"fork"}), false, "Wake must never fork");
-  assert.equal(f.routers[0]!.closed, 0, "rejecting Wake must not close the Cron-owning writer");
-  await assert.rejects(f.executor.execute(wake, {async commit() {}}), /cannot use the persistent writer/);
-  assert.equal(f.routers[0]!.closed, 0);
+  const restored = fixture(async input => {
+    assert.equal(input.command.operation, "wake");
+    assert.equal(input.command.runtime_mode, "resume");
+    assert.equal(input.command.parent_provider_session_id, id(5));
+    await frame(input);
+    return {};
+  });
+  assert.equal(restored.executor.canRoute(wake), true, "after daemon restart Wake can restore same session");
+  const run = await restored.executor.execute(wake,{async commit(){return {canonicalOutcome:"completed"};}});
+  assert.equal(run.canonicalOutcome, "completed");
+  assert.equal(restored.routers[0]!.closed,0, "restored same-session writer survives Wake");
+  assert.equal(restored.executor.canRoute({...wake,runtime_mode:"fork"}), false, "Wake must never fork");
+
+  const mismatched = fixture(async input => { await frame(input); return {}; }, { matches: false });
+  await mismatched.executor.execute(command(), {async commit(){return {canonicalOutcome:"completed"};}});
+  assert.equal(mismatched.executor.canRoute(wake), false, "an existing mismatched writer cannot be replaced");
+  await assert.rejects(mismatched.executor.execute(wake, {async commit(){}}),/cannot use the persistent writer/);
+  assert.equal(mismatched.routers[0]!.closed,0, "a stale Wake cannot close an existing Cron writer");
 });
 
 test("only continuing send/wake commands route; a legacy operation retires the writer first", async () => {
