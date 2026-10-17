@@ -423,10 +423,15 @@ export class NativeLiveMacPersistentTurnRouter {
           this.assertLive();
           const providerCheckpointId = await this.binding!.session.verifyCheckpoint({ events: frame.events, parentCheckpointId: this.providerCheckpointId });
           this.assertLive();
+          // F can finish while the autonomous callback waits for its
+          // started-binding ACK or completed turn. A B delivered AFTER F has
+          // been acknowledged is a normal post-F successor, not an in-flight
+          // deferred segment still owned by the now-retired foreground slot.
+          const stillWithinForeground = foreground !== null && this.active === foreground;
           const owner: NativeLiveMacPersistentBackgroundOwner = Object.freeze({ conversationId: command.conversation_id,
             generationId: this.generationId!, source: this.backgroundSource, providerSessionId: this.binding!.session.sessionId!,
-            executionStart: this.active?.command.operation === "send" && !startedBeforeReceipt,
-            deferred: startedBeforeReceipt,
+            executionStart: stillWithinForeground && foreground.command.operation === "send" && !startedBeforeReceipt,
+            deferred: stillWithinForeground && startedBeforeReceipt,
             parentProviderCheckpointId: this.providerCheckpointId, workingDirectory: this.binding!.workingDirectory });
           const outcome = await this.input.onBackgroundResult(owner, { ...frame, providerCheckpointId });
           this.assertLive();
