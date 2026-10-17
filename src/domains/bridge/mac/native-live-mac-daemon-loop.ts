@@ -254,6 +254,10 @@ export interface NativeLiveMacDaemonRelayClient {
   }): Promise<NativeLiveDaemonReservation | null>;
 
   checkTaskAdmission?(input: { listenerInstanceId:string;prepareId:string;providerSessionId:string }):Promise<boolean>;
+  bindInput?(input: { listenerInstanceId: string; command: NativeLiveRuntimeCommand;
+    phase: "queued" | "started"; commandUuid: string }): Promise<{
+      userMessageId: string; parentProviderCheckpointId: string | null;
+    } | null>;
   checkExecutionAdmission?(input: { listenerInstanceId: string; command: NativeLiveRuntimeCommand }): Promise<boolean>;
   renewExecutionLease?(input: { listenerInstanceId: string; command: NativeLiveRuntimeCommand }): Promise<boolean>;
 
