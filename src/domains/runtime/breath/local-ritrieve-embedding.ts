@@ -22,6 +22,7 @@ type PendingRequest = {
 export type RitrieveSearchResult = {
   version: string;
   count: number;
+  floor?: number;
   hits: Array<{stateId: string; score: number}>;
 };
 
