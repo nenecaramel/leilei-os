@@ -149,6 +149,49 @@ test("recovery-complete callback cannot hold up the outbox delivery lock", async
   assert.deepEqual(await f.outbox.list(), []);
 });
 
+test("recovery fence release is retried after its last receipt has already been acknowledged", async t => {
+  const f = await fixture(t);
+  f.lose();
+  await assert.rejects(f.sink.commit(owner, frame));
+  let attempts = 0;
+  const sink = new NativeLiveMacBackgroundResultSink({
+    listenerInstanceId: id(7), relay: f.relay, outbox: f.outbox,
+    onRecovered: async conversationId => {
+      assert.equal(conversationId, id(1));
+      if (++attempts === 1) throw new Error("old writer could not be retired");
+    },
+  });
+  assert.equal(await sink.flush(), 1, "the original provider result is already committed");
+  assert.equal(attempts, 1);
+  assert.deepEqual(await f.outbox.list(), [], "a released transport receipt must not be regenerated");
+  assert.equal(await sink.flush(), 0, "empty-outbox recovery still retries failed retirement");
+  assert.equal(attempts, 2);
+  assert.equal(await sink.flush(), 0);
+  assert.equal(attempts, 2, "successful recovery completion is not repeated");
+});
+
+test("concurrent recovery flushes do not retire the same writer twice", async t => {
+  const f = await fixture(t);
+  f.lose();
+  await assert.rejects(f.sink.commit(owner, frame));
+  let entered!: () => void, release!: () => void, calls = 0;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const hold = new Promise<void>(resolve => { release = resolve; });
+  const sink = new NativeLiveMacBackgroundResultSink({
+    listenerInstanceId: id(7), relay: f.relay, outbox: f.outbox,
+    onRecovered: async () => { calls++; entered(); await hold; },
+  });
+  const first = sink.flush();
+  await started;
+  const second = sink.flush();
+  try {
+    assert.equal(await second, 0);
+    assert.equal(calls, 1, "another timer tick must not reenter a retiring writer");
+  } finally { release(); }
+  assert.equal(await first, 1);
+  assert.equal(calls, 1);
+});
+
 test("deferred background is acknowledged queued but is only deleted after F covering checkpoint commits",async t=>{
   const f=await fixture(t);const checks:Array<string|null>=[];
   const relay={...f.relay,async submitBackgroundResult(input:any){
