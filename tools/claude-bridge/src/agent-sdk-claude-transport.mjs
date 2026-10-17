@@ -496,7 +496,26 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     return this.#openPersistentSession(options, { ...restore, timeoutMs });
   }
 
-  async #openPersistentSession(options = {}, restore = null) {
+  // Edit/retry forks own a new live SDK writer. A one-shot fork query closes
+  // after its reply and would lose native Cron tasks created in that reply.
+  async forkPersistentSession(fork, options = {}) {
+    const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+    if (!fork || Object.keys(fork).some(key => !["sessionId", "checkpointId"].includes(key))
+      || !uuid.test(fork.sessionId ?? "") || !uuid.test(fork.checkpointId ?? "")
+      || fork.checkpointId === "00000000-0000-0000-0000-000000000000") {
+      throw new Error("Persistent fork requires an exact parent session and checkpoint.");
+    }
+    if (this.sessionStore) throw new Error("Persistent fork requires the original local transcript.");
+    const preflight = await this.#requireCheckpoint(fork.sessionId, fork.checkpointId, { needPrefix: true });
+    const prepared = await this.prepareLocalCheckpointForkImpl({
+      sessionId: fork.sessionId, checkpointId: fork.checkpointId,
+      prefix: preflight?.prefix ?? null, cwd: this.cwd, environment: this.environment,
+    });
+    if (!prepared || !uuid.test(prepared.sessionId ?? "")) throw new Error("Persistent fork transcript preflight failed.");
+    return this.#openPersistentSession(options, null, { checkpointId: fork.checkpointId, localSessionId: prepared.sessionId });
+  }
+
+  async #openPersistentSession(options = {}, restore = null, fork = null) {
     const allowed = new Set(["authorize", "onBackgroundResult", "execution", "permissionHandler", "questionHandler", "perTaskStopAffordance"]);
     for (const key of Object.keys(options)) if (!allowed.has(key)) throw new Error(`Unsupported persistent session option: ${key}`);
     const { authorize, onBackgroundResult, execution = null, permissionHandler = null,
@@ -569,6 +588,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       const executionOptions = normalizeAgentSdkExecutionSelection(execution);
       host = await createAgentSdkSessionHost({ queryImpl,
         expectedSessionId: restore?.sessionId ?? null,
+        allowInitialFork: fork !== null,
         observeOutput: startup ? message => observeNativeSessionStartup(startup, message) : null,
         beforeSubmit: async context => {
           if (restore && !firstInputAdmitted && (context.inputId !== restore.inputId || context.source !== restore.source)) throw new Error("Initial native input identity/source does not match its reservation.");
@@ -597,6 +617,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
               type: "command", command: `printf '%s' '${startup.startupReceipt}'`,
             }] }] } },
           } : {}),
+          ...(fork ? { resume: fork.localSessionId, resumeSessionAt: fork.checkpointId, forkSession: true } : {}),
           canUseTool: async (name, input, context) => {
             // A delayed tool callback belongs to the turn that invoked it, not
             // whichever turn happens to be active when authorization returns.
