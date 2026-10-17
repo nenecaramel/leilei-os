@@ -49,6 +49,8 @@ test('native command start correlates exact CLI input UUID before provider outpu
   assert.equal(started.length,0);
   await f.event({type:'command_lifecycle',state:'started',command_uuid:'scheduled-command',session_id:'s'});
   assert.deepEqual(started,[{inputId:'scheduled-command',source:'autonomous'}]);
+  await f.event({type:'command_lifecycle',state:'started',command_uuid:'scheduled-command',session_id:'s'});
+  assert.equal(started.length,1,'replayed start must not rebind the same native input');
   await f.event({type:'command_lifecycle',state:'started',command_uuid:'owned-command',session_id:'s'});
   assert.deepEqual(started.at(-1),{inputId:'owned-command',source:'foreground'});
   await f.event({type:'command_lifecycle',state:'started',command_uuid:'',session_id:'s'});
