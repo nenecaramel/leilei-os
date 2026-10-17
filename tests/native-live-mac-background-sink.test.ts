@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NativeLiveMacBackgroundResultSink, NativeLiveMacBackgroundResultOutbox } from "../src/domains/bridge/mac/native-live-mac-background-result-sink.js";
@@ -169,3 +170,37 @@ test("restart replays background segments in persisted SDK order, not hash filen
   assert.deepEqual((await recovered.list()).map(row => row.receiptId),[]);
   assert.deepEqual((await recovered.listQuarantined()).map(row => row.receiptId),[second]);
 });
+
+test("crash after receipt fsync but before index rename is reconciled before next save", async t => {
+  const f = await fixture(t);
+  const directory = (f.outbox as any).directory as string;
+  const hashed = (receiptId: string) => createHash("sha256")
+    .update(JSON.stringify([id(7), id(2), receiptId])).digest("hex") + ".json";
+  const first = id(100);
+  let second = id(101);
+  for (let n = 101; n < 2000 && hashed(second) >= hashed(first); n++) second = id(n + 1);
+  assert.ok(hashed(second) < hashed(first), "filename order must oppose generation order");
+  const receipt = (receiptId: string, parent: string, providerCheckpointId: string) => ({
+    sourcePrepareId: id(3), receiptId, listenerInstanceId: id(7), generationId: id(2),
+    parentProviderCheckpointId: parent,
+    result: {
+      protocol_version: 4 as const, prepare_id: id(3), request_id: id(4),
+      conversation_id: id(1), status: "success" as const,
+      provider_session_id: "synthetic", effective_working_directory: "/synthetic",
+      provider_checkpoint_id: providerCheckpointId, normalized_events: frame.normalizedEvents,
+    },
+  });
+  const a = receipt(first, id(5), id(6)), b = receipt(second, id(6), id(8));
+  await f.outbox.save(a);
+  // Simulate a crash exactly between renaming A's fsynced payload and
+  // renaming the separately fsynced order index: A exists but is unindexed.
+  writeFileSync(join(directory, ".delivery-order.json"), "[]");
+  const recovered = new NativeLiveMacBackgroundResultOutbox(directory);
+  assert.deepEqual((await recovered.list()).map(x => x.receiptId), [first]);
+  await recovered.save(b);
+  assert.deepEqual(JSON.parse(readFileSync(join(directory, ".delivery-order.json"), "utf8")),
+    [hashed(first), hashed(second)], "the next save must journal old orphan A before new B");
+  const restarted = new NativeLiveMacBackgroundResultOutbox(directory);
+  assert.deepEqual((await restarted.list()).map(x => x.receiptId), [first, second]);
+});
+
