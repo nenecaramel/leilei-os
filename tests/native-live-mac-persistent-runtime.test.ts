@@ -4,6 +4,7 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NativeLiveMacPersistentRuntime } from "../src/domains/bridge/mac/native-live-mac-persistent-runtime.js";
+import { NativeLiveMacBackgroundResultOutbox } from "../src/domains/bridge/mac/native-live-mac-background-result-sink.js";
 import { createNativeLiveMacClaudeTransport } from "../src/domains/bridge/mac/native-live-mac-claude-transport.js";
 import { NativeLiveMacHttpRelayClient } from "../src/domains/bridge/mac/native-live-mac-http-relay-client.js";
 import type { NativeLiveRuntimeCommand } from "../src/domains/bridge/protocol/native-live-runtime-protocol.js";
@@ -44,4 +45,54 @@ test("composed persistent runtime keeps one SDK writer across foreground, autono
   finish(secondInput.uuid);assert.equal((await second).canonicalOutcome,"completed");
  assert.equal(launches,1);assert.equal(closes,0);assert.equal(taskAffordance,true);assert.equal((await runtime.backgroundResults.flush()),0);
  assert.ok(leaseTick,"idle writers require an ownership watchdog");leaseAlive=false;await (leaseTick as ()=>Promise<void>)();assert.equal(closes,1);assert.equal(runtime.registry.size,0);
+});
+
+test("restart fences conversations with pending background outbox before accepting a foreground send", async t => {
+  const root = await realpath(await mkdtemp(join(tmpdir(),"persistent-outbox-recovery-")));
+  t.after(()=>rm(root,{recursive:true,force:true}));
+  const dir=join(root,"outbox"), outbox=new NativeLiveMacBackgroundResultOutbox(dir);
+  const conversationId=id(80), receiptId=id(70);
+  await outbox.save({
+    sourcePrepareId:id(3),receiptId,listenerInstanceId:id(91),
+    generationId:id(4),parentProviderCheckpointId:id(101),
+    result:{
+      protocol_version:4,prepare_id:id(3),request_id:id(13),
+      conversation_id:conversationId,status:"success",
+      provider_session_id:id(90),provider_checkpoint_id:id(102),
+      effective_working_directory:root,
+      normalized_events:[{type:"text",payload:{text:"recoverable background reply"}}],
+    },
+  });
+  let available=false;
+  const relay={
+    async checkExecutionAdmission(){return true;}, async renewExecutionLease(){return true;},
+    async renewSessionLease(){return true;},
+    async prepareBackgroundResult(input:any){
+      if(!available)throw new Error("isolated relay temporarily offline");
+      return{receiptId:input.receiptId,providerSessionId:id(90),
+        parentProviderCheckpointId:id(101),expiresAt:new Date(Date.now()+600000).toISOString()};
+    },
+    async submitBackgroundResult(input:any){
+      return{outcome:"committed" as const,duplicate:false,providerCheckpointId:input.result.provider_checkpoint_id};
+    },
+  };
+  const runtime=new NativeLiveMacPersistentRuntime({
+    environment:{},defaultWorkingDirectory:root,listenerInstanceId:id(91),
+    relay:relay as any,outboxDirectory:dir,attachmentMaterializer:null,outputAttachmentSender:null,
+  });
+  t.after(()=>runtime.closeAll());
+  const command={
+    protocol_version:4,dispatch_target:"claude_code",prepare_id:id(5),request_id:id(15),
+    conversation_id:conversationId,operation:"send",runtime_mode:"new",
+    canonical_user_message_id:id(25),parent_provider_session_id:null,parent_provider_checkpoint_id:null,
+    expected_working_directory:null,prompt:"must not run until the outbox is replayed",
+  } as NativeLiveRuntimeCommand;
+  assert.equal(runtime.executor.canRoute(command),false,"crashed output must fence before any new dispatch");
+  // Initial automatic attempt may have failed. A later bounded replay
+  // commits the ORIGINAL receipt and clears recovery fencing.
+  available=true;
+  assert.equal(await runtime.backgroundResults.flush(),1);
+  for(let i=0;i<100 && !runtime.executor.canRoute(command);i++)await new Promise(setImmediate);
+  assert.equal(runtime.executor.canRoute(command),true);
+  assert.deepEqual(await outbox.list(),[]);
 });
