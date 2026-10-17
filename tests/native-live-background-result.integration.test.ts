@@ -280,6 +280,14 @@ test("started foreground commits before queued autonomous output, with F coverin
   } };
   assert.deepEqual(await f.repository.submitBackgroundResult(secondSubmit),
     { outcome: "queued", duplicate: false, providerCheckpointId: null });
+  const quietId = crypto.randomUUID(), quietProducer = crypto.randomUUID();
+  const quietPrepare = { ...background, receiptId: quietId, parentProviderCheckpointId: secondProducer };
+  await f.repository.prepareBackgroundResult(quietPrepare);
+  const quietSubmit = { ...f.submit, receiptId: quietId, result: {
+    ...f.submit.result, provider_checkpoint_id: quietProducer, normalized_events: [],
+  } };
+  assert.deepEqual(await f.repository.submitBackgroundResult(quietSubmit),
+    { outcome: "queued", duplicate: false, providerCheckpointId: null });
   assert.equal((await f.canonical.getConversation({userId:f.user.id,conversationId:f.conversation.id}))!.currentHeadMessageId,
     f.completed.assistantMessageId, "queued does not advance the canonical head");
   const covering = crypto.randomUUID();
@@ -326,6 +334,14 @@ test("started foreground commits before queued autonomous output, with F coverin
     { outcome: "committed", duplicate: true, providerCheckpointId: covering });
   assert.equal((await f.repository.prepareBackgroundResult(secondPrepare)).parentProviderCheckpointId,
     f.next,"lost-ACK replay retains B2's original B1 parent, not the later F covering checkpoint");
+  await assert.rejects(f.repository.submitBackgroundResult({ ...quietSubmit, coveringCheckpointId: covering }),
+    { code: "INVALID_BACKGROUND_RESULT" });
+  const afterQuiet = (await new DrizzleNativeLiveCurrentPathReader(f.database.db).readCurrentPath({
+    userId:f.user.id,conversationId:f.conversation.id,limit:100,
+  }))!;
+  assert.deepEqual(afterQuiet.messages.map(x=>x.id),snapshot.messages.map(x=>x.id),
+    "a quiet queued native segment cannot be misreported as a visible committed reply");
+
 });
 
 test("background reply is a permanent latest canonical message and next send inherits it", { skip: !enabled }, async t => {
