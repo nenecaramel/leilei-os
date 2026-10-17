@@ -361,6 +361,34 @@ export async function finalizeSuccess(
             messageId: assistantMessage.id,
           });
 
+          // Preparation installs the presentation owner with the PREVIOUS
+          // canonical head as its anchor. After F commits, the same owner
+          // must point at F, or a later autonomous B cannot atomically append
+          // on top of F. Update the anchor under this existing turn/CP/head
+          // transaction; an unrelated new owner must never be overwritten.
+          canonicalWritePhase = "advance_presentation_anchor";
+          if (sessionGeneration?.presentation_owner_id === row.id) {
+            const anchors = await transaction.execute(sql`
+              UPDATE conversations
+              SET provider_metadata=jsonb_set(
+                provider_metadata,
+                '{native_live_presentation_owner,anchorHeadMessageId}',
+                to_jsonb(${assistantMessage.id}::text)
+              )
+              WHERE id=${row.conversationId}::uuid
+                AND user_id=${input.userId}::uuid
+                AND current_head_message_id=${assistantMessage.id}::uuid
+                AND provider_metadata->'native_live_presentation_owner'->>'prepareId'=${row.id}::text
+              RETURNING id
+            `);
+            if (anchors.length !== 1)
+              throw new Error("Native live presentation owner changed during foreground finalization.");
+          } else if (nativeInputBinding) {
+            // A started native F must leave behind an unambiguous covering
+            // owner for every deferred B that the SDK already generated.
+            throw new Error("Native foreground owner changed before covering checkpoint finalization.");
+          }
+
           canonicalWritePhase = "context_lineage";
           await this.persistFinalizedContextLineage(
             transaction as Transaction,
