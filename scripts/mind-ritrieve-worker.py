@@ -27,8 +27,10 @@ def main():
     model = SentenceTransformer(MODEL_ID, local_files_only=True, trust_remote_code=False)
     passage_cache = OrderedDict()
     active = {}
+    active_hashes = {}
     active_version = None
     staging = None
+    staging_hashes = None
     staging_version = None
 
     def encode_passages(texts):
@@ -86,7 +88,7 @@ def main():
                 version = request["version"]
                 if not isinstance(version, str) or len(version) != 64:
                     raise ValueError("invalid snapshot version")
-                staging, staging_version = {}, version
+                staging, staging_hashes, staging_version = {}, {}, version
                 result = {"id": request_id, "ok": True}
 
             elif op == "append":
@@ -101,18 +103,29 @@ def main():
                        or not row[1].strip() or len(row[1]) > 2000
                        for row in rows):
                     raise ValueError("invalid snapshot row")
-                vectors = encode_passages([row[1] for row in rows]) if rows else []
-                for row, vector in zip(rows, vectors):
-                    if row[0] in staging:
+                reuse = []
+                changed = []
+                for state_id, text in rows:
+                    key = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+                    if state_id in staging:
                         raise ValueError("duplicate memory")
-                    staging[row[0]] = vector
+                    staging_hashes[state_id] = key
+                    if active_hashes.get(state_id) == key:
+                        reuse.append((state_id, active[state_id]))
+                    else:
+                        changed.append((state_id, text))
+                vectors = encode_passages([text for _, text in changed]) if changed else []
+                for state_id, vector in reuse:
+                    staging[state_id] = vector
+                for (state_id, _), vector in zip(changed, vectors):
+                    staging[state_id] = vector
                 result = {"id": request_id, "ok": True}
 
             elif op == "commit":
                 if staging is None or request["version"] != staging_version:
                     raise ValueError("no matching staging snapshot")
-                active, active_version = staging, staging_version
-                staging, staging_version = None, None
+                active, active_hashes, active_version = staging, staging_hashes, staging_version
+                staging, staging_hashes, staging_version = None, None, None
                 result = {"id": request_id, "ok": True}
 
             elif op == "search":
