@@ -24,7 +24,8 @@ export function afterSwitchArchive({ execute = execFileSync, env, autoApply = ex
       if (!r.protectionCounts) return summary;
       const counts = r.protectionCounts;
       const historySources = (r.archiveDetails ?? []).filter(item => item.reasons.includes('history_only_source')).length;
-      return summary + `  保留理由（可重叠）：官端窗口 ${counts.window}，checkpoint 等引用 ${counts.referenced}，最近修改 ${counts.recent}，运行或状态未知 ${counts.open}，原生文件依赖 ${r.nativeFileDependencies ?? 0}；原生链无法验证 ${r.unverified}\n`
+      const quarantine = counts.quarantined ? `  后台隔离记录：保留关联的原生会话 ${counts.quarantined} 个；隔离结果尚未恢复。\\n` : '';
+      return summary + quarantine + `  保留理由（可重叠）：官端窗口 ${counts.window}，checkpoint 等引用 ${counts.referenced}，最近修改 ${counts.recent}，运行或状态未知 ${counts.open}，原生文件依赖 ${r.nativeFileDependencies ?? 0}；原生链无法验证 ${r.unverified}\n`
         + `  候选中有明确来源标记的历史展示旧源 ${historySources} 个；不再要求重建压缩前全部历史。\n`;
     }).join('');
   } catch (error) {
