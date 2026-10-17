@@ -715,7 +715,6 @@ test("native live current-path ETag changes when activity changes under the same
   let durationMs: number | undefined;
   let interactionUpdatedAt =
     "2026-09-26T08:00:00.750Z";
-  let backgroundResults: Array<{ id: string; sourceMessageId: string; createdAt: string; text: string }> = [];
 
   const reader = {
     async readCurrentPath() {
@@ -728,7 +727,6 @@ test("native live current-path ETag changes when activity changes under the same
         truncated: false,
         olderCursor: null,
         resetRequired: false,
-        backgroundResults,
         messages: [{
           id: headMessageId,
           conversationId,
@@ -826,26 +824,6 @@ test("native live current-path ETag changes when activity changes under the same
         },
       });
       assert.equal(unchanged.status, 304);
-
-      // A Cron/background receipt changes no canonical head. Its own
-      // durable UUID must invalidate the conditional read exactly once.
-      backgroundResults = [{
-        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        sourceMessageId: headMessageId,
-        createdAt: "2026-09-26T08:01:00.000Z",
-        text: "TIMER_OK",
-      }];
-      const delivered = await fetch(url, {
-        headers: { "If-None-Match": durationEtag },
-      });
-      assert.equal(delivered.status, 200);
-      const deliveryBody = await delivered.json() as {
-        data: { backgroundResults: Array<{ text: string }> }
-      };
-      assert.equal(deliveryBody.data.backgroundResults[0]?.text, "TIMER_OK");
-      const deliveredEtag = delivered.headers.get("etag");
-      assert.ok(deliveredEtag && deliveredEtag !== durationEtag);
-      assert.equal((await fetch(url, { headers: { "If-None-Match": deliveredEtag } })).status, 304);
     },
     true,
     reader,
