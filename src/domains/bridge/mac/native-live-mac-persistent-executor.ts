@@ -62,7 +62,9 @@ export class NativeLiveMacPersistentExecutor {
     let command: NativeLiveRuntimeCommand;
     try { command = parseNativeLiveRuntimeCommand(rawCommand); } catch { return false; }
     const ordinary = ["send", "wake"].includes(command.operation) && ["new", "resume"].includes(command.runtime_mode);
-    const replacement = ["edit", "retry"].includes(command.operation) && ["new", "fork"].includes(command.runtime_mode);
+    const replacement = ["edit", "retry"].includes(command.operation)
+      && (command.runtime_mode === "new" || (command.runtime_mode === "fork"
+        && !!command.parent_provider_session_id && !!command.parent_provider_checkpoint_id));
     if (!(ordinary || replacement) || command.parent_provider_checkpoint_id === undefined
       || command.failed_user_message_uuids?.length) return false;
     if (command.attachments?.length && !this.input.attachmentMaterializer) return false;
