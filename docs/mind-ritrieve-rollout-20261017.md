@@ -127,3 +127,27 @@ pnpm exec tsx scripts/mind-real-blind-review.ts "$BACKUP" --count=8 --manual
 **冻结要求：不得因零误注入而把 `0.76` / `0.78` / `0.80` 写入新索引生产默认；不得让 0.68 的现有试验设置进入线上自动召回；更不能据此宣布新模型优于旧模型。**后续优先在离线真实人工标签上试验上下文、混合候选（词法/E5/ritrieve）及拒绝策略，要求同时复测漏召回与误注入。只有完整旧 Hook 和完整新 Hook 在同批问题/身份/链状态上的端到端对照，才能定论实际用户体验。所有生产 Hook、daemon 和原生产 Railway 保持不变；PR 保持 Draft。
 
 **统计约束：**人工标签只覆盖两个模型提出的最多 top-4 并集，而非 135 条 Memory 全库逐条人工判断。样本仅 8 题（4 正 / 4 负），可提示当前质量风险，不能当最终置信区间或普适模型排名。
+
+## 新的混合候选试验（未上线；待同批真人标注验证）
+
+新增只在**离线试验脚本**调用的 `src/domains/runtime/mind/mind-hybrid-candidates.ts`：
+
+- `hybrid_agreement`：旧 E5 分数至少 0.80、旧模型排名前 6、ritrieve 分数至少 0.68、ritrieve 排名前 12，双方同时同意才留候选；按加权倒数排名融合，最多 4 条。
+- `hybrid_anchored_rescue`：上述规则外，允许旧 E5 前 4、ritrieve 前 48 且分数至少 0.58 的候选**仅在真实提问与记忆正文有连续 3 字中文片段直接匹配时**补入。目的是试着减少漏召回，同时避免任意用 E5 的高分塞满 4 条。这些数值仅为待测实验参数，没有人工标签证明其正确。
+- 完全相同的用户 Mac 已导出的 `data.mind` 当前全局合法快照，是所有算法对照唯一候选来源；不读取生产数据库、运行 Hook、调用 Railway、修改任何 Memory。
+- **这不是已经完成的混合检索上线实现。**要在真实标注集验证召回率、误注入比例、无关空结果比例，再决定是否值得设计 E5+ritrieve 双模型常驻索引及真正上线 Hook 改造。现有 `indexed_v1` 和生产 E5 路由完全不调用此实验模块。
+- 新增 `tests/mind-hybrid-candidates.test.ts`：双方共识、无关分数阻断、中文片段补救、缺失/不可见条目阻断、限流/确定性等 6 个单元用例；需要用户 Mac 运行 `pnpm exec tsx --test tests/mind-hybrid-candidates.test.ts` 和 `pnpm typecheck`。
+
+原来的 `scripts/mind-real-blind-review.ts` 现在会在同一轮真人盲测中对比 **旧 E5、新 ritrieve（不同阈值）以及两种 hybrid 筛选结果**，混合打乱全部候选，不向人工标注者展示算法归属，最终 JSON 新增 `hybrid_agreement` 与 `hybrid_anchored_rescue` 两项匿名聚合。之前的 8 条真人标签只保留在旧脚本运行的内存里，没有记录到文件，不能自动重用；需再在 Mac 本地标注一次新一轮问题。
+
+```zsh
+cd /tmp/leileios-mind-1142
+git fetch origin codex/mind-ritrieve-staged-20261017
+git switch --detach FETCH_HEAD
+pnpm typecheck
+pnpm exec tsx --test tests/mind-hybrid-candidates.test.ts
+BACKUP="$(find "$HOME/Downloads" -maxdepth 1 -type f -name 'leileios-full-backup_*.json' | sort | tail -n 1)"
+pnpm exec tsx scripts/mind-real-blind-review.ts "$BACKUP" --count=8 --manual
+```
+
+仅可向协作方复制 `AGGREGATE_RESULT_JSON_START` 之后的匿名统计。仍必须保持 PR Draft；不能根据合成逻辑测试宣布质量提升或开启生产环境。
