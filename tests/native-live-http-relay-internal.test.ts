@@ -1100,7 +1100,7 @@ test("execution admission is authenticated, metadata-only, strict and non-cachea
   });
 });
 
-for (const outcome of ["wake_quiet", "wake_stale"] as const) test(`quiet native checkpoint receipt is exposed only for a committed quiet outcome (${outcome})`, async () => {
+for (const outcome of ["wake_quiet", "wake_stale"] as const) test(`verified native checkpoint receipt survives a committed same-session Wake (${outcome})`, async () => {
   const relayService = new FakeRelayService();
   const checkpoint = "77777777-7777-4777-8777-777777777777";
   relayService.submitResult = async () => ({ ok: true, outcome, requestId, operation: "wake", conversationId, providerSessionId: "synthetic-session", nativeResumeCheckpointId: checkpoint });
@@ -1119,6 +1119,38 @@ for (const outcome of ["wake_quiet", "wake_stale"] as const) test(`quiet native 
     assert.equal(response.status, 200);
     const data = (await response.json() as { data: Record<string, unknown> }).data;
     assert.equal(data.canonicalOutcome, outcome);
-    assert.equal(data.nativeResumeCheckpointId, outcome === "wake_quiet" ? checkpoint : undefined);
+    assert.equal(data.nativeResumeCheckpointId, checkpoint,
+      "a durably committed stale native cursor must reach the Mac so the original session can resume");
   });
 });
+
+for (const outcome of ["wake_stale", "wake_failed", "wake_discarded", "completed"] as const) test(
+  `unverified native checkpoint cannot masquerade as a Wake continuation (${outcome})`, async () => {
+    const relayService = new FakeRelayService();
+    const checkpoint = "77777777-7777-4777-8777-777777777777";
+    relayService.submitResult = async () => ({
+      ok: true, outcome, requestId, operation: "wake", conversationId,
+      providerSessionId: "synthetic-session",
+      ...(outcome === "wake_stale" ? {} : { nativeResumeCheckpointId: checkpoint }),
+    });
+    await withServer(app => {
+      app.use((request, _response, next) => { request.mcpUserId = userId; next(); });
+      app.use("/internal/native-live-relay", createNativeLiveRelayInternalRouter({ relayService }));
+    }, async baseUrl => {
+      const response = await fetch(`${baseUrl}/internal/native-live-relay/reservations/${prepareId}/result`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ listener_instance_id: listenerId, result: {
+          protocol_version: 4, prepare_id: prepareId, request_id: requestId,
+          conversation_id: conversationId, status: "success",
+          provider_session_id: "synthetic-session", provider_checkpoint_id: checkpoint,
+          normalized_events: [{ type: "text", payload: { text: "<quiet />" } }],
+        } }),
+      });
+      assert.equal(response.status, 200);
+      const data = (await response.json() as { data: Record<string, unknown> }).data;
+      assert.equal(data.canonicalOutcome, outcome);
+      assert.equal(data.nativeResumeCheckpointId, undefined,
+        "only an explicitly committed quiet/stale continuation may return the native cursor");
+    });
+  },
+);
