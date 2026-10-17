@@ -14,8 +14,12 @@ archive anything, regardless of an old `AUTO_APPLY` flag.
 - Companion bundles directly referenced by retained physical chains (for example,
   a fork's tool output still stored under an older Session's directory).
 - Sessions modified within the existing one-hour grace period, or whose native
-  peer is open/unknown. Pending append receipts and terminal/background result
-  outboxes stop archival until recovered through the existing daemon flow.
+  peer is open/unknown. An outstanding background result, including a `blocked`
+  quarantine receipt, pins the exact native provider Session and its verified
+  physical file dependencies; unrelated, fully verified old Sessions may still
+  be archived. Quarantine remains intact and **is not** considered recovered.
+  Pending terminal result deliveries and SessionStore append receipts continue
+  to stop archival globally until the daemon confirms them.
 - The entire project when a kept Session's physical execution chain cannot be
   validated, including conflicting UUIDs or an unavailable selected checkpoint.
 

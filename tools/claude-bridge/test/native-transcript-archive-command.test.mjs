@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { chmod, mkdtemp, mkdir, writeFile, readdir, rm, utimes } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, writeFile, readFile, readdir, rm, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { runNativeTranscriptArchive } from '../scripts/native-transcript-archive.mjs';
 
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -95,4 +96,101 @@ test('unreadable Desktop accounts cannot disappear from protection', {skip:proce
   await assert.rejects(runNativeTranscriptArchive({...f,apply:true,relayUrl:'https://relay.invalid',relayToken:'T',fetchImpl}),e=>e.code==='ARCHIVE_DESKTOP_INDEX_UNREADABLE');
   assert.equal((await readdir(f.project)).length,3);
  }finally{await chmod(account,0o700);await rm(f.root,{recursive:true,force:true});}
+});
+
+const safeReceipt = sessionId => ({
+  sourcePrepareId: id(201), receiptId: id(202), listenerInstanceId: id(206), generationId: id(207),
+  parentProviderCheckpointId: id(203),
+  result: { prepare_id: id(201), conversation_id: id(204), provider_session_id: sessionId,
+    provider_checkpoint_id: id(205), status: 'success', normalized_events: [] },
+});
+const blockedPath = (f, name = 'a'.repeat(64)) =>
+  path.join(f.recoveryDirectory, 'background-results', name, 'blocked',
+    createHash('sha256').update(JSON.stringify([id(206), id(207), id(202)])).digest('hex') + '.json');
+async function writeBlocked(f, sessionId, name) {
+  const file = blockedPath(f, name);
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify(safeReceipt(sessionId)));
+  return file;
+}
+const remote = sessionIds => async () =>
+  new Response(JSON.stringify({success:true,data:{sessionIds}}));
+
+test('quarantined background output protects its exact native session, but not unrelated stale files', async () => {
+  const f = await fixture();
+  try {
+    // Server protects #2, Desktop protects #1, quarantine protects #3;
+    // an unrelated old #4 is still eligible for a verified archive.
+    const root = await readdir(f.project);
+    const existing = await readFile(path.join(f.project, `${id(3)}.jsonl`));
+    await writeFile(path.join(f.project, `${id(4)}.jsonl`), existing);
+    await utimes(path.join(f.project, `${id(4)}.jsonl`), old, old);
+    const original = await writeBlocked(f, id(3));
+    const options = { ...f, relayUrl:'https://relay.invalid',relayToken:'T',fetchImpl:remote([id(2)]) };
+    const planned = await runNativeTranscriptArchive(options);
+    assert.deepEqual(planned.results.map(r=>[r.keep,r.archive,r.protectionCounts.quarantined]), [[3,1,1]]);
+    assert.ok(root.length === 3);
+    assert.equal((await readFile(original,'utf8')),JSON.stringify(safeReceipt(id(3))));
+    const applied = await runNativeTranscriptArchive({...options,apply:true});
+    assert.ok(applied.results[0].applied);
+    assert.deepEqual((await readdir(f.project)).sort(),[id(1),id(2),id(3)].map(v=>`${v}.jsonl`));
+    assert.equal((await readFile(original,'utf8')),JSON.stringify(safeReceipt(id(3))));
+  } finally { await rm(f.root,{recursive:true,force:true}); }
+});
+
+test('new quarantined receipt during packing aborts the retirement of its session', async () => {
+  const f = await fixture();
+  let calls=0;
+  const fetchImpl = async () => {
+    if (++calls === 3) await writeBlocked(f,id(3));
+    return remote([id(2)])();
+  };
+  try {
+    await assert.rejects(
+      runNativeTranscriptArchive({ ...f,apply:true,relayUrl:'https://relay.invalid',relayToken:'T',fetchImpl }),
+      e => e.code === 'ARCHIVE_PLAN_CHANGED'
+    );
+    // A late recovery receipt forces retirement rollback. The original paths
+    // are hard-linked back, while the private staging directory and manifest
+    // intentionally remain as recovery evidence (not an archive leak).
+    const rootEntries = await readdir(f.project);
+    assert.deepEqual(rootEntries.filter(name => name.endsWith('.jsonl')).sort(),
+      [id(1),id(2),id(3)].map(v=>`${v}.jsonl`));
+    const staging = rootEntries.filter(name => name.startsWith('.archive-recovery-'));
+    assert.equal(staging.length, 1, 'one private rollback directory must remain');
+    const recoveryMarkers = (await readdir(f.archiveDirectory)).filter(name => name.endsWith('.recovery.json'));
+    assert.equal(recoveryMarkers.length, 1, 'a failed retirement must leave its recovery manifest');
+    const recovery = JSON.parse(await readFile(path.join(f.archiveDirectory,recoveryMarkers[0]),'utf8'));
+    assert.equal(recovery.reason,'ARCHIVE_PLAN_CHANGED');
+    assert.equal(recovery.stagingDirectory,path.join(f.project,staging[0]));
+    assert.deepEqual(recovery.members,[`${id(3)}.jsonl`]);
+    const original = await readFile(path.join(f.project,`${id(3)}.jsonl`));
+    const retained = await readFile(path.join(recovery.stagingDirectory,`${id(3)}.jsonl`));
+    assert.deepEqual(original,retained,'restored original is byte-identical to staged recovery source');
+    assert.ok((await readFile(blockedPath(f),'utf8')).includes(id(3)));
+  } finally { await rm(f.root,{recursive:true,force:true}); }
+});
+
+test('unverifiable quarantine, missing native session and unknown recovery files fail closed', async () => {
+  const f = await fixture();
+  const options={...f,relayUrl:'https://relay.invalid',relayToken:'T',fetchImpl:remote([id(2)])};
+  try {
+    const receiptFile=await writeBlocked(f,id(9));
+    await assert.rejects(runNativeTranscriptArchive(options),e=>e.code==='NATIVE_RECOVERY_UNCONFIRMED');
+    await writeFile(receiptFile,'{"result":{}}');
+    await assert.rejects(runNativeTranscriptArchive(options),e=>e.code==='NATIVE_RECOVERY_UNCONFIRMED');
+    await writeFile(receiptFile,JSON.stringify(safeReceipt(id(3))));
+    const foreign=path.join(path.dirname(receiptFile),'unknown.txt');
+    await writeFile(foreign,'incomplete write');
+    await assert.rejects(runNativeTranscriptArchive(options),e=>e.code==='NATIVE_RECOVERY_UNCONFIRMED');
+  } finally { await rm(f.root,{recursive:true,force:true}); }
+});
+
+test('an empty blocked directory is not an outstanding recovery receipt', async () => {
+  const f = await fixture();
+  try {
+    await mkdir(path.dirname(blockedPath(f)),{recursive:true});
+    const plan=await runNativeTranscriptArchive({...f,relayUrl:'https://relay.invalid',relayToken:'T',fetchImpl:remote([id(2)])});
+    assert.equal(plan.results[0].archive,1);
+  } finally {await rm(f.root,{recursive:true,force:true});}
 });

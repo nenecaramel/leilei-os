@@ -2,7 +2,7 @@ import path from 'node:path';
 import { homedir } from 'node:os';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { planNativeTranscriptArchive, applyNativeTranscriptArchive } from '../src/native-transcript-archive.mjs';
-import { assertNativeHandoffRecoveryClear } from '../src/native-session-switch-restore.mjs';
+import { archiveRecoveryProtectedSessions } from '../src/native-transcript-archive-recovery.mjs';
 import { readNativeSessionRelease } from '../src/native-session-activity.mjs';
 
 // Plans (default) or applies (--apply) archival of redundant native transcripts
@@ -59,8 +59,8 @@ export async function runNativeTranscriptArchive({ apply = false, relayUrl, rela
   configDirectory = path.resolve(process.env.CLAUDE_CONFIG_DIR ?? path.join(homedir(), '.claude')),
   desktopSessionsDirectory = path.join(homedir(), 'Library', 'Application Support', 'Claude', 'claude-code-sessions'),
   archiveDirectory = path.join(homedir(), '.leileios', 'archive'), recoveryDirectory=path.join(homedir(),'.leileios'), now = Date.now() } = {}) {
-  await assertNativeHandoffRecoveryClear(recoveryDirectory);
-  const referenced = await referencedSessions({ relayUrl, relayToken, fetchImpl });
+  const recovery = await archiveRecoveryProtectedSessions(recoveryDirectory);
+  const referenced = new Set([...(await referencedSessions({ relayUrl, relayToken, fetchImpl })), ...recovery.sessions]);
   const windows = await desktopWindows(desktopSessionsDirectory);
   const projectsDirectory = path.join(configDirectory, 'projects');
   const peerDirectory = path.join(configDirectory, 'sessions');
@@ -69,6 +69,13 @@ export async function runNativeTranscriptArchive({ apply = false, relayUrl, rela
     if (!project.isDirectory()) continue;
     const names = new Set(await readdir(path.join(projectsDirectory, project.name)));
     if (windows.some(w => names.has(`${w.sessionId}.jsonl`)) || [...referenced].some(id=>names.has(`${id}.jsonl`))) folders.add(path.join(projectsDirectory, project.name));
+  }
+  // A receipt from another environment or a missing native provider file
+  // cannot prove its file dependencies. Refuse, rather than guess.
+  for (const sessionId of recovery.sessions) {
+    const present = await Promise.all([...folders].map(async folder =>
+      (await readdir(folder)).includes(`${sessionId}.jsonl`)));
+    if (!present.some(Boolean)) throw fail('NATIVE_RECOVERY_UNCONFIRMED');
   }
   // Open unless a release is positively observed (no live process holds it).
   const isOpen = async id => (await readNativeSessionRelease(peerDirectory, id)).state !== 'not_open_observed';
@@ -81,14 +88,14 @@ export async function runNativeTranscriptArchive({ apply = false, relayUrl, rela
     const applied = apply && plan.archive.length
       ? await applyNativeTranscriptArchive({ projectDirectory, sessionIds: plan.archive, archiveDirectory, label, expectedDigests:plan.digests,
           verifyReferences:async()=>{
-            await assertNativeHandoffRecoveryClear(recoveryDirectory);
-            const refs=await referencedSessions({relayUrl,relayToken,fetchImpl});
+            const protectedRecovery=await archiveRecoveryProtectedSessions(recoveryDirectory);
+            const refs=new Set([...(await referencedSessions({relayUrl,relayToken,fetchImpl})),...protectedRecovery.sessions]);
             const currentWindows=await desktopWindows(desktopSessionsDirectory);
             for(const id of plan.archive)if(refs.has(id)||currentWindows.some(w=>w.sessionId===id)||await isOpen(id))throw fail('ARCHIVE_PLAN_CHANGED');
           },
           verifyPlan:async()=>{
-            await assertNativeHandoffRecoveryClear(recoveryDirectory);
-            const currentReferences=await referencedSessions({relayUrl,relayToken,fetchImpl});
+            const protectedRecovery=await archiveRecoveryProtectedSessions(recoveryDirectory);
+            const currentReferences=new Set([...(await referencedSessions({relayUrl,relayToken,fetchImpl})),...protectedRecovery.sessions]);
             const currentWindows=await desktopWindows(desktopSessionsDirectory);
             const current=await planNativeTranscriptArchive({projectDirectory,now:Date.now(),isOpen,referenced:currentReferences,
               windows:new Map(currentWindows.map(w=>[w.sessionId,w.checkpoint])),historyMode:'continuation'});
@@ -101,7 +108,7 @@ export async function runNativeTranscriptArchive({ apply = false, relayUrl, rela
     results.push({ folder: path.basename(projectDirectory), keep: plan.keep.length, archive: plan.archive.length,
       keepMB: Math.round(plan.bytes.keep / 1048576), archiveMB: Math.round(plan.bytes.archive / 1048576),
       applied: applied ? path.basename(applied.archiveFile) : null,
-      protectionCounts:Object.fromEntries(['window','referenced','recent','open','unreadable'].map(reason=>[reason,plan.keep.filter(k=>k.reasons.includes(reason)).length])),
+      protectionCounts:{ ...Object.fromEntries(['window','referenced','recent','open','unreadable'].map(reason=>[reason,plan.keep.filter(k=>k.reasons.includes(reason)).length])), quarantined:plan.keep.filter(k=>recovery.sessions.has(k.sessionId.toLowerCase())).length },
       nativeFileDependencies:plan.keep.filter(k=>k.reasons.some(r=>r.startsWith('native_files:'))).length,
       unverified:plan.verified.filter(v=>!v.readable).length,
       keepDetails:plan.keep,archiveDetails:plan.archiveDetails });
