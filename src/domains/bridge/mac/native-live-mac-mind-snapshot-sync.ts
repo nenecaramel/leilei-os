@@ -47,7 +47,7 @@ export class MacMindSnapshotSync {
       if (!data || typeof data !== "object" || !("version" in data) || !("total" in data) ||
         !("memories" in data) || !("next_offset" in data) ||
         typeof data.version !== "string" || !/^[a-f0-9]{64}$/.test(data.version) ||
-        !Number.isInteger(data.total) || (data.total as number) < 0 ||
+        (typeof data.total !== "number" || !Number.isInteger(data.total)) || (data.total as number) < 0 ||
         (data.total as number) > MAX_ROWS || !Array.isArray(data.memories) ||
         data.memories.length > PAGE_SIZE) throw new Error("Invalid snapshot metadata.");
       if (version !== null && version !== data.version) throw new Error("Memory snapshot changed during sync.");
