@@ -19,6 +19,7 @@ import { stdin, stdout } from "node:process";
 import { snapshotMemories } from "../src/domains/runtime/mind/mind-snapshot-version.js";
 import { LocalE5BreathSemanticScorer } from "../src/domains/runtime/breath/local-e5-embedding.js";
 import { LocalRitrieveBreathSemanticScorer } from "../src/domains/runtime/breath/local-ritrieve-embedding.js";
+import { selectHybridMindCandidates } from "../src/domains/runtime/mind/mind-hybrid-candidates.js";
 import type { BreathSemanticCandidate } from "../src/domains/runtime/breath/breath-semantic-recall.js";
 import type { SubjectStateWrite } from "../src/domains/runtime/subject-state/subject-state-contract.js";
 
@@ -119,6 +120,8 @@ function summarize(reviews:Review[]):Json {
     "after_ritrieve_0.76",
     "after_ritrieve_0.78",
     "after_ritrieve_0.80",
+    "hybrid_agreement",
+    "hybrid_anchored_rescue",
   ];
   const report:Json={};
   for(const name of names){
@@ -221,6 +224,8 @@ try {
     "after_ritrieve_0.76",
     "after_ritrieve_0.78",
     "after_ritrieve_0.80",
+    "hybrid_agreement",
+    "hybrid_anchored_rescue",
   ];
   for(let i=0;i<probes.length;i++){
     const probe=probes[i]!;
@@ -233,6 +238,20 @@ try {
       [names[2]!,pick(next,Math.max(.76,r.floor??.68))],
       [names[3]!,pick(next,Math.max(.78,r.floor??.68))],
       [names[4]!,pick(next,Math.max(.80,r.floor??.68))],
+      [names[5]!,selectHybridMindCandidates({
+        query:probe.query,
+        memories:corpus.map(m=>({stateId:m.id,text:m.text})),
+        e5Ranked:old.map(x=>({stateId:x.id,score:x.score})),
+        ritrieveRanked:next.map(x=>({stateId:x.id,score:x.score})),
+        mode:"agreement",
+      }).map(x=>x.stateId)],
+      [names[6]!,selectHybridMindCandidates({
+        query:probe.query,
+        memories:corpus.map(m=>({stateId:m.id,text:m.text})),
+        e5Ranked:old.map(x=>({stateId:x.id,score:x.score})),
+        ritrieveRanked:next.map(x=>({stateId:x.id,score:x.score})),
+        mode:"anchored_rescue",
+      }).map(x=>x.stateId)],
     ]);
     const union=new Set<string>();
     for(const values of selections.values())for(const id of values)union.add(id);
