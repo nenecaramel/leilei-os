@@ -25,6 +25,8 @@ export class NativeLiveMacPersistentRuntime {
     environment: NodeJS.ProcessEnv; defaultWorkingDirectory: string; listenerInstanceId: string;
     relay: Pick<NativeLiveMacHttpRelayClient, "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission" | "renewSessionLease" | "prepareBackgroundResult" | "submitBackgroundResult"> & Partial<Pick<NativeLiveMacHttpRelayClient, "bindInput">> & Partial<NativeLiveMacTaskRelay>;
     outboxDirectory: string; mcpServerConfig?: NativeLiveMacMcpServerConfig | null;
+    /** Injectable clock for deterministic retry/backoff regression tests. */
+    backgroundRecoveryNow?: () => number;
     attachmentMaterializer: NativeLiveMacAttachmentMaterializer | null;
     outputAttachmentSender: NativeLiveMacOutputAttachmentSender | null;
     createTransport?: typeof createNativeLiveMacClaudeTransport;
@@ -38,6 +40,7 @@ export class NativeLiveMacPersistentRuntime {
     const pendingRecovery = [...outbox.listSync(), ...outbox.listQuarantinedSync()];
     this.backgroundResults = new NativeLiveMacBackgroundResultSink({ listenerInstanceId: input.listenerInstanceId, relay: input.relay,
       outbox,
+      ...(input.backgroundRecoveryNow ? { now: input.backgroundRecoveryNow } : {}),
       isForegroundActive:conversationId=>this.executor.isForegroundActive(conversationId),
       onImmediateFence: conversationId=>this.executor.suspend(conversationId,"recovery"),
       onRecoveryBlocked:async conversationId=>{this.executor.suspend(conversationId,"recovery");await this.executor.retire(conversationId);},
