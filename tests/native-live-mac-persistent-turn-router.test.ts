@@ -159,13 +159,14 @@ test("started UUID binds an exact pre-start background advancement before foregr
   });
   const first = f.run(command(1));
   f.finish((await f.inputs.next()).value!.uuid); await first;
-  f.setBackground(async () => { started.resolve(); return acknowledged(id(102)); });
+  f.setBackground(async () => { started.resolve(); return {status:"queued",providerCheckpointId:id(102)}; });
   const second = f.run(command(2)), pending = (await f.inputs.next()).value!;
   assert.equal(pending.uuid, id(22));
   f.finish(id(77)); await started.promise;
   for (let i = 0; i < 100 && (f.router as unknown as { providerCheckpointId: string | null }).providerCheckpointId !== id(102); i++) await new Promise(setImmediate);
   assert.equal((f.router as unknown as { providerCheckpointId: string | null }).providerCheckpointId, id(102), "earlier background must be acknowledged before the input starts");
   assert.equal(f.backgroundOwners.at(-1)?.executionStart, true, "background finished before the actual native start");
+  assert.equal(f.backgroundOwners.at(-1)?.deferred,true,"B must remain queued until F commits, never reparent accepted U");
   f.output.push({ type: "command_lifecycle", state: "started", command_uuid: pending.uuid, session_id: sid });
   f.finish(pending.uuid);
   await second;
