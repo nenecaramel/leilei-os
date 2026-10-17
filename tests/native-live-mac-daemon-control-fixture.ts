@@ -143,7 +143,7 @@ export async function runDaemonScenario(options: {
     persistentRuntime: { backgroundResults: { async flush() { return 0; } } },
     flushNativeLiveBackgroundWithListenerLease,
     relay: {
-      renewLease: (input: Parameters<typeof relay.renewLease>[0]) => relay.renewLease(input),
+      renewLease: () => relay.renewLease(),
       async waitForWork() { throw new Error("unexpected main relay long-poll"); },
     },
     wakeBrokerCursor: { generation: "broker-generation", version: 0 },
