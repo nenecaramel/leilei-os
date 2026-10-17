@@ -152,8 +152,16 @@ for (const legacy of [false, true] as const) test(`visible Silence Wake followed
 });
 
 
-async function strandedRejectedWake(t: test.TestContext) {
+async function strandedRejectedWake(t: test.TestContext, intermediate = false) {
   const f = await fixture(t);
+  let preWakeHead = f.completed.assistantMessageId;
+  if (intermediate) {
+    // A real earlier Cron B advances H -> B within the same SDK generation.
+    // The later visible Wake is sourced from B, not from the original H.
+    await f.repository.prepareBackgroundResult(f.prepare);
+    assert.equal((await f.repository.submitBackgroundResult(f.submit)).outcome, "committed");
+    preWakeHead = f.prepare.receiptId;
+  }
   let now = new Date();
   const silence = new NativeLiveSilenceWakeService(f.database.db, () => now);
   const schedule = await silence.readSchedule({ userId: f.user.id });
@@ -186,11 +194,12 @@ async function strandedRejectedWake(t: test.TestContext) {
     userId: f.user.id, listenerInstanceId: f.prepare.listenerInstanceId, reservationId: wakeId,
   }), "applied");
 
-  // Old deployed Wake advanced H -> W but left the inherited anchor at H.
+  // Old deployed Wake advanced source -> W but left its inherited
+  // anchor at source; source may be an earlier Cron (not original H).
   await f.database.db.execute(sql`
     UPDATE conversations SET provider_metadata=jsonb_set(
       provider_metadata, '{native_live_presentation_owner,anchorHeadMessageId}',
-      to_jsonb(${f.completed.assistantMessageId}::text))
+      to_jsonb(${preWakeHead}::text))
     WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid
   `);
   const receiptId = crypto.randomUUID();
@@ -234,8 +243,8 @@ async function strandedRejectedWake(t: test.TestContext) {
       payload, '{expiresAt}', to_jsonb('2000-01-01T00:00:00.000Z'::text))
     WHERE user_id=${f.user.id}::uuid AND id=${receiptId}::uuid
   `);
-  return { ...f, wakeId, wakeHead: final.assistantMessageId, prepare, submit,
-    rejectedId: rejected.command.prepare_id, receiptId };
+  return { ...f, wakeId, wakeHead: final.assistantMessageId, preWakeHead,
+    prepare, submit, rejectedId: rejected.command.prepare_id, receiptId };
 }
 
 test("expired Cron receipt reclaims only a rejected unstarted send owner after legacy Wake 409", { skip: !enabled }, async t => {
@@ -264,6 +273,68 @@ test("expired Cron receipt reclaims only a rejected unstarted send owner after l
   assert.deepEqual(await f.repository.submitBackgroundResult(f.submit),
     { outcome: "committed", duplicate: true, providerCheckpointId: f.submit.result.provider_checkpoint_id });
 });
+
+
+test("historical Wake sourced from a prior canonical Cron recovers the stranded original owner", { skip: !enabled }, async t => {
+  const f = await strandedRejectedWake(t, true);
+  assert.notEqual(f.preWakeHead, f.completed.assistantMessageId,
+    "reproduce the production wakeSourceMatches=false without forging session ancestry");
+  const [old] = await f.database.db.execute<{ wakeSource: string; initialOwnerAssistant: string }>(sql`
+    SELECT w.wake_context->>'source_head_message_id' AS "wakeSource",
+      owner.assistant_message_id::text AS "initialOwnerAssistant"
+    FROM native_live_turn_preparations w
+    JOIN native_live_turn_preparations owner
+      ON owner.id=${f.source.command.prepare_id}::uuid
+    WHERE w.id=${f.wakeId}::uuid
+  `);
+  assert.equal(old.wakeSource, f.preWakeHead);
+  assert.equal(old.initialOwnerAssistant, f.completed.assistantMessageId);
+  assert.notEqual(old.wakeSource, old.initialOwnerAssistant);
+  assert.equal((await f.repository.prepareBackgroundResult(f.prepare)).receiptId, f.receiptId,
+    "renew the saved original receipt without running Claude again");
+  assert.equal((await f.repository.submitBackgroundResult(f.submit)).outcome, "committed");
+  const [state] = await f.database.db.execute<{ head: string; owner: string; anchor: string }>(sql`
+    SELECT current_head_message_id::text AS head,
+      provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner,
+      provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor
+    FROM conversations WHERE id=${f.conversation.id}::uuid
+  `);
+  assert.equal(state.head, f.receiptId);
+  assert.equal(state.anchor, f.receiptId);
+  assert.equal(state.owner, f.source.command.prepare_id);
+});
+
+for (const tamper of ["not actual Wake parent", "previous Cron changed generation"] as const)
+  test(`multi-hop Wake recovery refuses ${tamper}`, { skip: !enabled }, async t => {
+    const f = await strandedRejectedWake(t, true);
+    if (tamper === "not actual Wake parent") {
+      await f.database.db.execute(sql`
+        UPDATE native_live_turn_preparations
+        SET wake_context=jsonb_set(wake_context,'{source_head_message_id}',
+          to_jsonb(${f.completed.assistantMessageId}::text))
+        WHERE id=${f.wakeId}::uuid
+      `);
+    } else {
+      await f.database.db.execute(sql`
+        UPDATE conversation_provider_session_checkpoints
+        SET runtime_metadata=jsonb_set(runtime_metadata,
+          '{native_live_generation,presentation_owner_id}',
+          to_jsonb(${crypto.randomUUID()}::text))
+        WHERE user_id=${f.user.id}::uuid
+          AND conversation_id=${f.conversation.id}::uuid
+          AND canonical_message_id=${f.preWakeHead}::uuid
+      `);
+    }
+    await assert.rejects(f.repository.prepareBackgroundResult(f.prepare),
+      { code: "BACKGROUND_CONFLICT" });
+    const [state] = await f.database.db.execute<{ head: string; owner: string }>(sql`
+      SELECT current_head_message_id::text AS head,
+        provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner
+      FROM conversations WHERE id=${f.conversation.id}::uuid
+    `);
+    assert.equal(state.head, f.wakeHead);
+    assert.equal(state.owner, f.rejectedId, "failed lineage proof cannot seize ownership");
+  });
 
 for (const mutated of ["started input", "runtime evidence", "changed revision", "competing foreground"] as const)
   test(`recovery refuses ${mutated} after rejected foreground`, { skip: !enabled }, async t => {
