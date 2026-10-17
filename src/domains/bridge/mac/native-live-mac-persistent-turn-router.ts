@@ -262,6 +262,7 @@ export class NativeLiveMacPersistentTurnRouter {
     return (command.operation === "wake" && command.execution_selection == null)
       || isDeepStrictEqual(command.execution_selection, this.initialCommand?.execution_selection);
   }
+  hasActiveTurn(): boolean { return this.active !== null; }
   get providerSessionId(): string | null { return this.binding?.session.sessionId ?? null; }
   async settle(): Promise<void> { await this.acknowledgement; }
   suspend(): void { this.suspended = true; this.active?.controlAbort?.abort(); }
