@@ -30,6 +30,7 @@ class SessionHost {
     this.observeOutput = observeOutput;
     this.beforeSubmit = beforeSubmit; this.onBackgroundResult = onBackgroundResult;
     this.events = new EventEmitter(); this.ids = new Set(); this.startedCommands = new Set();
+    this.currentCommandUuid = null;
     this.taskState = new AgentSdkTaskState(() => this.publishTaskState());
     this.pending = []; this.active = null; this.state = 'starting'; this.sessionId = null;
     this.segment = newSegment();
@@ -73,6 +74,18 @@ class SessionHost {
   // UUID on a reply frame. Unstamped output stays background, never guessed.
   ownedInputId() {
     return this.segment.owner === 'turn' && this.active?.id === this.segment.ownerId ? this.active.id : null;
+  }
+  // SDK tool callbacks may run before the first stamped assistant frame.
+  // A native command_lifecycle.started UUID identifies that exact foreground
+  // input without attributing unstamped text or background output to it.
+  // Do not use this early owner for event streaming or canonical commits.
+  fileToolOwnerInputId() {
+    const turn = this.active;
+    if (!turn?.dispatched || this.state !== 'running') return null;
+    if (this.currentCommandUuid && !turn.commandIds.has(this.currentCommandUuid)) return null;
+    if (this.segment.owner === 'turn' && this.segment.ownerId === turn.id) return turn.id;
+    if (this.segment.owner !== null || !this.currentCommandUuid) return null;
+    return turn.commandIds.has(this.currentCommandUuid) ? turn.id : null;
   }
   submit(text, { id = randomUUID(), source = 'unclassified', onNormalizedEvent = null, toolImageHandler = null } = {}) {
     if (this.state === 'closed' || this.state === 'failed') return Promise.reject(new Error('Session host is closed.'));
@@ -190,7 +203,10 @@ class SessionHost {
     if (isReply && stamps.some(id => typeof id === 'string' && id && id !== ZERO_UUID)) {
       const turn = this.active && stamps.some(id => this.active.commandIds.has(id)) ? this.active : null;
       segment.owner = turn ? 'turn' : 'background'; segment.ownerId = turn?.id ?? null;
-      if (turn) turn.stampedReply = true;
+      if (turn) {
+        turn.stampedReply = true;
+        this.currentCommandUuid = stamps.find(id => turn.commandIds.has(id)) ?? this.currentCommandUuid;
+      }
     }
     const isOwnedResult = message.type === 'result'
       && this.segment.owner === 'turn' && this.active
@@ -246,6 +262,7 @@ class SessionHost {
           && message.command_uuid !== ZERO_UUID
           && !this.startedCommands.has(message.command_uuid)) {
           this.startedCommands.add(message.command_uuid);
+          this.currentCommandUuid = message.command_uuid;
           this.events.emit('command-started', Object.freeze({
             inputId: message.command_uuid,
             source: this.active?.dispatched && this.active.commandIds.has(message.command_uuid)
@@ -259,6 +276,7 @@ class SessionHost {
         await this.route(message);
         if (this.state === 'closed') break;
         if (message?.type === 'result') {
+          this.currentCommandUuid = null;
           const segment = this.segment; this.segment = newSegment();
           const consumed = [message.user_message_uuid, ...(Array.isArray(message.user_message_uuids) ? message.user_message_uuids : [])].filter(id => id !== ZERO_UUID);
           if (this.active && !consumed.some(id => typeof id === 'string' && id.trim())) throw new Error('SDK input correlation is unavailable.');
