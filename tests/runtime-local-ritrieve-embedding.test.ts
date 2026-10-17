@@ -60,3 +60,31 @@ test("ritrieve validates candidate constraints before invoking a worker", async 
     query: "test", candidates: [{stateId: "one", kind: "memory", text: " "}],
   }), /candidate text is invalid/);
 });
+
+test("ritrieve indexes snapshots atomically and returns ranked local memory IDs", async t => {
+  const version = "a".repeat(64);
+  const path = await fakeWorker(t, `
+    if (input.op === "search") {
+      process.stdout.write(JSON.stringify({id:input.id,version:"${version}",count:2,
+        hits:[["memory-two",.93],["memory-one",.70]],floor:.73})+"\\n");
+    } else {
+      process.stdout.write(JSON.stringify({id:input.id,ok:true})+"\\n");
+    }
+  `);
+  const scorer = new LocalRitrieveBreathSemanticScorer({
+    executable: process.execPath, workerPath: path, requestTimeoutMs: 3000,
+  });
+  t.after(() => scorer.close());
+  assert.equal(scorer.isSnapshotReady(), false);
+  await scorer.replaceSnapshot({version, memories:[
+    {stateId:"memory-one",text:"雨天的约定"},
+    {stateId:"memory-two",text:"我们之前的争执"},
+  ]});
+  assert.equal(scorer.isSnapshotReady(), true);
+  const result = await scorer.searchSnapshot("又这样", 2);
+  assert.deepEqual(result, {version,count:2,floor:.73,
+    hits:[{stateId:"memory-two",score:.93},{stateId:"memory-one",score:.70}]});
+  await assert.rejects(scorer.replaceSnapshot({version, memories:[
+    {stateId:"same",text:"a"},{stateId:"same",text:"b"},
+  ]}),/Invalid Mind snapshot/);
+});
