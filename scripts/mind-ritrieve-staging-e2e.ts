@@ -40,6 +40,7 @@ try {
   assert.equal(scorer.isSnapshotReady(), true);
 
   const output: Array<Record<string, unknown>> = [];
+  const failedCases: string[] = [];
   for (const c of checks) {
     const queryStarted = performance.now();
     const result = await scorer.searchSnapshot(c.query, 48);
@@ -47,6 +48,14 @@ try {
     assert.equal(result.count, 2, "Only two visible synthetic memories may enter the index.");
     assert.equal(result.version.length, 64);
     assert.ok(result.hits.every(hit => hit.stateId !== HIDDEN), "Hidden fixture was indexed.");
+
+    // Reproduce the actual indexed Hook safety filter. Search returns all
+    // scored hits; the Hook sends only hits that clear this relevance floor.
+    const floor = Math.max(0.68, result.floor ?? 0.68);
+    const eligibleHits = result.hits.filter(hit => hit.score >= floor).slice(0, 48);
+    const localTopMatchesLabel = c.expected
+      ? eligibleHits[0]?.stateId === c.expected
+      : null;
 
     const responseStarted = performance.now();
     const response: Response = await fetch(`${STAGING_URL}/internal/mind/recall`, {
@@ -64,7 +73,7 @@ try {
         caller: "claude_code", context_epoch: 0,
         receipt_mode: "signed_v1",
         semantic_snapshot_version: result.version,
-        snapshot_scores: Object.fromEntries(result.hits.map(hit => [hit.stateId, hit.score])),
+        snapshot_scores: Object.fromEntries(eligibleHits.map(hit => [hit.stateId, hit.score])), 
       }),
     });
     const railwayMs = Math.round(performance.now() - responseStarted);
@@ -77,23 +86,34 @@ try {
     assert.equal(data.semantic_mode, "snapshot_v1", "Railway must verify the current snapshot.");
     const selectedIds = data.memory_ids as string[];
     assert.ok(selectedIds.every(id => id !== HIDDEN), "Hidden fixture was recalled.");
-    if (result.hits.length === 0) {
+    if (eligibleHits.length === 0) {
       assert.equal(selectedIds.length, 0);
       assert.equal(data.context, "");
     }
+    const railwayMatchesLabel = c.expected ? selectedIds.includes(c.expected) : null;
+    const negativeEmpty = c.expected === null ? selectedIds.length === 0 : null;
+    const passed = c.expected
+      ? localTopMatchesLabel === true && railwayMatchesLabel === true
+      : negativeEmpty === true;
+    if (!passed) failedCases.push(c.tag);
     output.push({
       query_type: c.tag,
-      local_hits: result.hits.length,
-      local_top_matches_label: c.expected ? result.hits[0]?.stateId === c.expected : null,
-      railway_matches_label: c.expected ? selectedIds.includes(c.expected) : null,
-      negative_empty: c.expected === null ? selectedIds.length === 0 : null,
+      passed,
+      relevance_floor: floor,
+      local_raw_hits: result.hits.length,
+      local_hits: eligibleHits.length,
+      local_top_matches_label: localTopMatchesLabel,
+      railway_matches_label: railwayMatchesLabel,
+      negative_empty: negativeEmpty,
       local_query_ms: queryMs,
       railway_recall_ms: railwayMs,
     });
   }
+  const allPassed = failedCases.length === 0;
   console.log(JSON.stringify({
     stage: "synthetic_mac_model_to_railway_verified_recall",
-    result: "PASS",
+    result: allPassed ? "PASS" : "FAIL",
+    failed_cases: failedCases,
     warmup_ms: warmedMs,
     snapshot_index_ms: indexedMs,
     indexed_visible_memory_count: 2,
@@ -101,6 +121,7 @@ try {
     checks: output,
     note: "Synthetic-only integration. Positive/negative quality metrics are observations, not quality certification.",
   }, null, 2));
+  if (!allPassed) process.exitCode = 1;
 } catch (error) {
   // Avoid printing prompt, model response, or credentials in terminal logs.
   const name = error instanceof Error && /^[A-Za-z0-9_.-]{1,64}$/.test(error.name)
