@@ -103,6 +103,27 @@ test("covered but not canonically published cannot masquerade as successful reco
   assert.equal((await f.outbox.list()).length,1);
 });
 
+test("daemon periodic flush cannot publish covered B before its active F commits",async t=>{
+  const f=await fixture(t);let foregroundActive=true,submitCount=0;
+  const relay={...f.relay,async submitBackgroundResult(input:any){
+    submitCount++;
+    return input.coveringCheckpointId
+      ?{outcome:"committed" as const,duplicate:false,providerCheckpointId:input.coveringCheckpointId}
+      :{outcome:"queued" as const,duplicate:false,providerCheckpointId:null};
+  }};
+  const sink=new NativeLiveMacBackgroundResultSink({listenerInstanceId:id(7),relay,outbox:f.outbox,
+    isForegroundActive:()=>foregroundActive});
+  await sink.commit({...owner,deferred:true},frame);
+  await sink.cover(id(1),id(2),id(8));
+  assert.equal(await sink.flush(),0,"covered evidence is not yet canonical while F is active");
+  assert.equal(submitCount,1,"must not send early covered B to backend");
+  assert.equal((await f.outbox.list()).length,1);
+  foregroundActive=false;
+  await sink.publishCovered(id(1),id(2));
+  assert.equal(submitCount,2);
+  assert.equal((await f.outbox.list()).length,0);
+});
+
 test("orphaned deferred background is fenced after foreground failure or daemon restart",async t=>{
   const f=await fixture(t);let active=true;const blocked:string[]=[];
   const relay={...f.relay,async submitBackgroundResult(){
