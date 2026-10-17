@@ -1,4 +1,4 @@
-import { bindNativeLiveInput, type NativeLiveInputBindingRequest, type NativeLiveInputBinding } from "./native-live-input-binding.js";
+import { bindNativeLiveInput, checkQueuedNativeLiveInput, type NativeLiveInputBindingRequest, type NativeLiveInputBinding } from "./native-live-input-binding.js";
 import { renewNativeLiveSessionLease, renewNativeLiveExecutionLease, NATIVE_LIVE_EXECUTION_LEASE_MS } from "./native-live-execution-lease.js";
 import { NativeLiveBackgroundResultError } from "../protocol/native-live-background-result.js";
 import { prepareNativeLiveBackgroundResult, submitNativeLiveBackgroundResult } from "./native-live-background-result-repository.js";
@@ -548,7 +548,11 @@ implements NativeLiveBackendRelayPort {
   }
 
   async checkExecutionAdmission(input: NativeLiveExecutionAdmission & { userId: string }): Promise<boolean> {
-    return checkNativeLiveExecutionAdmission(this.db, input);
+    // Only a still-owned, unstarted queued input can use its old reservation
+    // during background publication. Tools require the exact started binding
+    // enforced separately by the Mac router.
+    return await checkNativeLiveExecutionAdmission(this.db, input)
+      || await checkQueuedNativeLiveInput(this.db, input);
   }
 
   async markExecutionStarted(input: {
