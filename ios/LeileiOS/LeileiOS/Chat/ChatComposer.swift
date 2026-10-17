@@ -1,7 +1,10 @@
 import SwiftUI
+import UIKit
 
 struct ChatComposer: View {
     @Environment(\.chatTheme) private var chatTheme
+    @ScaledMetric(relativeTo: .body) private var iMessageTextMaxHeight: CGFloat = 132
+    @State private var iMessageInputWidth: CGFloat = 240
     @Binding var text: String
     @Binding var model: NativeLiveClaudeModel
     @Binding var thinking: NativeLiveThinkingMode
@@ -126,6 +129,16 @@ struct ChatComposer: View {
                     .font(.body)
                     .foregroundStyle(.primary)
                     .lineLimit(1...6)
+                    // Use an explicit content-derived height. A flexible maxHeight
+                    // still allows an empty vertical TextField to fill the entire
+                    // safe-area proposal and inflate the glass container.
+                    .frame(height: iMessageInputHeight, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .onGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.size.width
+                    } action: { width in
+                        iMessageInputWidth = width
+                    }
                     .padding(.vertical, 9)
                     .padding(.leading, 14)
 
@@ -134,9 +147,29 @@ struct ChatComposer: View {
                         .padding(.bottom, 3)
                 }
                 .frame(minHeight: 42)
-                .glassEffect(.regular, in: Capsule())
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             }
         }
+    }
+
+    // Measure the text against its actual on-screen width, not the HStack's
+    // unconstrained height proposal. Empty drafts are always exactly one
+    // line; wrapped text can grow to six lines before scrolling internally.
+    private var iMessageInputHeight: CGFloat {
+        let font = UIFont.preferredFont(forTextStyle: .body)
+        let content = (text.isEmpty ? " " : text + "\u{200B}") as NSString
+        let measured = content.boundingRect(
+            with: CGSize(
+                width: max(1, iMessageInputWidth - 2),
+                height: .greatestFiniteMagnitude
+            ),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font],
+            context: nil
+        )
+        let minimum = ceil(font.lineHeight)
+        let maximum = min(iMessageTextMaxHeight, ceil(font.lineHeight * 6))
+        return min(max(ceil(measured.height), minimum), maximum)
     }
 
     private var iMessagePlusMenu: some View {
