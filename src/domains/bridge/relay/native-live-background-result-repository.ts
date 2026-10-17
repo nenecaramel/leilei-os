@@ -296,21 +296,24 @@ export async function submitNativeLiveBackgroundResult(db: Database, input: Nati
         stored.nativeForegroundParentCheckpointId ?? stored.context.parentProviderCheckpointId);
       if (!covering) return { outcome: "queued", duplicate: true, providerCheckpointId: null };
       if (result.status !== "success") throw conflict();
-      // A queued receipt with no canonical body cannot be represented as a
-      // durable ordinary message. Do not mark it committed and allow the Mac
-      // to delete the only replayable evidence; leave it queued for a later
-      // explicit quiet-continuation policy instead.
+      // A native segment can be a quiet internal continuation with no chat
+      // content. F's verified covering checkpoint already includes it. Commit
+      // its operational receipt idempotently WITHOUT creating an empty bubble
+      // or moving the canonical head. Actual replies still require a durable
+      // message, blocks, checkpoint and head in this same transaction.
       const canonical = canonicalizeNativeLiveEvents(result.normalized_events);
-      if (canonical.error || canonical.blocks.length === 0) throw new NativeLiveBackgroundResultError("INVALID_BACKGROUND_RESULT");
+      if (canonical.error) throw new NativeLiveBackgroundResultError("INVALID_BACKGROUND_RESULT");
       const terminal: Receipt = {
         ...queued, phase: "committed", context: covering,
         coveringCheckpointId: input.coveringCheckpointId,
         providerCheckpointId: input.coveringCheckpointId,
       };
-      const visible = await appendBackgroundMessage(tx, {
-        userId, conversationId: origin.conversationId, receipt: terminal, result,
-      });
-      if (!visible) throw new NativeLiveBackgroundResultError("INVALID_BACKGROUND_RESULT");
+      if (canonical.blocks.length > 0) {
+        const visible = await appendBackgroundMessage(tx, {
+          userId, conversationId: origin.conversationId, receipt: terminal, result,
+        });
+        if (!visible) throw new NativeLiveBackgroundResultError("INVALID_BACKGROUND_RESULT");
+      }
       const written = await tx.execute(sql`
         UPDATE native_live_runtime_events
         SET payload=${JSON.stringify({ ...terminal, result })}::jsonb
