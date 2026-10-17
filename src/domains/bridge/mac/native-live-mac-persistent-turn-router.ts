@@ -23,10 +23,11 @@ export type NativeLiveMacPersistentBackgroundOwner = Readonly<{
   source: Readonly<{ prepareId: string; requestId: string }> | null;
   providerSessionId: string; parentProviderCheckpointId: string | null; workingDirectory: string;
   executionStart?: boolean;
+  deferred?: boolean;
 }>;
 
 export type NativeLiveMacPersistentAcknowledgement =
-  | Readonly<{ status: "applied" | "idempotent"; providerCheckpointId: string; continuationOnly?: boolean }>
+  | Readonly<{ status: "applied" | "idempotent" | "queued"; providerCheckpointId: string; continuationOnly?: boolean }>
   | Readonly<{ status: "rejected" }>;
 type TurnInput = {
   command: NativeLiveRuntimeCommand;
@@ -78,6 +79,8 @@ export class NativeLiveMacPersistentTurnRouter {
       owner: NativeLiveMacPersistentBackgroundOwner,
       frame: Parameters<NativeLiveMacPersistentSessionOptions["onBackgroundResult"]>[0] & { providerCheckpointId: string },
     ): Promise<NativeLiveMacPersistentAcknowledgement>;
+    onForegroundCoverage?(conversationId: string, coveringCheckpointId: string): Promise<number>;
+    onForegroundPublished?(conversationId: string): Promise<void>;
   }) {
     if (!input.listenerInstanceId.trim() || typeof input.onBackgroundResult !== "function") throw new Error("Listener and durable background sink are required.");
     this.input = { ...input };
@@ -207,12 +210,25 @@ export class NativeLiveMacPersistentTurnRouter {
         this.assertSlot(slot, "acknowledging");
         const providerCheckpointId = await this.binding!.session.verifyCheckpoint({ events: result.events, parentCheckpointId: this.providerCheckpointId });
         this.assertSlot(slot, "acknowledging");
+        // The local SDK has proved that F descends the latest native
+        // producer checkpoint. Journal the covering frontier *before* F is
+        // submitted: a crash must not publish F without preserving B=>F proof.
+        if (command.operation === "send") {
+          await this.input.onForegroundCoverage?.(command.conversation_id, providerCheckpointId);
+          this.assertSlot(slot, "acknowledging");
+        }
         const outcome = await slot.onResult({ command, result, providerCheckpointId });
         this.assertSlot(slot, "acknowledging");
         const continuationOnly = outcome.status !== "rejected" && outcome.continuationOnly === true;
         if (continuationOnly && command.operation !== "wake") throw new Error("Only a quiet wake can acknowledge continuation without a visible source.");
         this.applyAcknowledgement(outcome, "turn", providerCheckpointId);
         if (!continuationOnly) this.backgroundSource = Object.freeze({ prepareId: command.prepare_id, requestId: command.request_id });
+        if (command.operation === "send" && outcome.status !== "rejected") {
+          // F is now a canonical head, so buffered autonomous B can be
+          // published as the next real message using F's covering checkpoint.
+          await this.input.onForegroundPublished?.(command.conversation_id);
+          this.assertSlot(slot, "acknowledging");
+        }
       });
       this.assertSlot(slot, "acknowledging");
       return result;
@@ -345,7 +361,7 @@ export class NativeLiveMacPersistentTurnRouter {
   }
 
   private applyAcknowledgement(outcome: NativeLiveMacPersistentAcknowledgement, kind: string, verified: string): void {
-    if (!outcome || (outcome.status !== "applied" && outcome.status !== "idempotent")) throw new Error(`Persistent ${kind} finalization was rejected.`);
+    if (!outcome || (outcome.status !== "applied" && outcome.status !== "idempotent" && outcome.status !== "queued")) throw new Error(`Persistent ${kind} finalization was rejected.`);
     if (typeof outcome.providerCheckpointId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(outcome.providerCheckpointId)
       || outcome.providerCheckpointId === "00000000-0000-0000-0000-000000000000") throw new Error("Persistent acknowledgement requires its committed provider checkpoint.");
     if (outcome.providerCheckpointId !== verified) throw new Error(`Persistent ${kind} acknowledgement named a different checkpoint than the verified one.`);
@@ -383,6 +399,7 @@ export class NativeLiveMacPersistentTurnRouter {
           const owner: NativeLiveMacPersistentBackgroundOwner = Object.freeze({ conversationId: command.conversation_id,
             generationId: this.generationId!, source: this.backgroundSource, providerSessionId: this.binding!.session.sessionId!,
             executionStart: this.active?.command.operation === "send" && this.active?.nativeStarted !== true,
+            deferred: this.active?.command.operation === "send" && this.active?.nativeStarted === true,
             parentProviderCheckpointId: this.providerCheckpointId, workingDirectory: this.binding!.workingDirectory });
           const outcome = await this.input.onBackgroundResult(owner, { ...frame, providerCheckpointId });
           this.assertLive();
