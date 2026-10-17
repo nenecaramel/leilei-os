@@ -100,6 +100,41 @@ test("recovery fencing may reenter the serial outbox without deadlocking", async
   assert.equal((await f.outbox.list())[0]!.coveringCheckpointId, id(8));
 });
 
+test("recovery-complete callback cannot hold up the outbox delivery lock", async t => {
+  const f = await fixture(t);
+  const receiptId = id(80);
+  await f.outbox.save({
+    sourcePrepareId: id(3), receiptId, listenerInstanceId: id(7),
+    generationId: id(2), parentProviderCheckpointId: id(5),
+    result: {
+      protocol_version: 4, prepare_id: id(3), request_id: id(4),
+      conversation_id: id(1), status: "success",
+      provider_session_id: "synthetic", effective_working_directory: "/synthetic",
+      provider_checkpoint_id: id(6), normalized_events: frame.normalizedEvents,
+    },
+  });
+  let sink!: NativeLiveMacBackgroundResultSink, recovered = false;
+  sink = new NativeLiveMacBackgroundResultSink({
+    listenerInstanceId: id(7), relay: f.relay, outbox: f.outbox,
+    onRecovered: async conversationId => {
+      assert.equal(conversationId, id(1));
+      recovered = true;
+      await sink.cover(id(1), id(2), id(8));
+    },
+  });
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    assert.equal(await Promise.race([
+      sink.flush(),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("recovered callback deadlocked the outbox")), 1000);
+      }),
+    ]), 1);
+  } finally { clearTimeout(timeout); }
+  assert.equal(recovered, true);
+  assert.deepEqual(await f.outbox.list(), []);
+});
+
 test("deferred background is acknowledged queued but is only deleted after F covering checkpoint commits",async t=>{
   const f=await fixture(t);const checks:Array<string|null>=[];
   const relay={...f.relay,async submitBackgroundResult(input:any){
