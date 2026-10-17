@@ -89,6 +89,8 @@ export class LocalRitrieveBreathSemanticScorer implements BreathSemanticScorer {
     this.snapshotReady = true;
   }
 
+  isSnapshotReady(): boolean { return this.snapshotReady; }
+
   async searchSnapshot(query: string, limit = 48): Promise<RitrieveSearchResult> {
     if (!this.snapshotReady || !query.trim() || !Number.isInteger(limit) || limit < 1 || limit > 48) {
       throw new Error("Mind semantic index unavailable.");
