@@ -70,6 +70,10 @@ export class NativeLiveMacPersistentExecutor {
     if (command.attachments?.length && !this.input.attachmentMaterializer) return false;
     if (this.retiring.has(command.conversation_id) || this.suspended.has(command.conversation_id)) return false;
     const router = this.routers.get(command.conversation_id);
+    // Wake is not a foreground resume command. It may only enter the already
+    // alive writer that owns this exact session and checkpoint. Starting a
+    // replacement SDK process would strand the original writer's native Cron.
+    if (command.operation === "wake") return command.runtime_mode === "resume" && !!router && router.matches(command);
     return router ? router.matches(command) : this.input.hasCapacity?.() !== false;
   }
 
