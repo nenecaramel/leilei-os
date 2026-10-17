@@ -61,7 +61,7 @@ export class NativeLiveMacPersistentRuntime {
       createRouter: () => { startWatchdog(); return new NativeLiveMacPersistentTurnRouter({ registry: this.registry, listenerInstanceId: input.listenerInstanceId,
         taskControlsAvailable: () => taskControlsAvailable,
         relay: input.relay, onBackgroundResult: (owner, frame) => this.backgroundResults.commit(owner, frame),
-        onForegroundCoverage: (conversationId, checkpoint) => this.backgroundResults.cover(conversationId, checkpoint),
+        onForegroundCoverage: (conversationId, generationId, checkpoint) => this.backgroundResults.cover(conversationId, generationId, checkpoint),
         onForegroundPublished: conversationId => this.backgroundResults.publishCovered(conversationId) }); } });
   }
   async drain(conversationId: string, providerSessionId: string) {
