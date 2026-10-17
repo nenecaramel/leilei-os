@@ -16,6 +16,31 @@ test("background parser preserves exact receipt and source identities and snapsh
   assert.throws(() => parseBackgroundSubmitBody({ listener_instance_id: listenerId, generation_id: "wrong", result }));
 });
 
+test("deferred result protocol preserves producer parent and covering F UUID without unknown fields", () => {
+  assert.deepEqual(parseBackgroundPrepareBody({
+    ...prepare, deferred: true,
+  }), { receiptId, listenerInstanceId: listenerId, generationId, parentProviderCheckpointId: checkpoint, deferred: true });
+  assert.deepEqual(parseBackgroundPrepareBody({
+    ...prepare, execution_start: true,
+  }), { receiptId, listenerInstanceId: listenerId, generationId, parentProviderCheckpointId: checkpoint, executionStart: true });
+  assert.throws(() => parseBackgroundPrepareBody({ ...prepare, deferred: false }));
+  assert.throws(() => parseBackgroundPrepareBody({ ...prepare, deferred: "true" }));
+  const next = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const parsed = parseBackgroundSubmitBody({
+    listener_instance_id: listenerId, generation_id: generationId,
+    result, covering_checkpoint_id: next,
+  });
+  assert.equal(parsed.coveringCheckpointId, next);
+  assert.throws(() => parseBackgroundSubmitBody({
+    listener_instance_id: listenerId, generation_id: generationId,
+    result, covering_checkpoint_id: "unknown",
+  }));
+  assert.throws(() => parseBackgroundSubmitBody({
+    listener_instance_id: listenerId, generation_id: generationId,
+    result, covering_checkpoint_id: next, user_id: userId,
+  }));
+});
+
 for (const [name, patch] of [
   ["missing checkpoint", { provider_checkpoint_id: undefined }],
   ["legacy protocol", { protocol_version: 3 }],
