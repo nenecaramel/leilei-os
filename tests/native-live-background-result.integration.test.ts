@@ -33,38 +33,37 @@ async function fixture(t: test.TestContext) {
   const result = { protocol_version: 4 as const, prepare_id: source.command.prepare_id, request_id: source.command.request_id, conversation_id: conversation.id, status: "success" as const, provider_session_id: "synthetic-session", provider_checkpoint_id: next, effective_working_directory: "/synthetic", normalized_events: [{ type: "text", payload: { text: "background synthetic" } }] };
   const submit = { userId: user.id, sourcePrepareId: source.command.prepare_id, listenerInstanceId, generationId, receiptId, result };
   const parent = async () => {
-    const prepared = await coordinator.prepare(user.id, { dispatch_target: "claude_code", request_id: crypto.randomUUID(), conversation_id: conversation.id, operation: "send", expected_head_message_id: completed.assistantMessageId, text: "next synthetic" });
+    const active = await canonical.getConversation({ userId: user.id, conversationId: conversation.id });
+    const prepared = await coordinator.prepare(user.id, { dispatch_target: "claude_code", request_id: crypto.randomUUID(), conversation_id: conversation.id, operation: "send", expected_head_message_id: active!.currentHeadMessageId, text: "next synthetic" });
     assert.ok(prepared.ok); if (!prepared.ok) throw Error("send failed"); return prepared.command.parent_provider_checkpoint_id;
   };
   return { database, user, canonical, coordinator, conversation, repository, source, completed, base, next, prepare, submit, parent };
 }
 
 
-test("committed background reply reaches current-path reads exactly once across reopen, delta and pagination", { skip: !enabled }, async t => {
-  const f = await fixture(t);
-  const reader = new DrizzleNativeLiveCurrentPathReader(f.database.db);
+test("committed background reply is one canonical descendant through reopen and pagination", { skip: !enabled }, async t => {
+  const f = await fixture(t), reader = new DrizzleNativeLiveCurrentPathReader(f.database.db);
   const read = (options: { afterMessageId?: string; beforeMessageId?: string } = {}) =>
     reader.readCurrentPath({ userId: f.user.id, conversationId: f.conversation.id, limit: 100, ...options });
   await f.repository.prepareBackgroundResult(f.prepare);
-  assert.deepEqual((await read())?.backgroundResults, [], "prepared result is never published");
-  assert.deepEqual((await f.repository.submitBackgroundResult(f.submit)).outcome, "committed");
-  const first = await read();
-  assert.equal(first?.messages.length, 2, "background receipt is not a canonical provider turn");
-  assert.deepEqual(first?.backgroundResults.map(row => [row.id, row.sourceMessageId, row.text]),
-    [[f.prepare.receiptId, f.completed.assistantMessageId, "background synthetic"]]);
-  const delta = await read({ afterMessageId: f.completed.assistantMessageId });
-  assert.deepEqual(delta?.messages, [], "unchanged head has no new canonical messages");
-  assert.deepEqual(delta?.backgroundResults, first?.backgroundResults, "background result still reaches unchanged-head delta reads");
-  assert.deepEqual((await read({ beforeMessageId: f.completed.assistantMessageId }))?.backgroundResults, [],
-    "older pages do not replay latest background deliveries");
-  assert.deepEqual((await f.repository.submitBackgroundResult(f.submit)).duplicate, true);
-  assert.deepEqual((await read())?.backgroundResults, first?.backgroundResults, "reopened chat does not double-deliver");
-  const [sourceAssistant] = await f.database.db.select({ parentId: conversationMessages.parentMessageId })
+  assert.equal((await read())!.messages.length, 2, "uncommitted background is not a chat message");
+  assert.equal((await f.repository.submitBackgroundResult(f.submit)).outcome, "committed");
+  const first = (await read())!;
+  assert.equal(first.messages.length, 3);
+  assert.equal(first.currentHeadMessageId, f.prepare.receiptId);
+  assert.equal(first.messages.at(-1)!.id, f.prepare.receiptId);
+  assert.equal(first.messages.at(-1)!.parentMessageId, f.completed.assistantMessageId);
+  const delta = (await read({ afterMessageId: f.completed.assistantMessageId }))!;
+  assert.deepEqual(delta.messages.map(row => row.id), [f.prepare.receiptId], "delta contains the canonical append");
+  assert.equal((await read({ beforeMessageId: f.completed.assistantMessageId }))!.messages.some(row => row.id === f.prepare.receiptId), false);
+  assert.equal((await f.repository.submitBackgroundResult(f.submit)).duplicate, true);
+  assert.deepEqual((await read())!.messages.map(row => row.id), first.messages.map(row => row.id), "reopen cannot duplicate the same receipt");
+  const [source] = await f.database.db.select({ parent: conversationMessages.parentMessageId })
     .from(conversationMessages).where(eq(conversationMessages.id, f.completed.assistantMessageId));
-  assert.ok(sourceAssistant?.parentId);
-  await f.database.db.update(conversations).set({ currentHeadMessageId: sourceAssistant!.parentId })
+  assert.ok(source?.parent);
+  await f.database.db.update(conversations).set({ currentHeadMessageId: source.parent })
     .where(eq(conversations.id, f.conversation.id));
-  assert.deepEqual((await read())?.backgroundResults, [], "retired assistant branch cannot leak the receipt");
+  assert.equal((await read())!.messages.some(row => row.id === f.prepare.receiptId), false, "retired branch must not leak the reply");
 });
 
 test("background commit has its own durable receipt and does not rewrite canonical foreground history", { skip: !enabled }, async t => {
@@ -74,8 +73,8 @@ test("background commit has its own durable receipt and does not rewrite canonic
   const committed = await f.repository.submitBackgroundResult(f.submit);
   assert.deepEqual(committed, { outcome: "committed", duplicate: false, providerCheckpointId: f.next });
   assert.deepEqual(await f.database.db.select().from(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.id, f.prepare.sourcePrepareId)), sourceBefore);
-  const messages = await f.database.db.select().from(conversationMessages).where(eq(conversationMessages.conversationId, f.conversation.id)); assert.equal(messages.length, 2);
-  assert.equal((await f.canonical.getConversation({ userId: f.user.id, conversationId: f.conversation.id }))!.currentHeadMessageId, f.completed.assistantMessageId);
+  const messages = await f.database.db.select().from(conversationMessages).where(eq(conversationMessages.conversationId, f.conversation.id)); assert.equal(messages.length, 3);
+  assert.equal((await f.canonical.getConversation({ userId: f.user.id, conversationId: f.conversation.id }))!.currentHeadMessageId, f.prepare.receiptId);
   const cp = await f.canonical.getProviderCheckpointForHead({ userId: f.user.id, conversationId: f.conversation.id, canonicalMessageId: f.completed.assistantMessageId }); assert.equal(cp!.providerCheckpointId, f.base);
   assert.deepEqual(cp!.runtimeMetadata?.native_live_generation, { presentation_owner_id: f.prepare.sourcePrepareId, source_revision: null }, "checkpoint must carry the current server generation");
   const receipt = await f.database.db.select().from(nativeLiveRuntimeEvents).where(eq(nativeLiveRuntimeEvents.id, f.prepare.receiptId)); assert.equal(receipt.length, 1); assert.equal(receipt[0]!.eventType, "runtime");
