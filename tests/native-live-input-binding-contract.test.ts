@@ -70,7 +70,13 @@ test("pre-native-start autonomous delivery survives the outbox but cannot bypass
   const router = source("src/domains/bridge/mac/native-live-mac-persistent-turn-router.ts");
   const sink = source("src/domains/bridge/mac/native-live-mac-background-result-sink.ts");
   const server = source("src/domains/bridge/relay/native-live-background-result-repository.ts");
-  assert.match(router, /executionStart: this\.active\?\.command\.operation === "send" && this\.active\?\.nativeStarted !== true/);
+  // Capture the native-start state at callback entry, before waiting for its
+  // binding and acknowledgement. Re-reading this.active/nativeStarted later
+  // would misclassify a pre-start B as post-start when F races the HTTP ACK.
+  assert.match(router, /const startedBeforeReceipt = foreground\?\.command\.operation === "send" && foreground\.nativeStarted === true/);
+  assert.match(router, /if \(startedBeforeReceipt\) \{[\s\S]*?await foreground\.startedBinding/);
+  assert.match(router, /stillWithinForeground && foreground\.command\.operation === "send" && !startedBeforeReceipt[\s\S]*?\? \{ executionStart: true \}/);
+  assert.match(router, /stillWithinForeground && foreground\.command\.operation === "send"[\s\S]*?\? \{ deferred: true \}/);
   assert.match(sink, /\.\.\.\(owner\.executionStart === true \? \{ executionStart: true \} : \{\}\)/);
   assert.match(server, /const current = await snapshot\(tx, userId, identity, origin, stored\.executionStart\)/);
   assert.match(server, /coalesce\(busy\.runtime_metadata->'native_live_input_binding'->>'started','false'\)<>'false'/);
