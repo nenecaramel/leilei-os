@@ -152,7 +152,11 @@ export class NativeLiveMacBackgroundResultSink {
           // old parent. Quarantine the immutable evidence and fence this
           // conversation; the SDK writer must not treat it as a committed turn.
           await this.input.outbox.quarantine(pending);
-          await this.input.onRecoveryBlocked?.(pending.result.conversation_id).catch(() => {});
+          // Do not await onRecoveryBlocked here: the Mac runtime's callback
+          // retires the same persistent writer and waits for its outstanding
+          // acknowledgement, which is *this* commit. That self-wait deadlocks.
+          // The daemon recovery pass observes quarantined records and fences
+          // the conversation after this acknowledgement unwinds.
         }
         throw error;
       }
