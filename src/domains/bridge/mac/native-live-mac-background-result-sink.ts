@@ -6,7 +6,7 @@ import { requireUuid } from "../protocol/runtime-protocol/parsing.js";
 import type { NativeLiveMacPersistentAcknowledgement, NativeLiveMacPersistentBackgroundOwner } from "./native-live-mac-persistent-turn-router.js";
 import type { NativeLiveMacPersistentSessionOptions } from "./native-live-mac-claude-transport.js";
 
-type Entry = NativeLiveBackgroundSubmit & { parentProviderCheckpointId: string };
+type Entry = NativeLiveBackgroundSubmit & { parentProviderCheckpointId: string; executionStart?: boolean };
 type Relay = {
   prepareBackgroundResult(input: NativeLiveBackgroundPrepare): Promise<NativeLiveBackgroundPrepared>;
   submitBackgroundResult(input: NativeLiveBackgroundSubmit): Promise<NativeLiveBackgroundAck>;
@@ -15,7 +15,8 @@ type Frame = Parameters<NativeLiveMacPersistentSessionOptions["onBackgroundResul
 function entry(value: Entry): Entry {
   const identity = backgroundIdentity(value), result = backgroundResult(value.result);
   if (result.prepare_id !== identity.sourcePrepareId) throw new Error("Background receipt source mismatch.");
-  return { ...identity, parentProviderCheckpointId: requireUuid(value.parentProviderCheckpointId, "parentProviderCheckpointId"), result };
+  return { ...identity, parentProviderCheckpointId: requireUuid(value.parentProviderCheckpointId, "parentProviderCheckpointId"),
+    ...(value.executionStart === true ? { executionStart: true } : {}), result };
 }
 
 /** Separate from foreground terminal results: each background frame owns a receipt. */
@@ -129,6 +130,7 @@ export class NativeLiveMacBackgroundResultSink {
     if (!owner.source || !owner.parentProviderCheckpointId || !owner.providerSessionId || !isAbsolute(owner.workingDirectory)) throw new Error("No committed background source is available.");
     const pending = entry({ sourcePrepareId: owner.source.prepareId, receiptId: randomUUID(), listenerInstanceId: this.input.listenerInstanceId,
       generationId: owner.generationId, parentProviderCheckpointId: owner.parentProviderCheckpointId,
+      ...(owner.executionStart === true ? { executionStart: true } : {}),
       result: { protocol_version: 4, prepare_id: owner.source.prepareId, request_id: owner.source.requestId, conversation_id: owner.conversationId,
         status: "success", provider_session_id: owner.providerSessionId, effective_working_directory: owner.workingDirectory,
         provider_checkpoint_id: frame.providerCheckpointId, normalized_events: frame.normalizedEvents } });
