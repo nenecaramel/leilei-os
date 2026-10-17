@@ -223,6 +223,39 @@ test("a prepared receipt expires closed, while committed receipt retries preserv
   assert.equal(await f.parent(), f.base);
 });
 
+test("retrying an expired prepared receipt renews only with unchanged lease, source and head", { skip: !enabled }, async t => {
+  const f=await fixture(t);
+  await f.repository.prepareBackgroundResult(f.prepare);
+  await f.database.db.execute(sql`
+    UPDATE native_live_runtime_events
+    SET payload=jsonb_set(payload,'{expiresAt}','"2000-01-01T00:00:00.000Z"'::jsonb)
+    WHERE user_id=${f.user.id}::uuid AND id=${f.prepare.receiptId}::uuid
+  `);
+  const renewed=await f.repository.prepareBackgroundResult(f.prepare);
+  assert.ok(new Date(renewed.expiresAt).getTime()>Date.now(),
+    "original durable receipt gains a new bounded transport deadline without regenerating provider output");
+  assert.deepEqual(await f.repository.submitBackgroundResult(f.submit),
+    {outcome:"committed",duplicate:false,providerCheckpointId:f.next});
+  assert.deepEqual(await f.repository.submitBackgroundResult(f.submit),
+    {outcome:"committed",duplicate:true,providerCheckpointId:f.next});
+});
+
+test("expired prepared receipt cannot be renewed after the owner lease expires", { skip: !enabled }, async t => {
+  const f=await fixture(t);
+  await f.repository.prepareBackgroundResult(f.prepare);
+  await f.database.db.execute(sql`
+    UPDATE native_live_runtime_events
+    SET payload=jsonb_set(payload,'{expiresAt}','"2000-01-01T00:00:00.000Z"'::jsonb)
+    WHERE user_id=${f.user.id}::uuid AND id=${f.prepare.receiptId}::uuid
+  `);
+  await f.database.db.update(nativeLiveRuntimeListenerLeases).set({
+    leaseExpiresAt:new Date(0),
+  }).where(eq(nativeLiveRuntimeListenerLeases.userId,f.user.id));
+  await assert.rejects(f.repository.prepareBackgroundResult(f.prepare),{code:"BACKGROUND_CONFLICT"});
+  assert.deepEqual(await f.repository.submitBackgroundResult(f.submit),
+    {outcome:"stale",duplicate:false,providerCheckpointId:null});
+});
+
 test("terminal receipt remains idempotent after head and lease changes without rewriting cursor", { skip: !enabled }, async t => {
   const f = await fixture(t); await f.repository.prepareBackgroundResult(f.prepare); await f.repository.submitBackgroundResult(f.submit);
   await f.parent(); await f.database.db.update(nativeLiveRuntimeListenerLeases).set({ leaseExpiresAt: new Date(0) }).where(eq(nativeLiveRuntimeListenerLeases.userId, f.user.id));
