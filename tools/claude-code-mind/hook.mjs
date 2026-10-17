@@ -697,6 +697,39 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     context_epoch: snapshot.context_epoch,
     receipt_mode: "signed_v1",
   };
+  if (config.indexed_recall) {
+    // This mode uses the cached local index and exactly one Railway round trip.
+    // On missing/stale local results Railway applies its existing lexical safety net.
+    const context = chain.recentUserPrompts.slice(0, 2).reverse().join("；").slice(-400);
+    const usesContext = context && input.prompt.length <= 80 &&
+      /(?:你|我|他|她|这|那|又|刚才|之前|为什么|怎么)/u.test(input.prompt);
+    const query = usesContext ? `前文：${context}。现在：${input.prompt}` : input.prompt;
+    try {
+      const available = HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted);
+      if (available > 1300) {
+        const indexed = await indexedSearch(config, query, Math.min(850, available - 1100));
+        body.semantic_snapshot_version = indexed.version;
+        body.snapshot_scores = Object.fromEntries(indexed.hits
+          .filter(hit => hit.score >= 0.68).slice(0, 48)
+          .map(hit => [hit.stateId, hit.score]));
+      } else {
+        await recordDiagnostic(config, "UserPromptSubmit", "semantic_skipped_budget");
+      }
+    } catch {
+      await recordDiagnostic(config, "UserPromptSubmit", "semantic_index_unavailable");
+    }
+    const timeout = Math.min(2500, HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted));
+    if (timeout <= 0) return;
+    const data = await recall(config, body, timeout);
+    if (body.semantic_snapshot_version) {
+      await recordDiagnostic(config, "UserPromptSubmit",
+        data.semantic_mode === "snapshot_v1" ? "semantic_scored" : "semantic_snapshot_stale");
+    }
+    if (!data.context || data.memory_ids.some(id => exclude.includes(id))) return;
+    await commitRecallContext(config, input, snapshot, data, exclude, output);
+    return;
+  }
+  // Legacy behavior remains the default until indexed recall passes acceptance.
   // Stop accounting never consumes this invocation's retrieval budget.
   const firstTimeout = Math.min(2500, HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted));
   if (firstTimeout <= 0) return;
@@ -723,21 +756,7 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     }
   }
   if (!data.context || data.memory_ids.some(id => exclude.includes(id))) return;
-  await withState(config, input.session_id, async (state, save) => {
-    // Compact/fork or another hook may have changed the view while networking.
-    const seen = new Set(state.written_ids);
-    if (state.epoch !== snapshot.epoch || state.active_turn !== snapshot.active_turn || data.memory_ids.some(id => seen.has(id))) return;
-    if (seen.size + data.memory_ids.length > MAX_SEEN) return;
-    const issuedAt = Date.now();
-    await output(`${data.context}\n`);
-    // Only a delivered context may enter the ledger; a ledger failure loses dedupe, not state.
-    await recordDelivery(config, hash(data.context), data.memory_ids, issuedAt).catch(() => undefined);
-    if (data.recall_id) state.pending_recalls = [{recall_id: data.recall_id, context_sha256: data.context_sha256,
-      ...(data.recall_token ? {recall_token: data.recall_token} : {}),
-      memory_ids: data.memory_ids, epoch: state.epoch, context_epoch: state.context_epoch,
-      turn_id: state.active_turn, issued_at: issuedAt}];
-    await save(state);
-  });
+  await commitRecallContext(config, input, snapshot, data, exclude, output);
 }
 
 async function main() {
