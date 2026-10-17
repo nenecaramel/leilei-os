@@ -60,6 +60,41 @@ test("an unpreparable receipt is quarantined and fenced without starving another
  assert.equal((await (f.outbox as any).listQuarantined()).length,1,"uncertain evidence remains durable");
 });
 
+test("quarantined Cron result recovers exact SDK output after server repairs a legacy Wake anchor",async t=>{
+  const f=await fixture(t),blocked:string[]=[],recovered:string[]=[];
+  let fixed=false,now=1_000,submissions=0;
+  const relay={
+    async prepareBackgroundResult(value:any){
+      return {receiptId:value.receiptId,providerSessionId:"synthetic",
+        parentProviderCheckpointId:value.parentProviderCheckpointId,
+        expiresAt:new Date(Date.now()+600_000).toISOString()};
+    },
+    async submitBackgroundResult(value:any){
+      submissions++;
+      if(!fixed)throw Object.assign(new Error("old Wake anchor"),{relayCode:"BACKGROUND_CONFLICT",httpStatus:409});
+      return {outcome:"committed" as const,duplicate:false,
+        providerCheckpointId:value.result.provider_checkpoint_id};
+    },
+  };
+  const sink=new NativeLiveMacBackgroundResultSink({
+    listenerInstanceId:id(7),relay,outbox:f.outbox,now:()=>now,
+    onRecoveryBlocked:async conversationId=>{blocked.push(conversationId);},
+    onRecovered:async conversationId=>{recovered.push(conversationId);},
+  });
+  await assert.rejects(sink.commit(owner,frame),/old Wake anchor/);
+  assert.equal(await sink.flush(),0,"409 quarantines immutable evidence, not another model run");
+  assert.equal((await f.outbox.list()).length,0);
+  assert.equal((await f.outbox.listQuarantined()).length,1);
+  assert.deepEqual(blocked,[id(1)]);
+  fixed=true;
+  now+=60_001;
+  assert.equal(await sink.flush(),1,"backend verifies and commits that exact original result");
+  assert.deepEqual(await f.outbox.listQuarantined(),[]);
+  assert.deepEqual(recovered,[id(1)],"recovery fence releases only after confirmed receipt");
+  assert.equal(submissions,3,"initial 409, quarantine 409, one successful replay; never invoke Claude");
+  assert.equal(await sink.flush(),0,"receipt cannot replay twice");
+});
+
 test("network-unknown recovery is backed off and later replays its original receipt exactly once",async t=>{
  const f=await fixture(t);let now=1000,attempts=0,available=false;const blocks:string[]=[],recovered:string[]=[];
  const relay={...f.relay,async prepareBackgroundResult(input:any){attempts++;if(!available)throw new TypeError("network unavailable");return f.relay.prepareBackgroundResult(input);}};
