@@ -21,7 +21,29 @@ function exercise(responses:unknown[][]) {
   }} as unknown as Transaction;
   return {tx,calls:()=>index};
 }
-const input={providerSessionId:session,providerCheckpointId:advanced,effectiveWorkingDirectory:null};
+const input={
+  providerSessionId:row.parentProviderSessionId!,
+  providerCheckpointId:advanced,
+  effectiveWorkingDirectory:row.expectedWorkingDirectory,
+};
+
+test("cursor test fixture satisfies all native identity and generation guards",()=>{
+  assert.equal(row.operation,"wake");
+  assert.equal(row.runtimeMode,"resume");
+  assert.equal(input.providerSessionId,row.parentProviderSessionId);
+  assert.equal(input.effectiveWorkingDirectory,row.expectedWorkingDirectory);
+  assert.match(input.providerCheckpointId,/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i);
+  const w=row.wakeContext as Record<string,unknown>;
+  assert.ok(w);
+  assert.equal(w.epoch_id,w.source_user_message_id);
+  assert.equal(typeof w.source_head_message_id,"string");
+  assert.equal(typeof w.source_user_message_id,"string");
+  const generation=w.runtime_generation as Record<string,unknown>;
+  assert.ok(Object.hasOwn(generation,"presentation_owner_id"));
+  assert.ok(Object.hasOwn(generation,"source_revision"));
+  assert.equal(typeof generation.presentation_owner_id,"string");
+  assert.equal(generation.source_revision,null);
+});
 
 test("stale Wake whose canonical head changed cannot graft any native cursor onto another branch",async()=>{
   const f=exercise([[{head:id(22),owner,revision:null}]]);
