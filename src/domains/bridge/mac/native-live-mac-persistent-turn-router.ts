@@ -370,7 +370,8 @@ export class NativeLiveMacPersistentTurnRouter {
   }
 
   private applyAcknowledgement(outcome: NativeLiveMacPersistentAcknowledgement, kind: string, verified: string): void {
-    if (!outcome || (outcome.status !== "applied" && outcome.status !== "idempotent" && outcome.status !== "queued")) throw new Error(`Persistent ${kind} finalization was rejected.`);
+    if (!outcome || (outcome.status !== "applied" && outcome.status !== "idempotent" && !(kind === "background" && outcome.status === "queued")))
+      throw new Error(`Persistent ${kind} finalization was rejected.`);
     if (typeof outcome.providerCheckpointId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(outcome.providerCheckpointId)
       || outcome.providerCheckpointId === "00000000-0000-0000-0000-000000000000") throw new Error("Persistent acknowledgement requires its committed provider checkpoint.");
     if (outcome.providerCheckpointId !== verified) throw new Error(`Persistent ${kind} acknowledgement named a different checkpoint than the verified one.`);
