@@ -914,7 +914,8 @@ implements NativeLiveMacDaemonRelayClient {
       `/reservations/${identity.sourcePrepareId}/background-results/prepare`,
       { receipt_id: identity.receiptId, listener_instance_id: identity.listenerInstanceId,
         generation_id: identity.generationId, parent_provider_checkpoint_id: parent,
-        ...(input.executionStart === true ? { execution_start: true } : {}) }, 3, AbortSignal.timeout(5_000),
+        ...(input.executionStart === true ? { execution_start: true } : {}),
+        ...(input.deferred === true ? { deferred: true } : {}) }, 3, AbortSignal.timeout(5_000),
     ));
     if (data.receiptId !== identity.receiptId || data.parentProviderCheckpointId !== parent
       || typeof data.providerSessionId !== "string" || !data.providerSessionId.trim() || data.providerSessionId.length > 1024
@@ -929,12 +930,13 @@ implements NativeLiveMacDaemonRelayClient {
     const identity = backgroundIdentity(input), result = backgroundResult(input.result);
     const data = readRecord(await this.postRetryableBounded(
       `/reservations/${identity.sourcePrepareId}/background-results/${identity.receiptId}/result`,
-      { listener_instance_id: identity.listenerInstanceId, generation_id: identity.generationId, result }, 3, AbortSignal.timeout(5_000),
+      { listener_instance_id: identity.listenerInstanceId, generation_id: identity.generationId, result,
+        ...(input.coveringCheckpointId ? { covering_checkpoint_id: requireUuid(input.coveringCheckpointId, "coveringCheckpointId") } : {}) }, 3, AbortSignal.timeout(5_000),
     ));
     const outcome = data.outcome;
-    if (!["committed", "failed", "stale"].includes(String(outcome)) || typeof data.duplicate !== "boolean"
-      || (outcome === "committed" ? result.status !== "success" || data.providerCheckpointId !== result.provider_checkpoint_id
-        : data.providerCheckpointId !== null || (outcome === "failed" && result.status !== "failure"))) {
+    if (!["committed", "queued", "failed", "stale"].includes(String(outcome)) || typeof data.duplicate !== "boolean"
+      || (outcome === "committed" ? result.status !== "success" || data.providerCheckpointId !== (input.coveringCheckpointId ?? result.provider_checkpoint_id)
+        : data.providerCheckpointId !== null || (outcome === "failed" && result.status !== "failure") || (outcome === "queued" && result.status !== "success"))) {
       throw new Error("Native background submission response is invalid.");
     }
     return { outcome: outcome as NativeLiveBackgroundAck["outcome"], duplicate: data.duplicate,
