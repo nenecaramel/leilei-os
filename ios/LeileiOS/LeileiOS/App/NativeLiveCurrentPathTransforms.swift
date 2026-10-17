@@ -48,8 +48,7 @@ enum NativeLiveCurrentPathTransforms {
             olderCursor: existing.olderCursor,
             resetRequired: false,
             messages: preservedPrefix + refreshed.messages,
-            failedTurn: refreshed.failedTurn,
-            backgroundResults: refreshed.backgroundResults
+            failedTurn: refreshed.failedTurn
         )
     }
 
@@ -71,8 +70,7 @@ enum NativeLiveCurrentPathTransforms {
             olderCursor: existing.olderCursor,
             resetRequired: false,
             messages: existing.messages + appended,
-            failedTurn: delta.failedTurn,
-            backgroundResults: delta.backgroundResults
+            failedTurn: delta.failedTurn
         )
     }
 }
