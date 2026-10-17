@@ -63,12 +63,13 @@ test("restart fences conversations with pending background outbox before accepti
       normalized_events:[{type:"text",payload:{text:"recoverable background reply"}}],
     },
   });
-  let available=false;
+  let available=false, firstAttempt!:()=>void;
+  const firstAttemptSeen=new Promise<void>(resolve=>{firstAttempt=resolve;});
   const relay={
     async checkExecutionAdmission(){return true;}, async renewExecutionLease(){return true;},
     async renewSessionLease(){return true;},
     async prepareBackgroundResult(input:any){
-      if(!available)throw new Error("isolated relay temporarily offline");
+      if(!available){firstAttempt();throw new Error("isolated relay temporarily offline");}
       return{receiptId:input.receiptId,providerSessionId:id(90),
         parentProviderCheckpointId:id(101),expiresAt:new Date(Date.now()+600000).toISOString()};
     },
@@ -90,6 +91,7 @@ test("restart fences conversations with pending background outbox before accepti
   assert.equal(runtime.executor.canRoute(command),false,"crashed output must fence before any new dispatch");
   // Initial automatic attempt may have failed. A later bounded replay
   // commits the ORIGINAL receipt and clears recovery fencing.
+  await firstAttemptSeen;
   available=true;
   assert.equal(await runtime.backgroundResults.flush(),1);
   for(let i=0;i<100 && !runtime.executor.canRoute(command);i++)await new Promise(setImmediate);
