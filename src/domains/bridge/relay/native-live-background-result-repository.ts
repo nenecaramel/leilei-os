@@ -266,6 +266,31 @@ export async function submitNativeLiveBackgroundResult(db: Database, input: Nati
       // Queued means transport custody only; the canonical conversation head
       // and its checkpoint are unchanged until F is committed and covered.
       if (!input.coveringCheckpointId) return { outcome: "queued", duplicate, providerCheckpointId: null };
+      // Native B2 is a descendant of producer B1, not of foreground F.
+      // A covering F checkpoint cannot justify publishing B2 before B1:
+      // doing so would reverse the canonical messages despite identical
+      // continuation checkpoints. Outbox FIFO is the first barrier; keep a
+      // second server-side barrier for retries, HTTP reordering and restarts.
+      const producerParent = stored.originalParentProviderCheckpointId
+        ?? stored.context.parentProviderCheckpointId;
+      const nativeRoot = stored.nativeForegroundParentCheckpointId;
+      if (nativeRoot && producerParent !== nativeRoot) {
+        const [predecessor] = await tx.execute(sql`
+          SELECT e.id FROM native_live_runtime_events e
+          WHERE e.user_id=${userId}::uuid AND e.prepare_id=${identity.sourcePrepareId}::uuid
+            AND e.id IS DISTINCT FROM ${identity.receiptId}::uuid
+            AND e.event_type='runtime'
+            AND e.payload->>'kind'='persistent_background_receipt_v1'
+            AND e.payload->>'phase'='committed'
+            AND e.payload->'identity'->>'listenerInstanceId'=${identity.listenerInstanceId}
+            AND e.payload->'identity'->>'generationId'=${identity.generationId}
+            AND e.payload->'context'->>'providerSessionId'=${stored.context.providerSessionId}
+            AND e.payload->'result'->>'provider_checkpoint_id'=${producerParent}
+          LIMIT 1
+        `);
+        if (!predecessor)
+          return { outcome: "queued", duplicate: true, providerCheckpointId: null };
+      }
       const covering = await coveringSnapshot(tx, userId, origin, stored.context,
         requireUuid(input.coveringCheckpointId, "coveringCheckpointId"),
         stored.nativeForegroundParentCheckpointId ?? stored.context.parentProviderCheckpointId);
