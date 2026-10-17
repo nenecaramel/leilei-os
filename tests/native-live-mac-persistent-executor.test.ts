@@ -48,6 +48,39 @@ test("a wake outcome that commits no checkpoint retires the writer; the submitte
   assert.equal(f.routers.length, 2);
 });
 
+test("a stale Wake with a durably reconciled native cursor keeps its SDK writer and Cron", async () => {
+  const f=fixture(async input=>{
+    const ack=await frame(input) as {status:string;providerCheckpointId:string;continuationOnly?:boolean};
+    assert.equal(ack.status,"applied");
+    if(input.command.operation==="wake")assert.equal(ack.continuationOnly,true,
+      "visible Wake was stale but its native checkpoint was committed");
+    return {};
+  });
+  await f.executor.execute(command(),{async commit(){return {canonicalOutcome:"completed"};}});
+  const stale=await f.executor.execute(command({operation:"wake",canonical_user_message_id:null}),{
+    async commit(){return {canonicalOutcome:"wake_stale",nativeResumeCheckpointId:id(9)};}
+  });
+  assert.equal(stale.delivery,"committed");assert.equal(stale.canonicalOutcome,"wake_stale");
+  assert.equal(f.routers[0]!.closed,0,"no fork, no Cron owner retired");
+  const next=await f.executor.execute(command(),{async commit(){return {canonicalOutcome:"completed"};}});
+  assert.equal(next.result.status,"success");
+  assert.equal(f.routers.length,1,"later send stays on same live writer");
+});
+
+test("a stale Wake without server cursor proof closes the uncertain SDK writer",async()=>{
+  const f=fixture(async input=>{
+    const ack=await frame(input) as {status:string};
+    if(ack.status==="rejected")throw Error("stale Wake lacks verified continuation");
+    return {};
+  });
+  await f.executor.execute(command(),{async commit(){return {canonicalOutcome:"completed"};}});
+  const stale=await f.executor.execute(command({operation:"wake",canonical_user_message_id:null}),{
+    async commit(){return {canonicalOutcome:"wake_stale"};}
+  });
+  assert.equal(stale.delivery,"committed");
+  assert.equal(f.routers[0]!.closed,1,"never pretend a stale checkpoint is safe");
+});
+
 test("a lost commit response is delivery-unknown with the submitted result, not a failure to resubmit", async () => {
   const f = fixture(async input => { await frame(input); return {}; });
   const run = await f.executor.execute(command(), { async commit() { throw new Error("socket closed"); } });
