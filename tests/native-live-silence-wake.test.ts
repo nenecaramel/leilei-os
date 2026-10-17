@@ -25,13 +25,19 @@ test("silence wake jitter is stable and stays inside both configured windows", (
   assert.ok(longDelay >= 90 * 60_000 && longDelay <= 120 * 60_000);
 });
 
-test("wake marker carries current Shanghai time and elapsed silence without trigger prose", () => {
+test("wake marker carries only elapsed silence, without the hook-provided date and clock", () => {
+  const marker = formatSilenceWakeMarker({
+    now: new Date("2026-10-04T03:47:00.000Z"),
+    userActivityAt: new Date("2026-10-04T02:00:00.000Z"),
+  });
+  assert.equal(marker, "[wake · +1h 47m · no reply]");
+  assert.doesNotMatch(marker, /10-04|周日|11:47|2026/u);
   assert.equal(
     formatSilenceWakeMarker({
-      now: new Date("2026-10-04T03:47:00.000Z"),
+      now: new Date("2026-10-04T02:03:00.000Z"),
       userActivityAt: new Date("2026-10-04T02:00:00.000Z"),
     }),
-    "[10-04 周日 11:47 · wake · +1h 47m · no reply]",
+    "[wake · +3m · no reply]",
   );
 });
 
