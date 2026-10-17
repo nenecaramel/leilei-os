@@ -400,6 +400,16 @@ export class NativeLiveMacPersistentTurnRouter {
       onBackgroundResult: async frame => {
         this.assertLive();
         const foreground = this.active;
+        // The SDK may emit an autonomous B result immediately after its
+        // command_lifecycle.started frame for F, before the asynchronous
+        // started-binding HTTP roundtrip has completed. B must not prepare
+        // against a server row that is still marked queued.
+        const startedBeforeReceipt = foreground?.command.operation === "send" && foreground.nativeStarted === true;
+        if (startedBeforeReceipt) {
+          if (!foreground.startedBinding) throw new Error("Native foreground start binding was not recorded.");
+          await foreground.startedBinding;
+          this.assertLive();
+        }
         if (foreground?.resultReady) { await foreground.finished; this.assertLive(); }
         if (!this.generationId) throw new Error("Persistent background generation is unavailable.");
         await this.acknowledge(async () => {
@@ -408,8 +418,8 @@ export class NativeLiveMacPersistentTurnRouter {
           this.assertLive();
           const owner: NativeLiveMacPersistentBackgroundOwner = Object.freeze({ conversationId: command.conversation_id,
             generationId: this.generationId!, source: this.backgroundSource, providerSessionId: this.binding!.session.sessionId!,
-            executionStart: this.active?.command.operation === "send" && this.active?.nativeStarted !== true,
-            deferred: this.active?.command.operation === "send" && this.active?.nativeStarted === true,
+            executionStart: this.active?.command.operation === "send" && !startedBeforeReceipt,
+            deferred: startedBeforeReceipt,
             parentProviderCheckpointId: this.providerCheckpointId, workingDirectory: this.binding!.workingDirectory });
           const outcome = await this.input.onBackgroundResult(owner, { ...frame, providerCheckpointId });
           this.assertLive();
