@@ -99,7 +99,7 @@ export class LocalRitrieveBreathSemanticScorer implements BreathSemanticScorer {
     const worker = spawn(
       this.options.executable ?? process.env.LEILEI_MIND_RITRIEVE_PYTHON ?? defaultRitrievePython(),
       [this.options.workerPath ?? defaultRitrieveWorkerPath()],
-      { stdio: ["pipe", "pipe", "pipe"], env: {...process.env, PYTHONUNBUFFERED: "1"} },
+      { stdio: ["pipe", "pipe", "pipe"] as const, env: {...process.env, PYTHONUNBUFFERED: "1"} },
     );
     this.worker = worker;
     this.responseBuffer = "";
