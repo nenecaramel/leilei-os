@@ -48,6 +48,7 @@ type Slot = TurnInput & {
   resultReady: boolean;
   nativeStarted?: boolean;
   startedBinding?: Promise<void>;
+  effectiveCommand?: NativeLiveRuntimeCommand;
   finished: Promise<void>;
   finish(): void;
 };
@@ -113,7 +114,7 @@ export class NativeLiveMacPersistentTurnRouter {
       this.assertSlot(slot);
       if (this.input.relay.renewExecutionLease) {
         slot.lease = new NativeLiveMacExecutionLease({
-          renew: () => this.input.relay.renewExecutionLease!({ listenerInstanceId: this.input.listenerInstanceId, command }),
+          renew: () => this.input.relay.renewExecutionLease!({ listenerInstanceId: this.input.listenerInstanceId, command: slot.effectiveCommand ?? command }),
           onRevoked: async () => { if (this.active === slot && slot.phase === "executing") await this.close(); },
         });
         await slot.lease.start(); this.assertSlot(slot);
@@ -138,6 +139,14 @@ export class NativeLiveMacPersistentTurnRouter {
           if (!bound || bound.userMessageId !== slot.inputId
             || bound.parentProviderCheckpointId !== this.providerCheckpointId)
             throw new Error("Native foreground started input cannot prove latest checkpoint.");
+          // The server may have appended an earlier native background result
+          // between queued and started. All subsequent lease/tool checks must
+          // authorize the newly proven binding, never the original cursor.
+          slot.effectiveCommand = { ...command, parent_provider_checkpoint_id: bound.parentProviderCheckpointId };
+          slot.authorize = createNativeLiveMacExecutionAdmission({
+            listenerInstanceId: this.input.listenerInstanceId,
+            command: slot.effectiveCommand, relay: this.input.relay,
+          });
         });
         slot.startedBinding.catch(() => {}); // The terminal path awaits the exact result.
       };
