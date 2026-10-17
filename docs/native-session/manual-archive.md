@@ -13,7 +13,7 @@ archive anything, regardless of an old `AUTO_APPLY` flag.
   legacy conversations. No checkpoint is discarded merely because it is old.
 - Companion bundles directly referenced by retained physical chains (for example,
   a fork's tool output still stored under an older Session's directory).
-- Sessions modified within the existing one-hour grace period, or whose native
+- Sessions modified within the five-minute grace period, or whose native
   peer is open/unknown. An outstanding background result, including a `blocked`
   quarantine receipt, pins the exact native provider Session and its verified
   physical file dependencies; unrelated, fully verified old Sessions may still

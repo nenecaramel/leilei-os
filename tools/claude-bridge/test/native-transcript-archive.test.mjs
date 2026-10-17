@@ -47,6 +47,28 @@ test('plan keeps windows, referenced, recent and needed sources; archives only r
   } finally { await rm(f.dir, { recursive: true, force: true }); }
 });
 
+test('both archive modes protect files modified within five minutes and release older ones', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'native-archive-five-minutes-'));
+  try {
+    for (const [index, ageMinutes] of [4, 5, 6].entries()) {
+      const sessionId = id(index + 1);
+      const userId = id(index * 2 + 101), assistantId = id(index * 2 + 102);
+      await write(dir, sessionId, [
+        { type:'user', uuid:userId, parentUuid:null, message:{ content:'hello' } },
+        { type:'assistant', uuid:assistantId, parentUuid:userId, message:{ content:'response' } },
+      ]);
+      const modified = new Date(NOW - ageMinutes * 60_000);
+      await utimes(path.join(dir, `${sessionId}.jsonl`), modified, modified);
+    }
+    for (const historyMode of ['complete', 'continuation']) {
+      const plan = await planNativeTranscriptArchive({ projectDirectory:dir, historyMode, now:NOW });
+      assert.deepEqual(plan.keep.map(item => item.sessionId), [id(1)], `${historyMode}: four-minute file remains protected`);
+      assert.ok(plan.keep[0].reasons.includes('recent'));
+      assert.deepEqual(plan.archive, [id(2), id(3)], `${historyMode}: five- and six-minute files are eligible`);
+    }
+  } finally { await rm(dir, { recursive:true, force:true }); }
+});
+
 test('an open session is never archived', async () => {
   const f = await folder();
   try {
