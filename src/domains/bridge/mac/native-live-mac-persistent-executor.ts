@@ -25,8 +25,8 @@ export type NativeLiveMacPersistentExecution = Readonly<{
   canonicalOutcome?: string | null;
 }>;
 
-// Not selected by the daemon yet. One router per conversation; a command that
-// cannot continue it (fork, edit, other checkpoint) retires it and goes legacy.
+// One writer per conversation. Edited/retried branches retire the previous
+// owner before opening a fresh persistent fork, so Cron survives subsequent chat.
 export class NativeLiveMacPersistentExecutor {
   private readonly routers = new Map<string, Router>();
   private readonly retiring = new Set<string>();
