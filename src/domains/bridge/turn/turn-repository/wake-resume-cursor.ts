@@ -107,8 +107,8 @@ export async function commitWakeResumeCursorLocked(
       AND cp.provider_session_id = ${input.providerSessionId}
       AND cp.effective_working_directory IS NOT DISTINCT FROM ${input.effectiveWorkingDirectory}::text
       AND ${nativeResumeCheckpointSql("cp", "c")} = ${row.parentProviderCheckpointId}
-    FOR UPDATE OF cp
     LIMIT 1
+    FOR UPDATE OF cp
   `);
   if (!binding) return "stale";
 
