@@ -430,8 +430,9 @@ export class NativeLiveMacPersistentTurnRouter {
           const stillWithinForeground = foreground !== null && this.active === foreground;
           const owner: NativeLiveMacPersistentBackgroundOwner = Object.freeze({ conversationId: command.conversation_id,
             generationId: this.generationId!, source: this.backgroundSource, providerSessionId: this.binding!.session.sessionId!,
-            executionStart: stillWithinForeground && foreground.command.operation === "send" && !startedBeforeReceipt,
-            deferred: stillWithinForeground && startedBeforeReceipt,
+            ...(stillWithinForeground && foreground.command.operation === "send" && !startedBeforeReceipt
+              ? { executionStart: true } : {}),
+            ...(stillWithinForeground && startedBeforeReceipt ? { deferred: true } : {}),
             parentProviderCheckpointId: this.providerCheckpointId, workingDirectory: this.binding!.workingDirectory });
           const outcome = await this.input.onBackgroundResult(owner, { ...frame, providerCheckpointId });
           this.assertLive();
