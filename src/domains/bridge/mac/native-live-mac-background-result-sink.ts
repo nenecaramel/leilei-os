@@ -272,7 +272,7 @@ export class NativeLiveMacBackgroundResultSink {
       await this.input.onRecoveryBlocked?.(conversationId).catch(() => {});
     for (const conversationId of recovered) {
       if (!blocked.has(conversationId))
-        await this.input.onRecovered?.(conversationId);
+        await this.input.onRecovered?.(conversationId).catch(() => {});
     }
     return settled;
   }
