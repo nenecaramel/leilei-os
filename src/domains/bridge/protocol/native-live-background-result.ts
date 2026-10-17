@@ -4,7 +4,7 @@ import { parseNativeLiveRuntimeExecutionResult, type NativeLiveRuntimeExecutionR
 import { normalizeNativeLiveRuntimeEvent } from "../runtime-interaction/native-live-runtime-event-stream.js";
 
 export type NativeLiveBackgroundIdentity = Readonly<{ sourcePrepareId: string; receiptId: string; listenerInstanceId: string; generationId: string }>;
-export type NativeLiveBackgroundPrepare = NativeLiveBackgroundIdentity & Readonly<{ parentProviderCheckpointId: string }>;
+export type NativeLiveBackgroundPrepare = NativeLiveBackgroundIdentity & Readonly<{ parentProviderCheckpointId: string; executionStart?: boolean }>;
 export type NativeLiveBackgroundSubmit = NativeLiveBackgroundIdentity & Readonly<{ result: NativeLiveRuntimeExecutionResult }>;
 export type NativeLiveBackgroundPrepared = Readonly<{ receiptId: string; providerSessionId: string; parentProviderCheckpointId: string; expiresAt: string }>;
 export type NativeLiveBackgroundAck = Readonly<{ outcome: "committed" | "failed" | "stale"; duplicate: boolean; providerCheckpointId: string | null }>;
@@ -39,9 +39,9 @@ export function backgroundResult(value: unknown): NativeLiveRuntimeExecutionResu
 }
 
 export function parseBackgroundPrepareBody(value: unknown): Omit<NativeLiveBackgroundPrepare, "sourcePrepareId"> {
-  const body = requireRecord(value); requireExactKeys(body, ["receipt_id", "listener_instance_id", "generation_id", "parent_provider_checkpoint_id"]);
+  const body = requireRecord(value); requireExactKeys(body, ["receipt_id", "listener_instance_id", "generation_id", "parent_provider_checkpoint_id"], ["execution_start"]); if (body.execution_start !== undefined && body.execution_start !== true) throw Error("Invalid execution_start");
   return { receiptId: requireUuid(body.receipt_id, "receipt_id"), listenerInstanceId: requireUuid(body.listener_instance_id, "listener_instance_id"),
-    generationId: requireUuid(body.generation_id, "generation_id"), parentProviderCheckpointId: requireUuid(body.parent_provider_checkpoint_id, "parent_provider_checkpoint_id") };
+    generationId: requireUuid(body.generation_id, "generation_id"), parentProviderCheckpointId: requireUuid(body.parent_provider_checkpoint_id, "parent_provider_checkpoint_id"), ...(body.execution_start === true ? { executionStart: true } : {}) };
 }
 export function parseBackgroundSubmitBody(value: unknown): Pick<NativeLiveBackgroundSubmit, "listenerInstanceId" | "generationId" | "result"> {
   const body = requireRecord(value); requireExactKeys(body, ["listener_instance_id", "generation_id", "result"]);
