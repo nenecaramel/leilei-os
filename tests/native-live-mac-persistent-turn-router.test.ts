@@ -501,9 +501,9 @@ test("output attachment handlers default enabled and only explicit false disable
 
 test("send_file follows the production default-omitted flag through real persistent SDK and router", async t => {
  for (const flag of [undefined, false, true]) await t.test(String(flag), async t => {
-  let tool: ((input: {path:string;displayName:string|null})=>Promise<unknown>) | null = null;
+  const toolCapture: { callback: ((input: {path:string;displayName:string|null})=>Promise<unknown>) | null } = { callback: null };
   const sent: string[] = [];
-  const f = await fixture(t, undefined, undefined, undefined, callback => { tool = callback; });
+  const f = await fixture(t, undefined, undefined, undefined, callback => { toolCapture.callback = callback; });
   const cmd = { ...command(1), ...(flag === undefined ? {} : { output_attachments_enabled: flag }) };
   const running = f.run(cmd, { sendFileHandler: async (input: {path:string}) => {
     sent.push(input.path);
@@ -512,8 +512,8 @@ test("send_file follows the production default-omitted flag through real persist
   const input = (await f.inputs.next()).value!;
   f.output.push({type:"command_lifecycle",state:"started",command_uuid:input.uuid,session_id:sid});
   await new Promise(setImmediate);
-  assert.ok(tool, "the SDK session installed its one local send_file MCP server");
-  const invoke = () => tool!({path:"audio/photo.mp3",displayName:null});
+  assert.ok(toolCapture.callback, "the SDK session installed its one local send_file MCP server");
+  const invoke = () => toolCapture.callback!({path:"audio/photo.mp3",displayName:null});
   if (flag === false) {
     await assert.rejects(invoke(),/only available to the turn/,"explicit disabled flag must prevent file delivery");
     assert.deepEqual(sent,[]);
