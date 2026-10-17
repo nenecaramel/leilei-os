@@ -257,8 +257,8 @@ export class NativeLiveMacBackgroundResultSink {
       throw new NativeBackgroundStaleReceipt();
     }
     if (ack.outcome === "queued") {
-      if (value.coveringCheckpointId)
-        throw new Error("Covered background reply is still queued; retain outbox and fence further input.");
+      if (!value.deferred || value.coveringCheckpointId)
+        throw new Error("Unexpected queued reply outside a pre-coverage native foreground; retain outbox.");
       return ack; // Uncovered native producer is durable, not canonically published.
     }
     await this.input.outbox.acknowledge(value);
