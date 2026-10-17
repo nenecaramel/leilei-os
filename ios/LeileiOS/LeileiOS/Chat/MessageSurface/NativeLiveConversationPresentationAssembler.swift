@@ -134,7 +134,7 @@ struct NativeLiveConversationPresentationAssembler {
                 if let inferredPrepare, let known = identities.binding(prepareID:inferredPrepare) { stable = known.stableAssistantID }
                 if let prepare, let pendingIDs, prepare == binding?.prepareID { stable = pendingIDs.assistant }
                 canonicalIDs[message.id] = stable
-                let turn = makeTurn(id:stable,message:message,runtime:surface,background:foreground != nil ? background : nil,pending:nil,identities:identities,canonicalUserMessageIDs:canonicalUserMessageIDs,now:now)
+                let turn = makeTurn(id:stable,message:message,runtime:surface,background:foreground != nil ? background : nil,pending:nil,identities:identities,canonicalUserMessageIDs:canonicalUserMessageIDs,now:now,inferredPrepareID:inferredPrepare)
                 rows.append(.init(id:stable,user:nil,userBacking:nil,assistant:turn))
                 if let prepare { consumedPrepare.insert(prepare) }
             }
@@ -176,8 +176,8 @@ struct NativeLiveConversationPresentationAssembler {
 
     private mutating func makeTurn(id: String,message: NativeLiveCurrentPathMessage?,runtime: NativeLiveRuntimeSurfaceState?,
         background: NativeLiveRuntimeSurfaceState? = nil,pending: NativeLivePendingOperation?,identities: NativeLiveTurnIdentityCoordinator,
-        canonicalUserMessageIDs: Set<String>,now: Date) -> NativeLiveAssistantTurnPresentation {
-        let prepare = runtime?.prepareID ?? message?.activity?.prepareId
+        canonicalUserMessageIDs: Set<String>,now: Date,inferredPrepareID: String? = nil) -> NativeLiveAssistantTurnPresentation {
+        let prepare = runtime?.prepareID ?? message?.activity?.prepareId ?? inferredPrepareID
         let binding = prepare.flatMap { identities.binding(prepareID:$0) } ?? pending.flatMap { identities.bindings[$0.id] }
         let owner = binding?.operationID.uuidString ?? pending?.id.uuidString ?? prepare ?? message?.id ?? generationOwners[id] ?? id
         let last = generationOwners[id] == owner ? previous[id] : nil
