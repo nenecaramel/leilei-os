@@ -1,0 +1,34 @@
+name: Native transcript archive regressions
+
+on:
+  pull_request:
+    paths:
+      - "tools/claude-bridge/scripts/native-transcript-archive.mjs"
+      - "tools/claude-bridge/src/native-transcript-archive*.mjs"
+      - "tools/claude-bridge/test/native-transcript-archive*.test.mjs"
+      - "scripts/native-session-local.mjs"
+      - ".github/workflows/native-transcript-archive-regression.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/claude-bridge/scripts/native-transcript-archive.mjs"
+      - "tools/claude-bridge/src/native-transcript-archive*.mjs"
+      - "tools/claude-bridge/test/native-transcript-archive*.test.mjs"
+      - "scripts/native-session-local.mjs"
+      - ".github/workflows/native-transcript-archive-regression.yml"
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check JavaScript syntax
+        run: |
+          node --check tools/claude-bridge/src/native-transcript-archive-recovery.mjs
+          node --check tools/claude-bridge/scripts/native-transcript-archive.mjs
+          node --check scripts/native-session-local.mjs
+      - name: Run native archive regressions
+        run: node --test tools/claude-bridge/test/native-transcript-archive-command.test.mjs tools/claude-bridge/test/native-transcript-archive.test.mjs
