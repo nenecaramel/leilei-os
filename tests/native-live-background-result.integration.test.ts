@@ -271,6 +271,15 @@ test("started foreground commits before queued autonomous output, with F coverin
   await f.repository.prepareBackgroundResult(background);
   const queued = await f.repository.submitBackgroundResult(f.submit);
   assert.deepEqual(queued, { outcome: "queued", duplicate: false, providerCheckpointId: null });
+  const secondReceiptId = crypto.randomUUID(), secondProducer = crypto.randomUUID();
+  const secondPrepare = { ...background, receiptId: secondReceiptId, parentProviderCheckpointId: f.next };
+  await f.repository.prepareBackgroundResult(secondPrepare);
+  const secondSubmit = { ...f.submit, receiptId: secondReceiptId, result: {
+    ...f.submit.result, provider_checkpoint_id: secondProducer,
+    normalized_events: [{ type: "text" as const, payload: { text: "second deferred background" } }],
+  } };
+  assert.deepEqual(await f.repository.submitBackgroundResult(secondSubmit),
+    { outcome: "queued", duplicate: false, providerCheckpointId: null });
   assert.equal((await f.canonical.getConversation({userId:f.user.id,conversationId:f.conversation.id}))!.currentHeadMessageId,
     f.completed.assistantMessageId, "queued does not advance the canonical head");
   const covering = crypto.randomUUID();
@@ -288,19 +297,25 @@ test("started foreground commits before queued autonomous output, with F coverin
     ...f.submit, coveringCheckpointId: covering,
   });
   assert.deepEqual(published, { outcome: "committed", duplicate: false, providerCheckpointId: covering });
+  assert.deepEqual(await f.repository.submitBackgroundResult({ ...secondSubmit, coveringCheckpointId: covering }),
+    { outcome: "committed", duplicate: false, providerCheckpointId: covering });
   const reader = new DrizzleNativeLiveCurrentPathReader(f.database.db);
   const snapshot = (await reader.readCurrentPath({userId:f.user.id,conversationId:f.conversation.id,limit:100}))!;
-  assert.equal(snapshot.messages.length,5);
-  assert.equal(snapshot.messages.at(-2)!.id, finished.assistantMessageId);
-  assert.equal(snapshot.messages.at(-1)!.id, f.prepare.receiptId);
-  assert.equal(snapshot.messages.at(-1)!.parentMessageId, finished.assistantMessageId);
-  assert.equal(snapshot.currentHeadMessageId, f.prepare.receiptId);
+  assert.equal(snapshot.messages.length,6);
+  assert.equal(snapshot.messages.at(-3)!.id, finished.assistantMessageId);
+  assert.equal(snapshot.messages.at(-2)!.id, f.prepare.receiptId);
+  assert.equal(snapshot.messages.at(-2)!.parentMessageId, finished.assistantMessageId);
+  assert.equal(snapshot.messages.at(-1)!.id, secondReceiptId);
+  assert.equal(snapshot.messages.at(-1)!.parentMessageId, f.prepare.receiptId);
+  assert.equal(snapshot.currentHeadMessageId, secondReceiptId);
   const cp = await f.canonical.getProviderCheckpointForHead({
-    userId:f.user.id,conversationId:f.conversation.id,canonicalMessageId:f.prepare.receiptId,
+    userId:f.user.id,conversationId:f.conversation.id,canonicalMessageId:secondReceiptId,
   });
   assert.equal(cp!.providerCheckpointId, covering, "queued producer B never rolls the head back from F");
-  assert.equal(cp!.runtimeMetadata?.native_live_background_producer_checkpoint_id, f.next);
+  assert.equal(cp!.runtimeMetadata?.native_live_background_producer_checkpoint_id, secondProducer);
   assert.deepEqual(await f.repository.submitBackgroundResult({ ...f.submit, coveringCheckpointId: covering }),
+    { outcome: "committed", duplicate: true, providerCheckpointId: covering });
+  assert.deepEqual(await f.repository.submitBackgroundResult({ ...secondSubmit, coveringCheckpointId: covering }),
     { outcome: "committed", duplicate: true, providerCheckpointId: covering });
 });
 
