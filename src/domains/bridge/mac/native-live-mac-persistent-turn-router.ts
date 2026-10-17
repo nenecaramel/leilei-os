@@ -94,7 +94,12 @@ export class NativeLiveMacPersistentTurnRouter {
     if (typeof input.onResult !== "function") throw new Error("Durable turn result sink is required.");
     if (this.initialCommand && command.conversation_id !== this.initialCommand.conversation_id) throw new Error("Persistent router belongs to a different conversation.");
     if (this.binding && (command.runtime_mode !== "resume" || command.parent_provider_session_id !== this.binding.session.sessionId)) throw new Error("Persistent command changed session identity.");
-    if (this.binding && command.parent_provider_checkpoint_id !== this.providerCheckpointId) throw new Error("Persistent command changed checkpoint; retire before branching.");
+    if (this.binding && command.parent_provider_checkpoint_id !== this.providerCheckpointId
+      && !(command.operation === "send" && command.runtime_mode === "resume" && this.input.relay.bindInput))
+      throw new Error("Persistent command changed checkpoint; retire before branching.");
+    // A stale serialized send can only enter this writer's queue when the
+    // server verifies its exact live reservation and branch at bindInput().
+    // No retry/edit/wake/foreign session receives this exception.
     if (this.initialCommand && !this.selectionMatches(command)) throw new Error("Execution selection changes are not supported by the persistent router yet.");
     let finish!: () => void;
     const finished = new Promise<void>(resolve => { finish = resolve; });
@@ -224,7 +229,8 @@ export class NativeLiveMacPersistentTurnRouter {
     if (this.input.registry.get(this.binding.conversationId, this.binding.generationId) !== this.binding) return false;
     return command.conversation_id === this.binding.conversationId && command.runtime_mode === "resume"
       && command.parent_provider_session_id === this.binding.session.sessionId
-      && command.parent_provider_checkpoint_id === this.providerCheckpointId
+      && (command.parent_provider_checkpoint_id === this.providerCheckpointId
+        || (command.operation === "send" && this.input.relay.bindInput !== undefined))
       && this.selectionMatches(command);
   }
   private selectionMatches(command: NativeLiveRuntimeCommand): boolean {
