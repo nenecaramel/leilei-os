@@ -44,6 +44,7 @@ import type {
   PreparationRow,
 } from "./types.js";
 import { discardWakeLocked } from "./discard-wake.js";
+import { commitWakeResumeCursorLocked } from "./wake-resume-cursor.js";
 import { matchesPresentationOwner } from "./presentation-owner.js";
 
 export async function finalizeSuccess(
@@ -192,6 +193,18 @@ export async function finalizeSuccess(
                 !== wake.sourceHeadMessageId
               || latestUser?.id !== wake.sourceUserMessageId
             ) {
+              canonicalWritePhase = "wake_stale_cursor";
+              // A later user message can make the visible Wake obsolete
+              // while the original assistant head and SDK session still match.
+              // Preserve the verified native tail before discarding its output,
+              // otherwise the next input resumes at a stale CLI checkpoint.
+              const recovered = row.runtimeMode === "resume" && input.providerCheckpointId
+                ? await commitWakeResumeCursorLocked(transaction as Transaction, row, {
+                    providerSessionId: input.providerSessionId,
+                    providerCheckpointId: input.providerCheckpointId,
+                    effectiveWorkingDirectory: input.effectiveWorkingDirectory,
+                  })
+                : "stale";
               canonicalWritePhase = "wake_stale_discard";
               await discardWakeLocked(
                 transaction as Transaction,
@@ -202,6 +215,8 @@ export async function finalizeSuccess(
                 ok: true as const,
                 outcome: "wake_discarded" as const,
                 record: null,
+                ...(recovered === "superseded" || recovered === "current"
+                  ? { nativeResumeCheckpointId: input.providerCheckpointId! } : {}),
               };
             }
           }
