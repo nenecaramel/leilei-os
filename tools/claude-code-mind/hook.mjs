@@ -443,7 +443,7 @@ export async function verifyHeadAnchor(config, input, invocationStarted) {
 
 // Any failure, timeout or ambiguity excludes nothing extra: retrieval proceeds.
 async function chainExclusions(config, input, invocationStarted, activeTurn) {
-  if (input.transcript_path === undefined) return [];
+  if (input.transcript_path === undefined) return {ids: [], recentUserPrompts: []};
   let timer; let reason = "chain_timeout"; let ids = []; let recentUserPrompts = [];
   const budget = new Promise(resolve => { timer = setTimeout(() => resolve(null), CHAIN_BUDGET_MS); });
   try {
