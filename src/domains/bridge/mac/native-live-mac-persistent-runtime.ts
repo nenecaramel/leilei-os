@@ -22,7 +22,7 @@ export class NativeLiveMacPersistentRuntime {
   constructor(input: {
     sessionLeaseScheduler?: ConstructorParameters<typeof NativeLiveMacExecutionLease>[0]["scheduler"];
     environment: NodeJS.ProcessEnv; defaultWorkingDirectory: string; listenerInstanceId: string;
-    relay: Pick<NativeLiveMacHttpRelayClient, "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission" | "renewSessionLease" | "prepareBackgroundResult" | "submitBackgroundResult"> & Partial<NativeLiveMacTaskRelay>;
+    relay: Pick<NativeLiveMacHttpRelayClient, "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission" | "renewSessionLease" | "prepareBackgroundResult" | "submitBackgroundResult"> & Partial<Pick<NativeLiveMacHttpRelayClient, "bindInput">> & Partial<NativeLiveMacTaskRelay>;
     outboxDirectory: string; mcpServerConfig?: NativeLiveMacMcpServerConfig | null;
     attachmentMaterializer: NativeLiveMacAttachmentMaterializer | null;
     outputAttachmentSender: NativeLiveMacOutputAttachmentSender | null;
@@ -59,7 +59,9 @@ export class NativeLiveMacPersistentRuntime {
     this.executor = new NativeLiveMacPersistentExecutor({ hasCapacity: () => this.registry.size < 4, attachmentMaterializer: input.attachmentMaterializer, outputAttachmentSender: input.outputAttachmentSender, onRuntimeFailure: input.onRuntimeFailure ?? null,
       createRouter: () => { startWatchdog(); return new NativeLiveMacPersistentTurnRouter({ registry: this.registry, listenerInstanceId: input.listenerInstanceId,
         taskControlsAvailable: () => taskControlsAvailable,
-        relay: input.relay, onBackgroundResult: (owner, frame) => this.backgroundResults.commit(owner, frame) }); } });
+        relay: input.relay, onBackgroundResult: (owner, frame) => this.backgroundResults.commit(owner, frame),
+        onForegroundCoverage: (conversationId, checkpoint) => this.backgroundResults.cover(conversationId, checkpoint),
+        onForegroundPublished: conversationId => this.backgroundResults.publishCovered(conversationId) }); } });
   }
   async drain(conversationId: string, providerSessionId: string) {
     const generation = this.registry.getGenerationId(conversationId);
