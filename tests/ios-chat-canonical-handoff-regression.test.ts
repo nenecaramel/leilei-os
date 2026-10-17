@@ -16,6 +16,8 @@ test("early canonical replies reuse the prepared operation ID instead of drawing
   assert.match(owner, /runtime\.operation == "send"/);
   assert.doesNotMatch(owner, /\.text\s*==|\.createdAt\s*==/);
   assert.match(assembler, /let prepare = message\.activity\?\.prepareId \?\? inferredPrepare/);
+  assert.match(assembler, /now:now,inferredPrepareID:inferredPrepare/);
+  assert.match(assembler, /let prepare = runtime\?\.prepareID \?\? message\?\.activity\?\.prepareId \?\? inferredPrepareID/);
   assert.match(assembler, /if let inferredPrepare, let known = identities\.binding\(prepareID:inferredPrepare\) \{ stable = known\.stableAssistantID \}/);
   assert.equal((assembler.match(/isRuntimeCanonicalAnswer\(\$0,prepareID:runtime\.prepareID\)/g) ?? []).length, 2);
 });
@@ -26,6 +28,7 @@ test("actual Swift turn lifecycle fixture asserts stable row count, ID and canon
     "canonical text does not regress to the shorter partial",
     "clearing pending cannot hide/recreate the same answer",
     "runtime teardown cannot remount an unattributed canonical assistant",
+    "unattributed canonical cannot reset its turn timestamp when runtime stops",
     "fresh Send recovery cannot create second row without prepare attribution",
     "older Retry failed refresh never reintroduces downstream old branch",
   ]) {
