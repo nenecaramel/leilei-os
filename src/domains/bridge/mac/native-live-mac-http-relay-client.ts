@@ -630,6 +630,34 @@ implements NativeLiveMacDaemonRelayClient {
     };
   }
 
+  async bindInput(input: {
+    listenerInstanceId: string; command: import("../protocol/native-live-runtime-protocol.js").NativeLiveRuntimeCommand;
+    phase: "queued" | "started"; commandUuid: string;
+  }): Promise<{ userMessageId: string; parentProviderCheckpointId: string | null } | null> {
+    const c = input.command;
+    if (c.operation !== "send" || c.runtime_mode !== "resume"
+      || !c.canonical_user_message_id || input.commandUuid !== c.canonical_user_message_id) return null;
+    const body = {
+      listener_instance_id: input.listenerInstanceId, request_id: c.request_id,
+      conversation_id: c.conversation_id, runtime_mode: c.runtime_mode,
+      canonical_user_message_id: c.canonical_user_message_id,
+      parent_provider_session_id: c.parent_provider_session_id,
+      parent_provider_checkpoint_id: c.parent_provider_checkpoint_id,
+      command_uuid: input.commandUuid, phase: input.phase,
+    };
+    const data = readRecord(await this.post(
+      `/reservations/${encodeURIComponent(c.prepare_id)}/input-binding`, body, AbortSignal.timeout(3_000),
+    ));
+    const bound = data.bound;
+    if (!bound || typeof bound !== "object" || Array.isArray(bound)) return null;
+    const row = bound as Record<string, unknown>;
+    if (row.userMessageId !== input.commandUuid ||
+      (row.parentProviderCheckpointId !== null &&
+        (typeof row.parentProviderCheckpointId !== "string" || !row.parentProviderCheckpointId.trim())))
+      throw new Error("Native binding returned an unrelated input or invalid checkpoint.");
+    return { userMessageId: row.userMessageId, parentProviderCheckpointId: row.parentProviderCheckpointId as string | null };
+  }
+
   async checkExecutionAdmission(input: {
     listenerInstanceId: string;
     command: import("../protocol/native-live-runtime-protocol.js").NativeLiveRuntimeCommand;
