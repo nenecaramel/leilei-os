@@ -519,8 +519,10 @@ implements NativeLiveBackendRelayPort {
           AND operation = 'wake' AND runtime_mode = 'fork'
           AND dispatch_status = 'reserved' AND reserved_by = ${input.listenerInstanceId}::uuid
           AND parent_provider_session_id IS NOT NULL AND parent_provider_checkpoint_id IS NOT NULL
-          AND jsonb_typeof(wake_context->'runtime_generation'->'presentation_owner_id') = 'string'
+          AND (wake_context->'runtime_generation') ? 'presentation_owner_id'
+          AND jsonb_typeof(wake_context->'runtime_generation'->'presentation_owner_id') IN ('string', 'null')
           AND (wake_context->'runtime_generation') ? 'source_revision'
+          AND jsonb_typeof(wake_context->'runtime_generation'->'source_revision') IN ('string', 'null')
       `);
       const row = await this.findPreparation(
         transaction as Transaction,
