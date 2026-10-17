@@ -16,6 +16,8 @@ COPY scripts/build-mcp-browser.mjs ./scripts/build-mcp-browser.mjs
 # Read by tests/native-live-mac-wake-broker-fallback.test.ts in the runtime gate.
 COPY scripts/native-live-mac-daemon.ts ./scripts/native-live-mac-daemon.ts
 RUN pnpm build
+# The production build gate verifies committed native Wake cursor receipts,
+# including stale Wake continuation. Rebuild after updating its test contract.
 RUN pnpm test:production-runtime-gate
 
 FROM node:22-alpine AS runtime
