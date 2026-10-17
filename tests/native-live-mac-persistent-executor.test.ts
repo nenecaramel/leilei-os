@@ -61,6 +61,19 @@ test("a failure before any commit is pending: the caller submits the failure res
   assert.deepEqual([run.result.status, (run.result as { error_code?: string }).error_code], ["failure", "NO_PROVIDER_SESSION"]);
 });
 
+test("edited and retried forks may own a fresh persistent writer without evicting it after commit", async () => {
+  const f = fixture(async input => { await frame(input); return {}; });
+  const edit = command({ operation: "edit", runtime_mode: "fork", canonical_user_message_id: id(4) });
+  assert.equal(f.executor.canRoute(edit), true, "a new replacement branch needs a persistent native owner");
+  const run = await f.executor.execute(edit, { async commit() { return { canonicalOutcome: "completed" }; } });
+  assert.equal(run.delivery, "committed");
+  assert.equal(f.routers[0]!.closed, 0, "Cron scheduled by edit must retain its SDK writer");
+  assert.equal(f.executor.canRoute(command()), true, "the forked writer can accept later ordinary chat");
+  await f.executor.retire(id(3));
+  assert.equal(f.routers[0]!.closed, 1, "old branch retirement is explicit");
+  assert.equal(f.executor.canRoute(command({ operation: "retry", runtime_mode: "fork" })), true);
+});
+
 test("only continuing send/wake commands route; a legacy operation retires the writer first", async () => {
   const f = fixture(async input => { await frame(input); return {}; }, { matches: false });
   assert.equal(f.executor.canRoute(command({ runtime_mode: "fork" })), false);
