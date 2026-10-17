@@ -204,7 +204,7 @@ implements NativeLiveBackendTurnPort {
     return finalizeFailure.call(this.context, input);
   }
 
-  commitQuietWake(input: Parameters<NonNullable<NativeLiveBackendTurnPort["commitQuietWake"]>>[0]): Promise<"committed" | "stale"> {
+  commitQuietWake(input: Parameters<NonNullable<NativeLiveBackendTurnPort["commitQuietWake"]>>[0]): ReturnType<NonNullable<NativeLiveBackendTurnPort["commitQuietWake"]>> {
     return commitQuietWake.call(this.context, input);
   }
 
