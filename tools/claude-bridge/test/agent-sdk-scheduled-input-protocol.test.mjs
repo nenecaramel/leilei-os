@@ -4,6 +4,7 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { createScheduledInputGuard } from '../src/agent-sdk-scheduled-input.mjs';
 import { AgentSdkClaudeTransport } from '../src/agent-sdk-claude-transport.mjs';
 
 for (const legacy of [false, true, "with-id"]) test(`pinned SDK transports ${legacy === 'with-id' ? 'unstamped task notification with generic ID' : legacy ? 'unstamped task notification without ID' : 'native scheduled input'} into the existing background sink`, {timeout:10_000}, async t => {
@@ -60,4 +61,25 @@ for await(const line of readline.createInterface({input:process.stdin})){
  assert.deepEqual(metadata.find(row=>row.origin),{origin:'human'});
  assert.equal(metadata.find(row=>row.hookResponse).hookResponse.subtype,'success');
  assert.notEqual(metadata.find(row=>row.hookResponse).hookResponse.response.decision,'block');
+});
+
+
+test('scheduled-input limit reasons explain bounded admission and deliberate writer recovery', async () => {
+ let now = 0;
+ const host = { state: 'idle', sessionId: 's', backgroundGeneration: 0 };
+ const guard = createScheduledInputGuard({ getHost: () => host, now: () => now, admit: async () => {} });
+ const input = { session_id: 's', prompt: 'synthetic notification' };
+ for (let n = 0; n < 64; n++) assert.deepEqual(await guard(input), {});
+ const exhausted = await guard(input);
+ assert.match(exhausted.reason, /64 scheduled-input attempts/);
+ assert.match(exhausted.reason, /Ordinary chat and task list\/delete\/stop remain available/);
+ assert.match(exhausted.reason, /only after work and receipts have settled and drained/);
+ assert.match(exhausted.reason, /\[ATTEMPT_BUDGET\]/);
+ assert.deepEqual(await guard({ ...input, source: 'user' }), {}, 'ordinary chat is not blocked by the autonomous budget');
+ const lifetime = createScheduledInputGuard({ getHost: () => host, now: () => now, admit: async () => {} });
+ now = 7 * 24 * 60 * 60 * 1000;
+ const expired = await lifetime(input);
+ assert.match(expired.reason, /7-day scheduled-input lifetime/);
+ assert.match(expired.reason, /\[WRITER_LIFETIME\]/);
+ assert.match(expired.reason, /Close and reopen the writer only after work and receipts have settled and drained/);
 });

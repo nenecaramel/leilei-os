@@ -144,6 +144,7 @@ export class NativeLiveMacPersistentExecutor {
     };
     const outputs = this.input.outputAttachmentSender && command.output_attachments_enabled !== false
       && command.protocol_version === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION ? this.input.outputAttachmentSender : null;
+    let safeUnstartedWake = false;
     let delivery: NativeLiveMacPersistentExecution["delivery"] = "pending";
     let submitted: NativeLiveRuntimeExecutionResult | null = null;
     let canonicalOutcome: string | null = null;
@@ -152,6 +153,7 @@ export class NativeLiveMacPersistentExecutor {
       const prompt = this.input.attachmentMaterializer ? this.input.attachmentMaterializer.appendPrompt(command.prompt, local) : command.prompt;
       await router.execute({
         command, prompt,
+        onSafeUnstartedWakeFailure: () => { safeUnstartedWake = true; },
         ...(options.onNormalizedEvent ? { onNormalizedEvent: options.onNormalizedEvent } : {}),
         ...(options.permissionHandler ? { permissionHandler: options.permissionHandler } : {}),
         ...(options.questionHandler ? { questionHandler: options.questionHandler } : {}),
@@ -196,8 +198,11 @@ export class NativeLiveMacPersistentExecutor {
       });
       return { result: submitted!, delivery: "committed", canonicalOutcome };
     } catch (error) {
-      // The router has already closed its writer; never replay the turn.
-      try { await this.retire(command.conversation_id); } catch { /* Keep ownership until a verified close. */ }
+      // Only the router can prove a Wake failed before SDK submission while
+      // retaining its exact live writer. Every uncertain path still retires.
+      if (!safeUnstartedWake || command.operation !== "wake" || delivery !== "pending") {
+        try { await this.retire(command.conversation_id); } catch { /* Keep ownership until a verified close. */ }
+      }
       if (delivery !== "pending") return { result: submitted!, delivery, ...(delivery === "committed" ? { canonicalOutcome } : {}) };
       const code = runtimeFailureCode(error);
       try { this.input.onRuntimeFailure?.(runtimeFailureDiagnostics(command.prepare_id, code, error)); } catch { /* Diagnostics never change the outcome. */ }

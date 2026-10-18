@@ -10,7 +10,7 @@ import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import { createAgentSdkTurnHandle } from "./agent-sdk-turn-handle.mjs";
 import { createAgentSdkSessionHost } from "./agent-sdk-session-host.mjs";
-import { createScheduledInputGuard } from "./agent-sdk-scheduled-input.mjs";
+import { createScheduledInputGuard, nativeAutonomousCommandId } from "./agent-sdk-scheduled-input.mjs";
 import { createAgentSdkQuestionCallback } from "./agent-sdk-question.mjs";
 import { createAgentSdkPermissionCallback, normalizeAgentSdkToolPermissionPolicy } from "./agent-sdk-permission.mjs";
 import { LEILEIOS_WAKE_SYSTEM_PROMPT } from "./leileios-wake-system-prompt.mjs";
@@ -581,13 +581,29 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         });
         startupReady.catch(() => {});
       }
-      // One-use admission from this tool's PreToolUse, scoped to its exact turn.
-      // The post-permission check remains fresh; this is never a session grant.
+      // One-use PreToolUse admission belongs to an exact native selection,
+      // not merely the foreground slot waiting behind autonomous work.
       const toolAdmissions = new Map();
+      const toolOwner = () => {
+        const turn = host?.active ?? null;
+        return { turn, nativeCommand: host?.currentCommandUuid ?? null,
+          inputId: nativeAutonomousCommandId(host) ?? turn?.id ?? null };
+      };
+      const sameToolOwner = (left, right) => left && right
+        && left.turn === right.turn && left.nativeCommand === right.nativeCommand && left.inputId === right.inputId;
+      const assertToolOwner = owner => {
+        assertLive("tool");
+        if (!sameToolOwner(owner, toolOwner())) throw new Error("Persistent tool native owner changed.");
+      };
+      const admitToolOwner = async owner => {
+        assertToolOwner(owner);
+        await admit("tool", owner.inputId);
+        assertToolOwner(owner);
+      };
       // CLI hook source is optional, not a tool capability. Scheduling tools
       // use the same fresh durable admission before/after permission as all tools.
       const scheduledInput = createScheduledInputGuard({ getHost: () => host,
-        admit: () => admit("scheduled", null, null) });
+        admit: nativeCommand => admit("scheduled", nativeCommand, null) });
       const permission = createAgentSdkPermissionCallback({
         toolPermissionPolicy: this.toolPermissionPolicy, events: this.events,
         permissionHandler: permissionHandler ?? (async () => ({ decision: "deny", message: "No permission handler is configured.", interrupt: false })),
@@ -639,33 +655,32 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           } : {}),
           ...(fork ? { resume: fork.localSessionId, resumeSessionAt: fork.checkpointId, forkSession: true } : {}),
           canUseTool: async (name, input, context) => {
-            // A delayed tool callback belongs to the turn that invoked it, not
-            // whichever turn happens to be active when authorization returns.
-            const turn = host?.active ?? null;
-            const assertTurn = () => {
-              assertLive("tool");
-              if ((host?.active ?? null) !== turn) throw new Error("Persistent tool turn changed.");
-            };
-            const admitTurn = async () => { await admit("tool", turn?.id ?? null); assertTurn(); };
+            // Capture native selection through admission and permission waits.
+            const owner = toolOwner();
             const toolId = context?.toolUseID;
-            const admittedTurn = toolAdmissions.get(toolId); toolAdmissions.delete(toolId);
-            try { if (admittedTurn !== turn) await admitTurn(); assertTurn(); }
+            const admittedOwner = toolAdmissions.get(toolId); toolAdmissions.delete(toolId);
+            try {
+              if (admittedOwner && !sameToolOwner(admittedOwner, owner)) throw new Error("Stale tool admission.");
+              if (!admittedOwner) await admitToolOwner(owner);
+              assertToolOwner(owner);
+            }
             catch { return { behavior: "deny", message: "LeileiOS session admission denied.", interrupt: true }; }
             const verdict = await (name === "AskUserQuestion"
               ? question ? question(name, input, context) : { behavior: "deny", message: "No question handler is configured.", interrupt: false }
               : permission(name, input, context));
-            try { await admitTurn(); assertTurn(); }
+            try { await admitToolOwner(owner); assertToolOwner(owner); }
             catch { return { behavior: "deny", message: "LeileiOS session admission denied.", interrupt: true }; }
             return verdict;
           },
           hooks: { UserPromptSubmit: [{ hooks: [scheduledInput] }], PreToolUse: [{ hooks: [async input => {
-            const turn = host?.active ?? null;
+            const owner = toolOwner();
+            const toolId = input?.tool_use_id;
+            toolAdmissions.delete(toolId);
             try {
-              await admit("tool", turn?.id ?? null);
-              assertLive("tool");
-              if ((host?.active ?? null) !== turn) throw new Error("Persistent tool turn changed.");
-              if (typeof input?.tool_use_id === "string" && input.tool_use_id.length <= 512) {
-                toolAdmissions.set(input.tool_use_id, turn);
+              await admitToolOwner(owner);
+              assertToolOwner(owner);
+              if (typeof toolId === "string" && toolId.length <= 512) {
+                toolAdmissions.set(toolId, owner);
                 if (toolAdmissions.size > 64) toolAdmissions.delete(toolAdmissions.keys().next().value);
               }
               return {};

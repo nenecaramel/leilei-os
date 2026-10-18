@@ -246,3 +246,50 @@ test(`drain verifies same-conversation background settlement: ${mode}`, async t 
   assert.equal((await outbox.listQuarantined()).length,mode === "quarantined" ? 1 : 0);
   if (mode === "no-receipts") assert.equal(renewals,startupRenewals,"empty drain needs no listener network call");
 });
+
+for (const initial of ["transient", "unsupported"] as const)
+test(`task control capability recovers through bounded polling after ${initial} startup`, async t => {
+  t.mock.timers.enable({ apis: ["setInterval", "Date"], now: 1_000 });
+  const root = await realpath(await mkdtemp(join(tmpdir(), "persistent-capability-recovery-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let available = false, probes = 0, waits = 0;
+  const relay = {
+    async checkExecutionAdmission(){return true;}, async renewExecutionLease(){return true;}, async renewSessionLease(){return true;},
+    async prepareBackgroundResult(){throw new Error("unused");}, async submitBackgroundResult(){throw new Error("unused");},
+    async supportsTaskControls(){probes++; if (!available && initial === "transient") throw new Error("offline"); return available;},
+    async waitTaskControl({signal}:any){waits++;await new Promise<void>(resolve=>{signal.addEventListener("abort",()=>resolve(),{once:true});if(signal.aborted)resolve();});return null;},
+    async completeRuntimeControl(){},
+  };
+  const runtime = new NativeLiveMacPersistentRuntime({environment:{},defaultWorkingDirectory:root,listenerInstanceId:id(91),
+    relay,outboxDirectory:join(root,"outbox"),attachmentMaterializer:null,outputAttachmentSender:null});
+  t.after(() => runtime.closeAll());
+  t.mock.method(runtime.registry,"snapshot",()=>[{conversationId:id(80),generationId:id(4),session:{sessionId:id(90)}}] as any);
+  await new Promise(setImmediate); assert.equal(probes,1); assert.equal(waits,0);
+  t.mock.timers.tick(30_000); await new Promise(setImmediate); assert.equal(probes,2); assert.equal(waits,0);
+  available=true;
+  t.mock.timers.tick(30_000); await new Promise(setImmediate); assert.equal(probes,2,"failed probes back off instead of polling every tick");
+  t.mock.timers.tick(30_000); await new Promise(setImmediate); assert.equal(probes,3); assert.equal(waits,1,"controls recover without restarting the runtime");
+  await runtime.closeAll(); t.mock.timers.tick(600_000); await new Promise(setImmediate);
+  assert.equal(probes,3); assert.equal(waits,1);
+});
+
+test("a pending capability probe cannot overlap polling or enable controls after shutdown", async t => {
+  t.mock.timers.enable({ apis: ["setInterval", "Date"], now: 1_000 });
+  const root = await realpath(await mkdtemp(join(tmpdir(), "persistent-capability-shutdown-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let resolve!: (value:boolean) => void, probes = 0, waits = 0;
+  const capability = new Promise<boolean>(done => { resolve = done; });
+  const relay = {
+    async checkExecutionAdmission(){return true;}, async renewExecutionLease(){return true;}, async renewSessionLease(){return true;},
+    async prepareBackgroundResult(){throw new Error("unused");}, async submitBackgroundResult(){throw new Error("unused");},
+    supportsTaskControls(){probes++;return capability;}, async waitTaskControl(){waits++;return null;}, async completeRuntimeControl(){},
+  };
+  const runtime = new NativeLiveMacPersistentRuntime({environment:{},defaultWorkingDirectory:root,listenerInstanceId:id(91),
+    relay,outboxDirectory:join(root,"outbox"),attachmentMaterializer:null,outputAttachmentSender:null});
+  t.after(() => runtime.closeAll());
+  await new Promise(setImmediate);
+  for (let i = 0; i < 12; i++) { t.mock.timers.tick(30_000); await new Promise(setImmediate); }
+  assert.equal(probes,1,"polling must share the in-flight request");
+  await runtime.closeAll(); resolve(true); await new Promise(setImmediate);
+  assert.equal(waits,0,"late capability success cannot reopen a stopped runtime");
+});

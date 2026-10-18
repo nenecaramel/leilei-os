@@ -20,7 +20,7 @@ export class NativeLiveMacPersistentRuntime {
   private stopped = false;
   private readonly flushBackground: () => Promise<number>;
   private readonly taskAbort = new AbortController();
-  private readonly taskControls: Promise<void>;
+  private taskControls: Promise<void> = Promise.resolve();
   private recoveryTimer: ReturnType<typeof setInterval> | null = null;
   constructor(input: {
     sessionLeaseScheduler?: ConstructorParameters<typeof NativeLiveMacExecutionLease>[0]["scheduler"];
@@ -67,13 +67,31 @@ export class NativeLiveMacPersistentRuntime {
       });
       return completed;
     };
-    // Capability is version support, never authorization. Older/unreachable
-    // servers keep the safe interrupt fallback and do not enter a retry loop.
-    const taskControlsAvailable = input.relay.waitTaskControl && input.relay.completeRuntimeControl && input.relay.supportsTaskControls
-      ? input.relay.supportsTaskControls().catch(()=>false) : Promise.resolve(false);
-    this.taskControls = taskControlsAvailable.then(available=>available && !this.taskAbort.signal.aborted
-      ? runNativeLiveMacTaskControls({ registry:this.registry,relay:input.relay as typeof input.relay & NativeLiveMacTaskRelay,listenerInstanceId:input.listenerInstanceId,signal:this.taskAbort.signal })
-      : undefined);
+    // Capability is version support, never authorization. Keep the safe
+    // interrupt fallback until a probe succeeds. Reuse recovery polling with
+    // capped backoff and one in-flight probe, including for legacy servers.
+    let taskControlsSupported = false, capabilityFailures = 0, nextCapabilityProbe = 0;
+    let capabilityProbe: Promise<boolean> | null = null;
+    const recheckTaskControls = (): Promise<boolean> => {
+      if (capabilityProbe) return capabilityProbe;
+      if (this.stopped || taskControlsSupported || Date.now() < nextCapabilityProbe
+        || !input.relay.waitTaskControl || !input.relay.completeRuntimeControl || !input.relay.supportsTaskControls)
+        return Promise.resolve(taskControlsSupported);
+      capabilityProbe = Promise.resolve().then(() => input.relay.supportsTaskControls!()).catch(() => false).then(available => {
+        if (this.stopped) return false;
+        if (available) {
+          taskControlsSupported = true;
+          this.taskControls = runNativeLiveMacTaskControls({ registry:this.registry,
+            relay:input.relay as typeof input.relay & NativeLiveMacTaskRelay,
+            listenerInstanceId:input.listenerInstanceId,signal:this.taskAbort.signal });
+        } else {
+          nextCapabilityProbe = Date.now() + Math.min(300_000, 30_000 * 2 ** Math.min(capabilityFailures++, 4));
+        }
+        return taskControlsSupported;
+      }).finally(() => { capabilityProbe = null; });
+      return capabilityProbe;
+    };
+    void recheckTaskControls();
     const startWatchdog = () => {
       if(this.stopped || this.watchdog)return;
       let captured: ReturnType<NativeLiveMacSessionRegistry["snapshot"]> = [];
@@ -90,7 +108,7 @@ export class NativeLiveMacPersistentRuntime {
     };
     this.executor = new NativeLiveMacPersistentExecutor({ hasCapacity: () => this.registry.size < 4, attachmentMaterializer: input.attachmentMaterializer, outputAttachmentSender: input.outputAttachmentSender, onRuntimeFailure: input.onRuntimeFailure ?? null,
       createRouter: () => { startWatchdog(); return new NativeLiveMacPersistentTurnRouter({ registry: this.registry, listenerInstanceId: input.listenerInstanceId,
-        taskControlsAvailable: () => taskControlsAvailable,
+        taskControlsAvailable: () => capabilityProbe ?? Promise.resolve(taskControlsSupported),
         relay: input.relay, onBackgroundResult: (owner, frame) => this.backgroundResults.commit(owner, frame),
         onForegroundCoverage: async (conversationId, generationId, checkpoint) => {
           try { return await this.backgroundResults.cover(conversationId, generationId, checkpoint); }
@@ -114,7 +132,7 @@ export class NativeLiveMacPersistentRuntime {
       }
     };
     void replay().catch(() => {});
-    this.recoveryTimer = setInterval(() => { void replay().catch(() => {}); }, 30_000);
+    this.recoveryTimer = setInterval(() => { void recheckTaskControls(); void replay().catch(() => {}); }, 30_000);
     this.recoveryTimer.unref?.();
   }
   async drain(conversationId: string, providerSessionId: string) {

@@ -38,6 +38,8 @@ type TurnInput = {
   onResult(frame: { command: NativeLiveRuntimeCommand; result: NativeLiveMacSessionResult; providerCheckpointId: string }): Promise<NativeLiveMacPersistentAcknowledgement>;
   permissionHandler?: NativeLiveMacPersistentSessionOptions["permissionHandler"];
   questionHandler?: NativeLiveMacPersistentSessionOptions["questionHandler"];
+  /** Emitted only after proving an existing writer was untouched by this rejected Wake. */
+  onSafeUnstartedWakeFailure?: () => void;
   controlPump?: (controller: NativeLiveMacActiveTurnController, context: { signal: AbortSignal }) => Promise<void>;
 } & NativeLiveMacPersistentTurnOutput;
 type Slot = TurnInput & {
@@ -267,7 +269,9 @@ export class NativeLiveMacPersistentTurnRouter {
       // A Wake rejected before entering the SDK must not kill existing Cron.
       // Once submitted, maintain the existing fail-closed checkpoint policy:
       // an uncertain native output cannot be replayed on the old writer.
-      if (!safeUnstartedWake) {
+      if (safeUnstartedWake) {
+        input.onSafeUnstartedWakeFailure?.();
+      } else {
         try { await this.close(); } catch { /* Retain failed-close registry owner. */ }
       }
       throw error;
@@ -331,13 +335,24 @@ export class NativeLiveMacPersistentTurnRouter {
       if (this.active !== null) return false;
     }
     const slot = this.active;
-    if (!slot && !this.suspended && (context.phase === "tool" || context.phase === "scheduled") && context.inputId === null && this.binding?.session.sessionId && this.backgroundSource && this.input.relay.checkTaskAdmission) {
+    // Autonomous scheduled/tool IDs come only from the SDK guard's exact currently
+    // selected autonomous command. A queued foreground is not its execution
+    // owner; retain its reservation and use the previous durable task source.
+    const queuedBehindNative = (context.phase === "scheduled" || context.phase === "tool") && context.inputId !== null
+      && slot?.command.operation === "send" && slot.phase === "executing" && !slot.nativeStarted
+      && context.inputId !== slot.inputId;
+    if ((!slot || queuedBehindNative) && !this.suspended
+      && (context.phase === "tool" || context.phase === "scheduled")
+      && (context.inputId === null || context.inputId !== slot?.inputId)
+      && this.binding?.session.sessionId && this.backgroundSource && this.input.relay.checkTaskAdmission) {
       const source=this.backgroundSource, binding=this.binding, checkpoint=this.providerCheckpointId;
       try {
         this.assertLive();
         const admitted=await this.input.relay.checkTaskAdmission({listenerInstanceId:this.input.listenerInstanceId,prepareId:source.prepareId,providerSessionId:binding.session.sessionId!});
         this.assertLive();
-        return admitted && !this.suspended && this.active===null && this.binding===binding && this.backgroundSource===source && this.providerCheckpointId===checkpoint;
+        return admitted && !this.suspended && this.active === slot
+          && (!slot || (queuedBehindNative && !slot.nativeStarted && slot.phase === "executing"))
+          && this.binding === binding && this.backgroundSource === source && this.providerCheckpointId === checkpoint;
       } catch {return false;}
     }
     if (this.suspended || !slot || slot.phase !== "executing" || context.inputId !== slot.inputId) return false;

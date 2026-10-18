@@ -4,6 +4,7 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NativeLiveMacPersistentTurnRouter, type NativeLiveMacPersistentAcknowledgement } from "../src/domains/bridge/mac/native-live-mac-persistent-turn-router.js";
+import { NativeLiveMacPersistentExecutor } from "../src/domains/bridge/mac/native-live-mac-persistent-executor.js";
 import { NativeLiveMacSessionRegistry } from "../src/domains/bridge/mac/native-live-mac-session-registry.js";
 import { createNativeLiveMacClaudeTransport } from "../src/domains/bridge/mac/native-live-mac-claude-transport.js";
 import type { NativeLiveMacPersistentSessionOptions } from "../src/domains/bridge/mac/native-live-mac-claude-transport.js";
@@ -38,7 +39,8 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
   let writeTranscript = true;
   const resumes: unknown[] = [], submitted: string[] = [];
   let sdk!: { canUseTool: (name: string, input: unknown, context: unknown) => Promise<unknown>;
-    hooks: { UserPromptSubmit: Array<{ hooks: Array<(input: Record<string, unknown>) => Promise<{ decision?: string }>> }> } };
+    hooks: { UserPromptSubmit: Array<{ hooks: Array<(input: Record<string, unknown>) => Promise<{ decision?: string }>> }>;
+      PreToolUse: Array<{ hooks: Array<(input: Record<string, unknown>) => Promise<{ hookSpecificOutput?: { permissionDecision?: string } }>> }> } };
   const registry = new NativeLiveMacSessionRegistry({}, root, async (...args) => {
     const configured = await createNativeLiveMacClaudeTransport(...args);
     if (captureSendFileTool) {
@@ -678,4 +680,83 @@ test("closed SDK writer is not eligible for another persistent reservation", asy
  const binding=f.registry.snapshot()[0]!;
  await binding.session.close();
  assert.equal(f.router.matches(command(2)),false);
+});
+
+
+test("executor preserves the real router's Cron writer only for proven unsubmitted Wake failure", async t => {
+  const f = await fixture(t);
+  let routers = 0;
+  const executor = new NativeLiveMacPersistentExecutor({ attachmentMaterializer: null, outputAttachmentSender: null,
+    createRouter() { routers++; return f.router; } });
+  const commit = async () => ({ canonicalOutcome: "completed" });
+  const first = executor.execute(command(1), { commit });
+  f.finish((await f.inputs.next()).value!.uuid); await first;
+  const failed = await executor.execute({ ...command(2, true), expected_working_directory: "/dev/null/no-such-directory" }, { commit });
+  assert.equal(failed.delivery, "pending"); assert.equal(failed.result.status, "failure");
+  assert.equal(f.closes, 0, "outer executor must retain the proven unstarted writer");
+  const next = executor.execute(command(2), { commit });
+  f.finish((await f.inputs.next()).value!.uuid); await next;
+  assert.equal(routers, 1); assert.equal(f.launches, 1);
+  f.deny();
+  const uncertain = await executor.execute({ ...command(3, true), parent_provider_checkpoint_id: id(102) }, { commit });
+  assert.equal(uncertain.result.status, "failure");
+  assert.equal(f.closes, 1, "SDK submission attempt remains fail closed");
+});
+
+for (const cronFirst of [false, true]) test(`native Cron admission with queued foreground (Cron selected first: ${cronFirst})`, async t => {
+  let checks = 0;
+  const bindings: string[] = [];
+  const f = await fixture(t, async () => { checks++; return true; }, async input => {
+    bindings.push(input.phase);
+    return { userMessageId: input.commandUuid,
+      parentProviderCheckpointId: input.phase === "queued" ? id(101) : id(102) };
+  });
+  const first = f.run(command(1)); f.finish((await f.inputs.next()).value!.uuid); await first;
+  const binding = f.registry.snapshot()[0]!;
+  const emit = async (frame: Record<string, unknown>) => {
+    const observed = new Promise(resolve => binding.session.events.once("event", resolve));
+    f.output.push(frame); await observed;
+  };
+  const started = () => emit({ type: "command_lifecycle", state: "started", command_uuid: id(900), session_id: sid });
+  if (cronFirst) await started();
+  const foreground = f.run(command(2)); await f.inputs.next();
+  if (!cronFirst) await started();
+  const hook = f.sdk.hooks.UserPromptSubmit[0].hooks[0]!;
+  const admission = await hook({ session_id: sid, source: "schedule_wakeup", prompt_id: "cron-selected", prompt: "synthetic" });
+  assert.notEqual(admission.decision, "block", "queued foreground has not started and cannot block native-selected Cron");
+  assert.equal(checks, 1);
+  const foregroundChecks = f.admissions.length;
+  const preTool = await f.sdk.hooks.PreToolUse[0].hooks[0]!({ tool_name: "mcp__leileios__get_health", tool_use_id: "cron-tool" });
+  assert.deepEqual(preTool, {}, "native Cron tool must use its own durable task admission while foreground remains queued");
+  assert.deepEqual(await f.sdk.canUseTool("mcp__leileios__get_health", {}, { toolUseID: "cron-tool" }), { behavior: "allow" });
+  assert.equal(checks, 3, "prehook and fresh post-permission task checks are performed");
+  assert.equal(f.admissions.length, foregroundChecks, "Cron must not borrow the queued foreground execution grant");
+  const settled = new Promise(resolve => binding.session.events.once("background-result", resolve));
+  f.finish(id(900)); await settled;
+  assert.deepEqual(f.background, [id(900)]);
+  assert.deepEqual(f.results, [id(1)], "background result cannot finalize queued foreground");
+  await emit({ type: "command_lifecycle", state: "started", command_uuid: id(22), session_id: sid });
+  f.finish(id(22)); await foreground;
+  assert.deepEqual(bindings, ["queued", "started"], "Cron admission must not start or bind queued foreground early");
+});
+
+
+for (const nextNative of [id(22), id(901)]) test(`native scheduled admission refuses selected command rotation to ${nextNative}`, async t => {
+  const entered = deferred<void>(), release = deferred<boolean>();
+  const f = await fixture(t, async () => { entered.resolve(); return release.promise; });
+  const first = f.run(command(1)); f.finish((await f.inputs.next()).value!.uuid); await first;
+  const foreground = f.run(command(2)); await f.inputs.next();
+  const binding = f.registry.snapshot()[0]!;
+  const emit = async (uuid: string) => {
+    const observed = new Promise(resolve => binding.session.events.once("event", resolve));
+    f.output.push({ type: "command_lifecycle", state: "started", command_uuid: uuid, session_id: sid });
+    await observed;
+  };
+  await emit(id(900));
+  const pending = f.sdk.hooks.UserPromptSubmit[0].hooks[0]!({ session_id: sid,
+    source: "schedule_wakeup", prompt_id: "stale-native", prompt: "synthetic" });
+  await entered.promise;
+  await emit(nextNative); release.resolve(true);
+  assert.equal((await pending).decision, "block", "old native ID cannot grant a different selected command admission");
+  f.finish(id(22)); await foreground;
 });
