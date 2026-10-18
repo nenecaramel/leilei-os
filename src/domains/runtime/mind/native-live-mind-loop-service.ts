@@ -264,6 +264,7 @@ export class NativeLiveMindLoopService {
     assembled: AssembledTurnContext;
     semanticCandidates: BreathSemanticCandidate[];
     semanticMode: "snapshot_v1" | "legacy";
+    snapshotVersion: string;
   }> {
     // Snapshot once; both the plan and rendering share the same eligibility view.
     const states = await this.port.list({
@@ -274,11 +275,12 @@ export class NativeLiveMindLoopService {
     // Only the *same* server-sourced, current snapshot may rank memories.
     // Never let a local score grant access to an invalid/hidden/deleted row.
     const validIds = new Set(snapshotMemories(globalStates).map(memory => memory.stateId));
+    const snapshotVersion = mindSnapshotVersion(globalStates);
     const scores = input.snapshotScores;
     const verified = input.semanticSnapshotVersion !== undefined
       && /^[a-f0-9]{64}$/.test(input.semanticSnapshotVersion)
       && scores !== undefined && scores.size <= 48
-      && mindSnapshotVersion(globalStates) === input.semanticSnapshotVersion
+      && snapshotVersion === input.semanticSnapshotVersion
       && [...scores].every(([id, score]) => validIds.has(id)
         && Number.isFinite(score) && score >= 0 && score <= 1);
     if (verified) {
@@ -287,6 +289,7 @@ export class NativeLiveMindLoopService {
         assembled: await this.assembleRecallContext(input, selectedStates, scores!),
         semanticCandidates: [],
         semanticMode: "snapshot_v1",
+        snapshotVersion,
       };
     }
     const lineage = normalizeContextLineageState(input.contextLineage);
@@ -298,6 +301,7 @@ export class NativeLiveMindLoopService {
       assembled: await this.assembleRecallContext(input, globalStates),
       semanticCandidates: plan?.candidates ?? [],
       semanticMode: "legacy",
+      snapshotVersion,
     };
   }
 
