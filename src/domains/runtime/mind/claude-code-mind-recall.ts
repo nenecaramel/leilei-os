@@ -8,6 +8,7 @@ export type ClaudeCodeRecallInput = {
   userId: string;
   sessionId: string;
   query: string;
+  candidateQuery?: string;
   contextEpoch?: number;
   excludeIds: string[];
   semanticCandidates?: BreathSemanticCandidate[];
@@ -51,7 +52,7 @@ export class ClaudeCodeMindRecallService {
     const states = this.reader.searchGlobalRecallCandidates
       ? await this.reader.searchGlobalRecallCandidates({
           userId: input.userId, subjectId: this.subjectId,
-          query: input.query, excludeIds: input.excludeIds,
+          query: input.candidateQuery ?? input.query, excludeIds: input.excludeIds,
         })
       : await this.reader.list({
           userId: input.userId, subjectId: this.subjectId,
