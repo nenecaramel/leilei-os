@@ -629,6 +629,37 @@ async function indexedSearch(config, query, timeoutMs) {
   });
 }
 
+async function hybridCandidateSelection(config, query, candidates, timeoutMs) {
+  const socketPath = config.semantic_socket || join(homedir(), ".leileios", "claude-code-mind", "hybrid.sock");
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({socketPath, path: "/score-hybrid", method: "POST",
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: {"content-type": "application/json"}}, response => {
+      const chunks = []; let size = 0;
+      response.on("data", chunk => {
+        size += chunk.length;
+        if (size > 4096) request.destroy(new Error("Oversized hybrid response."));
+        else chunks.push(chunk);
+      });
+      response.on("end", () => {
+        try {
+          if (response.statusCode !== 200) throw new Error("Hybrid scorer unavailable.");
+          const ids = JSON.parse(Buffer.concat(chunks).toString("utf8")).selected_ids;
+          const candidatesById = new Set(candidates.map(c => c.stateId));
+          if (!Array.isArray(ids) || ids.length > 2 ||
+              new Set(ids).size !== ids.length ||
+              !ids.every(id => UUID.test(id) && candidatesById.has(id)))
+            throw new Error("Invalid hybrid selection.");
+          resolve(ids);
+        } catch (error) { reject(error); }
+      });
+      response.on("error", reject);
+    });
+    request.on("error", reject);
+    request.end(JSON.stringify({query, candidates}));
+  });
+}
+
 async function commitRecallContext(config, input, snapshot, data, exclude, output) {
   await withState(config, input.session_id, async (state, save) => {
     const seen = new Set(state.written_ids);
@@ -701,6 +732,48 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     context_epoch: snapshot.context_epoch,
     receipt_mode: "signed_v1",
   };
+  if (config.hybrid_recall) {
+    // First Railway request supplies the signed lexical fallback and a bounded
+    // candidate set. A second request uses ONLY locally selected IDs, with
+    // server-side snapshot/visibility verification. Nothing polls when idle.
+    const timeout = Math.min(2500, HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted));
+    if (timeout <= 0) return;
+    let data = await recall(config, body, timeout);
+    const candidates = data.semantic_candidates;
+    if (Array.isArray(candidates) && candidates.length > 0 && candidates.length <= 256 &&
+        /^[a-f0-9]{64}$/.test(data.snapshot_version ?? "") &&
+        Date.now() - invocationStarted < 1500) {
+      try {
+        const remaining = HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted);
+        if (remaining > 1200) {
+          const recent = chain.recentUserPrompts.slice(0, 2).reverse().join("；").slice(-400);
+          const usesContext = recent && input.prompt.length <= 80 &&
+            /(?:你|我|他|她|这|那|又|刚才|之前|为什么|怎么)/u.test(input.prompt);
+          const query = usesContext ? `前文：${recent}。现在：${input.prompt}` : input.prompt;
+          const selectedIds = await hybridCandidateSelection(config, query, candidates, Math.min(1000, remaining - 800));
+          const available = HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted);
+          if (available > 800) {
+            const scored = await recall(config, {...body,
+              semantic_snapshot_version: data.snapshot_version,
+              snapshot_scores: Object.fromEntries(selectedIds.map((id, i) => [id, i === 0 ? .99 : .98])),
+            }, Math.min(1200, available));
+            if (scored.semantic_mode === "snapshot_v1" && scored.memory_ids.length <= 2) {
+              data = scored;
+              await recordDiagnostic(config, "UserPromptSubmit", "semantic_scored");
+            } else {
+              await recordDiagnostic(config, "UserPromptSubmit", "semantic_snapshot_stale");
+            }
+          }
+        }
+      } catch {
+        await recordDiagnostic(config, "UserPromptSubmit", "semantic_rerank_failed");
+      }
+    }
+    if (!data.context || data.memory_ids.length > 2 ||
+        data.memory_ids.some(id => exclude.includes(id))) return;
+    await commitRecallContext(config, input, snapshot, data, exclude, output);
+    return;
+  }
   if (config.indexed_recall) {
     // This mode uses the cached local index and exactly one Railway round trip.
     // On missing/stale local results Railway applies its existing lexical safety net.
