@@ -511,3 +511,8 @@ test("hybrid Hook uses current server fallback if snapshot changed",async t=>{
   assert.equal(output,CONTEXT+"\n");
   assert.equal(f.calls.length,2);
 });
+
+test("standalone hybrid worker never polls or downloads Railway Memory",async()=>{
+  const source=await readFile(resolve("scripts/mind-hybrid-background.ts"),"utf8");
+  assert.doesNotMatch(source,/MacMindSnapshotSync|setInterval\s*\(|\bfetch\s*\(/);
+});
