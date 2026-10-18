@@ -71,6 +71,7 @@ run([
   "tests/native-live-conversation-repository.integration.test.ts",
   "tests/runtime-breath-recall-repository.integration.test.ts",
   "tests/claude-code-mind.integration.test.ts",
+  "tests/claude-code-mind-candidates.integration.test.ts",
   "tests/claude-code-mind-finalized.integration.test.ts",
   "tests/mind-product-repository.integration.test.ts",
   "tests/global-search-repository.integration.test.ts",
