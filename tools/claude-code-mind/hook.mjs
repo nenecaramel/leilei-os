@@ -597,7 +597,7 @@ async function acknowledgeStop(config, sessionId, invocationStarted) {
 async function indexedSearch(config, query, timeoutMs) {
   const socketPath = config.semantic_socket || join(homedir(), ".leileios", "claude-code-mind", "semantic.sock");
   return new Promise((resolve, reject) => {
-    const request = httpRequest({socketPath, path: config.hybrid_recall ? "/search-hybrid" : "/search", method: "POST",
+    const request = httpRequest({socketPath, path: "/search", method: "POST",
       signal: AbortSignal.timeout(timeoutMs),
       headers: {"content-type": "application/json"}}, response => {
       const chunks = []; let size = 0;
