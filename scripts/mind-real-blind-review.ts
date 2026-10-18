@@ -122,6 +122,7 @@ function summarize(reviews:Review[]):Json {
     "after_ritrieve_0.80",
     "hybrid_agreement",
     "hybrid_anchored_rescue",
+    "hybrid_agreement_top1",
   ];
   const report:Json={};
   for(const name of names){
@@ -226,6 +227,7 @@ try {
     "after_ritrieve_0.80",
     "hybrid_agreement",
     "hybrid_anchored_rescue",
+    "hybrid_agreement_top1",
   ];
   for(let i=0;i<probes.length;i++){
     const probe=probes[i]!;
@@ -251,6 +253,14 @@ try {
         e5Ranked:old.map(x=>({stateId:x.id,score:x.score})),
         ritrieveRanked:next.map(x=>({stateId:x.id,score:x.score})),
         mode:"anchored_rescue",
+      }).map(x=>x.stateId)],
+      [names[7]!,selectHybridMindCandidates({
+        query:probe.query,
+        memories:corpus.map(m=>({stateId:m.id,text:m.text})),
+        e5Ranked:old.map(x=>({stateId:x.id,score:x.score})),
+        ritrieveRanked:next.map(x=>({stateId:x.id,score:x.score})),
+        mode:"agreement",
+        maxItems:1,
       }).map(x=>x.stateId)],
     ]);
     const union=new Set<string>();
