@@ -28,7 +28,7 @@ Server deployment must support the current signed-receipt endpoints and existing
 
 ## Background hybrid scoring without keeping a terminal open
 
-The original Claude Code/Desktop automatic recall works without Native Live: the installed Hook calls authenticated Railway directly. The `hybrid_conditional_v1` scorer is an optional *read-only local enhancement*. If its local socket is missing/cold, the Hook returns to the original signed Railway recall route (the old ranking/count may apply for that request). If a snapshot was supplied but Railway rejects its version, the Hook still refuses that stale result.
+The original Claude Code/Desktop automatic recall works without Native Live: the installed Hook calls authenticated Railway directly. With optional `hybrid_conditional_v1`, each user prompt makes one Railway request for a signed lexical result plus at most 256 eligible candidates; the local E5+ritrieve worker scores only those candidates, and one more Railway request verifies its selected 0–2 IDs against the current snapshot. Both paths are capped at 2 memories *on the Claude Code server adapter only*. If scoring is late/unavailable, retain the signed lexical result; if the snapshot changed, use the newly validated Railway lexical response, never stale local scores.
 
 On the canonical Mac checkout, after updating `main`, configure a separate user-login LaunchAgent once:
 
@@ -37,9 +37,9 @@ cd ~/Developer/leilei-os-main
 node scripts/install-mind-hybrid-background.mjs
 ```
 
-This installs `com.leilei.mind-hybrid` with `RunAtLoad` and `KeepAlive`, installs the current Hook, and sets the private mode/socket paths. It chooses a working Node 22 binary, reads existing private `mind.env` credentials, and creates only `~/.leileios/claude-code-mind/hybrid.sock`. It does **not** start the Native Live/Wake daemon, modify real memories or Railway, or touch the older `semantic.sock`. Model warmup and Mind snapshot synchronization can take a few seconds after login; requests during startup use the Railway-only fallback. The LaunchAgent's log files are private under `~/.leileios/mind-hybrid-background/`.
+This installs `com.leilei.mind-hybrid` with `RunAtLoad` and `KeepAlive`, installs the current Hook, and sets the private mode/socket paths. It chooses a working Node 22 binary, reads existing private `mind.env` credentials, and creates only `~/.leileios/claude-code-mind/hybrid.sock`. It does **not** start the Native Live/Wake daemon, modify real memories or Railway, or touch the older `semantic.sock`. Model warmup can take time after login; requests during startup use the Railway-only fallback. The standalone scorer does not synchronize Memory, download a full snapshot, or contact Railway when idle. The LaunchAgent's log files are private under `~/.leileios/mind-hybrid-background/`.
 
-Check with `launchctl print gui/$(id -u)/com.leilei.mind-hybrid` and a local `curl --unix-socket ~/.leileios/claude-code-mind/hybrid.sock -d '{"query":"..."}' http://localhost/search-hybrid` (the latter can reveal private IDs/text: **do not paste the response**). The new conditional 0/1/2 selection only applies when the local index is ready; Railway fallback retains the original recall behavior.
+Check with `launchctl print gui/$(id -u)/com.leilei.mind-hybrid`. Its private `POST /score-hybrid` socket accepts only one query and a bounded candidate list; it returns at most 2 IDs. The standalone worker does not own a snapshot and has no 60-second Railway polling.
 
 To restore the original desktop-only configuration, remove `LEILEI_MIND_RECALL_MODE` and `LEILEI_MIND_SEMANTIC_SOCKET` from `mind.env`, then `launchctl bootout gui/$(id -u)/com.leilei.mind-hybrid` and remove **only** `~/Library/LaunchAgents/com.leilei.mind-hybrid.plist`. The real Mind database and Railway are unaffected.
 
@@ -58,7 +58,7 @@ This switch only pauses the **installed automatic Mind Hook**. LeileiOS MCP tool
 ## Recall and confirmation guarantees
 
 - `UserPromptSubmit` retrieves independent relevant context. Only memory presence **proven on the current transcript branch** and successful write receipts on that chain are excluded. Rewind may retrieve memories again; compact/clear/fork create a fresh epoch. Missing or ambiguous transcript evidence fails open instead of suppressing recall.
-- Hook host timeout is 5 s. The process limits itself to 3.8 s; the first recall has up to 2.5 s. Optional semantic scoring falls back to the lexical result if late/unavailable. A failed Hook exits without blocking the prompt or invoking backend recall.
+- Hook host timeout is 5 s. The process limits itself to 3.8 s; the first recall has up to 2.5 s. Optional semantic scoring falls back to the lexical result if late/unavailable. This path sends 1–2 Railway requests only when a user prompt occurs, not at idle. A failed Hook exits without blocking the prompt or invoking backend recall.
 - Nonempty current recall results use signed receipts and do not create a receipt database row on read. After successful stdout delivery, a pending local receipt may be **weakly acknowledged** on `Stop`; repeated confirmation is idempotent. `StopFailure` clears pending. This is **not** proof of completed generation or actual memory use. Interruption or a missing Stop may lose accounting, and some interrupted responses may be counted.
 - The local state is private under `~/.claude/leileios-mind/state/`; it holds IDs/epochs/receipt metadata, not prompts or memory plaintext. `PostToolUse` recognizes successful matching `mcp__<namespace>__write_memory` receipts.
 
