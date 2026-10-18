@@ -536,3 +536,24 @@ test("hybrid Hook fails closed if final Railway verification times out",async t=
   assert.equal(f.calls.length,2);
   assert.ok(result.duration<3800);
 });
+
+test("hybrid rejects an unexpected final verification mode instead of reusing old context",async t=>{
+  const candidate={stateId:ID,kind:"memory",text:"tea"};
+  const f=await fixture(t,(body,res)=>res.end(JSON.stringify({
+    success:true,data:body.snapshot_scores
+      ? {...signedData(),semantic_mode:"unrecognized"}
+      : {...signedData([candidate]),snapshot_version:"a".repeat(64)},
+  })));
+  const socket=join(f.home,"hybrid.sock");
+  const close=await startClaudeCodeMindHybridServer({
+    scoreCandidatesHybrid:async()=>({selectedIds:[ID]}),
+  },socket);
+  t.after(close);
+  f.config.semantic_socket=socket;
+  f.config.index_mode="hybrid_conditional_v1";
+  await writeFile(join(f.home,"mind.env"),envContent(f.config),{mode:0o600});
+  let output="";
+  await runHook(prompt(),async text=>{output+=text;});
+  assert.equal(output,"");
+  assert.equal(f.calls.length,2);
+});
