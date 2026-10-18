@@ -129,6 +129,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
       sql`${table.envelope}->'status'->>'generationStatus' = 'committed'`,
       sql`${table.envelope}->'status'->>'presentationStatus' = 'presented'`,
       sql`${table.envelope}->'scope'->>'visibility' IS DISTINCT FROM 'hidden_system'`,
+      sql`${table.payload}->'lifecycle_v1'->>'status' IS DISTINCT FROM 'forgotten'`,
       excluded,
     );
     const columns = {
