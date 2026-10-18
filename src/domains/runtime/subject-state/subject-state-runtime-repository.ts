@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import {
   runtimeContextManifests,
@@ -98,6 +98,78 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
       );
 
     return rows.map(rowToState);
+  }
+
+
+  /**
+   * Claude Code/Desktop only: server-side indexed candidate discovery.
+   * Never transfer or embed the whole Mind library on the Mac.
+   * PostgreSQL updates its trigram/FTS indexes when Memory rows change.
+   */
+  async searchGlobalRecallCandidates(input: {
+    userId: string;
+    subjectId: string;
+    query: string;
+    excludeIds: readonly string[];
+  }): Promise<SubjectStateWrite[]> {
+    const table = runtimeSubjectStates;
+    const query = input.query.trim().slice(0, 256);
+    const excluded = input.excludeIds.length
+      ? sql`${table.id} <> ALL(${`{${input.excludeIds.join(",")}}`}::uuid[])`
+      : sql`true`;
+    const eligible = and(
+      eq(table.userId, input.userId),
+      eq(table.subjectId, input.subjectId),
+      eq(table.kind, "memory"),
+      eq(table.scopeApplicability, "global"),
+      eq(table.settlementStatus, "settled"),
+      eq(table.pathStatus, "current"),
+      eq(table.validityStatus, "valid"),
+      sql`${table.text} IS NOT NULL AND length(btrim(${table.text})) > 0`,
+      sql`${table.envelope}->'status'->>'generationStatus' = 'committed'`,
+      sql`${table.envelope}->'status'->>'presentationStatus' = 'presented'`,
+      sql`${table.envelope}->'scope'->>'visibility' IS DISTINCT FROM 'hidden_system'`,
+      excluded,
+    );
+    const columns = {
+      id: table.id, kind: table.kind, text: table.text,
+      payload: table.payload, envelope: table.envelope,
+    };
+    // Run independent, indexed channels: whole-query fuzzy match, literal
+    // Chinese/English anchors, English FTS and history coverage. Neither
+    // 256 nor any subquery limit is a cap on stored Memory.
+    const terms = [...new Set(query.match(/[\\p{Script=Han}]{2,6}|[a-z0-9]{3,}/giu) ?? [])].slice(0, 8);
+    const fuzzy = query.length >= 3
+      ? await this.db.select(columns).from(table)
+        .where(and(eligible, sql`${table.text} % ${query}`))
+        .orderBy(sql`similarity(${table.text}, ${query}) DESC`, desc(table.createdAt), asc(table.id))
+        .limit(96)
+      : [];
+    const anchored = terms.length
+      ? await this.db.select(columns).from(table)
+        .where(and(eligible, or(...terms.map(term =>
+          sql`${table.text} ILIKE ${`%${term}%`}`
+        ))))
+        .orderBy(sql`similarity(${table.text}, ${query}) DESC`, desc(table.createdAt), asc(table.id))
+        .limit(64)
+      : [];
+    const fullText = query.length >= 3
+      ? await this.db.select(columns).from(table)
+        .where(and(eligible,
+          sql`to_tsvector('simple', coalesce(${table.text}, '')) @@ plainto_tsquery('simple', ${query})`))
+        .orderBy(sql`ts_rank(to_tsvector('simple', coalesce(${table.text}, '')), plainto_tsquery('simple', ${query})) DESC`, desc(table.createdAt), asc(table.id))
+        .limit(32)
+      : [];
+    const recent = await this.db.select(columns).from(table)
+      .where(eligible).orderBy(desc(table.createdAt), desc(table.id)).limit(32);
+    const oldest = await this.db.select(columns).from(table)
+      .where(eligible).orderBy(asc(table.createdAt), asc(table.id)).limit(32);
+    const selected = new Map<string, SubjectStateWrite>();
+    for (const row of [...fuzzy, ...anchored, ...fullText, ...recent, ...oldest]) {
+      if (!selected.has(row.id)) selected.set(row.id, rowToState(row));
+      if (selected.size === 256) break;
+    }
+    return [...selected.values()];
   }
 
   async append(input: {
