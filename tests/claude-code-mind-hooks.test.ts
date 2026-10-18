@@ -10,6 +10,7 @@ import { runHook, writtenMemoryId } from "../tools/claude-code-mind/hook.mjs";
 import { configureHooks, install } from "../tools/claude-code-mind/install.mjs";
 import { isMindHookPaused, setMindHookPaused } from "../tools/claude-code-mind/toggle.mjs";
 import { startMindRecallSemanticServer } from "../src/domains/bridge/mac/native-live-mac-mind-recall-server.js";
+import { startClaudeCodeMindHybridServer } from "../src/domains/runtime/mind/claude-code-mind-hybrid-server.js";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const ID2 = "22222222-2222-4222-8222-222222222222";
@@ -430,8 +431,7 @@ test("hybrid Hook scores Railway candidates on demand and uses the signed second
   })));
   const socket=join(f.home,"hybrid.sock");
   let scored=0;
-  const close=await startMindRecallSemanticServer({
-    score:async()=>new Map(),
+  const close=await startClaudeCodeMindHybridServer({
     scoreCandidatesHybrid:async input=>{
       scored++;
       assert.equal(input.query,"tea");
@@ -475,8 +475,7 @@ test("hybrid Hook outputs zero on verified current empty selection",async t=>{
       : {...signedData([candidate]),snapshot_version:"a".repeat(64)},
   })));
   const socket=join(f.home,"hybrid.sock");
-  const close=await startMindRecallSemanticServer({
-    score:async()=>new Map(),
+  const close=await startClaudeCodeMindHybridServer({
     scoreCandidatesHybrid:async()=>({selectedIds:[]}),
   },socket);
   t.after(close);
@@ -498,8 +497,7 @@ test("hybrid Hook uses current server fallback if snapshot changed",async t=>{
       : {...signedData([candidate]),snapshot_version:"a".repeat(64)},
   })));
   const socket=join(f.home,"hybrid.sock");
-  const close=await startMindRecallSemanticServer({
-    score:async()=>new Map(),
+  const close=await startClaudeCodeMindHybridServer({
     scoreCandidatesHybrid:async()=>({selectedIds:[ID]}),
   },socket);
   t.after(close);
@@ -526,8 +524,7 @@ test("hybrid Hook fails closed if final Railway verification times out",async t=
     }));
   });
   const socket=join(f.home,"hybrid.sock");
-  const close=await startMindRecallSemanticServer({
-    score:async()=>new Map(),
+  const close=await startClaudeCodeMindHybridServer({
     scoreCandidatesHybrid:async()=>({selectedIds:[ID]}),
   },socket);
   t.after(close);
