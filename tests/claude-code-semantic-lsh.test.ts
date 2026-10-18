@@ -14,6 +14,13 @@ test("semantic LSH is deterministic across calls and has all indexed bands",()=>
   assert.ok(new Set(one).size>5);
 });
 
+test("versioned semantic buckets remain bit-for-bit compatible across deployments",()=>{
+  assert.deepEqual(mindLshBands(vector),[
+    34744,59203,64038,36314,22430,51706,39595,65178,7524,10872,
+    79,56479,41953,47820,33023,45998,27815,36635,55753,14514,
+  ]);
+});
+
 test("one-bit multiprobe includes each exact bucket and all its neighboring buckets",()=>{
   const bands=mindLshBands(vector);
   const probes=mindLshProbes(vector);
