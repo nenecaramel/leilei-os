@@ -467,6 +467,31 @@ test("hybrid Hook keeps signed lexical fallback when local scorer is down",async
   assert.equal((await f.state())[0].pending_recalls.length,1);
 });
 
+test("hybrid Hook uses signed lexical fallback when cold local scoring exceeds 1 second",async t=>{
+  const candidate={stateId:ID,kind:"memory",text:"tea"};
+  const f=await fixture(t,(_body,res)=>res.end(JSON.stringify({
+    success:true,data:{...signedData([candidate]),snapshot_version:"a".repeat(64)},
+  })));
+  const socket=join(f.home,"hybrid.sock");
+  const close=await startClaudeCodeMindHybridServer({
+    scoreCandidatesHybrid:async()=>{
+      await new Promise(resolve=>setTimeout(resolve,1600));
+      return {selectedIds:[ID]};
+    },
+  },socket);
+  t.after(close);
+  f.config.semantic_socket=socket;
+  f.config.index_mode="hybrid_conditional_v1";
+  await writeFile(join(f.home,"mind.env"),envContent(f.config),{mode:0o600});
+  let output="";
+  const start=Date.now();
+  await runHook(prompt(),async chunk=>{output+=chunk;});
+  assert.equal(output,CONTEXT+"\\n");
+  assert.equal(f.calls.length,1,"no second Railway verification for timed-out scorer");
+  assert.ok(Date.now()-start<3800,"slow local scorer must not hold the Hook past its deadline");
+  assert.equal((await f.state())[0].pending_recalls.length,1);
+});
+
 test("hybrid Hook outputs zero on verified current empty selection",async t=>{
   const candidate={stateId:ID,kind:"memory",text:"tea"};
   const f=await fixture(t,(body,res)=>res.end(JSON.stringify({
