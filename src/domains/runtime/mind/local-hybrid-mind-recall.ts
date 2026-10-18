@@ -105,6 +105,34 @@ export class LocalHybridMindRecallScorer implements BreathSemanticScorer {
       hits:selected.map((x,i)=>({stateId:x.stateId,score:i===0?0.99:0.98}))};
   }
 
+  /** Only this turn's Railway candidate set is scored; no full snapshot. */
+  async scoreCandidatesHybrid(input: {
+    query: string;
+    candidates: readonly BreathSemanticCandidate[];
+  }): Promise<{selectedIds: string[]}> {
+    if (!input.query.trim() || input.candidates.length < 1 ||
+        input.candidates.length > MAX_HYBRID_MEMORIES ||
+        new Set(input.candidates.map(c => c.stateId)).size !== input.candidates.length)
+      throw new Error("Invalid on-demand Mind candidate set.");
+    const [e5Scores, ritScores] = await Promise.all([
+      this.e5.score(input), this.ritrieve.score(input),
+    ]);
+    const ranked = (scores: ReadonlyMap<string, number>) => input.candidates
+      .map(c => {
+        const score = scores.get(c.stateId);
+        if (score === undefined || !Number.isFinite(score) || score < 0 || score > 1)
+          throw new Error("Incomplete on-demand Mind scores.");
+        return {stateId: c.stateId, score};
+      })
+      .sort((a, b) => b.score - a.score || a.stateId.localeCompare(b.stateId));
+    const selected = selectHybridMindCandidatesConditional({
+      query: input.query, mode: "agreement",
+      memories: input.candidates.map(c => ({stateId: c.stateId, text: c.text})),
+      e5Ranked: ranked(e5Scores), ritrieveRanked: ranked(ritScores),
+    });
+    return {selectedIds: selected.map(c => c.stateId)};
+  }
+
   async close(): Promise<void> {
     this.active=null;
     await this.ritrieve.close();
