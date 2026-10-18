@@ -9,6 +9,7 @@ export type ClaudeCodeRecallInput = {
   sessionId: string;
   query: string;
   candidateQuery?: string;
+  retrievalMode?: "hybrid_conditional_v1";
   contextEpoch?: number;
   excludeIds: string[];
   semanticCandidates?: BreathSemanticCandidate[];
@@ -49,7 +50,7 @@ export class ClaudeCodeMindRecallService {
     const now = new Date().toISOString();
     // Only the Claude adapter uses server-side bounded discovery.
     // Hash exactly the same candidate records that are passed to its renderer.
-    const states = this.reader.searchGlobalRecallCandidates
+    const states = input.retrievalMode === "hybrid_conditional_v1" && this.reader.searchGlobalRecallCandidates
       ? await this.reader.searchGlobalRecallCandidates({
           userId: input.userId, subjectId: this.subjectId,
           query: input.candidateQuery ?? input.query, excludeIds: input.excludeIds,
