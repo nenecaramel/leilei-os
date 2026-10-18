@@ -421,17 +421,22 @@ test("indexed Hook without local index uses exactly one lexical Railway fallback
   assert.equal(f.calls[0].semantic_snapshot_version, undefined);
 });
 
-test("hybrid conditional Hook makes one signed Railway recall with at most two local picks",async t=>{
-  const f=await fixture(t,(_body,res)=>res.end(JSON.stringify({
-    success:true,data:{...signedData(),semantic_mode:"snapshot_v1"},
+test("hybrid Hook scores Railway candidates on demand and uses the signed second result",async t=>{
+  const candidate={stateId:ID,kind:"memory",text:"tea"};
+  const f=await fixture(t,(body,res)=>res.end(JSON.stringify({
+    success:true,data:body.snapshot_scores
+      ? {...signedData(),semantic_mode:"snapshot_v1",snapshot_version:"a".repeat(64)}
+      : {...signedData([candidate]),semantic_mode:"legacy",snapshot_version:"a".repeat(64)},
   })));
   const socket=join(f.home,"hybrid.sock");
-  const version="c".repeat(64);
+  let scored=0;
   const close=await startMindRecallSemanticServer({
-    score:async()=>new Map<string,number>(),
-    searchHybrid:async query=>{
-      assert.equal(query,"tea");
-      return {version,count:2,hits:[{stateId:ID,score:.99},{stateId:ID2,score:.98}]};
+    score:async()=>new Map(),
+    scoreCandidatesHybrid:async input=>{
+      scored++;
+      assert.equal(input.query,"tea");
+      assert.deepEqual(input.candidates,[candidate]);
+      return {selectedIds:[ID]};
     },
   },socket);
   t.after(close);
@@ -439,34 +444,40 @@ test("hybrid conditional Hook makes one signed Railway recall with at most two l
   f.config.index_mode="hybrid_conditional_v1";
   await writeFile(join(f.home,"mind.env"),envContent(f.config),{mode:0o600});
   let output="";
-  await runHook(prompt(),async text=>{output+=text;});
+  await runHook(prompt(),async chunk=>{output+=chunk;});
   assert.equal(output,CONTEXT+"\n");
-  assert.equal(f.calls.length,1);
-  assert.equal(f.calls[0].semantic_snapshot_version,version);
-  assert.deepEqual(f.calls[0].snapshot_scores,{[ID]:.99,[ID2]:.98});
+  assert.equal(scored,1);
+  assert.equal(f.calls.length,2);
+  assert.deepEqual(f.calls[1].snapshot_scores,{[ID]:.99});
+  assert.equal(f.calls[1].semantic_snapshot_version,"a".repeat(64));
+  assert.equal((await f.state())[0].pending_recalls.length,1);
 });
 
-test("hybrid conditional Hook preserves original Railway recall if Mac local scorer is down",async t=>{
-  const f=await fixture(t);
+test("hybrid Hook keeps signed lexical fallback when local scorer is down",async t=>{
+  const candidate={stateId:ID,kind:"memory",text:"tea"};
+  const f=await fixture(t,(_body,res)=>res.end(JSON.stringify({
+    success:true,data:{...signedData([candidate]),snapshot_version:"a".repeat(64)},
+  })));
   f.config.index_mode="hybrid_conditional_v1";
   await writeFile(join(f.home,"mind.env"),envContent(f.config),{mode:0o600});
   let output="";
   await runHook(prompt(),async text=>{output+=text;});
   assert.equal(output,CONTEXT+"\n");
   assert.equal(f.calls.length,1);
-  assert.equal(f.calls[0].semantic_snapshot_version,undefined);
-  assert.equal(f.calls[0].receipt_mode,"signed_v1");
   assert.equal((await f.state())[0].pending_recalls.length,1);
 });
 
-test("hybrid conditional Hook refuses stale snapshot after Railway review",async t=>{
-  const f=await fixture(t,(_body,res)=>res.end(JSON.stringify({
-    success:true,data:{...signedData(),semantic_mode:"legacy"},
+test("hybrid Hook outputs zero on verified current empty selection",async t=>{
+  const candidate={stateId:ID,kind:"memory",text:"tea"};
+  const f=await fixture(t,(body,res)=>res.end(JSON.stringify({
+    success:true,data:body.snapshot_scores
+      ? {context:"",memory_ids:[],semantic_candidates:[],semantic_mode:"snapshot_v1",snapshot_version:"a".repeat(64)}
+      : {...signedData([candidate]),snapshot_version:"a".repeat(64)},
   })));
   const socket=join(f.home,"hybrid.sock");
   const close=await startMindRecallSemanticServer({
-    score:async()=>new Map<string,number>(),
-    searchHybrid:async()=>({version:"b".repeat(64),count:1,hits:[{stateId:ID,score:.99}]}),
+    score:async()=>new Map(),
+    scoreCandidatesHybrid:async()=>({selectedIds:[]}),
   },socket);
   t.after(close);
   f.config.semantic_socket=socket;
@@ -475,5 +486,28 @@ test("hybrid conditional Hook refuses stale snapshot after Railway review",async
   let output="";
   await runHook(prompt(),async text=>{output+=text;});
   assert.equal(output,"");
-  assert.equal(f.calls.length,1);
+  assert.equal(f.calls.length,2);
+  assert.deepEqual(f.calls[1].snapshot_scores,{});
+});
+
+test("hybrid Hook uses current server fallback if snapshot changed",async t=>{
+  const candidate={stateId:ID,kind:"memory",text:"tea"};
+  const f=await fixture(t,(body,res)=>res.end(JSON.stringify({
+    success:true,data:body.snapshot_scores
+      ? {...signedData(),semantic_mode:"legacy"}
+      : {...signedData([candidate]),snapshot_version:"a".repeat(64)},
+  })));
+  const socket=join(f.home,"hybrid.sock");
+  const close=await startMindRecallSemanticServer({
+    score:async()=>new Map(),
+    scoreCandidatesHybrid:async()=>({selectedIds:[ID]}),
+  },socket);
+  t.after(close);
+  f.config.semantic_socket=socket;
+  f.config.index_mode="hybrid_conditional_v1";
+  await writeFile(join(f.home,"mind.env"),envContent(f.config),{mode:0o600});
+  let output="";
+  await runHook(prompt(),async text=>{output+=text;});
+  assert.equal(output,CONTEXT+"\n");
+  assert.equal(f.calls.length,2);
 });
