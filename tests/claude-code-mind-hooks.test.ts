@@ -446,14 +446,17 @@ test("hybrid conditional Hook makes one signed Railway recall with at most two l
   assert.deepEqual(f.calls[0].snapshot_scores,{[ID]:.99,[ID2]:.98});
 });
 
-test("hybrid conditional Hook abstains without a local index; never makes lexical fallback",async t=>{
+test("hybrid conditional Hook preserves original Railway recall if Mac local scorer is down",async t=>{
   const f=await fixture(t);
   f.config.index_mode="hybrid_conditional_v1";
   await writeFile(join(f.home,"mind.env"),envContent(f.config),{mode:0o600});
   let output="";
   await runHook(prompt(),async text=>{output+=text;});
-  assert.equal(output,"");
-  assert.equal(f.calls.length,0);
+  assert.equal(output,CONTEXT+"\n");
+  assert.equal(f.calls.length,1);
+  assert.equal(f.calls[0].semantic_snapshot_version,undefined);
+  assert.equal(f.calls[0].receipt_mode,"signed_v1");
+  assert.equal((await f.state())[0].pending_recalls.length,1);
 });
 
 test("hybrid conditional Hook refuses stale snapshot after Railway review",async t=>{
