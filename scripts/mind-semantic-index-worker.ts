@@ -23,6 +23,7 @@ let again = false;
 let stopping = false;
 let embeddingServer: Server | null = null;
 let retry: ReturnType<typeof setTimeout> | null = null;
+let leaseRecovery: ReturnType<typeof setInterval> | null = null;
 
 const hashText = (text:string) => createHash("sha256").update(text).digest("hex");
 
@@ -89,10 +90,14 @@ async function drain():Promise<void>{
         if(stopping)return;
         const jobs=await claim();
         if(jobs.length===0)break;
-        for(const job of jobs){
-          const [vector]=await embedder.embedPassages([job.text.slice(0,2_000)]);
-          await commit(job,mindLshBands(vector!));
-        }
+        // Reuse one model inference for the entire claimed batch. This keeps
+        // the one-time 10k+ Memory backfill practical without fetching full
+        // Memory into RAM or copying any of it to the Mac.
+        const vectors=await embedder.embedPassages(
+          jobs.map(job=>job.text.slice(0,2_000)),
+        );
+        for(let i=0;i<jobs.length;i++)
+          await commit(jobs[i]!,mindLshBands(vectors[i]!));
       }
     }while(again);
   }finally{draining=false;}
@@ -145,7 +150,7 @@ async function startPrivateQueryEmbedding(): Promise<Server> {
 function scheduleDrain():void {
   if(stopping)return;
   void drain().catch(()=>{
-    process.stderr.write("MIND_SEMANTIC_INDEX_RETRY_REQUIRED\\n");
+    process.stderr.write("MIND_SEMANTIC_INDEX_RETRY_REQUIRED\n");
     if(retry)clearTimeout(retry);
     retry=setTimeout(()=>{retry=null;scheduleDrain();},5*60_000);
   });
@@ -157,9 +162,14 @@ async function main():Promise<void>{
   // On every LISTEN (re)connection, sweep unprocessed rows in case a
   // database notification occurred while this worker was disconnected.
   await listener.listen("leilei_mind_semantic_dirty",scheduleDrain,scheduleDrain);
+  // Crash recovery only on the Railway worker's database queue. This is not
+  // a Mac->Railway poll, and it cannot emit any Claude recall requests.
+  leaseRecovery=setInterval(scheduleDrain,5*60_000);
+  leaseRecovery.unref();
   const shutdown=()=>{
     stopping=true;
     if(retry)clearTimeout(retry);
+    if(leaseRecovery)clearInterval(leaseRecovery);
     embeddingServer?.close();
     void listener.end().then(()=>db.close()).then(()=>{
       process.exit(0);
@@ -172,6 +182,7 @@ async function main():Promise<void>{
 }
 await main().catch(async()=>{
   process.stderr.write("MIND_SEMANTIC_INDEX_WORKER_UNAVAILABLE\n");
+  if(leaseRecovery)clearInterval(leaseRecovery);
   embeddingServer?.close();
   await listener.end().catch(()=>undefined);
   await db.close().catch(()=>undefined);
