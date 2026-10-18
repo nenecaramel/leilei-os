@@ -714,7 +714,7 @@ implements NativeLiveMacDaemonRelayClient {
       listenerInstanceId: input.listenerInstanceId,
       reservationId: input.reservationId,
       events: [...input.events],
-    });
+    }, AbortSignal.timeout(2_000));
   }
 
   private async appendRuntimeEventBatch(input: {
@@ -724,17 +724,22 @@ implements NativeLiveMacDaemonRelayClient {
       sequence: number;
       event: import("../../conversation/native-live-conversation-orchestrator.js").NativeLiveNormalizedEvent;
     }>;
-  }): Promise<void> {
+  }, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
     try {
-      await this.postRetryableBounded(
+      // Bound caller latency even when fetch or its body reader ignores abort.
+      // All retries and recursive 413 splits consume this same elapsed budget.
+      await awaitRelayDeadline(this.postRetryableBounded(
         `/reservations/${encodeURIComponent(input.reservationId)}/events/batch`,
         {
           listener_instance_id: input.listenerInstanceId,
           events: input.events,
         },
         3,
-      );
+        signal,
+      ), signal);
     } catch (error) {
+      signal.throwIfAborted();
       if (
         !isRelayPayloadTooLarge(error)
         || input.events.length <= 1
@@ -746,11 +751,11 @@ implements NativeLiveMacDaemonRelayClient {
       await this.appendRuntimeEventBatch({
         ...input,
         events: input.events.slice(0, midpoint),
-      });
+      }, signal);
       await this.appendRuntimeEventBatch({
         ...input,
         events: input.events.slice(midpoint),
-      });
+      }, signal);
     }
   }
 
@@ -1292,5 +1297,16 @@ function delayRelayRetry(
       signal?.removeEventListener("abort", onAbort);
     };
     signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function awaitRelayDeadline<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    operation.then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", onAbort);
+    });
   });
 }

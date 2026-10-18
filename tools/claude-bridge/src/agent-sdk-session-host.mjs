@@ -32,7 +32,7 @@ class SessionHost {
     this.events = new EventEmitter(); this.ids = new Set(); this.startedCommands = new Set();
     this.currentCommandUuid = null;
     this.taskState = new AgentSdkTaskState(() => this.publishTaskState());
-    this.pending = []; this.active = null; this.state = 'starting'; this.sessionId = null;
+    this.pending = []; this.active = null; this.finishing = null; this.state = 'starting'; this.sessionId = null;
     this.segment = newSegment();
     this.queryClosed = false;
     this.backgroundWork = new Set();
@@ -95,13 +95,15 @@ class SessionHost {
     if (!['human', 'task-notification', 'unclassified'].includes(source)) return Promise.reject(new Error('Invalid session input source.'));
     if ((onNormalizedEvent !== null && typeof onNormalizedEvent !== 'function') || (toolImageHandler !== null && typeof toolImageHandler !== 'function')) return Promise.reject(new Error('Invalid turn output handler.'));
     this.ids.add(id);
+    let cancelDelivery;
+    const cancelled = new Promise(resolve => { cancelDelivery = resolve; });
     const completion = new Promise((resolve, reject) => this.pending.push({ text, id, source, resolve, reject,
-      onNormalizedEvent, forwardImages: createToolImageForwarder(toolImageHandler), images: new AbortController(), delivery: Promise.resolve(),
+      cancelled, cancelDelivery, onNormalizedEvent, forwardImages: createToolImageForwarder(toolImageHandler), images: new AbortController(), delivery: Promise.resolve(),
       normalizedEvents: [], rawEvents: [], promptHooks: [text], stampedReply: false, commandIds: new Set([id]), remainingIds: new Set([id]), dispatched: false }));
     this.pump(); return completion;
   }
   async pump() {
-    if (this.backgroundPending || this.active || !this.pending.length || ['closed', 'failed'].includes(this.state)) return;
+    if (this.backgroundPending || this.active || this.finishing || !this.pending.length || ['closed', 'failed'].includes(this.state)) return;
     this.active = this.pending.shift(); this.state = 'running';
     const turn = this.active;
     try {
@@ -187,7 +189,10 @@ class SessionHost {
     return result;
   }
   rejectWork(error) {
-    this.active?.images.abort(); this.active?.reject(error); this.active = null;
+    for (const turn of [this.active, this.finishing]) {
+      turn?.images.abort(); turn?.cancelDelivery(); turn?.reject(error);
+    }
+    this.active = null; this.finishing = null;
     for (const item of this.pending.splice(0)) item.reject(error);
   }
   async route(message) {
@@ -297,7 +302,8 @@ class SessionHost {
           if (message.subtype === 'success' && !message.is_error && turn.remainingIds.size) {
             this.events.emit('event', message); continue;
           }
-          this.active = null; this.state = 'idle';
+          // Retain cancellation ownership and input ordering until delivery ends.
+          this.finishing = turn; this.active = null; this.state = 'idle';
           // Distinguish a logical foreground boundary from autonomous results.
           // The owner serializes its durable commit before later background frames.
           this.events.emit('turn-result', { inputId: turn.id });
@@ -308,7 +314,10 @@ class SessionHost {
           // attributes the unstamped frame without streaming it early.
           const events = turn.rawEvents;
           const normalizedEvents = turn.normalizedEvents;
-          await turn.delivery;
+          await Promise.race([turn.delivery, turn.cancelled]);
+          if (this.state === 'closed') break;
+          if (this.state === 'failed') throw this.failure;
+          this.finishing = null;
           if (message.subtype !== 'success' || message.is_error) turn.reject(Object.assign(new Error(turn.interruptRequested ? 'SDK turn interrupted.' : 'SDK turn failed.'), {
             runtimeCode: turn.interruptRequested ? 'INTERRUPTED' : 'CLAUDE_PROCESS_FAILED', ...(turn.interruptReceipt ? { interruptReceipt: turn.interruptReceipt } : {}),
           }));

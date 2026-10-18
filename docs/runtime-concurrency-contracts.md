@@ -26,6 +26,24 @@ consume the main session's pending receipt.
 
 ## Deterministic verification boundaries
 
+SDK turn completion retains a finishing turn until delivery settles; close or
+failure rejects that turn and late delivery cannot reopen it. Advisory event
+uploads share a two-second elapsed deadline across response parsing, retries and
+batch splitting; terminal result submission keeps its separate budget.
+
+Automatic background receipt replay reacquires the listener lease before delivery.
+Shutdown does not begin replay after a pending renewal returns. A handoff drain is
+not ready while that conversation has normal or quarantined background receipts.
+After a local acknowledgement partially succeeds, recovery still verifies writer
+retirement before releasing its conversation fence.
+
+An explicit HTTP 409 `RESERVATION_CONFLICT` for a foreground terminal receipt moves
+its unchanged local evidence to quarantine. The affected conversation remains
+fenced across restart; unrelated conversations can proceed. This is containment,
+not proof that the old reply was committed. Verified recovery is still required
+before reusing that conversation. Transport and other ambiguous failures retain
+the ordinary retry record; neither path reruns Claude to reconstruct output.
+
 Relay service tests use a deferred finalize barrier to force a repository mutation
 conflict after ownership admission. They assert service sequencing and observable
 calls; they do not prove SQL locking or simulate a real listener takeover. The DB
