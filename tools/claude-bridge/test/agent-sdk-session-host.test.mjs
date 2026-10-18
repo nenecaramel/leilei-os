@@ -292,3 +292,54 @@ test('asynchronous background commit failure rejects waiting input and closes wi
  reject(new Error('synthetic commit failed'));await Promise.all([pending,failed]);
  assert.equal(f.closed,1);assert.equal(f.inputs.length,0);
 });
+
+for (const action of ['close', 'fail']) {
+ test(`${action} rejects a finishing turn and releases completion while live delivery is stalled`, async t => {
+  const f = await fixture();
+  const entered = barrier(), release = barrier(), boundary = barrier();
+  t.after(() => release.resolve());
+  t.after(() => f.host.close());
+  f.host.events.once('turn-result', () => boundary.resolve());
+  let outcome = null, completion = null;
+  const turn = f.host.submit('first', { id: 'first', onNormalizedEvent: async () => {
+   entered.resolve(); await release.promise;
+  }});
+  turn.then(value => { outcome = { value }; }, error => { outcome = { error }; });
+  f.host.completion.then(() => { completion = 'closed'; }, error => { completion = error; });
+  await f.event(stamped('first', 'answer'));
+  await entered.promise;
+  f.output.push({ ...result(), user_message_uuid: 'first' });
+  await boundary.promise;
+  const reason = new Error(`synthetic ${action}`);
+  const queued = assert.rejects(f.host.submit('second', { id: 'second' }), error => error === reason);
+  await f.host[action](reason);
+  await queued;
+  await new Promise(setImmediate);
+  assert.equal(outcome?.error, reason, 'finishing turn rejects before the live callback is released');
+  assert.equal(completion, action === 'close' ? 'closed' : reason, 'reader completion is released without live delivery');
+  assert.deepEqual(f.inputs.map(input => input.uuid), ['first']);
+  release.resolve();
+  await new Promise(setImmediate);
+  assert.equal(outcome?.error, reason, 'late delivery cannot turn cancellation into success');
+ });
+}
+
+test('input submitted at a result boundary waits for foreground delivery before dispatch', async t => {
+ const f = await fixture();
+ const entered = barrier(), release = barrier(), boundary = barrier();
+ t.after(() => release.resolve()); t.after(() => f.host.close());
+ f.host.events.once('turn-result', () => boundary.resolve());
+ const first = f.host.submit('first', { id: 'first', onNormalizedEvent: async () => {
+  entered.resolve(); await release.promise;
+ }});
+ first.catch(() => {});
+ await f.event(stamped('first', 'answer')); await entered.promise;
+ f.output.push({ ...result(), user_message_uuid: 'first' }); await boundary.promise;
+ const second = f.host.submit('second', { id: 'second' }); second.catch(() => {});
+ await new Promise(setImmediate);
+ assert.deepEqual(f.inputs.map(input => input.uuid), ['first']);
+ release.resolve(); await first;
+ await new Promise(setImmediate);
+ assert.deepEqual(f.inputs.map(input => input.uuid), ['first', 'second']);
+ await f.event({ ...result(), user_message_uuid: 'second' }); await second;
+});

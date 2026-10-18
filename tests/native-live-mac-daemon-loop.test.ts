@@ -1392,3 +1392,33 @@ test("pending background recovery fence blocks both persistent execution and leg
   assert.equal(persistentRuns,0);
   assert.equal(retired,0,"recovery guard must prevent branch retirement as an implicit fallback");
 });
+
+
+for (const persistentCommit of [false, true]) {
+  test(`fresh terminal conflict quarantines before next poll (${persistentCommit ? "persistent" : "legacy"}) without logging raw payload`, async t => {
+    const directory = mkdtempSync(join(tmpdir(), "leilei-fresh-terminal-conflict-"));
+    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    const outbox = new NativeLiveMacResultOutbox(directory);
+    const relay = new FakeRelay(); relay.reservation!.reservationId = prepareId;
+    relay.submitError = Object.assign(new Error("SECRET raw provider payload"), { httpStatus: 409, relayCode: "RESERVATION_CONFLICT" });
+    let executions = 0;
+    const executor = { async execute() { executions++; return success(); } };
+    const suspended: unknown[] = [];
+    const persistent = { canRoute: () => true, async retire() {}, suspend(id: string, reason: string) { suspended.push([id, reason]); },
+      async execute(_command: unknown, options: any) {
+        executions++;
+        try { await options.commit(success()); } catch {}
+        return { result: success(), delivery: "unknown" };
+      } };
+    const logs: string[] = [];
+    t.mock.method(process.stderr, "write", (data: string) => { logs.push(String(data)); return true; });
+    const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, outbox, persistentCommit ? persistent as never : null);
+    assert.equal((await loop.runOnce()).outcome, "result_recovery_required");
+    assert.deepEqual(await outbox.list(), []);
+    assert.equal((await outbox.listQuarantined()).length, 1);
+    assert.equal((await loop.runOnce()).outcome, "result_recovery_required");
+    assert.equal(executions, 1);
+    assert.equal(logs.join("").includes("SECRET"), false);
+    if (persistentCommit) assert.deepEqual(suspended, [[conversationId, "recovery"], [conversationId, "recovery"]]);
+  });
+}

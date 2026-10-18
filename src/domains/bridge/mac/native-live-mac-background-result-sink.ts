@@ -208,7 +208,7 @@ export class NativeLiveMacBackgroundResultSink {
         // No asynchronous retirement from inside this ACK lock. Suspended
         // dispatch is synchronous, so a foreground send cannot slip in
         // before the next periodic recovery flush observes the saved receipt.
-        this.input.onImmediateFence?.(pending.result.conversation_id);
+        this.fenceForRecovery(pending.result.conversation_id);
         if (error instanceof NativeBackgroundStaleReceipt) {
           // Never lose a generated result just because the backend rejected its
           // old parent. Quarantine the immutable evidence and fence this
@@ -234,7 +234,7 @@ export class NativeLiveMacBackgroundResultSink {
       // A torn coverage-journal write can leave B1 uncovered but B2 covered.
       // Never publish B2 or a later segment ahead of its producer B1.
       if (all.some(value => !value.coveringCheckpointId)) {
-        this.input.onImmediateFence?.(conversationId);
+        this.fenceForRecovery(conversationId);
         throw new Error("Uncovered autonomous output remains before foreground publication.");
       }
       const pending = all;
@@ -243,7 +243,7 @@ export class NativeLiveMacBackgroundResultSink {
           const ack = await this.deliver(value);
           if (ack.outcome !== "committed") throw new Error("Deferred background result is not canonically published.");
         } catch (error) {
-          this.input.onImmediateFence?.(conversationId);
+          this.fenceForRecovery(conversationId);
           throw error;
         }
       }
@@ -254,13 +254,19 @@ export class NativeLiveMacBackgroundResultSink {
         && value.generationId === generationId
         && value.deferred === true && !value.coveringCheckpointId);
       if (uncovered) {
-        this.input.onImmediateFence?.(conversationId);
+        this.fenceForRecovery(conversationId);
         throw new Error("Uncovered autonomous output remains after foreground publication.");
       }
     });
   }
   async cover(conversationId: string, generationId: string, coveringCheckpointId: string): Promise<number> {
     return this.serial(() => this.input.outbox.cover(conversationId, generationId, coveringCheckpointId));
+  }
+  /** Drain readiness requires all durable evidence for this conversation to
+   * settle, including quarantined receipts that normal replay cannot clear. */
+  hasPendingRecovery(conversationId: string): boolean {
+    return [...this.input.outbox.listSync(), ...this.input.outbox.listQuarantinedSync()]
+      .some(value => value.result.conversation_id === conversationId);
   }
   /** Synchronous failure fence: a foreground exception can occur before
    * coverage was ever journaled, while B remains queued on disk. */
@@ -380,6 +386,13 @@ export class NativeLiveMacBackgroundResultSink {
       finally { this.recoveryInProgress.delete(conversationId); }
     }
     return settled;
+  }
+  private fenceForRecovery(conversationId: string): void {
+    // acknowledge() may unlink the final receipt before a directory fsync or
+    // order-index update fails. Recovery must still verify writer retirement
+    // on a later empty flush before releasing this synchronous input fence.
+    this.recoveryCandidates.add(conversationId);
+    this.input.onImmediateFence?.(conversationId);
   }
   private async deliver(value: Entry, quarantined = false): Promise<NativeLiveBackgroundAck> {
     const prepared = await this.input.relay.prepareBackgroundResult(value);

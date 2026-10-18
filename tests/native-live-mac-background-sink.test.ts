@@ -441,3 +441,47 @@ test("crash after receipt fsync but before index rename is reconciled before nex
   assert.deepEqual((await restarted.list()).map(x => x.receiptId), [first, second]);
 });
 
+
+for (const path of ["commit", "publishCovered"] as const) test(`${path} recovers after real acknowledgement unlinks before directory sync fails`, async t => {
+  const f = await fixture(t);
+  let failSync = false, retirementAttempts = 0, fenced = false;
+  const originalSync = (f.outbox as any).sync.bind(f.outbox);
+  (f.outbox as any).sync = () => {
+    if (failSync) { failSync = false; throw new Error("injected post-unlink directory sync failure"); }
+    originalSync();
+  };
+  const relay = { ...f.relay, async submitBackgroundResult(value: any) {
+    if (path === "publishCovered" && !value.coveringCheckpointId)
+      return { outcome: "queued" as const, duplicate: false, providerCheckpointId: null };
+    // save/cover has completed; the next sync is the real acknowledge's
+    // directory fsync, after it has actually removed the receipt file.
+    failSync = true;
+    return { outcome: "committed" as const, duplicate: false,
+      providerCheckpointId: value.coveringCheckpointId ?? value.result.provider_checkpoint_id };
+  } };
+  const sink = new NativeLiveMacBackgroundResultSink({ listenerInstanceId: id(7), relay, outbox: f.outbox,
+    onImmediateFence: () => { fenced = true; },
+    onRecovered: async () => {
+      assert.equal(fenced, true);
+      if (++retirementAttempts === 1) throw new Error("writer retirement unverified");
+      fenced = false;
+    },
+  });
+  if (path === "commit") await assert.rejects(sink.commit(owner, frame), /post-unlink/);
+  else {
+    await sink.commit({ ...owner, deferred: true }, frame);
+    await sink.cover(id(1), id(2), id(8));
+    await assert.rejects(sink.publishCovered(id(1), id(2)), /post-unlink/);
+  }
+  assert.equal(fenced, true);
+  assert.deepEqual(await f.outbox.list(), [], "actual acknowledge already unlinked the receipt");
+  assert.deepEqual(await f.outbox.listQuarantined(), []);
+  assert.equal(await sink.flush(), 0);
+  assert.equal(retirementAttempts, 1, "empty replay still attempts verified retirement");
+  assert.equal(fenced, true, "failed retirement retains fence");
+  assert.equal(await sink.flush(), 0);
+  assert.equal(retirementAttempts, 2);
+  assert.equal(fenced, false);
+  await sink.flush();
+  assert.equal(retirementAttempts, 2);
+});

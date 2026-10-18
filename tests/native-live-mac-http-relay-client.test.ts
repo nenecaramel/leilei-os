@@ -1224,6 +1224,58 @@ test("Mac HTTP relay runtime event batch bounds transient retries", async () => 
   assert.equal(calls, 3);
 });
 
+for (const stalledPhase of ["fetch", "body", "retry", "split"] as const) {
+  test(`Mac HTTP relay runtime event upload bounds stalled ${stalledPhase} within one elapsed deadline`, async () => {
+    let calls = 0;
+    const signals: Array<AbortSignal | null | undefined> = [];
+    let release!: () => void;
+    const stalled = new Promise<void>((resolve) => { release = resolve; });
+    const accepted = () => new Response(JSON.stringify({ success: true, data: { accepted: true } }));
+    const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async (_url, init) => {
+      calls += 1;
+      signals.push(init?.signal);
+      if ((stalledPhase === "retry" || stalledPhase === "split") && calls === 1) {
+        // Spend part of the budget before retrying/splitting; a fresh deadline
+        // for the next request would exceed the caller's elapsed deadline.
+        await new Promise((resolve) => setTimeout(resolve, 1_100));
+        return new Response(JSON.stringify({ success: false }), { status: stalledPhase === "split" ? 413 : 503 });
+      }
+      if (stalledPhase === "body") {
+        const response = accepted();
+        response.json = async () => { await stalled; return { success: true, data: {} }; };
+        return response;
+      }
+      // Deliberately ignore abort: the application must release its caller even
+      // if the transport/response reader does not cooperate with cancellation.
+      await stalled;
+      return accepted();
+    });
+    const startedAt = performance.now();
+    const upload = client.appendRuntimeEvents({
+      listenerInstanceId: listenerId,
+      reservationId: prepareId,
+      events: [1, 2].map((sequence) => ({ sequence, event: {
+        type: "partial_text" as const, payload: { delta: "a", accumulated_length: sequence },
+      } })),
+    }).then(() => "accepted", (error: unknown) => error instanceof Error ? error.name : "unknown");
+    let guard!: ReturnType<typeof setTimeout>;
+    try {
+      const outcome = await Promise.race([upload, new Promise<string>((resolve) => {
+        guard = setTimeout(() => resolve("caller still blocked"), 2_800);
+      })]);
+      assert.equal(outcome, "TimeoutError");
+      assert.ok(performance.now() - startedAt < 2_750, "one deadline covers all requests and response parsing");
+      assert.equal(calls, stalledPhase === "retry" || stalledPhase === "split" ? 2 : 1);
+      assert.ok(signals.every((signal) => signal instanceof AbortSignal && signal.aborted));
+      assert.ok(signals.every((signal) => signal === signals[0]), "split/retry keeps the same budget");
+    } finally {
+      clearTimeout(guard);
+      release();
+      await upload;
+    }
+  });
+}
+
 test("Mac HTTP relay runtime event batch does not retry durable 409 conflicts", async () => {
   let calls = 0;
   const fakeFetch: typeof fetch = async () => {

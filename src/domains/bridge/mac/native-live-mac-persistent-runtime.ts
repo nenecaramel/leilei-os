@@ -1,3 +1,4 @@
+import { flushNativeLiveBackgroundWithListenerLease } from "./native-live-mac-background-lease.js";
 import { runNativeLiveMacTaskControls, type NativeLiveMacTaskRelay } from "./native-live-mac-task-controls.js";
 import { NativeLiveMacExecutionLease } from "./native-live-mac-execution-lease.js";
 import { drainNativeLiveMacSession } from "./native-live-mac-session-drain.js";
@@ -17,13 +18,14 @@ export class NativeLiveMacPersistentRuntime {
   readonly executor: NativeLiveMacPersistentExecutor;
   private watchdog: NativeLiveMacExecutionLease | null = null;
   private stopped = false;
+  private readonly flushBackground: () => Promise<number>;
   private readonly taskAbort = new AbortController();
   private readonly taskControls: Promise<void>;
   private recoveryTimer: ReturnType<typeof setInterval> | null = null;
   constructor(input: {
     sessionLeaseScheduler?: ConstructorParameters<typeof NativeLiveMacExecutionLease>[0]["scheduler"];
     environment: NodeJS.ProcessEnv; defaultWorkingDirectory: string; listenerInstanceId: string;
-    relay: Pick<NativeLiveMacHttpRelayClient, "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission" | "renewSessionLease" | "prepareBackgroundResult" | "submitBackgroundResult"> & Partial<Pick<NativeLiveMacHttpRelayClient, "bindInput">> & Partial<NativeLiveMacTaskRelay>;
+    relay: Pick<NativeLiveMacHttpRelayClient, "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission" | "renewSessionLease" | "prepareBackgroundResult" | "submitBackgroundResult"> & Partial<Pick<NativeLiveMacHttpRelayClient, "bindInput" | "renewLease">> & Partial<NativeLiveMacTaskRelay>;
     outboxDirectory: string; mcpServerConfig?: NativeLiveMacMcpServerConfig | null;
     /** Injectable clock for deterministic retry/backoff regression tests. */
     backgroundRecoveryNow?: () => number;
@@ -46,6 +48,25 @@ export class NativeLiveMacPersistentRuntime {
       onRecoveryBlocked:async conversationId=>{this.executor.suspend(conversationId,"recovery");await this.executor.retire(conversationId);},
       onRecovered:conversationId=>this.executor.recovered(conversationId),
     });
+    this.flushBackground = async () => {
+      const renewLease = input.relay.renewLease;
+      // Missing lease support is not permission to replay under an expired
+      // listener. Retain receipts and their startup fences until reacquired.
+      if (!renewLease) return 0;
+      let completed = 0;
+      await flushNativeLiveBackgroundWithListenerLease({
+        listenerInstanceId: input.listenerInstanceId,
+        relay: { renewLease: value => renewLease.call(input.relay, value) },
+        backgroundResults: { flush: async () => {
+          // A lease request may finish after closeAll has retired every writer.
+          // Recheck shutdown at the point replay would actually begin.
+          if (this.stopped) return 0;
+          completed = await this.backgroundResults.flush();
+          return completed;
+        } },
+      });
+      return completed;
+    };
     // Capability is version support, never authorization. Older/unreachable
     // servers keep the safe interrupt fallback and do not enter a retry loop.
     const taskControlsAvailable = input.relay.waitTaskControl && input.relay.completeRuntimeControl && input.relay.supportsTaskControls
@@ -89,7 +110,7 @@ export class NativeLiveMacPersistentRuntime {
     // batches at startup and retry transient relay failures periodically.
     const replay = async () => {
       for (let index = 0; index < 512 && !this.stopped; index++) {
-        if (await this.backgroundResults.flush() === 0) break;
+        if (await this.flushBackground() === 0) break;
       }
     };
     void replay().catch(() => {});
@@ -102,12 +123,22 @@ export class NativeLiveMacPersistentRuntime {
     if (!binding) {
       if (generation) return { ready: false, tasks: [], writer: "unknown" as const };
       this.executor.suspend(conversationId);
-      return { ready: true, tasks: [], writer: "closed" as const };
+      const pending = this.backgroundResults.hasPendingRecovery(conversationId);
+      if (pending) this.executor.suspend(conversationId, "recovery");
+      return { ready: !pending, tasks: [], writer: "closed" as const };
     }
     if (binding.session.sessionId !== providerSessionId) throw new Error("Handoff session identity mismatch.");
     return drainNativeLiveMacSession({ session: binding.session,
       fence: () => this.executor.suspend(conversationId), close: () => this.executor.retire(conversationId),
-      settle: async () => { await this.backgroundResults.flush(); },
+      settle: async () => {
+        if (!this.backgroundResults.hasPendingRecovery(conversationId)) return;
+        this.executor.suspend(conversationId, "recovery");
+        await this.flushBackground();
+        // Busy/missing ownership and a bounded flush that leaves more evidence
+        // are both unsettled delivery, even after the local writer has closed.
+        if (this.backgroundResults.hasPendingRecovery(conversationId))
+          throw new Error("Background receipts remain unsettled for handoff.");
+      },
     });
   }
   /** Ownership returned by a server attach; the binding was closed by the earlier drain. */
@@ -122,6 +153,7 @@ export class NativeLiveMacPersistentRuntime {
     await this.executor.closeAll();
     // Registry retains failed closes; its shutdown reports rather than hides them.
     await this.registry.closeAll();
-    await this.backgroundResults.flush();
+    // Durable receipts remain for the next listener-owned recovery pass.
+    // Shutdown must not start another network replay after retiring writers.
   }
 }

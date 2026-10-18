@@ -1,6 +1,6 @@
 import type { NativeLiveMacPersistentExecutor, NativeLiveMacPersistentExecution } from "./native-live-mac-persistent-executor.js";
 import { failure as runtimeFailure } from "./native-live-mac-runtime-executor.js";
-import type { NativeLiveMacResultOutbox } from "./native-live-mac-result-outbox.js";
+import type { NativeLiveMacResultOutbox, NativeLivePendingResult } from "./native-live-mac-result-outbox.js";
 import type {
   NativeLiveRuntimeCommand,
   NativeLiveRuntimeExecutionResult,
@@ -61,6 +61,7 @@ export type NativeLiveResultSubmissionReceipt = {
 };
 
 export type NativeLiveDaemonRunOutcome =
+  | { outcome: "result_recovery_required"; reservationId: string; conversationId: string; code: "RESERVATION_CONFLICT" }
   | { outcome: "idle" }
   | { outcome: "busy" }
   | {
@@ -397,6 +398,7 @@ export interface NativeLiveBackgroundModelExecutor {
 
 export class NativeLiveMacDaemonLoop {
   private running = false;
+  private readonly resultRecoveryConversations = new Set<string>();
 
   constructor(
     private readonly listenerInstanceId: string,
@@ -414,7 +416,7 @@ export class NativeLiveMacDaemonLoop {
     private readonly externalSessionExecutor:
       NativeLiveExternalSessionExecutor | null = null,
     private readonly resultOutbox: NativeLiveMacResultOutbox | null = null,
-    private readonly persistentExecutor: (Pick<NativeLiveMacPersistentExecutor, "canRoute" | "execute" | "retire"> & Partial<Pick<NativeLiveMacPersistentExecutor, "assertAccepting" | "retireSession" | "shouldDeferWake">>) | null = null,
+    private readonly persistentExecutor: (Pick<NativeLiveMacPersistentExecutor, "canRoute" | "execute" | "retire"> & Partial<Pick<NativeLiveMacPersistentExecutor, "assertAccepting" | "retireSession" | "shouldDeferWake" | "suspend">>) | null = null,
   ) {}
 
   async runOnce(): Promise<NativeLiveDaemonRunOutcome> {
@@ -426,12 +428,16 @@ export class NativeLiveMacDaemonLoop {
 
     this.running = true;
     try {
+      for (const entry of await this.resultOutbox?.listQuarantined() ?? []) {
+        this.fenceResultConversation(entry.result.conversation_id);
+      }
       const pending = (await this.resultOutbox?.list())?.[0];
       if (pending) {
         let receipt: NativeLiveResultSubmissionReceipt | void;
         try {
           receipt = await this.relay.submitResult(pending);
-        } catch {
+        } catch (error) {
+          if (await this.quarantineConflict(pending, error)) return this.resultRecoveryOutcome(pending.reservationId, pending.result.conversation_id);
           return { outcome: "delivery_unknown", reservationId: pending.reservationId, result: pending.result };
         }
         await this.resultOutbox!.acknowledge(pending);
@@ -757,6 +763,10 @@ export class NativeLiveMacDaemonLoop {
         return { outcome: "idle" };
       }
 
+      if (this.resultRecoveryConversations.has(reservation.command.conversation_id)) {
+        await this.bestEffortReject(reservation.reservationId, "EXECUTION_START_FAILED");
+        return this.resultRecoveryOutcome(reservation.reservationId, reservation.command.conversation_id);
+      }
       if (reservation.command.operation === "wake"
         && !this.persistentExecutor?.canRoute(reservation.command)
         && this.persistentExecutor?.shouldDeferWake?.(reservation.command)) {
@@ -839,7 +849,11 @@ export class NativeLiveMacDaemonLoop {
         const entry = { listenerInstanceId: this.listenerInstanceId, reservationId: reservation.reservationId, result: value };
         await this.resultOutbox?.save(entry);
         await flushRuntimeEvents();
-        const receipt = await this.relay.submitResult(entry);
+        let receipt: NativeLiveResultSubmissionReceipt | void;
+        try { receipt = await this.relay.submitResult(entry); } catch (error) {
+          if (await this.quarantineConflict(entry, error)) throw new Error("Terminal result requires verified recovery.");
+          throw error;
+        }
         await this.resultOutbox?.acknowledge(entry);
         return receipt;
       };
@@ -937,6 +951,9 @@ export class NativeLiveMacDaemonLoop {
           },
         );
       } catch (error) {
+        if (this.resultRecoveryConversations.has(reservation.command.conversation_id)) {
+          return this.resultRecoveryOutcome(reservation.reservationId, reservation.command.conversation_id);
+        }
         // A reservation that reached /execution-started then failed before
         // submitting any provider result must have an observable local cause.
         // Earlier logs only said "rejected", hiding a fenced SDK writer after
@@ -960,6 +977,9 @@ export class NativeLiveMacDaemonLoop {
         };
       }
 
+      if (this.resultRecoveryConversations.has(reservation.command.conversation_id)) {
+        return this.resultRecoveryOutcome(reservation.reservationId, reservation.command.conversation_id);
+      }
       const persistent = persistentRun as NativeLiveMacPersistentExecution | null;
       if (persistent && persistent.delivery !== "pending") {
         if (persistent.delivery === "unknown") await this.bestEffortDeliveryUnknown(reservation.reservationId);
@@ -984,6 +1004,7 @@ export class NativeLiveMacDaemonLoop {
           result,
         });
       } catch (error) {
+        if (await this.quarantineConflict(pendingResult, error)) return this.resultRecoveryOutcome(reservation.reservationId, result.conversation_id);
         await this.bestEffortDeliveryUnknown(reservation.reservationId);
         const diagnostics = relayFailureDiagnostics(error);
         return {
@@ -1020,6 +1041,26 @@ export class NativeLiveMacDaemonLoop {
     } finally {
       this.running = false;
     }
+  }
+
+  private fenceResultConversation(conversationId: string): void {
+    this.resultRecoveryConversations.add(conversationId);
+    this.persistentExecutor?.suspend?.(conversationId, "recovery");
+  }
+
+  private resultRecoveryOutcome(reservationId: string, conversationId: string): NativeLiveDaemonRunOutcome {
+    return { outcome: "result_recovery_required", reservationId, conversationId, code: "RESERVATION_CONFLICT" };
+  }
+
+  private async quarantineConflict(entry: NativeLivePendingResult, error: unknown): Promise<boolean> {
+    if (!this.resultOutbox || !error || typeof error !== "object") return false;
+    const failure = error as { httpStatus?: unknown; relayCode?: unknown };
+    // Only an explicit permanent protocol rejection. Transport, malformed JSON
+    // and 5xx failures keep the original reservation in the normal retry queue.
+    if (failure.httpStatus !== 409 || failure.relayCode !== "RESERVATION_CONFLICT") return false;
+    await this.resultOutbox.quarantine(entry);
+    this.fenceResultConversation(entry.result.conversation_id);
+    return true;
   }
 
   private async runRuntimeControlPump(
