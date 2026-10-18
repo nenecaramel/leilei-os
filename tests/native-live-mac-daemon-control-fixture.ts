@@ -44,6 +44,7 @@ export async function runDaemonScenario(options: {
   durationMs?: number;
   stopAfterBrokerWait?: number;
   busy?: boolean;
+  toggleAtBrokerWait?: number;
   freshWorkAt?: number;
   relayErrorCalls?: number[];
 }) {
@@ -122,6 +123,7 @@ export async function runDaemonScenario(options: {
   }, {
     async score() { metrics.scored++; return new Map(); },
   });
+  let switchChanged: (()=>void) | null=null;
   const sandbox: Record<string, unknown> = {
     stopping: false, activeWorkWaitController: null,
     listenerInstanceId: listener, claudeTransportKind: "test-only",
@@ -132,6 +134,7 @@ export async function runDaemonScenario(options: {
       stderr: { write() {} },
     },
     silenceWakeScheduler: {
+      watchChanges(callback:()=>void) {switchChanged=callback;return ()=>{switchChanged=null;};},
       nextDeadlineAt() { return null; },
       async refresh() {},
       async fireDue() { metrics.silenceFired++; throw new Error("unexpected silence wake"); },
@@ -163,6 +166,7 @@ export async function runDaemonScenario(options: {
       return new Response(JSON.stringify({ generation: "broker-generation", version: 0 }));
     }
     metrics.brokerWaits++;
+    if(metrics.brokerWaits===options.toggleAtBrokerWait)switchChanged?.();
     const error = options.brokerErrors?.includes(metrics.brokerWaits);
     now += error ? 35_000 : 25_000;
     if (now >= horizon || metrics.brokerWaits === options.stopAfterBrokerWait) sandbox.stopping = true;

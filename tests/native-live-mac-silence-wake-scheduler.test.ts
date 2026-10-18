@@ -117,3 +117,17 @@ test("Mac silence scheduler propagates backend ignored reason", async () => {
   });
   assert.equal(scheduler.nextDeadlineAt(), null);
 });
+
+test("local switch blocks due wake and resumes without replacing the epoch", async () => {
+  let enabled=true;
+  const client=new FakeClient();
+  const scheduler=new NativeLiveMacSilenceWakeScheduler(client,()=>Date.parse("2026-10-04T01:08:00Z"),{isEnabled:()=>enabled,watch:()=>()=>{}});
+  await scheduler.refresh();
+  enabled=false;
+  assert.equal(scheduler.nextDeadlineAt(),null);
+  assert.deepEqual(await scheduler.fireDue(),{outcome:"not_due"});
+  assert.equal(client.fired.length,0);
+  enabled=true;
+  assert.deepEqual(await scheduler.fireDue(),{outcome:"queued",slot:"post_turn_idle"});
+  assert.deepEqual(client.fired,[{epochId,slot:"post_turn_idle"}]);
+});
