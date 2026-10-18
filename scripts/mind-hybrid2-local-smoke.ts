@@ -104,6 +104,10 @@ async function main() {
   const memory = allEligible.slice(0,sampledLength);
   const known = new Set(memory.map(m => m.stateId));
   const reviews = rawReviews.map(r=>loadReview(r,reviewFingerprints[0]!,known));
+  const allQuestions = reviews.flat().map(r=>r.query);
+  if (reviews[0]?.length !== 8 || reviews[1]?.length !== 12 ||
+      allQuestions.length !== 20 || new Set(allQuestions).size !== 20)
+    throw new Error("EXPECTED_DISTINCT_FIXED_8_PLUS_12");
   const scorer = new LocalHybridMindRecallScorer();
   try {
     const started = performance.now();
