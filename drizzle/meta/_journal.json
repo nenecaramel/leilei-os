@@ -771,6 +771,13 @@
       "when": 1792139704910,
       "tag": "0109_native_live_task_controls",
       "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1792310400000,
+      "tag": "0110_claude_code_recall_trgm_index",
+      "breakpoints": true
     }
   ]
 }
