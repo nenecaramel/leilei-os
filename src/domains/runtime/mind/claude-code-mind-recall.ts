@@ -21,8 +21,10 @@ export type ClaudeCodeRecallInput = {
 export class ClaudeCodeMindRecallService {
   private readonly loop: NativeLiveMindLoopService;
   constructor(
-    private readonly reader: Pick<SubjectStateRuntimePort, "list">,
-    config: MindLoopConfig,
+    private readonly reader: Pick<SubjectStateRuntimePort, "list"> & {
+      searchGlobalRecallCandidates?: (input: {userId: string; subjectId: string; query: string; excludeIds: readonly string[]}) => Promise<import("../subject-state/subject-state-contract.js").SubjectStateWrite[]>;
+    },
+    private readonly config: MindLoopConfig,
     private readonly subjectId: string,
     private readonly receipts: ClaudeCodeRecallReceiptPort,
   ) {
@@ -51,7 +53,21 @@ export class ClaudeCodeMindRecallService {
 
   async recall(input: ClaudeCodeRecallInput) {
     const now = new Date().toISOString();
-    const result = await this.loop.readOnlyRecall({
+    // Indexed discovery runs inside Railway only when the repository supports
+    // it. Tests/in-memory readers retain the existing read-only loop.
+    const boundedStates = this.reader.searchGlobalRecallCandidates
+      ? await this.reader.searchGlobalRecallCandidates({
+          userId: input.userId, subjectId: this.subjectId,
+          query: input.query, excludeIds: input.excludeIds,
+        })
+      : null;
+    const loop = boundedStates === null ? this.loop : new NativeLiveMindLoopService({
+      list: async () => boundedStates,
+      append: async () => { throw new Error("Read-only Mind adapter."); },
+      transition: async () => { throw new Error("Read-only Mind adapter."); },
+      saveContextManifest: async () => { throw new Error("Read-only Mind adapter."); },
+    }, {...this.config, breathCooldownHours: 0, breathLimit: Math.min(2, this.config.breathLimit)});
+    const result = await loop.readOnlyRecall({
       manifestId: randomUUID(), userId: input.userId, subjectId: this.subjectId,
       conversation: {
         id: `claude-code:${input.sessionId}`, userId: input.userId,
