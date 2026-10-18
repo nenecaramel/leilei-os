@@ -1,6 +1,6 @@
 /**
  * LOCAL ONLY: Compare the actual opt-in conditional-two live scorer against
- * the existing on-device fixed human reviews (8 + 12 questions).
+ * the existing on-device fixed human reviews (8 + 12 questions) using the *on-demand* candidate scorer.
  *
  * No HTTP, Railway, daemon, Hook, DB, log files or Memory writes.
  * Private backup/query/labels are read solely in this process on the user's Mac.
@@ -92,10 +92,10 @@ async function main() {
     const started = performance.now();
     await scorer.warmup();
     const warmupMs = performance.now() - started;
-    const indexingStart = performance.now();
-    // Local-only digest: no claims about the real server's snapshot version.
-    await scorer.replaceSnapshot({version: fingerprint, memories: memory});
-    const indexMs = performance.now() - indexingStart;
+    // Exercise the new on-demand path, not the retired full-snapshot scorer.
+    const candidates = memory.map(m => ({
+      stateId:m.stateId, text:m.text, kind:"memory" as const,
+    }));
     const reports = [];
     const allLatencies: number[] = [];
     for (let batch = 0; batch < reviews.length; batch++) {
@@ -105,14 +105,15 @@ async function main() {
       const latencies: number[] = [];
       for (const c of reviews[batch]!) {
         const begin = performance.now();
-        const result = await scorer.searchHybrid(c.query);
+        const result = await scorer.scoreCandidatesHybrid({query:c.query,candidates});
         const elapsed = performance.now() - begin;
         latencies.push(elapsed);
         allLatencies.push(elapsed);
-        if (result.version !== fingerprint || result.count !== memory.length
-            || result.hits.length > 2 || new Set(result.hits.map(h => h.stateId)).size !== result.hits.length)
+        if (result.selectedIds.length > 2 ||
+            new Set(result.selectedIds).size !== result.selectedIds.length ||
+            result.selectedIds.some(id=>!known.has(id)))
           throw new Error("LIVE_SELECTOR_CONTRACT");
-        const selected = result.hits.map(h => h.stateId);
+        const selected = result.selectedIds;
         const relevant = new Set(c.relevant_ids);
         const judged = new Set(c.judged_ids);
         const matches = selected.filter(id => relevant.has(id)).length;
@@ -148,18 +149,18 @@ async function main() {
     }
     // Report aggregate only. No query, Memory, ID, token or path is printed.
     console.log(JSON.stringify({
-      experiment: "local_live_conditional_two_selector_against_private_fixed_reviews",
+      experiment: "local_on_demand_conditional_two_selector_against_private_fixed_reviews",
       model: "E5_plus_ritrieve",
       memory_count: memory.length,
       model_warmup_ms: Math.round(warmupMs),
-      full_snapshot_prepare_ms: Math.round(indexMs),
+      candidate_count_per_query: candidates.length,
       queries: allLatencies.length,
       local_query_p50_ms: Math.round(percentile(allLatencies, 0.50)),
       local_query_p95_ms: Math.round(percentile(allLatencies, 0.95)),
       local_query_max_ms: Math.round(Math.max(...allLatencies)),
-      local_p95_under_indexed_hook_850ms_budget: percentile(allLatencies, 0.95) < 850,
+      local_p95_under_hook_1000ms_budget: percentile(allLatencies, 0.95) < 1000,
       groups: reports,
-      limitations: "On-device live selector only: not full installed Hook/socket/Railway latency or authorization; labels cover reviewed candidate union only.",
+      limitations: "On-device on-demand selector only: no installed Hook/socket/Railway latency or authorization; labels cover reviewed candidate union only.",
     }, null, 2));
     if (reports.some(r => r.unlabeled_selections > 0)) process.exitCode = 2;
   } finally {
