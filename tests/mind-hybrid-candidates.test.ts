@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  hasDirectPhraseAnchor, selectHybridMindCandidates,
+  hasDirectPhraseAnchor, selectHybridMindCandidates, selectHybridMindCandidatesConditional,
   type HybridInput,
 } from "../src/domains/runtime/mind/mind-hybrid-candidates.js";
 
@@ -90,4 +90,53 @@ test("one-memory policy preserves top candidate and never returns a second",()=>
 test("bad bounds or empty queries return no candidates",()=>{
   assert.deepEqual(select({maxItems:20}),[]);
   assert.deepEqual(select({query:"  "}),[]);
+});
+
+test("conditional policy keeps only one when the second lacks strong independent confidence",()=>{
+  const input:HybridInput={
+    query:"有关工作学习的回忆",
+    memories:[
+      memory("a","工作学习"),
+      memory("b","工作学习规划"),
+      memory("c","其它笔记"),
+    ],
+    e5Ranked:[score("a",.94),score("b",.83),score("c",.81)],
+    ritrieveRanked:[score("a",.78),score("b",.705),score("c",.69)],
+    mode:"agreement",
+  };
+  assert.deepEqual(selectHybridMindCandidatesConditional(input).map(x=>x.stateId),["a"]);
+  assert.deepEqual(selectHybridMindCandidates(input).map(x=>x.stateId),["a","b","c"]);
+});
+
+test("conditional policy keeps a second only with both-model rank and score support",()=>{
+  const input:HybridInput={
+    query:"有哪些工作学习的经历",
+    memories:[memory("a","工作经历"),memory("b","学习经历"),memory("c","其他经历")],
+    e5Ranked:[score("a",.92),score("b",.90),score("c",.81)],
+    ritrieveRanked:[score("a",.75),score("b",.73),score("c",.68)],
+    mode:"agreement",
+  };
+  assert.deepEqual(selectHybridMindCandidatesConditional(input).map(x=>x.stateId),["a","b"]);
+  assert.deepEqual(selectHybridMindCandidatesConditional({
+    ...input, ritrieveRanked:[score("a",.75),score("b",.695),score("c",.68)]
+  }).map(x=>x.stateId),["a"]);
+});
+
+test("conditional policy preserves top result, never returns over two, and is subset of agreement",()=>{
+  let seed=0x7ee11234;
+  const next=()=>{seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;return (seed>>>0)/4294967296;};
+  for(let round=0;round<300;round++){
+    const ids=Array.from({length:1+Math.floor(next()*135)},(_,i)=>String(i));
+    const input:HybridInput={
+      query:"测试记忆相关性",
+      memories:ids.map(id=>memory(id,"关于测试的记忆")),
+      e5Ranked:ids.map(id=>score(id,next())).sort((a,b)=>b.score-a.score),
+      ritrieveRanked:ids.map(id=>score(id,next())).sort((a,b)=>b.score-a.score),
+      mode:"agreement",
+    };
+    const agreed=selectHybridMindCandidates(input);
+    const chosen=selectHybridMindCandidatesConditional(input);
+    assert.ok(chosen.length<=2);
+    assert.deepEqual(chosen,agreed.slice(0,chosen.length));
+  }
 });
