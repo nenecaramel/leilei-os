@@ -721,6 +721,7 @@ await closeHandoffServer();
 await persistentRuntime.closeAll();
 if (mindSnapshotTimer) clearInterval(mindSnapshotTimer);
 await closeMindRecallServer?.();
-if (hookSemanticScorer instanceof LocalRitrieveBreathSemanticScorer
-    || hookSemanticScorer instanceof LocalHybridMindRecallScorer) await hookSemanticScorer.close();
+if (hookSemanticScorer instanceof LocalRitrieveBreathSemanticScorer) {
+  await hookSemanticScorer.close();
+}
 daemonLock.release();
