@@ -260,3 +260,28 @@ pnpm exec tsx scripts/mind-real-blind-review.ts "$BACKUP" --count=8 --manual --r
 **只比较混合 4 vs 混合 1：**相同 8/9 相关问题至少一条命中，相同 1/3 无关问题空结果，Top1 把错误记忆从 20 减至 2，同时减少 2 条额外相关记忆。**对本轮最有利的综合候选是条件式最多 2 条**：它在 12 道题上达到和混合 4 条完全相同的相关记忆总命中（10/12）与正例问题命中（8/9），错误从 20 降至 4。它相对 Top1 多恢复 2 条相关，也多返回 2 条错。
 
 **重要边界：**这 12 题里即使最好的混合方案仍漏掉 1/9 相关问题，也只有 1/3 无关题真正没有注入。真实相关性标签仅涵盖全部算法推荐候选的并集，不能称全库完整 recall；这是 embedding 层离线对比，不包含完整旧/新 Hook 的行为和运行延迟。样本量 12，选择参数时必须留出新的独立测试集，不能由本批结果宣布长期胜出。**PR #1142 仍为 Draft，不合并、不切生产 Hook、不改 Mac daemon、Railway、真实 Mind。**
+
+## 实际 Hook 接入：条件式最多两条（2026-10-18，待验收）
+
+用户明确选择把 Hook 切换到 `hybrid_conditional_v1`，而不只是更新离线评测程序。此分支已新增**可选的真实 Hook/daemon 联动代码**，默认旧路由保持不变；当前生产 Mac 和 Railway 未执行部署/重启，也不代表配置已生效。
+
+### 运行链
+
+1. Mac daemon 环境变量 `LEILEI_MIND_EMBEDDING_PROVIDER=hybrid_conditional_v1` 启动 `LocalHybridMindRecallScorer`。使用既有 E5 scorer 和本地 ritrieve 模型；Native Live 主链仍用原 E5，不改变其评分参数。每 60s 用已有经鉴权 Railway `GET /internal/mind/snapshot` 同步 subject G 的有效全局 Memory。
+2. 索引版本只在 ritrieve **完成提交**、E5 对所有同一快照 Memory 文本**全部预编码**之后变为可用；若缺模型、版本变化或构建失败，本地检索不可用，拒绝通过旧词面逻辑凑内容。
+3. Hook 私有 `mind.env` 中 `LEILEI_MIND_RECALL_MODE=hybrid_conditional_v1` 会请求 Unix socket 的 `POST /search-hybrid`。本地对**同一份、最多 256 条**合法 Memory 完整计算 E5 排名，结合 ritrieve 48 个最佳向量候选，由前期真人盲测过的 `selectHybridMindCandidatesConditional` 规则选出 **0/1/2 条**。阈值与排名规则沿用离线测试函数；不发送私人 Memory 文本到外部模型。超出 256 条时**明确拒绝**，避免把部分 E5 排名冒充全库排名（此限制意味着成长到 257 条前必须优化；否则模式会无召回）。
+4. Hook 最多一次 HTTP `POST /internal/mind/recall`，提交快照版本与选定的 0–2 个 UUID/位置性分数。服务端继续验证账户、当前有效性、隐藏状态、快照版本、当前上下文已见 ID、签名回执与 Stop 确认。只有 `semantic_mode=snapshot_v1` 的版本匹配结果才允许注入；过时或本地索引故障则**不注入记忆**，绝不在这个模式下退回旧词面候选。该模式的对外分数 `0.99/0.98` 是选择排序权重，**不是 E5/ritrieve 原始置信度**。
+
+### 上线前的必做验证
+
+```zsh
+cd /tmp/leileios-mind-1142
+git fetch origin codex/mind-ritrieve-staged-20261017
+git switch --detach FETCH_HEAD
+pnpm typecheck
+pnpm exec tsx --test tests/mind-hybrid-candidates.test.ts tests/runtime-local-hybrid-mind-recall.test.ts tests/native-live-mac-mind-snapshot-sync.test.ts tests/mind-indexed-recall.test.ts tests/claude-code-mind-hooks.test.ts
+```
+
+**不能直接照抄命令去修改运行中的 Mac daemon：**先在隔离测试环境以真实私有固定 8+12 题验证 Live scorer vs 离线 scorer 的候选 ID 一致、总 Hook P95 不超限、0/1/2 条、隐藏/旧版拒绝、服务端重复确认与重启降级，再发布带快照 API 的后端并按用户当前守护进程环境/安装 Hook 方式安排可回滚升级。现有 PR #1142 之前存在 CI 失败及非可合并状态，需要先查清阻断原因；当前修改尚未由用户 Mac 运行 `pnpm typecheck` 或新的集成测试，**不允许声称生产已切换成功**。
+
+回滚配置意图：从 daemon 环境删除 `LEILEI_MIND_EMBEDDING_PROVIDER`（恢复 E5），从 Hook 私有 `mind.env` 删除 `LEILEI_MIND_RECALL_MODE`（恢复默认），再按正式当前的单实例守护进程方式重启/重新安装 Hook。**不要**在尚未核验 live 配置与守护状态时执行未验证的重启命令。
