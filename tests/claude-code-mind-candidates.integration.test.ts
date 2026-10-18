@@ -119,3 +119,47 @@ test("semantic index finds a middle-history paraphrase without lexical overlap, 
     WHERE state_id=${target.id}::uuid`);
   assert.equal(remaining.length,0,"SQL trigger invalidates all old vector buckets");
 });
+
+test("index queue tracks a Memory revision and never serves stale buckets after edit or delete",
+  {skip: !enabled},async t=>{
+  const database=createDatabase(url!,{ssl:false});
+  const db=database.db, userId=randomUUID();
+  t.after(async()=>{
+    try{
+      await db.delete(runtimeSubjectStates).where(eq(runtimeSubjectStates.userId,userId));
+      await db.delete(users).where(eq(users.id,userId));
+    }finally{await database.close();}
+  });
+  await db.insert(users).values({
+    id:userId,email:`mind-index-revision-${userId}@example.test`,
+    displayName:"Mind revision test",
+  });
+  const state=createMindState({
+    id:randomUUID(),userId,subjectId:"G",kind:"memory",
+    text:"一条真实的长期记忆",
+    source:{origin:"manual",occurredAt:null,note:null},
+  });
+  const port=new DrizzleSubjectStateRuntimePort(db);
+  await port.append({userId,subjectId:"G",states:[state]});
+  const dirty=()=>db.execute(sql<{revision:number}>`SELECT revision
+    FROM runtime_mind_recall_semantic_dirty WHERE state_id=${state.id}::uuid`);
+  const initial=await dirty();
+  assert.equal(initial.length,1);
+  const bands=mindLshBands(Array.from({length:384},(_,i)=>Math.sin(i*.1)));
+  const insert=bands.map((bucket,band)=>sql`(
+    ${state.id}::uuid,${userId}::uuid,'G',${band},${bucket},${"a".repeat(64)}
+  )`);
+  await db.execute(sql`INSERT INTO runtime_mind_recall_semantic_bands
+    (state_id,user_id,subject_id,band,bucket,content_sha256)
+    VALUES ${sql.join(insert,sql`,`)}`);
+  await db.update(runtimeSubjectStates).set({text:"修改后完全不同的内容"})
+    .where(eq(runtimeSubjectStates.id,state.id));
+  const pending=await dirty();
+  assert.equal(pending.length,1);
+  assert.ok(Number(pending[0]!.revision)>Number(initial[0]!.revision));
+  const previous=await db.execute(sql`SELECT state_id
+    FROM runtime_mind_recall_semantic_bands WHERE state_id=${state.id}::uuid`);
+  assert.equal(previous.length,0,"old embedding invalidated in same edit transaction");
+  await db.delete(runtimeSubjectStates).where(eq(runtimeSubjectStates.id,state.id));
+  assert.equal((await dirty()).length,0,"pending task deleted with Memory");
+});
