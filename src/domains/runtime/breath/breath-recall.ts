@@ -82,6 +82,11 @@ function tokens(value: string): Set<string> {
   return result;
 }
 
+/** Reuse the canonical 16 Oct lexical tokenizer in Claude SQL candidate discovery. */
+export function breathLexicalTokens(value: string): string[] {
+  return [...tokens(value)];
+}
+
 export function breathLexicalScore(
   query: string,
   candidateText: string,
