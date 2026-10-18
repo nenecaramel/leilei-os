@@ -79,3 +79,14 @@ test("cached snapshot cannot rank hidden or missing IDs", async () => {
   assert.equal(rejected.semantic_mode, "legacy");
   assert.ok(!rejected.memory_ids.includes(uuid(2)));
 });
+
+test("Claude Code recall returns snapshot version and caps lexical fallback at two",async()=>{
+  const states=[memory(11,"tea"),memory(12,"tea friend"),memory(13,"tea friend forever")];
+  const service=new ClaudeCodeMindRecallService({list:async()=>states},
+    DEFAULT_MIND_LOOP_CONFIG,"G",receipts);
+  const result=await service.recall({
+    userId:"u1",sessionId:"s",query:"tea",excludeIds:[],
+  });
+  assert.match(result.snapshot_version,/^[a-f0-9]{64}$/);
+  assert.ok(result.memory_ids.length<=2);
+});
