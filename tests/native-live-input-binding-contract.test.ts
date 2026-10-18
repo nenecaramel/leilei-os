@@ -78,7 +78,11 @@ test("pre-native-start autonomous delivery survives the outbox but cannot bypass
   assert.match(router, /stillWithinForeground && foreground\.command\.operation === "send" && !startedBeforeReceipt[\s\S]*?\? \{ executionStart: true \}/);
   assert.match(router, /stillWithinForeground && foreground\.command\.operation === "send"[\s\S]*?\? \{ deferred: true \}/);
   assert.match(sink, /\.\.\.\(owner\.executionStart === true \? \{ executionStart: true \} : \{\}\)/);
-  assert.match(server, /const current = await snapshot\(tx, userId, identity, origin, stored\.executionStart\)/);
+  // The submit snapshot rechecks the saved execution-start fence. Its later
+  // arguments also carry deferred/receipt reconciliation state. Behavioral
+  // acceptance lives in native-live-background-result.integration.test.ts:
+  // pre-start B queues through F; started F must commit before queued output.
+  assert.match(server, /const current = await snapshot\(tx, userId, identity, origin, stored\.executionStart\s*[,)]/);
   // The transaction uses separate exact fences: a pre-start queued send
   // may admit B only while started=false; a deferred post-start B requires
   // the same owner's started=true reservation. The former <>false check was

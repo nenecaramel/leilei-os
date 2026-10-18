@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
@@ -57,24 +56,29 @@ test("actual Swift active/archive reconciliation preserves overlap, order and pa
   }
 });
 
-// Expand the shared block back into each owner. Exact baseline hashes pin all UI,
-// requests, Tasks, guards, mutations and cursor assignments outside this extraction.
-test("only the duplicate value transformation moves; both complete surfaces remain identical", () => {
-  const baselineHashes: Record<string, string> = {
-  "DiaryDetailPresentation.swift": "3b2dcd808078901b9c20124c89c2b28a2697d797e4f854629a2345d291995c9f",
-  "Archive/DiaryArchivePresentation.swift": "e68d09f9da440640220b7b582428d9e788793e6613fc17082885abcdfc097b09"
-};
-  const rules = readFileSync(root + "DiaryCommentPaging.swift", "utf8");
-  const body = rules.slice(rules.indexOf("        let existing ="), rules.lastIndexOf("    }"));
-  const call = `        DiaryCommentPaging.reconcile(
+// Scope the extraction contract to the state transition. Whole-view hashes also
+// reject unrelated, intentional UI fixes (such as Archive scroll retention).
+// The preceding Swift harness executes both actual owners and the shared rules.
+test("active and archive owners retain the loaded-state guard and page metadata around shared reconciliation", () => {
+  const expected = `private func reconcileCommentPage(
+        _ page: DiaryCommentListData,
+        replaceVisiblePage: Bool
+    ) {
+        guard case .loaded(var diary) = state else {
+            return
+        }
+        DiaryCommentPaging.reconcile(
             page,
             into: &diary,
             replaceVisiblePage: replaceVisiblePage
         )
-`;
+        state = .loaded(diary)
+        commentsHaveMore = page.metadata.hasMore
+        commentNextBefore = page.metadata.nextBefore
+    }`;
+  const normalize = (source: string) => source.replace(/\/\/[^\n]*/g, "").replace(/\s+/g, " ").trim();
   for (const file of surfaces) {
     const source = readFileSync(root + file, "utf8");
-    assert.equal(source.split(call).length, 2);
-    assert.equal(createHash("sha256").update(source.replace(call, body)).digest("hex"), baselineHashes[file], file);
+    assert.equal(normalize(declaration(source, "private func reconcileCommentPage(")), normalize(expected), file);
   }
 });

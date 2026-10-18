@@ -66,6 +66,21 @@ class Transcript {
 const submit = (f: any, prompt = "tea", session_id = "s") =>
   ({hook_event_name: "UserPromptSubmit", session_id, prompt, transcript_path: f.transcript.path});
 
+async function diagnosticLog(f: any) {
+  const raw = await readFile(join(f.home, "finalization-reasons.jsonl"), "utf8");
+  const log = raw.trim().split("\n").map(line => JSON.parse(line));
+  for (const row of log) {
+    assert.deepEqual(Object.keys(row).sort(), ["event", "reason", "ts"]);
+    assert.ok(Number.isFinite(Date.parse(row.ts)));
+  }
+  // These values travel in prompts, recall bodies, rendered context and receipts;
+  // diagnostics may contain only the explicitly expected reason codes below.
+  for (const privateValue of ["tea", "milk", "other", CONTEXT, CONTEXT2, ID, ID2,
+    f.config.token, f.transcript.path, receipt(CONTEXT, [ID], 1).recall_token,
+    sha(CONTEXT), sha(CONTEXT2)]) assert.ok(!raw.includes(privateValue));
+  return log;
+}
+
 // Persist a paired MCP tool call/result in the transcript: this survives copied sessions.
 function writeTurn(f: any, parent: string, options: {toolName?: string; id?: string; outcome?: string; isError?: boolean; plainJson?: boolean} = {}) {
   const toolName = options.toolName ?? "mcp__d9e79932-abcd__write_memory";
@@ -345,10 +360,12 @@ test("Desktop local commands: /compact proves an empty epoch, /model keeps the c
   await runHook({hook_event_name: "Stop", session_id: "s", transcript_path: f.transcript.path, stop_hook_active: false});
   assert.equal(await desktopTurn(f), `${CONTEXT2}\n`);
   assert.deepEqual(f.calls.at(-1).exclude_ids, [ID]);
-  const log = (await readFile(join(f.home, "finalization-reasons.jsonl"), "utf8")).trim().split("\n").map(l => JSON.parse(l));
+  const log = await diagnosticLog(f);
   assert.deepEqual(log.filter(r => r.event === "UserPromptSubmit").map(r => r.reason),
-    ["chain_nothing_proven", "chain_excluded", "chain_nothing_proven", "chain_excluded"]);
-  assert.ok(log.some(r => r.reason === "chain_anchor_verified"));
+    ["chain_nothing_proven", "semantic_no_candidates", "chain_excluded", "semantic_no_candidates",
+      "chain_nothing_proven", "semantic_no_candidates", "chain_excluded", "semantic_no_candidates"]);
+  assert.deepEqual(log.filter(r => r.event !== "UserPromptSubmit").map(r => [r.event, r.reason]),
+    [["Stop", "confirm_http"], ["Stop", "chain_anchor_verified"]]);
 });
 
 test("one rendered hash with different ID sets excludes only their intersection", async t => {
@@ -385,7 +402,7 @@ test("written IDs remain excluded together with chain IDs", async t => {
   assert.equal(output, "");
 });
 
-test("opt-in diagnostics record only dedupe reason codes", async t => {
+test("opt-in diagnostics record only allowed chain and semantic reason codes without private data", async t => {
   const f = await fixture(t);
   await appendFile(join(f.home, "mind.env"), "\nLEILEI_MIND_DIAGNOSTICS=1\n");
   const first = await deliveredTurn(f, null);
@@ -393,8 +410,11 @@ test("opt-in diagnostics record only dedupe reason codes", async t => {
   await runHook(submit(f), async () => undefined);
   await runHook({...submit(f), prompt: "other"}, async () => undefined);
   await runHook({...submit(f), transcript_path: join(f.home, "missing.jsonl")}, async () => undefined);
-  const log = (await readFile(join(f.home, "finalization-reasons.jsonl"), "utf8")).trim().split("\n").map(l => JSON.parse(l));
-  assert.deepEqual(log.map(r => [r.event, r.reason]), [["UserPromptSubmit", "chain_nothing_proven"], ["UserPromptSubmit", "chain_excluded"],
-    ["UserPromptSubmit", "chain_prompt_mismatch"], ["UserPromptSubmit", "chain_read_rejected"]]);
-  assert.ok(log.every(r => Object.keys(r).sort().join() === "event,reason,ts"));
+  const log = await diagnosticLog(f);
+  assert.deepEqual(log.map(r => [r.event, r.reason]), [
+    ["UserPromptSubmit", "chain_nothing_proven"], ["UserPromptSubmit", "semantic_no_candidates"],
+    ["UserPromptSubmit", "chain_excluded"], ["UserPromptSubmit", "semantic_no_candidates"],
+    ["UserPromptSubmit", "chain_prompt_mismatch"], ["UserPromptSubmit", "semantic_no_candidates"],
+    ["UserPromptSubmit", "chain_read_rejected"], ["UserPromptSubmit", "semantic_no_candidates"],
+  ]);
 });

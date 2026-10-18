@@ -216,8 +216,29 @@ async function strandedRejectedWake(t: test.TestContext, intermediate = false) {
     },
   };
   await f.repository.prepareBackgroundResult(prepare);
-  await assert.rejects(f.repository.submitBackgroundResult(submit),
-    { code: "BACKGROUND_CONFLICT" }, "original HTTP 409 must be reproduced first");
+  // Construct the persisted aftermath of the old submit HTTP 409 explicitly.
+  // Its failed append rolled back, leaving this prepared receipt and stale
+  // anchor intact. Modern submit repairs that exact anchor (covered above),
+  // so invoking it here would commit B and erase the historical recovery case.
+  const [legacy] = await f.database.db.execute<{
+    head: string; anchor: string; owner: string;
+    phase: string; resultHash: string | null; checkpoint: string | null;
+  }>(sql`
+    SELECT c.current_head_message_id::text AS head,
+      c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor,
+      c.provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner,
+      e.payload->>'phase' AS phase, e.payload->>'resultHash' AS "resultHash",
+      e.payload->>'providerCheckpointId' AS checkpoint
+    FROM conversations c JOIN native_live_runtime_events e
+      ON e.user_id=c.user_id AND e.id=${receiptId}::uuid
+      AND e.prepare_id=${wakeId}::uuid
+    WHERE c.user_id=${f.user.id}::uuid AND c.id=${f.conversation.id}::uuid
+  `);
+  assert.deepEqual(legacy, {
+    head: final.assistantMessageId, anchor: preWakeHead,
+    owner: f.source.command.prepare_id,
+    phase: "prepared", resultHash: null, checkpoint: null,
+  }, "legacy failed append preserves Wake head, inherited anchor and uncommitted receipt");
 
   const rejected = await f.coordinator.prepare(f.user.id, {
     dispatch_target: "claude_code", request_id: crypto.randomUUID(),
@@ -229,7 +250,7 @@ async function strandedRejectedWake(t: test.TestContext, intermediate = false) {
   assert.equal(rejected.command.runtime_mode, "resume");
   await f.database.db.update(nativeLiveTurnPreparations).set({
     reservedBy: f.prepare.listenerInstanceId, dispatchStatus: "executing",
-    reservationExpiresAt: deadline, executionStartedAt: new Date(),
+    reservedAt: new Date(), reservationExpiresAt: deadline, executionStartedAt: new Date(),
   }).where(eq(nativeLiveTurnPreparations.id, rejected.command.prepare_id));
   assert.equal(await f.repository.rejectReservation({
     userId: f.user.id, listenerInstanceId: f.prepare.listenerInstanceId,
@@ -354,11 +375,19 @@ for (const mutated of ["started input", "runtime evidence", "changed revision", 
           ${f.rejectedId}::uuid,1,'runtime',NULL,'{}'::jsonb)
       `);
     } else if (mutated === "changed revision") {
+      const revision = crypto.randomUUID();
       await f.database.db.execute(sql`
         UPDATE conversations SET provider_metadata=jsonb_set(provider_metadata,
-          '{nativeSessionSource,revision}',to_jsonb(${crypto.randomUUID()}::text))
+          '{nativeSessionSource}',
+          coalesce(provider_metadata->'nativeSessionSource','{}'::jsonb)
+            || jsonb_build_object('revision',${revision}::text))
         WHERE id=${f.conversation.id}::uuid
       `);
+      const [changed] = await f.database.db.execute<{ revision: string }>(sql`
+        SELECT provider_metadata->'nativeSessionSource'->>'revision' AS revision
+        FROM conversations WHERE id=${f.conversation.id}::uuid
+      `);
+      assert.equal(changed.revision, revision, "revision fence mutation must be persisted");
     } else {
       const competitor = await f.coordinator.prepare(f.user.id, {
         dispatch_target: "claude_code", request_id: crypto.randomUUID(),

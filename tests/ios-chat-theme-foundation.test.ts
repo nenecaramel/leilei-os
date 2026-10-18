@@ -422,7 +422,9 @@ test('wallpaper-backed Tool and Tool result use composer-like glass and dark lab
 
   // Use the same native regular glass as the input field, only when
   // wallpaper is actually visible. No dark solid fill, gradient or glow.
-  assert.match(composer, /\.glassEffect\(\.regular, in: Capsule\(\)\)/);
+  // Multiline composer uses its stable 22pt rounded outline (#1135);
+  // Tool/content panels retain their own 11pt outline and share .regular glass.
+  assert.match(composer, /\.glassEffect\(\.regular, in: RoundedRectangle\(cornerRadius: 22, style: \.continuous\)\)/);
   assert.match(theme, /static let defaultValue = false/);
   const shell = read('Navigation/AppShell.swift');
   assert.match(shell, /\.environment\(\\\.iMessageWallpaperVisible, isWallpaperChatVisible\)/);
@@ -563,7 +565,9 @@ test('iMessage rich structured content shares native Tool-list glass across rend
   const composer = read('Chat/ChatComposer.swift');
 
   // The same iOS native .regular glass and 11pt round rectangle as Tool list.
-  assert.match(composer, /\.glassEffect\(\.regular, in: Capsule\(\)\)/);
+  // Multiline composer uses its stable 22pt rounded outline (#1135);
+  // Tool/content panels retain their own 11pt outline and share .regular glass.
+  assert.match(composer, /\.glassEffect\(\.regular, in: RoundedRectangle\(cornerRadius: 22, style: \.continuous\)\)/);
   assert.match(tool, /NativeLiveToolWallpaperGlass: ViewModifier/);
   assert.match(source, /struct NativeLiveIMessageContentPanel: ViewModifier/);
   assert.match(source, /@Environment\(\\\.iMessageWallpaperVisible\) private var iMessageWallpaperVisible/);
