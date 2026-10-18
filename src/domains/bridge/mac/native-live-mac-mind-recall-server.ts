@@ -3,7 +3,7 @@ import { mkdir, chmod, lstat, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { z } from "zod";
-import type { BreathSemanticScorer, BreathSemanticCandidate } from "../../runtime/breath/breath-semantic-recall.js";
+import type { BreathSemanticScorer } from "../../runtime/breath/breath-semantic-recall.js";
 import type { RitrieveSearchResult } from "../../runtime/breath/local-ritrieve-embedding.js";
 
 export function defaultMindRecallSocket() {
@@ -22,7 +22,6 @@ const schema = z.object({
 export async function startMindRecallSemanticServer(scorer: BreathSemanticScorer & {
   searchSnapshot?: (query: string, limit: number) => Promise<RitrieveSearchResult>;
   searchHybrid?: (query: string) => Promise<RitrieveSearchResult>;
-  scoreCandidatesHybrid?: (input: {query: string; candidates: readonly BreathSemanticCandidate[]}) => Promise<{selectedIds: string[]}>;
 }, socketPath = defaultMindRecallSocket()) {
   await mkdir(dirname(socketPath), {recursive: true, mode: 0o700});
   await chmod(dirname(socketPath), 0o700);
@@ -36,7 +35,7 @@ export async function startMindRecallSemanticServer(scorer: BreathSemanticScorer
   }
   let busy = false;
   const server = createServer(async (request, response) => {
-    if (request.method !== "POST" || !["/score", "/score-hybrid", "/search", "/search-hybrid"].includes(request.url ?? "")) { response.writeHead(404).end(); return; }
+    if (request.method !== "POST" || !["/score", "/search", "/search-hybrid"].includes(request.url ?? "")) { response.writeHead(404).end(); return; }
     if (busy) { response.writeHead(503).end(); return; }
     busy = true;
     try {
@@ -61,20 +60,6 @@ export async function startMindRecallSemanticServer(scorer: BreathSemanticScorer
         if (!response.destroyed) {
           response.setHeader("Content-Type", "application/json");
           response.end(JSON.stringify(result));
-        }
-      } else if (request.url === "/score-hybrid") {
-        const input = schema.parse(payload);
-        if (!scorer.scoreCandidatesHybrid) throw new Error("Hybrid scorer unavailable.");
-        const result = await scorer.scoreCandidatesHybrid(input);
-        const ids = result.selectedIds;
-        const allowed = new Set(input.candidates.map(c => c.stateId));
-        if (!Array.isArray(ids) || ids.length > 2 ||
-            new Set(ids).size !== ids.length ||
-            ids.some(id => typeof id !== "string" || !allowed.has(id)))
-          throw new Error("Invalid hybrid selection.");
-        if (!response.destroyed) {
-          response.setHeader("Content-Type", "application/json");
-          response.end(JSON.stringify({selected_ids: ids}));
         }
       } else {
         const input = schema.parse(payload);
