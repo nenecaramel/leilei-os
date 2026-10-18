@@ -32,7 +32,7 @@ export class ClaudeCodeMindRecallService {
     this.loop = new NativeLiveMindLoopService({
       list: input => reader.list(input), append: forbidden,
       transition: forbidden, saveContextManifest: forbidden,
-    }, {...config, breathCooldownHours: 0});
+    }, {...config, breathCooldownHours: 0, breathLimit: Math.min(2, config.breathLimit)});
   }
 
   /** Fully authenticated, bounded pages; the caller retries if version changes. */
@@ -86,6 +86,7 @@ export class ClaudeCodeMindRecallService {
       memory_ids: result.assembled.breathStateIds,
       semantic_candidates: result.semanticCandidates,
       semantic_mode: result.semanticMode,
+      snapshot_version: result.snapshotVersion,
     };
   }
   async confirm(input: {
