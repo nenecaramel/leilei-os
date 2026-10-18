@@ -7,7 +7,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseEnv } from "node:util";
 import { LocalHybridMindRecallScorer } from "../src/domains/runtime/mind/local-hybrid-mind-recall.js";
-import { startMindRecallSemanticServer } from "../src/domains/bridge/mac/native-live-mac-mind-recall-server.js";
+import { startClaudeCodeMindHybridServer } from "../src/domains/runtime/mind/claude-code-mind-hybrid-server.js";
 
 const home = homedir();
 const configPath = join(home, ".claude", "leileios-mind", "mind.env");
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   try {
     await scorer.warmup();
     if (exiting) return;
-    closeServer = await startMindRecallSemanticServer(scorer, socketPath);
+    closeServer = await startClaudeCodeMindHybridServer(scorer, socketPath);
     process.stdout.write("mind_hybrid_background_ready\n");
   } catch {
     process.stderr.write("mind_hybrid_background_unavailable\n");
