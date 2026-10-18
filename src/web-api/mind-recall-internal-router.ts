@@ -6,6 +6,7 @@ const candidate = z.object({stateId: z.string().uuid(), kind: z.literal("memory"
 const inputSchema = z.object({
   session_id: z.string().min(1).max(256),
   query: z.string().trim().min(1).max(16000),
+  candidate_query: z.string().trim().min(1).max(16000).optional(),
   exclude_ids: z.array(z.string().uuid()).max(20000),
   caller: z.literal("claude_code"),
   context_epoch: z.number().int().min(0).max(2147483647).optional().default(0),
@@ -47,7 +48,8 @@ export function createMindRecallRouter(dependencies: {
       await dependencies.requireActiveUser(request.mcpUserId);
       const data = await dependencies.service.recall({
         userId: request.mcpUserId, sessionId: input.data.session_id,
-        query: input.data.query, excludeIds: input.data.exclude_ids, contextEpoch: input.data.context_epoch,
+        query: input.data.query, candidateQuery: input.data.candidate_query,
+        excludeIds: input.data.exclude_ids, contextEpoch: input.data.context_epoch,
         semanticCandidates: input.data.semantic_candidates,
         semanticScores: input.data.semantic_scores ? new Map(Object.entries(input.data.semantic_scores)) : undefined,
         receiptMode: input.data.receipt_mode,
