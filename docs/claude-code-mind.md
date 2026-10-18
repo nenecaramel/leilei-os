@@ -48,8 +48,16 @@ hybrid login worker. The old `com.leilei.mind-hybrid` installer and worker have 
 retired. Existing installations must unload/disable that LaunchAgent and remove
 only `LEILEI_MIND_RECALL_MODE` and `LEILEI_MIND_SEMANTIC_SOCKET` hybrid overrides
 from private `mind.env`; keep credentials, state and stored memories. Updating
-source does not terminate an already-running old worker. Experimental offline
-model comparison scripts are not part of the running recall path.
+source does not terminate an already-running old worker. The retired ritrieve
+model runtime, offline comparison/install scripts, local snapshot synchronizer
+and indexed/hybrid socket routes have been removed. `LEILEI_MIND_RECALL_MODE`
+no longer selects a different Hook retrieval path; an old value uses the current
+keyword/E5 path. The local semantic socket serves only `/score`.
+
+The server-side signed snapshot API and its freshness/visibility validation stay
+for previously installed clients. They do not start a poller or load a local
+model. Their compatibility tests remain; this cleanup does not change Stop
+confirmation, receipt signing, MCP writes or stored Memory data.
 
 ## Pause or resume without changing Railway
 

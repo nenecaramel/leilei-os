@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node src/index.mjs",
     "test": "node --check scripts/agent-sdk-working-directory-config-smoke.mjs && node --test test/**/*.test.mjs",
     "smoke:working-directory-config": "node scripts/agent-sdk-working-directory-config-smoke.mjs"
   },
