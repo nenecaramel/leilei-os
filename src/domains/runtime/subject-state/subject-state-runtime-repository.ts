@@ -15,7 +15,6 @@ import type {
   SubjectStateTransition,
 } from "../mind/native-live-mind-loop-service.js";
 import type { PersistentWriteEnvelope } from "../shared/persistent-write-envelope.js";
-import { LSH_ALGORITHM, mindLshProbes } from "../mind/claude-code-semantic-lsh.js";
 import {
   CURRENT_SUBJECT_STATE_KINDS,
   validateSubjectStateWrite,
@@ -63,8 +62,7 @@ function requirePortIdentity(
 }
 
 export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
-  constructor(private readonly db: Database,
-    private readonly claudeOnlyEmbedding?: {embedQuery(query:string):Promise<number[]>}) {}
+  constructor(private readonly db: Database) {}
 
   async list(input: {
     userId: string;
@@ -150,47 +148,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     });
     const english = query.match(/[a-z0-9]{3,}/giu) ?? [];
     const terms = [...new Set([...chinese, ...english])].slice(0, 16);
-    // Semantic first-stage is an indexed E5 multi-probe LSH lookup.
-    // A cold/unprepared Railway model only disables this optional channel.
-    // It does not block the existing signed lexical recall path.
-    let semanticIds: string[] = [];
-    if (this.claudeOnlyEmbedding && query) {
-      let deadline: ReturnType<typeof setTimeout> | null = null;
-      try {
-        const vector = await Promise.race([
-          this.claudeOnlyEmbedding.embedQuery(query),
-          new Promise<null>(resolve => {
-            deadline = setTimeout(() => resolve(null), 550);
-          }),
-        ]);
-        if (vector) {
-          const probes = mindLshProbes(vector);
-          const matches = await this.db.execute<{stateId: string}>(sql`
-            SELECT b.state_id AS "stateId"
-            FROM jsonb_to_recordset(${JSON.stringify(probes)}::jsonb)
-                 AS p(band integer,bucket integer)
-            JOIN runtime_mind_recall_semantic_bands b
-              ON b.band=p.band AND b.bucket=p.bucket
-            WHERE b.user_id=${input.userId}::uuid
-              AND b.subject_id=${input.subjectId}
-              AND b.algorithm_version=${LSH_ALGORITHM}
-            GROUP BY b.state_id
-            ORDER BY count(*) DESC, b.state_id
-            LIMIT 128
-          `);
-          semanticIds = [...matches].map(row => row.stateId);
-        }
-      } catch {
-        // Missing local model or migration: keep the prior lexical retrieval.
-      } finally {
-        if (deadline) clearTimeout(deadline);
-      }
-    }
-    const [semantic, fuzzy, anchored, fullText, recent, oldest] = await Promise.all([
-      semanticIds.length
-        ? this.db.select(columns).from(table)
-          .where(and(eligible, inArray(table.id, semanticIds)))
-        : [],
+    const [fuzzy, anchored, fullText, recent, oldest] = await Promise.all([
       query.length >= 3
       ? this.db.select(columns).from(table)
         .where(and(eligible, sql`${table.text} % ${query}`))
@@ -217,11 +175,8 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
       this.db.select(columns).from(table)
       .where(eligible).orderBy(asc(table.createdAt), asc(table.id)).limit(32),
     ]);
-    const semanticPriority = new Map(semanticIds.map((id, rank) => [id, rank]));
-    semantic.sort((a,b) => (semanticPriority.get(a.id) ?? 999) -
-      (semanticPriority.get(b.id) ?? 999));
     const selected = new Map<string, SubjectStateWrite>();
-    for (const row of [...semantic, ...fuzzy, ...anchored, ...fullText, ...recent, ...oldest]) {
+    for (const row of [...fuzzy, ...anchored, ...fullText, ...recent, ...oldest]) {
       if (!selected.has(row.id)) selected.set(row.id, rowToState(row));
       if (selected.size === 256) break;
     }

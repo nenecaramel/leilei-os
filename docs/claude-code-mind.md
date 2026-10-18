@@ -43,41 +43,23 @@ Check with `launchctl print gui/$(id -u)/com.leilei.mind-hybrid`. Its private `P
 
 To restore the original desktop-only configuration, remove `LEILEI_MIND_RECALL_MODE` and `LEILEI_MIND_SEMANTIC_SOCKET` from `mind.env`, then `launchctl bootout gui/$(id -u)/com.leilei.mind-hybrid` and remove **only** `~/Library/LaunchAgents/com.leilei.mind-hybrid.plist`. The real Mind database and Railway are unaffected.
 
-## Indexed Railway candidate discovery (Claude Code only)
+## PostgreSQL candidate index (Claude Code only)
 
-Migration `0110` maintains keyword, Chinese trigram, fuzzy and FTS indexes.
-Migration `0111` adds **real E5 semantic candidate discovery** using
-20 locality-sensitive hash bands and PostgreSQL btree indexes. It deliberately
-does **not** require pgvector (not installed on standard Railway Postgres).
-A trigger queues existing eligible Memory once and incrementally queues
-new/changed rows, invalidating old buckets atomically on edits, hiding,
-invalidation or deletion. No full library is sent to the Mac.
+Migration `0110_claude_code_recall_trgm_index.sql` adds a single
+PostgreSQL-maintained keyword/fuzzy candidate index on the existing Memory
+table. Insert, update and delete require no extra worker or Mac polling.
+Railway filters the full eligible library and returns **at most 256
+candidates per prompt**, not a 256-memory total storage cap.
 
-Run a separate **private Railway worker service** from this repo using
-`Dockerfile.mind-semantic`. It prepares the quantized multilingual E5 model
-at image-build time, serves internal `/embed-query`, and consumes its
-PostgreSQL queue using LISTEN/NOTIFY plus one startup backfill. This is
-server-side indexing, **not** Mac polling or a recurring recall request.
+The existing Mac E5 + ritrieve pair reranks only these candidates. Railway
+rechecks the current eligible set and signs 0–2 memories. Missing local
+models fall back to the signed Railway result, also at most 2.
 
-Worker service environment: existing private `DATABASE_URL`, a new random
-`LEILEI_MIND_E5_TOKEN` (at least 32 characters), and `PORT=3000`. Never
-attach a public domain to this service. On the existing Railway API service
-set only `LEILEI_MIND_E5_URL=http://<worker-service>.railway.internal:3000`
-and the same private `LEILEI_MIND_E5_TOKEN`. These settings are optional:
-without a ready worker the previous signed lexical/fuzzy candidate search
-continues. The production API Dockerfile and Native Live service are unchanged.
-
-A user prompt now gets candidates through indexed SQL semantics plus the
-existing lexical and historical channels (at most 256), followed by the
-Mac's independent E5 + ritrieve selection (0–2) and Railway verification.
-The new SQL path requires explicit `hybrid_conditional_v1` mode; disabling
-the mode returns to the previous behavior.
-
-Before deploying, test the new migrations on an **isolated** PostgreSQL
-database with `RUN_ISOLATED_POSTGRES_REGRESSIONS=1` and the repository's
-isolated-target guard, run the dedicated worker with synthetic records,
-and check Hook latency and the original private fixed-review cases. No
-production DB, Mac configuration, or real Memory is changed by this PR.
+**Limit:** the first-stage SQL search is lexical/fuzzy, not a stored
+embedding index. Paraphrases with no common wording may be missed. Do
+not report the original semantic recall goal as complete until that
+requirement is resolved and tested. Do not add another Railway model
+service or a separate LSH system without user agreement.
 
 ## Pause or resume without changing Railway
 

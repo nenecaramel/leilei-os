@@ -5,7 +5,6 @@ import { restoreNativeSessionHistory, readNativeSessionRestoreState, releaseNati
 import { DrizzleClaudeCodeRecallReceipts } from "../domains/runtime/mind/claude-code-recall-receipts.js";
 import { requireActiveUser } from "../domains/require-active-user.js";
 import { ClaudeCodeMindRecallService } from "../domains/runtime/mind/claude-code-mind-recall.js";
-import { ClaudeCodeRailwayE5Client } from "../domains/runtime/mind/claude-code-railway-e5-client.js";
 import { DEFAULT_MIND_LOOP_CONFIG } from "../domains/runtime/mind/default-backend-mind-runtime.js";
 import { randomUUID } from "node:crypto";
 import {
@@ -754,20 +753,6 @@ export function createProcessRuntime(
     internalToolProfiles,
   });
 
-  // Optional private Railway worker, isolated from the existing Alpine API
-  // and all Native Live processes. No polling; queries occur on prompts only.
-  let claudeRecallE5: ClaudeCodeRailwayE5Client | undefined;
-  if (process.env.LEILEI_MIND_E5_URL && process.env.LEILEI_MIND_E5_TOKEN) {
-    try {
-      claudeRecallE5 = new ClaudeCodeRailwayE5Client(
-        process.env.LEILEI_MIND_E5_URL,
-        process.env.LEILEI_MIND_E5_TOKEN,
-      );
-    } catch {
-      // A broken optional Mind URL must never fail the main Native Live API.
-    }
-  }
-
   return {
     mcpSessionRegistry,
     logger,
@@ -786,7 +771,7 @@ export function createProcessRuntime(
       webUniverseService: universeService,
       webMindService: mindProductService,
       internalMindRecall: {
-        service: new ClaudeCodeMindRecallService(new DrizzleSubjectStateRuntimePort(db, claudeRecallE5), {
+        service: new ClaudeCodeMindRecallService(new DrizzleSubjectStateRuntimePort(db), {
           ...DEFAULT_MIND_LOOP_CONFIG, breathSalienceWeight: breathRankingConfig.salienceWeight,
         }, DEFAULT_NATIVE_LIVE_SUBJECT_ID, new DrizzleClaudeCodeRecallReceipts(
           db,
