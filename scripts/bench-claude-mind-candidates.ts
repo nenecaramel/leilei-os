@@ -37,8 +37,6 @@ const targets = [
   mk("以前聊过的面包发酵时间"),      // separate relevant topic
 ];
 const filler = (i:number) => mk(`历史档案编号${i}，普通生活工作事项`);
-const times = (fn:()=>Promise<unknown>,runs=9) =>
-  Promise.all(Array.from({length:runs},()=>fn().then(()=>performance.now())));
 const percentile=(values:number[],p:number)=>{
   const s=[...values].sort((a,b)=>a-b);
   return Math.round((s[Math.max(0,Math.ceil(s.length*p)-1)]??0)*10)/10;
@@ -47,23 +45,29 @@ try {
   await db.insert(users).values({
     id:userId,email:`recall-perf-${userId}@example.test`,displayName:"Recall performance fixture",
   });
-  // Appending through the real Memory port catches schema/eligibility regressions.
+  // Synthetic fixture only: batch inserts into an attested Docker test DB.
   await (async()=>{
     let batch=[...targets];
     for(let i=0;i<count;i++){
       batch.push(filler(i));
       if(batch.length>=200){await db.insert(runtimeSubjectStates).values(batch.map(row=>({
         id:row.id, userId, subjectId:"G",kind:row.kind, text:row.text,
-        payload:row.payload, envelope:row.envelope,
-        scopeApplicability:"global",settlementStatus:"settled",
-        pathStatus:"current",validityStatus:"valid",
+        payload:row.payload ?? null,
+        envelope:row.envelope as unknown as Record<string, unknown>,
+        scopeApplicability:row.envelope.scope.applicability,
+        settlementStatus:row.envelope.status.settlementStatus,
+        pathStatus:row.envelope.status.pathStatus,
+        validityStatus:row.envelope.status.validityStatus,
       }))); batch=[];}
     }
     if(batch.length)await db.insert(runtimeSubjectStates).values(batch.map(row=>({
       id:row.id, userId, subjectId:"G",kind:row.kind,text:row.text,
-      payload:row.payload,envelope:row.envelope,
-      scopeApplicability:"global",settlementStatus:"settled",
-      pathStatus:"current",validityStatus:"valid",
+      payload:row.payload ?? null,
+      envelope:row.envelope as unknown as Record<string, unknown>,
+      scopeApplicability:row.envelope.scope.applicability,
+      settlementStatus:row.envelope.status.settlementStatus,
+      pathStatus:row.envelope.status.pathStatus,
+      validityStatus:row.envelope.status.validityStatus,
     })));
   })();
   const port = new DrizzleSubjectStateRuntimePort(db);
