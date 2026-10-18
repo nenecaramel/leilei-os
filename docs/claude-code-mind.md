@@ -43,6 +43,22 @@ Check with `launchctl print gui/$(id -u)/com.leilei.mind-hybrid`. Its private `P
 
 To restore the original desktop-only configuration, remove `LEILEI_MIND_RECALL_MODE` and `LEILEI_MIND_SEMANTIC_SOCKET` from `mind.env`, then `launchctl bootout gui/$(id -u)/com.leilei.mind-hybrid` and remove **only** `~/Library/LaunchAgents/com.leilei.mind-hybrid.plist`. The real Mind database and Railway are unaffected.
 
+## PostgreSQL candidate index (Claude Code only)
+
+Migration `0110_claude_code_recall_trgm_index.sql` adds PostgreSQL-maintained
+trigram, plain-text FTS and scope/recency indexes on existing Memory rows.
+The original global Hook sends no requests when idle; Railway now selects
+at most 256 eligible candidates using indexed fuzzy/Chinese literal/English
+full-text matches plus bounded historical coverage before the local two-model
+reranker. All inserts, edits, visibility changes and deletions are handled by
+the database indexes, without periodic Mac synchronization.
+
+This stage does not introduce a pgvector semantic first-stage index.
+Semantically related Memory with no overlapping words can still be missed by
+PostgreSQL candidate selection; the E5/ritrieve reranker cannot recover an
+absent candidate. Acceptance must measure both this recall limitation and
+per-turn cold-model latency before changing production defaults.
+
 ## Pause or resume without changing Railway
 
 ```sh
