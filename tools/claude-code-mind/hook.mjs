@@ -739,6 +739,7 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     const timeout = Math.min(2500, HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted));
     if (timeout <= 0) return;
     let data = await recall(config, body, timeout);
+    let secondVerificationFailed = false;
     const candidates = data.semantic_candidates;
     if (Array.isArray(candidates) && candidates.length > 0 && candidates.length <= 256 &&
         /^[a-f0-9]{64}$/.test(data.snapshot_version ?? "") &&
@@ -753,10 +754,18 @@ export async function runHook(input, output = text => new Promise((resolve, reje
           const selectedIds = await hybridCandidateSelection(config, query, candidates, Math.min(1000, remaining - 800));
           const available = HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted);
           if (available > 800) {
-            const scored = await recall(config, {...body,
-              semantic_snapshot_version: data.snapshot_version,
-              snapshot_scores: Object.fromEntries(selectedIds.map((id, i) => [id, i === 0 ? .99 : .98])),
-            }, Math.min(1200, available));
+            let scored;
+            try {
+              scored = await recall(config, {...body,
+                semantic_snapshot_version: data.snapshot_version,
+                snapshot_scores: Object.fromEntries(selectedIds.map((id, i) => [id, i === 0 ? .99 : .98])),
+              }, Math.min(1200, available));
+            } catch {
+              // After remote verification has started, an unreadable answer
+              // may conceal a changed Memory set. Never inject old context.
+              secondVerificationFailed = true;
+              throw new Error("Current Memory verification unavailable.");
+            }
             if (scored.memory_ids.length <= 2 &&
                 ["snapshot_v1", "legacy"].includes(scored.semantic_mode)) {
               // If the snapshot changed, use the *new* Railway lexical result,
@@ -771,7 +780,7 @@ export async function runHook(input, output = text => new Promise((resolve, reje
         await recordDiagnostic(config, "UserPromptSubmit", "semantic_rerank_failed");
       }
     }
-    if (!data.context || data.memory_ids.length > 2 ||
+    if (secondVerificationFailed || !data.context || data.memory_ids.length > 2 ||
         data.memory_ids.some(id => exclude.includes(id))) return;
     await commitRecallContext(config, input, snapshot, data, exclude, output);
     return;
