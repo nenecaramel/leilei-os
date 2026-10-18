@@ -756,13 +756,17 @@ export function createProcessRuntime(
 
   // Optional private Railway worker, isolated from the existing Alpine API
   // and all Native Live processes. No polling; queries occur on prompts only.
-  const claudeRecallE5 =
-    process.env.LEILEI_MIND_E5_URL && process.env.LEILEI_MIND_E5_TOKEN
-      ? new ClaudeCodeRailwayE5Client(
-          process.env.LEILEI_MIND_E5_URL,
-          process.env.LEILEI_MIND_E5_TOKEN,
-        )
-      : undefined;
+  let claudeRecallE5: ClaudeCodeRailwayE5Client | undefined;
+  if (process.env.LEILEI_MIND_E5_URL && process.env.LEILEI_MIND_E5_TOKEN) {
+    try {
+      claudeRecallE5 = new ClaudeCodeRailwayE5Client(
+        process.env.LEILEI_MIND_E5_URL,
+        process.env.LEILEI_MIND_E5_TOKEN,
+      );
+    } catch {
+      // A broken optional Mind URL must never fail the main Native Live API.
+    }
+  }
 
   return {
     mcpSessionRegistry,
