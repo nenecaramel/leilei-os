@@ -27,7 +27,6 @@ import {
 import {
   LocalRitrieveBreathSemanticScorer,
 } from "../src/domains/runtime/breath/local-ritrieve-embedding.js";
-import { LocalHybridMindRecallScorer } from "../src/domains/runtime/mind/local-hybrid-mind-recall.js";
 import {
   resolveNativeLiveMacDaemonConfig,
 } from "../src/domains/bridge/mac/native-live-mac-daemon-config.js";
@@ -245,16 +244,15 @@ const backgroundModelExecutor =
 // Keep Native Live's calibrated E5 scorer unchanged. Ritrieve is only for
 // the opt-in Claude Code Mind Hook until its own quality gate has passed.
 const semanticScorer = new LocalE5BreathSemanticScorer();
-const hookSemanticScorer = process.env.LEILEI_MIND_EMBEDDING_PROVIDER === "hybrid_conditional_v1"
-  ? new LocalHybridMindRecallScorer(semanticScorer)
-  : process.env.LEILEI_MIND_EMBEDDING_PROVIDER === "ritrieve"
-    ? new LocalRitrieveBreathSemanticScorer()
-    : semanticScorer;
+// Claude-only on-demand E5+ritrieve runs in its own local Hook socket.
+// Never attach it to this legacy snapshot synchronizer or 60s timer.
+const hookSemanticScorer = process.env.LEILEI_MIND_EMBEDDING_PROVIDER === "ritrieve"
+  ? new LocalRitrieveBreathSemanticScorer()
+  : semanticScorer;
 // Prepare and periodically refresh the canonical, user-scoped Mind index.
 // This is best-effort: local failures never block live chat or expose plaintext.
 let mindSnapshotTimer: ReturnType<typeof setInterval> | null = null;
-if (hookSemanticScorer instanceof LocalRitrieveBreathSemanticScorer
-    || hookSemanticScorer instanceof LocalHybridMindRecallScorer) {
+if (hookSemanticScorer instanceof LocalRitrieveBreathSemanticScorer) {
   const synchronizer = new MacMindSnapshotSync(relayBaseUrl, relayToken, hookSemanticScorer);
   void hookSemanticScorer.warmup().then(() => synchronizer.refresh()).catch(() => undefined);
   mindSnapshotTimer = setInterval(() => {
