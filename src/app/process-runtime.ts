@@ -5,6 +5,7 @@ import { restoreNativeSessionHistory, readNativeSessionRestoreState, releaseNati
 import { DrizzleClaudeCodeRecallReceipts } from "../domains/runtime/mind/claude-code-recall-receipts.js";
 import { requireActiveUser } from "../domains/require-active-user.js";
 import { ClaudeCodeMindRecallService } from "../domains/runtime/mind/claude-code-mind-recall.js";
+import { ClaudeCodeRailwayE5 } from "../domains/runtime/mind/claude-code-railway-e5.js";
 import { DEFAULT_MIND_LOOP_CONFIG } from "../domains/runtime/mind/default-backend-mind-runtime.js";
 import { randomUUID } from "node:crypto";
 import {
@@ -753,6 +754,11 @@ export function createProcessRuntime(
     internalToolProfiles,
   });
 
+  // Claude-only embedding startup; never delays Native Live or API boot.
+  // If E5 was not explicitly prepared, lexical fallback stays available.
+  const claudeRecallE5 = new ClaudeCodeRailwayE5();
+  void claudeRecallE5.warmup().catch(() => undefined);
+
   return {
     mcpSessionRegistry,
     logger,
@@ -771,7 +777,7 @@ export function createProcessRuntime(
       webUniverseService: universeService,
       webMindService: mindProductService,
       internalMindRecall: {
-        service: new ClaudeCodeMindRecallService(new DrizzleSubjectStateRuntimePort(db), {
+        service: new ClaudeCodeMindRecallService(new DrizzleSubjectStateRuntimePort(db, claudeRecallE5), {
           ...DEFAULT_MIND_LOOP_CONFIG, breathSalienceWeight: breathRankingConfig.salienceWeight,
         }, DEFAULT_NATIVE_LIVE_SUBJECT_ID, new DrizzleClaudeCodeRecallReceipts(
           db,
