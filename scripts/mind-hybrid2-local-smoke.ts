@@ -59,12 +59,19 @@ function loadReview(value: unknown, fingerprint: string, known: Set<string>): Hu
   const cases: HumanCase[] = [];
   for (const c of value.cases) {
     if (!object(c) || !text(c.query) || !c.query.trim() || c.labeled !== true
-        || !Array.isArray(c.judged_ids) || !Array.isArray(c.relevant_ids)
-        || !c.judged_ids.every(id => text(id) && known.has(id))
-        || !c.relevant_ids.every(id => text(id) && c.judged_ids.includes(id)))
+        || !Array.isArray(c.judged_ids) || !Array.isArray(c.relevant_ids))
+      throw new Error("INVALID_PRIVATE_LABEL");
+    // Assign after narrowing object properties: TypeScript cannot preserve
+    // narrowing of c.judged_ids across a nested array callback.
+    const judgedIds: unknown[] = c.judged_ids;
+    const relevantIds: unknown[] = c.relevant_ids;
+    if (!judgedIds.every(id => text(id) && known.has(id))
+        || !relevantIds.every(id => text(id) && judgedIds.includes(id))
+        || new Set(judgedIds).size !== judgedIds.length
+        || new Set(relevantIds).size !== relevantIds.length)
       throw new Error("INVALID_PRIVATE_LABEL");
     cases.push({query: c.query, labeled: true,
-      judged_ids: c.judged_ids as string[], relevant_ids: c.relevant_ids as string[]});
+      judged_ids: judgedIds as string[], relevant_ids: relevantIds as string[]});
   }
   return cases;
 }
