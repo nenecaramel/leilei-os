@@ -420,3 +420,57 @@ test("indexed Hook without local index uses exactly one lexical Railway fallback
   assert.equal(f.calls.length, 1);
   assert.equal(f.calls[0].semantic_snapshot_version, undefined);
 });
+
+test("hybrid conditional Hook makes one signed Railway recall with at most two local picks",async t=>{
+  const f=await fixture(t,(_body,res)=>res.end(JSON.stringify({
+    success:true,data:{...signedData(),semantic_mode:"snapshot_v1"},
+  })));
+  const socket=join(f.home,"hybrid.sock");
+  const version="c".repeat(64);
+  const close=await startMindRecallSemanticServer({
+    score:async()=>new Map<string,number>(),
+    searchHybrid:async query=>{
+      assert.equal(query,"tea");
+      return {version,count:2,hits:[{stateId:ID,score:.99},{stateId:ID2,score:.98}]};
+    },
+  },socket);
+  t.after(close);
+  f.config.semantic_socket=socket;
+  f.config.index_mode="hybrid_conditional_v1";
+  await writeFile(join(f.home,"mind.env"),envContent(f.config),{mode:0o600});
+  let output="";
+  await runHook(prompt(),async text=>{output+=text;});
+  assert.equal(output,CONTEXT+"\n");
+  assert.equal(f.calls.length,1);
+  assert.equal(f.calls[0].semantic_snapshot_version,version);
+  assert.deepEqual(f.calls[0].snapshot_scores,{[ID]:.99,[ID2]:.98});
+});
+
+test("hybrid conditional Hook abstains without a local index; never makes lexical fallback",async t=>{
+  const f=await fixture(t);
+  f.config.index_mode="hybrid_conditional_v1";
+  await writeFile(join(f.home,"mind.env"),envContent(f.config),{mode:0o600});
+  let output="";
+  await runHook(prompt(),async text=>{output+=text;});
+  assert.equal(output,"");
+  assert.equal(f.calls.length,0);
+});
+
+test("hybrid conditional Hook refuses stale snapshot after Railway review",async t=>{
+  const f=await fixture(t,(_body,res)=>res.end(JSON.stringify({
+    success:true,data:{...signedData(),semantic_mode:"legacy"},
+  })));
+  const socket=join(f.home,"hybrid.sock");
+  const close=await startMindRecallSemanticServer({
+    score:async()=>new Map<string,number>(),
+    searchHybrid:async()=>({version:"b".repeat(64),count:1,hits:[{stateId:ID,score:.99}]}),
+  },socket);
+  t.after(close);
+  f.config.semantic_socket=socket;
+  f.config.index_mode="hybrid_conditional_v1";
+  await writeFile(join(f.home,"mind.env"),envContent(f.config),{mode:0o600});
+  let output="";
+  await runHook(prompt(),async text=>{output+=text;});
+  assert.equal(output,"");
+  assert.equal(f.calls.length,1);
+});
