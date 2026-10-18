@@ -15,7 +15,7 @@ import type {
   SubjectStateTransition,
 } from "../mind/native-live-mind-loop-service.js";
 import type { PersistentWriteEnvelope } from "../shared/persistent-write-envelope.js";
-import { breathLexicalTokens } from "../breath/breath-recall.js";
+import { breathLexicalScore, breathLexicalTokens } from "../breath/breath-recall.js";
 import {
   CURRENT_SUBJECT_STATE_KINDS,
   validateSubjectStateWrite,
@@ -166,7 +166,13 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
       desc(table.createdAt),
       asc(table.id),
     ).limit(256);
-    return rows.map(rowToState);
+    // Once SQL bounds the candidate pool, use the exact original 16 Oct
+    // lexical score to order candidates. No full-library application scan.
+    const states = rows.map(rowToState);
+    return states.sort((a, b) =>
+      breathLexicalScore(query, b.text ?? "") -
+        breathLexicalScore(query, a.text ?? "") ||
+      a.id.localeCompare(b.id));
   }
 
   async append(input: {
