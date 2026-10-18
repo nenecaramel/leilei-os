@@ -771,14 +771,18 @@ export async function runHook(input, output = text => new Promise((resolve, reje
               secondVerificationFailed = true;
               throw new Error("Current Memory verification unavailable.");
             }
-            if (scored.memory_ids.length <= 2 &&
-                ["snapshot_v1", "legacy"].includes(scored.semantic_mode)) {
-              // If the snapshot changed, use the *new* Railway lexical result,
-              // never the older first response or stale local scores.
-              data = scored;
-              await recordDiagnostic(config, "UserPromptSubmit",
-                scored.semantic_mode === "snapshot_v1" ? "semantic_scored" : "semantic_snapshot_stale");
+            if (scored.memory_ids.length > 2 ||
+                !["snapshot_v1", "legacy"].includes(scored.semantic_mode)) {
+              // An unexpected verification response cannot authorize a
+              // previously signed first-round context.
+              secondVerificationFailed = true;
+              throw new Error("Invalid Railway verification mode.");
             }
+            // If the snapshot changed, use the *new* Railway lexical result,
+            // never the older first response or stale local scores.
+            data = scored;
+            await recordDiagnostic(config, "UserPromptSubmit",
+              scored.semantic_mode === "snapshot_v1" ? "semantic_scored" : "semantic_snapshot_stale");
           }
         }
       } catch {
