@@ -1,3 +1,4 @@
+import { NativeLiveMacSilenceWakeSwitch } from "../src/domains/bridge/mac/native-live-mac-silence-wake-switch.js";
 import { NativeLiveMacPersistentRuntime } from "../src/domains/bridge/mac/native-live-mac-persistent-runtime.js";
 import { flushNativeLiveBackgroundWithListenerLease } from "../src/domains/bridge/mac/native-live-mac-background-lease.js";
 import { createNativeSessionDrainServer } from "../tools/claude-bridge/src/native-session-daemon-drain.mjs";
@@ -124,6 +125,7 @@ const silenceWakeScheduler =
   new NativeLiveMacSilenceWakeScheduler(
     relay,
     () => Date.now(),
+    new NativeLiveMacSilenceWakeSwitch(),
   );
 const wakeBrokerClient =
   wakeBroker
@@ -322,11 +324,17 @@ async function waitForWork(): Promise<
   activeWorkWaitController = controller;
   let silenceDeadlineReached = false;
   let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+  let silenceSwitchChanged = false;
+  const stopWatching = silenceWakeScheduler.watchChanges(() => {
+    silenceSwitchChanged = true;
+    controller.abort();
+  });
   const silenceDeadline = silenceWakeScheduler.nextDeadlineAt();
   if (silenceDeadline !== null) {
     const delayMs = Math.max(0, silenceDeadline - Date.now());
     if (delayMs === 0) {
       activeWorkWaitController = null;
+      stopWatching();
       return "silence_due";
     }
     silenceTimer = setTimeout(() => {
@@ -342,6 +350,7 @@ async function waitForWork(): Promise<
             await wakeBrokerClient.snapshot(
               controller.signal,
             );
+          if (!stopping && silenceSwitchChanged) return "ready";
           if (stopping || controller.signal.aborted) {
             return "stopped";
           }
@@ -361,6 +370,7 @@ async function waitForWork(): Promise<
         if (silenceDeadlineReached) {
           return "silence_due";
         }
+        if (silenceSwitchChanged) return "ready";
         if (controller.signal.aborted) {
           return "stopped";
         }
@@ -388,6 +398,7 @@ async function waitForWork(): Promise<
         if (silenceDeadlineReached) {
           return "silence_due";
         }
+        if (silenceSwitchChanged) return "ready";
         if (controller.signal.aborted) {
           return "stopped";
         }
@@ -417,14 +428,17 @@ async function waitForWork(): Promise<
     });
     if (stopping) return "stopped";
     if (silenceDeadlineReached) return "silence_due";
+    if (silenceSwitchChanged) return "ready";
     if (controller.signal.aborted) return "stopped";
     return outcome;
   } catch (error) {
     if (stopping) return "stopped";
     if (silenceDeadlineReached) return "silence_due";
+    if (silenceSwitchChanged) return "ready";
     if (controller.signal.aborted) return "stopped";
     throw error;
   } finally {
+    stopWatching();
     if (silenceTimer) clearTimeout(silenceTimer);
     if (activeWorkWaitController === controller) {
       activeWorkWaitController = null;

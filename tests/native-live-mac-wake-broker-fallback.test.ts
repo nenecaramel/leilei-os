@@ -154,3 +154,11 @@ test("behavior: repeated relay errors during timeout recovery do not renew the s
   assert.ok(result.relayProbeTimes.every(time => time < 360_000), `probe times: ${result.relayProbeTimes}`);
   assert.equal(result.executed, 0);
 });
+
+
+test("local silence switch change interrupts idle wait without stopping foreground work probes", async () => {
+  const result=await runDaemonScenario({toggleAtBrokerWait:1,stopAfterBrokerWait:2});
+  assert.equal(result.workWakes,1);
+  assert.equal(result.silenceFired,0);
+  assert.ok(result.relayProbeTimes.length>=2);
+});

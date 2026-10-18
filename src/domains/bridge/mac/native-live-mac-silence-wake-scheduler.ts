@@ -31,6 +31,7 @@ export class NativeLiveMacSilenceWakeScheduler {
   constructor(
     private readonly client: NativeLiveMacSilenceWakeClient,
     private readonly now: () => number = () => Date.now(),
+    private readonly control?: {isEnabled(): boolean; watch(onChange:()=>void): ()=>void},
   ) {}
 
   async refresh(): Promise<NativeLiveSilenceWakeSchedule | null> {
@@ -38,7 +39,12 @@ export class NativeLiveMacSilenceWakeScheduler {
     return this.schedule;
   }
 
+  watchChanges(onChange:()=>void): ()=>void {
+    return this.control?.watch(onChange) ?? (()=>{});
+  }
+
   nextDeadlineAt(): number | null {
+    if(this.control && !this.control.isEnabled())return null;
     return nextSilenceWakeDeadline(this.schedule, this.now());
   }
 
@@ -60,6 +66,7 @@ export class NativeLiveMacSilenceWakeScheduler {
     slot?: NativeLiveSilenceWakeSlot;
     reason?: NativeLiveSilenceWakeIgnoredReason;
   }> {
+    if(this.control && !this.control.isEnabled())return {outcome:"not_due"};
     const slot = chooseDueSilenceWakeSlot(this.schedule, this.now());
     if (!slot || !this.schedule) return { outcome: "not_due" };
 

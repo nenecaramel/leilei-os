@@ -97,3 +97,35 @@ parent HOME must not affect fixture outcomes; real recovery guards remain active
 HTML/SVG inline delivery was evaluated separately. Current MIME support alone
 does not demonstrate an owner-token or cross-user bypass, so this change does not
 alter download disposition or introduce a separate rendering policy.
+
+## Local automatic Wake switch
+
+From the canonical Mac checkout:
+
+```sh
+cd ~/Developer/leilei-os-main
+pnpm wake on
+pnpm wake off
+pnpm wake status
+```
+
+This persistent local switch controls only the post-reply 5–10 minute and
+last-user-message 90–120 minute silence opportunities. It does not change
+normal chat, Cron/Monitor/Bash jobs, Mind recall, or Railway configuration.
+The commands need no credentials. Default is ON; the private marker is
+`~/.leileios/wake/disabled`. Status reports the local switch; a backend
+`NATIVE_LIVE_SILENCE_WAKE_ENABLED=false` still overrides local ON.
+
+The daemon version containing this feature must be loaded once. Thereafter
+filesystem notifications interrupt its current idle wait immediately; no
+restart, deployment, or new polling loop is required for toggles. Failure
+to inspect/watch the control disables automatic silence wake and leaves
+normal chat available. A failed OS watcher stays disabled for that daemon
+lifetime rather than continuously recreating watchers; repair filesystem
+access and restart the daemon after such an exceptional failure. The switch is checked again before firing. It does
+not cancel requests already sent or force-stop running tasks.
+
+OFF leaves existing server epochs/receipts intact. ON resumes the current
+schedule, so an unconsumed opportunity already due can run immediately;
+new user activity still replaces that schedule. Shutdown retains priority
+over switch notifications, and watchers are closed after each idle wait.
