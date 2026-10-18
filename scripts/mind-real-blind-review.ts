@@ -363,32 +363,49 @@ try {
     const union=new Set<string>();
     for(const values of selections.values())for(const id of values)union.add(id);
     const displayed=[...union].sort((a,b)=>digest(probe.query+a).localeCompare(digest(probe.query+b)));
+    const savedCase=savedReview?.cases.find(x=>x.query===probe.query);
+    const judged=new Set(savedCase?.labeled ? savedCase.judged_ids : []);
+    const unseen=displayed.filter(id=>!judged.has(id));
+    const relevant=new Set<string>(savedCase?.labeled ? savedCase.relevant_ids : []);
     console.log(`\n========== ${i+1}/${probes.length} · ${probe.group} ==========\n测试问题：${probe.query}`);
-    if(!displayed.length)console.log("两种模型都没有选出记忆，无法形成有标签的候选池；跳过本题。");
-    for(let j=0;j<displayed.length;j++){
-      const memory=byId.get(displayed[j]!);
+    if (unseen.length===0 && savedCase?.labeled) {
+      console.log("复用本机已保存的相关性判断，无需再次作答。");
+      reviews.push({relevant,selections,group:probe.group});
+      continue;
+    }
+    if (unseen.length===0) {
+      console.log("所有检索方式均无候选，无法自动断定全库无相关记忆；本题不计入准确率。");
+      continue;
+    }
+    if (savedCase?.labeled) console.log("仅显示本轮新增的候选；原有标注自动保留。");
+    for(let j=0;j<unseen.length;j++){
+      const memory=byId.get(unseen[j]!);
       if(!memory)throw new Error("Blind review index mismatch.");
       const visible=memory.text.length>450?memory.text.slice(0,450)+"……":memory.text;
       console.log(`\n[${j+1}] ${visible}`);
     }
-    if(displayed.length===0)continue;
-    let relevant=new Set<string>();
     let skipped=false;
-    if(displayed.length>0) {
-      while(true){
-        const answer=(await rl.question("\n确实相关的记忆编号（如 1,3；全无关输入 0；跳过输入 s）：")).trim();
-        if(answer.toLowerCase()==="s"){skipped=true;break}
-        if(answer==="0"){relevant=new Set();break}
-        const pieces=answer.split(/[,，\s]+/u).filter(Boolean);
-        const numbers=pieces.map(x=>Number(x));
-        if(numbers.length && numbers.every(n=>Number.isInteger(n)&&n>=1&&n<=displayed.length)){
-          relevant=new Set(numbers.map(n=>displayed[n-1]!));
-          break;
-        }
-        console.log("输入无效，请只填写屏幕上出现的编号。");
+    while(true){
+      const answer=(await rl.question("\n新增候选中确实相关的编号（如 1,3；全部无关输入 0；跳过输入 s）：")).trim();
+      if(answer.toLowerCase()==="s"){skipped=true;break}
+      if(answer==="0")break;
+      const pieces=answer.split(/[,，\s]+/u).filter(Boolean);
+      const numbers=pieces.map(x=>Number(x));
+      if(numbers.length && numbers.every(n=>Number.isInteger(n)&&n>=1&&n<=unseen.length)){
+        for(const id of numbers.map(n=>unseen[n-1]!)) relevant.add(id);
+        break;
       }
+      console.log("输入无效，请只填写屏幕上出现的编号。");
     }
-    if(!skipped)reviews.push({relevant,selections,group:probe.group});
+    if(skipped)continue;
+    reviews.push({relevant,selections,group:probe.group});
+    if(savedReview && reviewFile) {
+      const nextCase:SavedCase={...probe,labeled:true,
+        judged_ids:[...new Set([...(savedCase?.judged_ids ?? []),...displayed])],
+        relevant_ids:[...relevant]};
+      savedReview={...savedReview,cases:savedReview.cases.map(x=>x.query===probe.query?nextCase:x)};
+      await savePrivateReview(reviewFile,savedReview);
+    }
   }
   console.log("\nAGGREGATE_RESULT_JSON_START");
   console.log(JSON.stringify({
@@ -402,11 +419,14 @@ try {
     proposed_query_count:probes.length,
     reviewed_query_count:reviews.length,
     skipped_or_unjudgeable_queries:probes.length-reviews.length,
+    fixed_local_review_enabled:Boolean(reviewFile),
+    reused_private_query_count:stored?.cases.length ?? 0,
     summary:summarize(reviews),
     limitations:[
       "Unreviewed questions (human skipped or neither model offered a candidate) are excluded, not counted as true negatives.",
       "Queries are either exported historical user messages or user-authored locally at test time; user grades the union of proposed memories.",
-      "No candidate outside the shown union is manually judged; recall is conditional on this candidate pool.",
+      "No candidate outside the reviewed union is judged; recall is conditional on the saved candidate pool.",
+      "The optional private review-file stays outside the repository with mode 0600; never paste or upload it.",
       "This compares old E5 embedding and new ritrieve embedding retrieval, not full old/new production Hook behavior.",
       "All private data remain on the Mac; only anonymous aggregate statistics should be shared.",
     ],
