@@ -70,6 +70,23 @@ test("agreement is stable and bounded to four with deterministic ties",()=>{
   assert.deepEqual(selectHybridMindCandidates(input),result);
 });
 
+test("one-memory policy preserves top candidate and never returns a second",()=>{
+  const available = select();
+  assert.equal(available.length, 1);
+  assert.deepEqual(select({maxItems:1}), available.slice(0,1));
+  const query="学习计划";
+  const ids=["a","b","c","d"];
+  const common:HybridInput = {
+    query,
+    memories:ids.map(id=>memory(id,"学习计划的步骤")),
+    e5Ranked:ids.map(id=>score(id,.9)),
+    ritrieveRanked:ids.map(id=>score(id,.8)),
+    mode:"agreement",
+    maxItems:1,
+  };
+  assert.deepEqual(selectHybridMindCandidates(common).map(x=>x.stateId),["a"]);
+});
+
 test("bad bounds or empty queries return no candidates",()=>{
   assert.deepEqual(select({maxItems:20}),[]);
   assert.deepEqual(select({query:"  "}),[]);
