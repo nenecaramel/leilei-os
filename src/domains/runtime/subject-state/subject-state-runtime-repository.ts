@@ -138,7 +138,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     // Run independent, indexed channels: whole-query fuzzy match, literal
     // Chinese/English anchors, English FTS and history coverage. Neither
     // 256 nor any subquery limit is a cap on stored Memory.
-    const terms = [...new Set(query.match(/[\\p{Script=Han}]{2,6}|[a-z0-9]{3,}/giu) ?? [])].slice(0, 8);
+    const terms = [...new Set(query.match(/[\p{Script=Han}]{2,6}|[a-z0-9]{3,}/giu) ?? [])].slice(0, 8);
     const fuzzy = query.length >= 3
       ? await this.db.select(columns).from(table)
         .where(and(eligible, sql`${table.text} % ${query}`))
