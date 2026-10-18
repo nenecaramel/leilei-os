@@ -4,6 +4,9 @@
  *
  * pnpm exec tsx scripts/mind-real-blind-review.ts "/local/path/full-backup.json" --count=12
  *
+ * For independent holdout questions, repeat --exclude-review-file=ABSOLUTE_PATH
+ * for each historical labeled review; matching old queries are excluded
+ * from new automatic/manual prompts and existing holdout files are checked.
  * With --review-file ABSOLUTE_PATH, queries and private judgements are saved
  * only in a mode-0600 on-device JSON outside the repository for repeat A/B.
  * Without --review-file, no input/labels are saved. Aggregates hide all text.
@@ -198,6 +201,8 @@ function summarize(reviews:Review[]):Json {
     "hybrid_anchored_rescue",
     "hybrid_agreement_top1",
     "hybrid_conditional_second",
+    "hybrid_conditional_top_one",
+    "hybrid_conditional_second_gate_088_076",
   ];
   const report:Json={};
   for(const name of names){
@@ -240,6 +245,9 @@ const argv=process.argv.slice(2);
 const path=argv.find(x=>!x.startsWith("--"));
 const countString=argv.find(x=>x.startsWith("--count="));
 const forceManual=argv.includes("--manual");
+const excludeReviewPaths=argv
+  .filter(x=>x.startsWith("--exclude-review-file="))
+  .map(x=>x.slice("--exclude-review-file=".length));
 const reviewFileArgument=argv.find(x=>x.startsWith("--review-file="));
 const reviewFile=reviewFileArgument?.slice("--review-file=".length);
 if (reviewFile!==undefined && (!isAbsolute(reviewFile) || reviewFile===resolve(process.cwd())))
@@ -258,10 +266,22 @@ if(loaded.memories.length===0)throw new Error("No eligible global Memory in this
 // Never fabricate historical questions or call an online model to generate them.
 const corpus=loaded.memories.sort((a,b)=>digest(a.id).localeCompare(digest(b.id))).slice(0,limit);
 const fingerprint=digest(JSON.stringify(corpus.map(m=>[m.id,m.text])));
-const stored=reviewFile ? await loadPrivateReview(reviewFile,fingerprint,new Set(corpus.map(m=>m.id))) : null;
+const known=new Set(corpus.map(m=>m.id));
+if(excludeReviewPaths.some(p=>!isAbsolute(p)||p===reviewFile)
+   ||new Set(excludeReviewPaths).size!==excludeReviewPaths.length)
+  throw new Error("Excluded review files must be distinct absolute private paths.");
+const oldQueries=new Set<string>();
+for(const excluded of excludeReviewPaths){
+  const saved=await loadPrivateReview(excluded,fingerprint,known);
+  if(!saved||saved.cases.length===0)throw new Error("Missing private exclusion review.");
+  for(const c of saved.cases)oldQueries.add(c.query);
+}
+const stored=reviewFile ? await loadPrivateReview(reviewFile,fingerprint,known) : null;
+if(stored?.cases.some(c=>oldQueries.has(c.query)))
+  throw new Error("Holdout query overlaps a previously reviewed query.");
 let savedReview:SavedReview|null=stored;
 const probes:Probe[]=stored?.cases.length ? stored.cases.map(x=>({query:x.query,group:x.group}))
-  : forceManual ? [] : selectProbes(loaded.prompts,corpus,count);
+  : forceManual ? [] : selectProbes(loaded.prompts.filter(x=>!oldQueries.has(x)),corpus,count);
 const candidates:BreathSemanticCandidate[]=corpus.map(m=>({stateId:m.id,text:m.text,kind:"memory"}));
 const byId=new Map(corpus.map(m=>[m.id,m] as const));
 const e5=new LocalE5BreathSemanticScorer();
@@ -275,7 +295,7 @@ try {
     console.log("这份备份没有符合条件的历史提问，或启用了 --manual。现在直接在这台 Mac 输入真实测试问题。");
     console.log("建议一半关于实际记忆（可用含糊的说法），一半完全无关或仅主题相似，来衡量漏召回和误召回。");
     console.log("每行一个问题，按回车继续；直接回车可提前结束。问题不会上传、保存或出现在最终 JSON。");
-    const dedupe=new Set<string>();
+    const dedupe=new Set(oldQueries);
     for(let i=0;i<count;) {
       const query=(await rl.question(`测试问题 ${i+1}/${count}：`)).trim();
       if(!query)break;
@@ -318,6 +338,8 @@ try {
     "hybrid_anchored_rescue",
     "hybrid_agreement_top1",
     "hybrid_conditional_second",
+    "hybrid_conditional_top_one",
+    "hybrid_conditional_second_gate_088_076",
   ];
   for(let i=0;i<probes.length;i++){
     const probe=probes[i]!;
@@ -360,6 +382,15 @@ try {
         mode:"agreement",
       }).map(x=>x.stateId)],
     ]);
+    // Subsets of original hybrid choices: no label expansion or changed policy.
+    const conditional=selections.get("hybrid_conditional_second")??[];
+    const oldScore=new Map(old.map(x=>[x.id,x.score]));
+    const newScore=new Map(next.map(x=>[x.id,x.score]));
+    selections.set("hybrid_conditional_top_one",conditional.slice(0,1));
+    selections.set("hybrid_conditional_second_gate_088_076",
+      conditional.filter((id,index)=>index===0
+        || ((oldScore.get(id)??-1)>=.88 && (newScore.get(id)??-1)>=.76)));
+
     const union=new Set<string>();
     for(const values of selections.values())for(const id of values)union.add(id);
     const displayed=[...union].sort((a,b)=>digest(probe.query+a).localeCompare(digest(probe.query+b)));
@@ -421,6 +452,8 @@ try {
     skipped_or_unjudgeable_queries:probes.length-reviews.length,
     fixed_local_review_enabled:Boolean(reviewFile),
     reused_private_query_count:stored?.cases.length ?? 0,
+    previously_reviewed_questions_excluded:oldQueries.size,
+    holdout_overlap_count:probes.filter(p=>oldQueries.has(p.query)).length,
     summary:summarize(reviews),
     limitations:[
       "Unreviewed questions (human skipped or neither model offered a candidate) are excluded, not counted as true negatives.",
