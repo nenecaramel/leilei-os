@@ -90,3 +90,41 @@ test("Claude Code recall returns snapshot version and caps lexical fallback at t
   assert.match(result.snapshot_version,/^[a-f0-9]{64}$/);
   assert.ok(result.memory_ids.length<=2);
 });
+
+test("Claude indexed retrieval does not read full Mind and verifies only current candidates",async()=>{
+  let states=[memory(20,"柠檬黄是我喜欢的颜色"),memory(21,"以前谈过的承诺")];
+  let calls=0;
+  const reader={
+    list:async()=>{throw new Error("A full Mind scan is forbidden on Claude recall");},
+    searchGlobalRecallCandidates:async(input:{userId:string;subjectId:string;query:string;excludeIds:readonly string[]})=>{
+      calls++;
+      assert.equal(input.userId,"u1");assert.equal(input.subjectId,"G");
+      return states.filter(x=>!input.excludeIds.includes(x.id));
+    },
+  };
+  const service=new ClaudeCodeMindRecallService(reader,DEFAULT_MIND_LOOP_CONFIG,"G",receipts);
+  const base={userId:"u1",sessionId:"s",query:"你答应过的事情",excludeIds:[]};
+  const first=await service.recall(base);
+  assert.equal(first.semantic_candidates.length,2);
+  const selected=await service.recall({...base,semanticSnapshotVersion:first.snapshot_version,
+    snapshotScores:new Map([[uuid(20),.99]])});
+  assert.equal(selected.semantic_mode,"snapshot_v1");
+  assert.deepEqual(selected.memory_ids,[uuid(20)]);
+  // The current server view changed: stale Mac choices must not override it.
+  states=states.filter(x=>x.id!==uuid(20));
+  const stale=await service.recall({...base,semanticSnapshotVersion:first.snapshot_version,
+    snapshotScores:new Map([[uuid(20),.99]])});
+  assert.equal(stale.semantic_mode,"legacy");
+  assert.ok(!stale.memory_ids.includes(uuid(20)));
+  assert.equal(calls,3);
+});
+
+test("per-request candidate limit is unrelated to the total database size",async()=>{
+  const picked=[memory(100,"初次见面聊过颜色"),memory(101,"曾经聊过的颜色")];
+  const service=new ClaudeCodeMindRecallService({
+    list:async()=>{throw new Error("Must not read 10k rows");},
+    searchGlobalRecallCandidates:async()=>picked,
+  },DEFAULT_MIND_LOOP_CONFIG,"G",receipts);
+  const result=await service.recall({userId:"u1",sessionId:"s",query:"颜色",excludeIds:[]});
+  assert.equal(result.semantic_candidates.length,2);
+});
