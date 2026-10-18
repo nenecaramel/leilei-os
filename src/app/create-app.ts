@@ -115,7 +115,7 @@ export type AppDependencies = {
   logger?: SafeLogger;
   nativeLiveAttachmentTransferStore?: Pick<
     PostgresInlineAttachmentObjectStore,
-    "transferMaxFileBytes" | "putTransfer" | "getTransfer"
+    "transferMaxFileBytes" | "authorizeTransfer" | "putTransfer" | "getTransfer"
   >;
   nativeLiveProduction?: NativeLiveProductionDependencies;
   verifyAccessToken?: AccessTokenVerifier;

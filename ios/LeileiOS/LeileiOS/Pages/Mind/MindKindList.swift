@@ -7,6 +7,10 @@ struct MindMemoryListView: View {
     @State private var items: [MindProductItem] = []
     @State private var nextCursor: String?
     @State private var totalCount: Int?
+    // Successful delete callbacks can arrive after an edit removed the row.
+    // Keep their IDs for this view's lifetime, including across count refreshes,
+    // so a delayed duplicate cannot decrement an authoritative count again.
+    @State private var deletedMindItemIDs: Set<String> = []
     @State private var loading = false
     @State private var loadingMore = false
     @State private var failed = false
@@ -228,27 +232,49 @@ struct MindMemoryListView: View {
     // scroll state. Update only the affected stable row in either feed.
     @MainActor
     private func removeMindItem(id: String) {
-        let oldCount = items.count
         items.removeAll { $0.id == id }
         searchRows.removeAll { $0.id == id }
-        if items.count != oldCount {
+        if deletedMindItemIDs.insert(id).inserted {
             totalCount = totalCount.map { max(0, $0 - 1) }
         }
     }
 
     @MainActor
     private func updateMindItem(_ updated: MindProductItem) {
-        if let index = items.firstIndex(where: { $0.id == updated.id }) {
-            items[index] = updated
+        let date = MemoryDate.parse(updated.occurredAt)
+            .map { MindPresentation.filterDayKey($0) }
+        let matchesUndated = !undatedOnly || date == nil
+        if matchesUndated {
+            if let index = items.firstIndex(where: { $0.id == updated.id }) {
+                items[index] = updated
+            }
+        } else {
+            items.removeAll { $0.id == updated.id }
         }
-        if let index = searchRows.firstIndex(where: { $0.id == updated.id }) {
-            let oldRow = searchRows[index]
-            searchRows[index] = MemorySearchPage.Entry(
-                id: updated.id,
-                snippet: MindPresentation.normalized(updated.text)
-                    ?? oldRow.snippet,
-                date: oldRow.date
-            )
+        // Search uses NFC, collapsed whitespace and a case-insensitive literal
+        // substring on the server. Reconcile only this row so later pages and
+        // their scroll anchors survive returning from the editor.
+        let normalize: (String) -> String = { value in
+            value.precomposedStringWithCanonicalMapping
+                .split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        }
+        let searchQuery = normalize(query)
+        let matchesQuery = searchQuery.isEmpty
+            || normalize(updated.text ?? "").range(
+                of: searchQuery,
+                options: .caseInsensitive,
+                locale: Locale(identifier: "en_US_POSIX")
+            ) != nil
+        if matchesUndated, selectedDate == nil || selectedDate == date, matchesQuery {
+            if let index = searchRows.firstIndex(where: { $0.id == updated.id }) {
+                searchRows[index] = MemorySearchPage.Entry(
+                    id: updated.id,
+                    snippet: MindPresentation.normalized(updated.text) ?? "Memory",
+                    date: date
+                )
+            }
+        } else {
+            searchRows.removeAll { $0.id == updated.id }
         }
     }
 

@@ -11,13 +11,26 @@ import {
 export function createNativeLiveAttachmentTransferRouter(
   store: Pick<
     PostgresInlineAttachmentObjectStore,
-    "transferMaxFileBytes" | "putTransfer" | "getTransfer"
+    "transferMaxFileBytes" | "authorizeTransfer" | "putTransfer" | "getTransfer"
   >,
 ): Router {
   const router = Router();
 
   router.put(
     "/:token",
+    (request, response, next) => {
+      try {
+        // Reject invalid capabilities before buffering or decompressing bytes.
+        // putTransfer repeats this check after parsing to enforce expiry then.
+        store.authorizeTransfer(
+          typeof request.params.token === "string" ? request.params.token : "",
+          "PUT",
+        );
+        next();
+      } catch (error) {
+        sendTransferError(response, error);
+      }
+    },
     raw({
       type: "*/*",
       limit: store.transferMaxFileBytes,

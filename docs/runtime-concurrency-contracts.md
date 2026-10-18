@@ -81,3 +81,19 @@ aborted collector may leave an unreferenced upload but cannot attach it to anoth
 segment. Ambiguous SDK results folding background attachments into foreground
 consumption fail closed; text-only folding keeps its existing behavior. Live
 acceptance must cover separate and interleaved native result boundaries.
+
+## Inline transfer and test isolation
+
+Inline PUT capabilities are authorized before binary buffering/decompression and
+again at storage time, so expiry during upload still fails closed. Valid compressed
+uploads and legacy inline downloads retain their existing behavior. This closes
+an anonymous pre-authorization resource path; it is not an aggregate limit on
+valid, authorized uploads.
+
+Native-session CLI fixtures give child processes a disposable HOME rather than
+consulting the owner's recovery directories. A synthetic pending receipt in the
+parent HOME must not affect fixture outcomes; real recovery guards remain active.
+
+HTML/SVG inline delivery was evaluated separately. Current MIME support alone
+does not demonstrate an owner-token or cross-user bypass, so this change does not
+alter download disposition or introduce a separate rendering policy.
