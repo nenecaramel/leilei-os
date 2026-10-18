@@ -21,6 +21,8 @@ const embedder = new ClaudeCodeRailwayE5();
 let draining = false;
 let again = false;
 let stopping = false;
+let embeddingServer: Server | null = null;
+let retry: ReturnType<typeof setTimeout> | null = null;
 
 const hashText = (text:string) => createHash("sha256").update(text).digest("hex");
 
@@ -140,16 +142,26 @@ async function startPrivateQueryEmbedding(): Promise<Server> {
   return server;
 }
 
+function scheduleDrain():void {
+  if(stopping)return;
+  void drain().catch(()=>{
+    process.stderr.write("MIND_SEMANTIC_INDEX_RETRY_REQUIRED\\n");
+    if(retry)clearTimeout(retry);
+    retry=setTimeout(()=>{retry=null;scheduleDrain();},5*60_000);
+  });
+}
+
 async function main():Promise<void>{
   await embedder.warmup();
-  const server=await startPrivateQueryEmbedding();
-  const subscription=await listener.listen("leilei_mind_semantic_dirty",()=>{
-    void drain().catch(()=>{process.stderr.write("MIND_SEMANTIC_INDEX_RETRY_REQUIRED\n");});
-  });
+  embeddingServer=await startPrivateQueryEmbedding();
+  // On every LISTEN (re)connection, sweep unprocessed rows in case a
+  // database notification occurred while this worker was disconnected.
+  await listener.listen("leilei_mind_semantic_dirty",scheduleDrain,scheduleDrain);
   const shutdown=()=>{
     stopping=true;
-    server.close();
-    void Promise.resolve(subscription).then(()=>listener.end()).then(()=>db.close()).then(()=>{
+    if(retry)clearTimeout(retry);
+    embeddingServer?.close();
+    void listener.end().then(()=>db.close()).then(()=>{
       process.exit(0);
     }).catch(()=>{process.exitCode=1;});
   };
@@ -160,6 +172,7 @@ async function main():Promise<void>{
 }
 await main().catch(async()=>{
   process.stderr.write("MIND_SEMANTIC_INDEX_WORKER_UNAVAILABLE\n");
+  embeddingServer?.close();
   await listener.end().catch(()=>undefined);
   await db.close().catch(()=>undefined);
   process.exitCode=1;
