@@ -21,6 +21,7 @@ const schema = z.object({
 /** Local-only transport for the daemon's existing warm scorer; no Mind storage or queue. */
 export async function startMindRecallSemanticServer(scorer: BreathSemanticScorer & {
   searchSnapshot?: (query: string, limit: number) => Promise<RitrieveSearchResult>;
+  searchHybrid?: (query: string) => Promise<RitrieveSearchResult>;
 }, socketPath = defaultMindRecallSocket()) {
   await mkdir(dirname(socketPath), {recursive: true, mode: 0o700});
   await chmod(dirname(socketPath), 0o700);
@@ -34,7 +35,7 @@ export async function startMindRecallSemanticServer(scorer: BreathSemanticScorer
   }
   let busy = false;
   const server = createServer(async (request, response) => {
-    if (request.method !== "POST" || !["/score", "/search"].includes(request.url ?? "")) { response.writeHead(404).end(); return; }
+    if (request.method !== "POST" || !["/score", "/search", "/search-hybrid"].includes(request.url ?? "")) { response.writeHead(404).end(); return; }
     if (busy) { response.writeHead(503).end(); return; }
     busy = true;
     try {
@@ -47,10 +48,15 @@ export async function startMindRecallSemanticServer(scorer: BreathSemanticScorer
       }
       const payload: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
       if (response.destroyed) return;
-      if (request.url === "/search") {
-        if (!scorer.searchSnapshot) throw new Error("Index unavailable");
+      if (request.url === "/search" || request.url === "/search-hybrid") {
         const input = searchSchema.parse(payload);
-        const result = await scorer.searchSnapshot(input.query, input.limit ?? 48);
+        const result = request.url === "/search-hybrid"
+          ? (scorer.searchHybrid
+              ? await scorer.searchHybrid(input.query)
+              : (() => {throw new Error("Hybrid unavailable");})())
+          : (scorer.searchSnapshot
+              ? await scorer.searchSnapshot(input.query, input.limit ?? 48)
+              : (() => {throw new Error("Index unavailable");})());
         if (!response.destroyed) {
           response.setHeader("Content-Type", "application/json");
           response.end(JSON.stringify(result));
