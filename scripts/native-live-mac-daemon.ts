@@ -245,7 +245,7 @@ const backgroundModelExecutor =
 // the opt-in Claude Code Mind Hook until its own quality gate has passed.
 const semanticScorer = new LocalE5BreathSemanticScorer();
 const hookSemanticScorer = process.env.LEILEI_MIND_EMBEDDING_PROVIDER === "hybrid_conditional_v1"
-  ? new LocalHybridMindRecallScorer()
+  ? new LocalHybridMindRecallScorer(semanticScorer)
   : process.env.LEILEI_MIND_EMBEDDING_PROVIDER === "ritrieve"
     ? new LocalRitrieveBreathSemanticScorer()
     : semanticScorer;
