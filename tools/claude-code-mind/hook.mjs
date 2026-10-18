@@ -796,8 +796,7 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     return;
   }
   if (config.indexed_recall) {
-    // This mode uses the cached local index and exactly one Railway round trip.
-    // On missing/stale local results Railway applies its existing lexical safety net.
+    // Existing opt-in local index path. Hybrid mode already returned above.
     const context = chain.recentUserPrompts.slice(0, 2).reverse().join("；").slice(-400);
     const usesContext = context && input.prompt.length <= 80 &&
       /(?:你|我|他|她|这|那|又|刚才|之前|为什么|怎么)/u.test(input.prompt);
@@ -807,35 +806,26 @@ export async function runHook(input, output = text => new Promise((resolve, reje
       if (available > 1300) {
         const indexed = await indexedSearch(config, query, Math.min(850, available - 1100));
         body.semantic_snapshot_version = indexed.version;
-        body.snapshot_scores = config.hybrid_recall
-          ? Object.fromEntries(indexed.hits.slice(0,2).map(hit => [hit.stateId,hit.score]))
-          : Object.fromEntries(indexed.hits
-              .filter(hit => hit.score >= Math.max(0.68, indexed.floor ?? 0.68)).slice(0, 48)
-              .map(hit => [hit.stateId, hit.score]));
+        body.snapshot_scores = Object.fromEntries(indexed.hits
+          .filter(hit => hit.score >= Math.max(0.68, indexed.floor ?? 0.68)).slice(0, 48)
+          .map(hit => [hit.stateId, hit.score]));
       } else {
         await recordDiagnostic(config, "UserPromptSubmit", "semantic_skipped_budget");
       }
     } catch {
       await recordDiagnostic(config, "UserPromptSubmit", "semantic_index_unavailable");
     }
-    // When the *local* hybrid index is unavailable, keep the original
-    // Desktop -> Railway recall path. Mac startup must never be a prerequisite
-    // for automatic recall. A versioned but STALE snapshot still fails closed.
-    if (!config.hybrid_recall || body.semantic_snapshot_version) {
-      const timeout = Math.min(2500, HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted));
-      if (timeout <= 0) return;
-      const data = await recall(config, body, timeout);
-      if (body.semantic_snapshot_version) {
-        await recordDiagnostic(config, "UserPromptSubmit",
-          data.semantic_mode === "snapshot_v1" ? "semantic_scored" : "semantic_snapshot_stale");
-      }
-      if (config.hybrid_recall && (data.semantic_mode !== "snapshot_v1" || data.memory_ids.length > 2))
-        return; // Stale/invalid snapshot must NOT fall back to lexical injection.
-      if (!data.context || data.memory_ids.some(id => exclude.includes(id))) return;
-      await commitRecallContext(config, input, snapshot, data, exclude, output);
-      return;
+    // The original Railway path remains available when the local index is down.
+    const timeout = Math.min(2500, HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted));
+    if (timeout <= 0) return;
+    const data = await recall(config, body, timeout);
+    if (body.semantic_snapshot_version) {
+      await recordDiagnostic(config, "UserPromptSubmit",
+        data.semantic_mode === "snapshot_v1" ? "semantic_scored" : "semantic_snapshot_stale");
     }
-    // No local model yet: fall through to the existing read-only Railway path.
+    if (!data.context || data.memory_ids.some(id => exclude.includes(id))) return;
+    await commitRecallContext(config, input, snapshot, data, exclude, output);
+    return;
   }
   // Legacy behavior remains the default until indexed recall passes acceptance.
   // Stop accounting never consumes this invocation's retrieval budget.
