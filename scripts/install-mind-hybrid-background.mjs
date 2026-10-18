@@ -115,6 +115,11 @@ async function main() {
   if(shell("launchctl",["print",target]).status!==0){
     const started=shell("launchctl",["bootstrap","gui/"+uid,plistPath]);
     if(started.status!==0)throw new Error("LAUNCHD_BOOTSTRAP_FAILED");
+  } else {
+    // A running old worker retains its 60s polling code until restarted.
+    // Restart only this standalone Mind LaunchAgent after installing new code.
+    const restarted=shell("launchctl",["kickstart","-k",target]);
+    if(restarted.status!==0)throw new Error("MIND_WORKER_RESTART_FAILED");
   }
   console.log("MIND_BACKGROUND_INSTALLED");
   console.log("HOOK_RAILWAY_FALLBACK=ENABLED");
