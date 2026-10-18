@@ -17,7 +17,13 @@ import { performance } from "node:perf_hooks";
 import { LocalHybridMindRecallScorer } from "../src/domains/runtime/mind/local-hybrid-mind-recall.js";
 import { MacMindSnapshotSync } from "../src/domains/bridge/mac/native-live-mac-mind-snapshot-sync.js";
 import { startMindRecallSemanticServer } from "../src/domains/bridge/mac/native-live-mac-mind-recall-server.js";
-import { runHook, HOOK_DEADLINE_MS } from "../tools/claude-code-mind/hook.mjs";
+// The hook is native ESM (.mjs), not compiled by the scripts TypeScript project.
+const hook = await import(new URL("../tools/claude-code-mind/hook.mjs", import.meta.url).href) as {
+  runHook: (input: {hook_event_name: string; session_id: string; prompt?: string},
+            output?: (text: string) => Promise<void>) => Promise<void>;
+  HOOK_DEADLINE_MS: number;
+};
+const {runHook, HOOK_DEADLINE_MS} = hook;
 
 const STAGING_URL = "https://leilei-mind-api-staging-staging.up.railway.app";
 const HIDDEN = "33333333-3333-4333-8333-333333333333";
