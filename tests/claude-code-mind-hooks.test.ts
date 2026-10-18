@@ -535,6 +535,13 @@ test("hybrid Hook uses current server fallback if snapshot changed",async t=>{
   assert.equal(f.calls.length,2);
 });
 
+test("Native Live daemon never schedules an idle Railway Memory snapshot fetch",async()=>{
+  const source=await readFile(resolve("scripts/native-live-mac-daemon.ts"),"utf8");
+  assert.doesNotMatch(source,/MacMindSnapshotSync|mindSnapshotTimer|synchronizer\.refresh\s*\(/);
+  assert.match(source,/startMindRecallSemanticServer\(hookSemanticScorer\)/,
+    "legacy local socket remains available without a polling loop");
+});
+
 test("standalone hybrid worker never polls or downloads Railway Memory",async()=>{
   const source=await readFile(resolve("scripts/mind-hybrid-background.ts"),"utf8");
   assert.doesNotMatch(source,/MacMindSnapshotSync|setInterval\s*\(|\bfetch\s*\(/);
