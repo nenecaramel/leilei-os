@@ -13,6 +13,7 @@ import { performance } from "node:perf_hooks";
 import { LocalHybridMindRecallScorer } from "../src/domains/runtime/mind/local-hybrid-mind-recall.js";
 import { startClaudeCodeMindHybridServer } from "../src/domains/runtime/mind/claude-code-mind-hybrid-server.js";
 
+// @ts-expect-error Hook is plain .mjs with no TypeScript declaration; the shape is asserted below.
 const {runHook,HOOK_DEADLINE_MS} = await import("../tools/claude-code-mind/hook.mjs") as {
   runHook(input:{hook_event_name:string;session_id:string;prompt?:string},
     output?:(text:string)=>Promise<void>):Promise<void>;
