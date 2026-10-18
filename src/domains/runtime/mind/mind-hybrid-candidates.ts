@@ -69,3 +69,30 @@ export function selectHybridMindCandidates(input: HybridInput): HybridScore[] {
   eligible.sort((a,b)=>b.score-a.score || a.stateId.localeCompare(b.stateId));
   return eligible.slice(0,limit);
 }
+
+/**
+ * Offline-only conservative second-memory policy.
+ * Always keep the top mutually agreed candidate. A second candidate needs
+ * strong scores from BOTH models, high positions, and scores close to the top.
+ * These thresholds are uncalibrated hypotheses pending private human review.
+ */
+export function selectHybridMindCandidatesConditional(input: Omit<HybridInput,"maxItems">): HybridScore[] {
+  const agreed = selectHybridMindCandidates({...input, mode:"agreement", maxItems:4});
+  if (agreed.length < 2) return agreed.slice(0,1);
+  const [first, second] = agreed;
+  if (!first || !second) return agreed.slice(0,1);
+  const old = new Map(input.e5Ranked.map((hit,rank)=>[hit.stateId,{score:hit.score,rank}]));
+  const next = new Map(input.ritrieveRanked.map((hit,rank)=>[hit.stateId,{score:hit.score,rank}]));
+  const firstE5 = old.get(first.stateId);
+  const firstRit = next.get(first.stateId);
+  const secondE5 = old.get(second.stateId);
+  const secondRit = next.get(second.stateId);
+  if (!firstE5 || !firstRit || !secondE5 || !secondRit) return [first];
+  const sufficientlyIndependent =
+    secondE5.rank < 3 && secondRit.rank < 5
+    && secondE5.score >= 0.86 && secondRit.score >= 0.70;
+  const closeToFirst =
+    secondE5.score >= firstE5.score - 0.035
+    && secondRit.score >= firstRit.score - 0.05;
+  return sufficientlyIndependent && closeToFirst ? [first,second] : [first];
+}
