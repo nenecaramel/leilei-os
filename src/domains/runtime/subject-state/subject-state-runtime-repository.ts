@@ -15,6 +15,7 @@ import type {
   SubjectStateTransition,
 } from "../mind/native-live-mind-loop-service.js";
 import type { PersistentWriteEnvelope } from "../shared/persistent-write-envelope.js";
+import { breathLexicalTokens } from "../breath/breath-recall.js";
 import {
   CURRENT_SUBJECT_STATE_KINDS,
   validateSubjectStateWrite,
@@ -113,18 +114,29 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     excludeIds: readonly string[];
   }): Promise<SubjectStateWrite[]> {
     const table = runtimeSubjectStates;
-    const query = input.query.trim().slice(0, 256);
+    const query = input.query.trim().slice(0, 256).normalize("NFKC");
     if (!query) return [];
-    const han = query.match(/[\p{Script=Han}]+/gu) ?? [];
-    const anchors = [...new Set([
-      ...han.flatMap(run => Array.from({length: Math.max(0, run.length - 2)},
-        (_, index) => run.slice(index, index + 3))),
-      ...(query.match(/[a-z0-9]{3,}/giu) ?? []),
-    ])].slice(0, 8);
-    const match = or(
-      sql`${table.text} % ${query}`,
-      ...anchors.map(term => sql`${table.text} ILIKE ${`%${term}%`}`),
-    );
+
+    // The original (16 Oct) tokenizer removes low-information bigrams and
+    // emits overlapping 2- and 3-character Chinese tokens plus English words.
+    // Keep bounded anchors so one SQL query still handles large Memory libraries.
+    const lexicalTokens = breathLexicalTokens(query);
+    const bigrams = lexicalTokens.filter(t => /^\p{Script=Han}{2}$/u.test(t)).slice(0, 12);
+    const trigrams = lexicalTokens.filter(t => /^\p{Script=Han}{3}$/u.test(t)).slice(0, 12);
+    const english = lexicalTokens.filter(t => /^[a-z0-9_'-]+$/u.test(t)).slice(0, 8);
+    const anchors = [...new Set([...bigrams, ...trigrams, ...english])];
+
+    const contains = (term: string) => sql`${table.text} ILIKE ${`%${term}%`}`;
+    const match = anchors.length
+      ? or(sql`${table.text} % ${query}`, ...anchors.map(contains))
+      : sql`${table.text} % ${query}`;
+    // A two-character-only hit must rank by shared lexical evidence instead
+    // of being buried solely by PostgreSQL's whole-string similarity.
+    const overlap = anchors.length
+      ? sql.join(anchors.map(term =>
+          sql`(CASE WHEN ${contains(term)} THEN 1 ELSE 0 END)`),
+        sql` + `)
+      : sql`0`;
     const rows = await this.db.select({
       id: table.id,
       kind: table.kind,
@@ -149,6 +161,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
         : undefined,
       match,
     )).orderBy(
+      sql`(${overlap}) DESC`,
       sql`similarity(${table.text}, ${query}) DESC`,
       desc(table.createdAt),
       asc(table.id),
