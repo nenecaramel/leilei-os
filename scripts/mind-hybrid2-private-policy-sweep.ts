@@ -128,7 +128,7 @@ async function main(){
   const fingerprints=raw.map(v=>object(v)&&str(v.corpus_fingerprint)?v.corpus_fingerprint:"");
   if(!fingerprints[0]||fingerprints[0]!==fingerprints[1])
     throw new Error("PRIVATE_REVIEW_FINGERPRINT_MISMATCH");
-  const fingerprint=fingerprints[0];
+  const fingerprint=fingerprints[0]!;
   const originalSize=Array.from({length:Math.min(256,all.length)},(_,i)=>i+1)
     .find(n=>sha(JSON.stringify(all.slice(0,n).map(m=>[m.stateId,m.text])))===fingerprint);
   if(!originalSize)throw new Error("PRIVATE_REVIEW_CORPUS_MISMATCH");
