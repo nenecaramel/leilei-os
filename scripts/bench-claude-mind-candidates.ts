@@ -14,6 +14,8 @@ import { users, runtimeSubjectStates } from "../src/database/schema.js";
 import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state/subject-state-runtime-repository.js";
 import { createMindState } from "../src/domains/runtime/mind/mind-writer.js";
 import { breathLexicalScore } from "../src/domains/runtime/breath/breath-recall.js";
+// The existing isolated-target guard is JavaScript without a declaration module.
+// @ts-ignore
 import { isolatedPostgresTarget, verifyIsolatedPostgresTarget } from "./isolated-postgres-target.mjs";
 
 const count = Number(process.env.MIND_BENCH_COUNT ?? 10000);
