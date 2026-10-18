@@ -15,7 +15,7 @@ import type {
   SubjectStateTransition,
 } from "../mind/native-live-mind-loop-service.js";
 import type { PersistentWriteEnvelope } from "../shared/persistent-write-envelope.js";
-import { mindLshProbes } from "../mind/claude-code-semantic-lsh.js";
+import { LSH_ALGORITHM, mindLshProbes } from "../mind/claude-code-semantic-lsh.js";
 import {
   CURRENT_SUBJECT_STATE_KINDS,
   validateSubjectStateWrite,
@@ -173,6 +173,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
               ON b.band=p.band AND b.bucket=p.bucket
             WHERE b.user_id=${input.userId}::uuid
               AND b.subject_id=${input.subjectId}
+              AND b.algorithm_version=${LSH_ALGORITHM}
             GROUP BY b.state_id
             ORDER BY count(*) DESC, b.state_id
             LIMIT 128
