@@ -153,7 +153,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
         .where(and(eligible, sql`${table.text} % ${query}`))
         .orderBy(sql`similarity(${table.text}, ${query}) DESC`, desc(table.createdAt), asc(table.id))
         .limit(96)
-      : [];
+      : [],
       terms.length
       ? this.db.select(columns).from(table)
         .where(and(eligible, or(...terms.map(term =>
@@ -161,16 +161,16 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
         ))))
         .orderBy(sql`similarity(${table.text}, ${query}) DESC`, desc(table.createdAt), asc(table.id))
         .limit(64)
-      : [];
+      : [],
       query.length >= 3
       ? this.db.select(columns).from(table)
         .where(and(eligible,
           sql`to_tsvector('simple', coalesce(${table.text}, '')) @@ plainto_tsquery('simple', ${query})`))
         .orderBy(sql`ts_rank(to_tsvector('simple', coalesce(${table.text}, '')), plainto_tsquery('simple', ${query})) DESC`, desc(table.createdAt), asc(table.id))
         .limit(32)
-      : [];
+      : [],
       this.db.select(columns).from(table)
-      .where(eligible).orderBy(desc(table.createdAt), desc(table.id)).limit(32);
+      .where(eligible).orderBy(desc(table.createdAt), desc(table.id)).limit(32),
       this.db.select(columns).from(table)
       .where(eligible).orderBy(asc(table.createdAt), asc(table.id)).limit(32),
     ]);
