@@ -36,7 +36,11 @@ test("indexed discovery scales past 256 Memory and tracks edits/hide/delete", {s
   const invalid=memory("无效的柠檬黄色记忆");
   invalid.envelope.status.validityStatus="invalidated";
   const port=new DrizzleSubjectStateRuntimePort(db);
-  await port.append({userId,subjectId:"G",states:[...states,target,hidden,invalid]});
+  // Place the target in the middle of >256 rows: recent/oldest coverage alone
+  // must not accidentally make this indexed regression pass.
+  await port.append({userId,subjectId:"G",states:[
+    ...states.slice(0,150),target,...states.slice(150),hidden,invalid,
+  ]});
   const find=(q:string,excluded:string[]=[])=>port.searchGlobalRecallCandidates({
     userId,subjectId:"G",query:q,excludeIds:excluded,
   });
