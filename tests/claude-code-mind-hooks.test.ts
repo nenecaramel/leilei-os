@@ -516,3 +516,26 @@ test("standalone hybrid worker never polls or downloads Railway Memory",async()=
   const source=await readFile(resolve("scripts/mind-hybrid-background.ts"),"utf8");
   assert.doesNotMatch(source,/MacMindSnapshotSync|setInterval\s*\(|\bfetch\s*\(/);
 });
+
+test("hybrid Hook fails closed if final Railway verification times out",async t=>{
+  const candidate={stateId:ID,kind:"memory",text:"tea"};
+  const f=await fixture(t,(body,res)=>{
+    if (body.snapshot_scores) return;
+    res.end(JSON.stringify({
+      success:true,data:{...signedData([candidate]),snapshot_version:"a".repeat(64)},
+    }));
+  });
+  const socket=join(f.home,"hybrid.sock");
+  const close=await startMindRecallSemanticServer({
+    score:async()=>new Map(),
+    scoreCandidatesHybrid:async()=>({selectedIds:[ID]}),
+  },socket);
+  t.after(close);
+  f.config.semantic_socket=socket;
+  f.config.index_mode="hybrid_conditional_v1";
+  await writeFile(join(f.home,"mind.env"),envContent(f.config),{mode:0o600});
+  const result=await childHook(f.home,prompt());
+  assert.equal(result.stdout,"");
+  assert.equal(f.calls.length,2);
+  assert.ok(result.duration<3800);
+});
