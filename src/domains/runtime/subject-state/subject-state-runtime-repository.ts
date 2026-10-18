@@ -16,7 +16,6 @@ import type {
 } from "../mind/native-live-mind-loop-service.js";
 import type { PersistentWriteEnvelope } from "../shared/persistent-write-envelope.js";
 import { mindLshProbes } from "../mind/claude-code-semantic-lsh.js";
-import type { ClaudeCodeRailwayE5 } from "../mind/claude-code-railway-e5.js";
 import {
   CURRENT_SUBJECT_STATE_KINDS,
   validateSubjectStateWrite,
@@ -65,7 +64,7 @@ function requirePortIdentity(
 
 export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
   constructor(private readonly db: Database,
-    private readonly claudeOnlyEmbedding?: Pick<ClaudeCodeRailwayE5, "embedQuery">) {}
+    private readonly claudeOnlyEmbedding?: {embedQuery(query:string):Promise<number[]>}) {}
 
   async list(input: {
     userId: string;
