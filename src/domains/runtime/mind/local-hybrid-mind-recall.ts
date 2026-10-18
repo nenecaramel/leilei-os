@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { BreathSemanticCandidate, BreathSemanticScorer } from "../breath/breath-semantic-recall.js";
 import type { RitrieveSearchResult } from "../breath/local-ritrieve-embedding.js";
 import { LocalE5BreathSemanticScorer } from "../breath/local-e5-embedding.js";
@@ -55,6 +54,16 @@ export class LocalHybridMindRecallScorer implements BreathSemanticScorer {
       throw new Error("Full-corpus E5 hybrid unavailable above bounded size.");
     }
     await this.ritrieve.replaceSnapshot(input);
+    // Precompute E5 passages before exposing the new version. Otherwise the
+    // first user prompt could spend the entire Hook budget encoding its corpus.
+    for (let offset=0;offset<input.memories.length;offset+=E5_BATCH) {
+      const group=input.memories.slice(offset,offset+E5_BATCH);
+      const scored=await this.e5.score({query:"语义模型准备完成",
+        candidates:group.map(m=>({stateId:m.stateId,text:m.text,kind:"memory" as const}))});
+      if (scored.size!==group.length
+          || group.some(m=>!Number.isFinite(scored.get(m.stateId))))
+        throw new Error("Incomplete local E5 snapshot preparation.");
+    }
     this.active = {version:input.version,memories:input.memories.map(x=>({...x}))};
   }
 
