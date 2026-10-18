@@ -486,7 +486,7 @@ test("hybrid Hook uses signed lexical fallback when cold local scoring exceeds 1
   let output="";
   const start=Date.now();
   await runHook(prompt(),async chunk=>{output+=chunk;});
-  assert.equal(output,CONTEXT+"\\n");
+  assert.equal(output,CONTEXT+"\n");
   assert.equal(f.calls.length,1,"no second Railway verification for timed-out scorer");
   assert.ok(Date.now()-start<3800,"slow local scorer must not hold the Hook past its deadline");
   assert.equal((await f.state())[0].pending_recalls.length,1);
