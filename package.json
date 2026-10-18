@@ -66,7 +66,9 @@
     "runtime:native-live-mac-daemon:fresh-current": "bash scripts/native-live-mac-daemon-fresh.sh --current",
     "test:serial": "node scripts/run-tests.mjs --serial",
     "test:profile": "node scripts/run-tests.mjs --profile",
-    "setup:runtime-breath-ritrieve": "bash scripts/setup-runtime-breath-ritrieve.sh"
+    "setup:runtime-breath-ritrieve": "bash scripts/setup-runtime-breath-ritrieve.sh",
+    "mind:semantic-index:worker": "tsx scripts/mind-semantic-index-worker.ts",
+    "mind:semantic-index:setup": "tsx scripts/setup-runtime-breath-e5.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
