@@ -733,6 +733,15 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     receipt_mode: "signed_v1",
   };
   if (config.hybrid_recall) {
+    // SQL and the two local models must see the same context-aware query.
+    // The original prompt remains the query used for Claude context assembly.
+    const recent = chain.recentUserPrompts.slice(0, 2).reverse().join("；").slice(-400);
+    const useContext = recent && input.prompt.length <= 80 &&
+      /(?:你|我|他|她|这|那|又|刚才|之前|为什么|怎么)/u.test(input.prompt);
+    const candidateQuery = useContext
+      ? `现在：${input.prompt}。前文：${recent}`
+      : input.prompt;
+    if (useContext) body.candidate_query = candidateQuery;
     // First Railway request supplies the signed lexical fallback and a bounded
     // candidate set. A second request uses ONLY locally selected IDs, with
     // server-side snapshot/visibility verification. Nothing polls when idle.
@@ -747,11 +756,7 @@ export async function runHook(input, output = text => new Promise((resolve, reje
       try {
         const remaining = HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted);
         if (remaining > 1200) {
-          const recent = chain.recentUserPrompts.slice(0, 2).reverse().join("；").slice(-400);
-          const usesContext = recent && input.prompt.length <= 80 &&
-            /(?:你|我|他|她|这|那|又|刚才|之前|为什么|怎么)/u.test(input.prompt);
-          const query = usesContext ? `前文：${recent}。现在：${input.prompt}` : input.prompt;
-          const selectedIds = await hybridCandidateSelection(config, query, candidates, Math.min(1000, remaining - 800));
+          const selectedIds = await hybridCandidateSelection(config, candidateQuery, candidates, Math.min(1000, remaining - 800));
           const available = HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted);
           if (available > 800) {
             let scored;
