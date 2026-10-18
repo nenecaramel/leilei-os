@@ -99,11 +99,13 @@ test("Claude indexed retrieval does not read full Mind and verifies only current
     searchGlobalRecallCandidates:async(input:{userId:string;subjectId:string;query:string;excludeIds:readonly string[]})=>{
       calls++;
       assert.equal(input.userId,"u1");assert.equal(input.subjectId,"G");
+      assert.equal(input.query,"现在：你答应过的事情。前文：我们聊过承诺");
       return states.filter(x=>!input.excludeIds.includes(x.id));
     },
   };
   const service=new ClaudeCodeMindRecallService(reader,DEFAULT_MIND_LOOP_CONFIG,"G",receipts);
-  const base={userId:"u1",sessionId:"s",query:"你答应过的事情",excludeIds:[]};
+  const base={userId:"u1",sessionId:"s",query:"你答应过的事情",
+    candidateQuery:"现在：你答应过的事情。前文：我们聊过承诺",excludeIds:[]};
   const first=await service.recall(base);
   assert.equal(first.semantic_candidates.length,2);
   const selected=await service.recall({...base,semanticSnapshotVersion:first.snapshot_version,
