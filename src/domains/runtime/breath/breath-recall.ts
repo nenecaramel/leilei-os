@@ -82,6 +82,11 @@ function tokens(value: string): Set<string> {
   return result;
 }
 
+/** Shared with Claude-only SQL prefilter; ranking remains canonical below. */
+export function breathLexicalTokens(value: string): string[] {
+  return [...tokens(value)];
+}
+
 export function breathLexicalScore(
   query: string,
   candidateText: string,
