@@ -132,6 +132,16 @@ test("per-request candidate limit is unrelated to the total database size",async
   assert.equal(result.semantic_candidates.length,2);
 });
 
+test("opt-in Claude indexed recall never silently scans whole Memory without an index",async()=>{
+  const service=new ClaudeCodeMindRecallService({
+    list:async()=>{throw new Error("FULL_DATABASE_READ_FORBIDDEN");},
+  },DEFAULT_MIND_LOOP_CONFIG,"G",receipts);
+  await assert.rejects(service.recall({
+    userId:"u1",sessionId:"s",query:"颜色",
+    retrievalMode:"hybrid_conditional_v1",excludeIds:[],
+  }),/Claude indexed candidate search unavailable/);
+});
+
 test("default Claude recall stays on the original list path when hybrid is not enabled",async()=>{
   const records=[memory(300,"记忆里提过酸甜的水果")];
   let legacy=0,indexed=0;
