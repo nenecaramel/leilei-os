@@ -105,7 +105,8 @@ test("Claude indexed retrieval does not read full Mind and verifies only current
   };
   const service=new ClaudeCodeMindRecallService(reader,DEFAULT_MIND_LOOP_CONFIG,"G",receipts);
   const base={userId:"u1",sessionId:"s",query:"你答应过的事情",
-    candidateQuery:"现在：你答应过的事情。前文：我们聊过承诺",excludeIds:[]};
+    candidateQuery:"现在：你答应过的事情。前文：我们聊过承诺",
+    retrievalMode:"hybrid_conditional_v1" as const,excludeIds:[]};
   const first=await service.recall(base);
   assert.equal(first.semantic_candidates.length,2);
   const selected=await service.recall({...base,semanticSnapshotVersion:first.snapshot_version,
@@ -127,6 +128,20 @@ test("per-request candidate limit is unrelated to the total database size",async
     list:async()=>{throw new Error("Must not read 10k rows");},
     searchGlobalRecallCandidates:async()=>picked,
   },DEFAULT_MIND_LOOP_CONFIG,"G",receipts);
-  const result=await service.recall({userId:"u1",sessionId:"s",query:"颜色",excludeIds:[]});
+  const result=await service.recall({userId:"u1",sessionId:"s",query:"颜色",retrievalMode:"hybrid_conditional_v1",excludeIds:[]});
   assert.equal(result.semantic_candidates.length,2);
+});
+
+test("default Claude recall stays on the original list path when hybrid is not enabled",async()=>{
+  const records=[memory(300,"记忆里提过酸甜的水果")];
+  let legacy=0,indexed=0;
+  const service=new ClaudeCodeMindRecallService({
+    list:async()=>{legacy++;return records;},
+    searchGlobalRecallCandidates:async()=>{indexed++;return [];},
+  },DEFAULT_MIND_LOOP_CONFIG,"G",receipts);
+  const result=await service.recall({userId:"u1",sessionId:"s",
+    query:"水果",excludeIds:[]});
+  assert.equal(legacy,1);
+  assert.equal(indexed,0);
+  assert.deepEqual(result.memory_ids,[uuid(300)]);
 });
