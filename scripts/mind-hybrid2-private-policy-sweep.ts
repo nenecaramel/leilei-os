@@ -20,7 +20,8 @@ import type { SubjectStateWrite } from "../src/domains/runtime/subject-state/sub
 type RecordLike = Record<string, unknown>;
 type Memory = {stateId:string; text:string};
 type Review = {query:string; judged_ids:string[]; relevant_ids:string[]; labeled:true};
-type Policy = {name:string; limit:1|2; e5Min:number; ritMin:number};
+type Policy = {name:string; limit:1|2; e5Min:number; ritMin:number;
+  secondOnly?:boolean; maxE5Gap?:number; maxRitGap?:number};
 type Counts = {
   questions:number; positiveQuestions:number; positiveQueryHits:number;
   negativeQuestions:number; negativeEmpty:number; correct:number; wrong:number;
@@ -38,6 +39,15 @@ const policies:readonly Policy[]=[
   {name:"TWO_MIN_E5_090_RIT_080",limit:2,e5Min:.90,ritMin:.80},
   {name:"ONE_MIN_E5_085_RIT_072",limit:1,e5Min:.85,ritMin:.72},
   {name:"ONE_MIN_E5_088_RIT_076",limit:1,e5Min:.88,ritMin:.76},
+  // Exploratory gates applied ONLY to the optional second memory.
+  // These keep top-one behavior unchanged instead of suppressing first hits.
+  {name:"SECOND_ONLY_MIN_E5_086_RIT_072",limit:2,e5Min:.86,ritMin:.72,secondOnly:true},
+  {name:"SECOND_ONLY_MIN_E5_088_RIT_076",limit:2,e5Min:.88,ritMin:.76,secondOnly:true},
+  {name:"SECOND_ONLY_MIN_E5_090_RIT_080",limit:2,e5Min:.90,ritMin:.80,secondOnly:true},
+  {name:"SECOND_ONLY_GAP_E5_020_RIT_030",limit:2,e5Min:0,ritMin:0,
+    secondOnly:true,maxE5Gap:.020,maxRitGap:.030},
+  {name:"SECOND_ONLY_GAP_E5_015_RIT_020",limit:2,e5Min:0,ritMin:0,
+    secondOnly:true,maxE5Gap:.015,maxRitGap:.020},
 ];
 const counts=():Counts=>({
   questions:0,positiveQuestions:0,positiveQueryHits:0,
@@ -169,8 +179,21 @@ async function main(){
         if(chosen.length>2||chosen.some(id=>!known.has(id)))
           throw new Error("INVALID_SELECTION");
         for(const policy of policies){
-          const ids=chosen.filter(id=>(left.get(id)??-1)>=policy.e5Min
-            &&(right.get(id)??-1)>=policy.ritMin).slice(0,policy.limit);
+          const first=chosen[0];
+          const ids=chosen.filter((id,index)=>{
+            // A second-only gate must not modify which first memory is kept.
+            if(policy.secondOnly&&index===0)return true;
+            const e5Score=left.get(id)??-1;
+            const ritScore=right.get(id)??-1;
+            if(e5Score<policy.e5Min||ritScore<policy.ritMin)return false;
+            if(policy.secondOnly&&index===1&&first){
+              if(policy.maxE5Gap!==undefined
+                  &&(left.get(first)??-1)-e5Score>policy.maxE5Gap)return false;
+              if(policy.maxRitGap!==undefined
+                  &&(right.get(first)??-1)-ritScore>policy.maxRitGap)return false;
+            }
+            return true;
+          }).slice(0,policy.limit);
           const row=summaries[policy.name]!;
           observe(row.total,review,ids);
           observe(g===0?row.fixed_8:row.fixed_12,review,ids);
