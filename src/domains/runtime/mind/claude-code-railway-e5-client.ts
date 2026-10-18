@@ -7,7 +7,9 @@ export class ClaudeCodeRailwayE5Client {
   constructor(private readonly endpoint:string,private readonly token:string) {
     const url=new URL(endpoint);
     if (!["http:","https:"].includes(url.protocol) || url.username || url.password ||
-        url.search || url.hash || !token || !url.hostname)
+        url.search || url.hash || !token ||
+        !(url.hostname.endsWith(".railway.internal") ||
+          ["localhost","127.0.0.1","[::1]"].includes(url.hostname)))
       throw new Error("Invalid private E5 endpoint.");
   }
   async embedQuery(query:string):Promise<number[]> {
