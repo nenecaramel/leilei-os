@@ -102,9 +102,9 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
 
 
   /**
-   * Claude Code/Desktop only: server-side indexed candidate discovery.
-   * Never transfer or embed the whole Mind library on the Mac.
-   * PostgreSQL updates its trigram/FTS indexes when Memory rows change.
+   * Claude-only single-query fuzzy candidate lookup.
+   * pg_trgm indexes are maintained on Memory writes, not by the Mac.
+   * 256 bounds one response; it does not bound the library.
    */
   async searchGlobalRecallCandidates(input: {
     userId: string;
@@ -114,10 +114,24 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
   }): Promise<SubjectStateWrite[]> {
     const table = runtimeSubjectStates;
     const query = input.query.trim().slice(0, 256);
-    const excluded = input.excludeIds.length
-      ? sql`${table.id} <> ALL(${`{${input.excludeIds.join(",")}}`}::uuid[])`
-      : sql`true`;
-    const eligible = and(
+    if (!query) return [];
+    const han = query.match(/[\p{Script=Han}]+/gu) ?? [];
+    const anchors = [...new Set([
+      ...han.flatMap(run => Array.from({length: Math.max(0, run.length - 2)},
+        (_, index) => run.slice(index, index + 3))),
+      ...(query.match(/[a-z0-9]{3,}/giu) ?? []),
+    ])].slice(0, 8);
+    const match = or(
+      sql`${table.text} % ${query}`,
+      ...anchors.map(term => sql`${table.text} ILIKE ${`%${term}%`}`),
+    );
+    const rows = await this.db.select({
+      id: table.id,
+      kind: table.kind,
+      text: table.text,
+      payload: table.payload,
+      envelope: table.envelope,
+    }).from(table).where(and(
       eq(table.userId, input.userId),
       eq(table.subjectId, input.subjectId),
       eq(table.kind, "memory"),
@@ -130,57 +144,16 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
       sql`${table.envelope}->'status'->>'presentationStatus' = 'presented'`,
       sql`${table.envelope}->'scope'->>'visibility' IS DISTINCT FROM 'hidden_system'`,
       sql`${table.payload}->'lifecycle_v1'->>'status' IS DISTINCT FROM 'forgotten'`,
-      excluded,
-    );
-    const columns = {
-      id: table.id, kind: table.kind, text: table.text,
-      payload: table.payload, envelope: table.envelope,
-    };
-    // Run independent, indexed channels: whole-query fuzzy match, literal
-    // Chinese/English anchors, English FTS and history coverage. Neither
-    // 256 nor any subquery limit is a cap on stored Memory.
-    const hanRuns = query.match(/[\p{Script=Han}]+/gu) ?? [];
-    const chinese = hanRuns.flatMap(run => {
-      if (run.length < 3) return run.length === 2 ? [run] : [];
-      const slices: string[] = [];
-      for (let i = 0; i + 3 <= run.length; i++) slices.push(run.slice(i, i + 3));
-      return slices;
-    });
-    const english = query.match(/[a-z0-9]{3,}/giu) ?? [];
-    const terms = [...new Set([...chinese, ...english])].slice(0, 16);
-    const [fuzzy, anchored, fullText, recent, oldest] = await Promise.all([
-      query.length >= 3
-      ? this.db.select(columns).from(table)
-        .where(and(eligible, sql`${table.text} % ${query}`))
-        .orderBy(sql`similarity(${table.text}, ${query}) DESC`, desc(table.createdAt), asc(table.id))
-        .limit(96)
-      : [],
-      terms.length
-      ? this.db.select(columns).from(table)
-        .where(and(eligible, or(...terms.map(term =>
-          sql`${table.text} ILIKE ${`%${term}%`}`
-        ))))
-        .orderBy(sql`similarity(${table.text}, ${query}) DESC`, desc(table.createdAt), asc(table.id))
-        .limit(64)
-      : [],
-      query.length >= 3
-      ? this.db.select(columns).from(table)
-        .where(and(eligible,
-          sql`to_tsvector('simple', coalesce(${table.text}, '')) @@ plainto_tsquery('simple', ${query})`))
-        .orderBy(sql`ts_rank(to_tsvector('simple', coalesce(${table.text}, '')), plainto_tsquery('simple', ${query})) DESC`, desc(table.createdAt), asc(table.id))
-        .limit(32)
-      : [],
-      this.db.select(columns).from(table)
-      .where(eligible).orderBy(desc(table.createdAt), desc(table.id)).limit(32),
-      this.db.select(columns).from(table)
-      .where(eligible).orderBy(asc(table.createdAt), asc(table.id)).limit(32),
-    ]);
-    const selected = new Map<string, SubjectStateWrite>();
-    for (const row of [...fuzzy, ...anchored, ...fullText, ...recent, ...oldest]) {
-      if (!selected.has(row.id)) selected.set(row.id, rowToState(row));
-      if (selected.size === 256) break;
-    }
-    return [...selected.values()];
+      input.excludeIds.length
+        ? sql`${table.id} <> ALL(${`{${input.excludeIds.join(",")}}`}::uuid[])`
+        : undefined,
+      match,
+    )).orderBy(
+      sql`similarity(${table.text}, ${query}) DESC`,
+      desc(table.createdAt),
+      asc(table.id),
+    ).limit(256);
+    return rows.map(rowToState);
   }
 
   async append(input: {
