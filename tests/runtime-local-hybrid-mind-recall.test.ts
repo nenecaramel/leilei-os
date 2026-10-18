@@ -21,7 +21,8 @@ function fake() {
   };
   const ritrieve={
     warmup:async()=>undefined,
-    score:async()=>new Map<string,number>(),
+    score:async (input:{candidates:readonly {stateId:string}[]})=>
+      new Map(input.candidates.map(m=>[m.stateId,ritValues.get(m.stateId)??.5])),
     replaceSnapshot:async()=>{active=true;},
     isSnapshotReady:()=>active,
     searchSnapshot:async()=>({version:snapVersion,count:data.length,
@@ -88,5 +89,16 @@ test("failed E5 preencoding cannot advertise the index as ready",async()=>{
   f.setWarmFailure(true);
   await assert.rejects(f.service.replaceSnapshot({version,memories:f.data}),/E5 failed/);
   assert.equal(f.service.isSnapshotReady(),false);
+  await f.service.close();
+});
+
+test("on-demand scoring is independent of any full-memory snapshot",async()=>{
+  const f=fake();
+  const candidates=f.data.map(m=>({...m,kind:"memory" as const}));
+  const result=await f.service.scoreCandidatesHybrid({query:"真实记忆",candidates});
+  assert.deepEqual(result.selectedIds,[id(1),id(2)]);
+  assert.equal(f.service.isSnapshotReady(),false);
+  await assert.rejects(f.service.scoreCandidatesHybrid({query:"test",
+    candidates:Array.from({length:257},(_,i)=>({stateId:id(i+1),kind:"memory",text:"test"}))}),/candidate set/);
   await f.service.close();
 });
