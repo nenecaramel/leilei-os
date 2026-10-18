@@ -6,7 +6,13 @@ export function createScheduledInputGuard({ getHost, admit, now = () => Date.now
   let lastAttemptAt = null;
   let autonomousAttempts = 0;
   let admissionPending = false;
-  const block = code => ({ decision: 'block', reason: `LeileiOS scheduled input rejected. [${code}]`,
+  const limitReasons = {
+    ATTEMPT_BUDGET: 'This writer reached its 64 scheduled-input attempts.',
+    WRITER_LIFETIME: 'This writer reached its 7-day scheduled-input lifetime.',
+  };
+  const block = code => ({ decision: 'block', reason: limitReasons[code]
+    ? `${limitReasons[code]} Ordinary chat and task list/delete/stop remain available. Close and reopen the writer only after work and receipts have settled and drained. [${code}]`
+    : `LeileiOS scheduled input rejected. [${code}]`,
     hookSpecificOutput: { hookEventName: 'UserPromptSubmit', suppressOriginalPrompt: true } });
   const hook = async input => {
     const host = getHost();
@@ -49,20 +55,29 @@ export function createScheduledInputGuard({ getHost, admit, now = () => Date.now
     autonomousAttempts++; admissionPending = true;
     if (!unclassified) { seen.add(id); lastAttemptAt = at; }
     const generation = host.backgroundGeneration;
+    // Only an exact native-start UUID outside the queued foreground command
+    // set proves that the CLI selected autonomous work ahead of that input.
+    const nativeCommand = host.currentCommandUuid;
+    const selectedAutonomous = nativeAutonomousCommandId(host) !== null;
+    const queued = selectedAutonomous ? host.active : null;
+    const ownsBoundary = () => selectedAutonomous
+      ? host.currentCommandUuid === nativeCommand && host.startedCommands.has(nativeCommand)
+        && host.active === queued && !host.active?.commandIds.has(nativeCommand)
+      : !host.active;
     const abort = new AbortController();
     let timer;
     try {
       await Promise.race([(async () => {
         // SDK control callbacks can overtake delivery of the preceding result
         // to this iterator. Wait for that exact boundary, never a later input.
-        if (host.active) await precedingBoundary(host, abort.signal);
-        if (abort.signal.aborted || host.active) throw new Error('Foreground input owns the writer.');
-        await admit();
+        if (host.active && !selectedAutonomous) await precedingBoundary(host, abort.signal);
+        if (abort.signal.aborted || !ownsBoundary()) throw new Error('Foreground input owns the writer.');
+        await admit(selectedAutonomous ? nativeCommand : null);
       })(), new Promise((_, reject) => {
         timer = setTimeout(() => { abort.abort(); reject(new Error('Scheduled admission timed out.')); }, 2_000);
       })]);
       if (getHost() !== host || host.queryClosed || ['closed', 'failed'].includes(host.state)
-        || host.active || host.backgroundPending || host.backgroundGeneration !== generation) return block('STALE_ADMISSION');
+        || !ownsBoundary() || host.backgroundPending || host.backgroundGeneration !== generation) return block('STALE_ADMISSION');
       return {};
     } catch { return block(abort.signal.aborted ? 'ADMISSION_TIMEOUT' : 'ADMISSION_DENIED'); }
     finally { clearTimeout(timer); abort.abort(); admissionPending = false; }
@@ -83,4 +98,12 @@ function precedingBoundary(host, signal) {
 
 export function isNativeLoopInput(text, source) {
   return source === 'human' && /^\/loop(?:\s|$)/u.test(text);
+}
+
+// A queued SDK turn is not the CLI's selected command. Only native start
+// attribution may select a distinct autonomous owner for admission callbacks.
+export function nativeAutonomousCommandId(host) {
+  const id = host?.currentCommandUuid;
+  return typeof id === 'string' && id.trim() && host.startedCommands?.has(id)
+    && !host.active?.commandIds.has(id) ? id : null;
 }

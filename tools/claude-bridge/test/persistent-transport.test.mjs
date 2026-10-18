@@ -490,3 +490,75 @@ test('unstamped owned foreground can create a native timer only while durable to
  assert.equal((await pre({...input,tool_use_id:'revoked'})).hookSpecificOutput.permissionDecision,'deny');
  f.output.push({type:'result',subtype:'success',session_id:'s',user_message_uuid:'timer-input'});await running;
 });
+
+for (const boundary of ['pre-tool', 'authorization', 'permission', 'post-permission']) {
+ for (const replacement of ['foreground', 'another-cron']) test(`native tool ${boundary} refuses same-slot selection rotation to ${replacement}`, async t => {
+  let entered, release, received;
+  const waiting = new Promise(resolve => { entered = resolve; });
+  const barrier = new Promise(resolve => { release = resolve; });
+  const input = new Promise(resolve => { received = resolve; });
+  let checks = 0;
+  const f = fixture({ manualResults: true, onInput: () => received() });
+  f.transport.toolPermissionPolicy = 'ask';
+  const host = await f.open({ authorize: async context => {
+   if (context.phase === 'tool' && ++checks === (boundary === 'post-permission' ? 2 : 1)
+     && boundary !== 'permission') { entered(); await barrier; }
+   return true;
+  }, permissionHandler: async () => {
+   if (boundary === 'permission') { entered(); await barrier; }
+   return { decision: 'allow' };
+  } });
+  t.after(async () => { release(); await host.close(); });
+  host.submit('queued foreground', { id: 'foreground', source: 'human' }).catch(() => {}); await input;
+  const emit = async id => {
+   const observed = new Promise(resolve => host.events.once('command-started', resolve));
+   f.output.push({ type: 'command_lifecycle', state: 'started', command_uuid: id, session_id: 's' });
+   await observed;
+  };
+  await emit('cron-one');
+  const pending = boundary === 'pre-tool'
+   ? f.options.hooks.PreToolUse[0].hooks[0]({ tool_use_id: 'native-tool' })
+   : f.options.canUseTool('Write', {}, { toolUseID: 'native-tool' });
+  await waiting;
+  await emit(replacement === 'foreground' ? 'foreground' : 'cron-two');
+  release();
+  const verdict = await pending;
+  assert.equal(boundary === 'pre-tool' ? verdict.hookSpecificOutput?.permissionDecision : verdict.behavior, 'deny');
+ });
+}
+
+test('native PreToolUse grant cannot be reused by another Cron UUID under the same queued foreground', async t => {
+ let received, permissions = 0;
+ const input = new Promise(resolve => { received = resolve; });
+ const f = fixture({ manualResults: true, onInput: () => received() }); f.transport.toolPermissionPolicy = 'ask';
+ const host = await f.open({ permissionHandler: async () => { permissions++; return { decision: 'allow' }; } });
+ t.after(() => host.close());
+ host.submit('queued foreground', { id: 'foreground', source: 'human' }).catch(() => {}); await input;
+ const emit = async id => {
+  const observed = new Promise(resolve => host.events.once('command-started', resolve));
+  f.output.push({ type: 'command_lifecycle', state: 'started', command_uuid: id, session_id: 's' }); await observed;
+ };
+ await emit('cron-one');
+ assert.deepEqual(await f.options.hooks.PreToolUse[0].hooks[0]({ tool_use_id: 'shared-tool' }), {});
+ await emit('cron-two');
+ assert.equal((await f.options.canUseTool('Write', {}, { toolUseID: 'shared-tool' })).behavior, 'deny');
+ assert.equal(permissions, 0, 'stale native grant is rejected before invoking permission');
+});
+
+test('queued foreground arriving during native Cron permission cannot inherit the old tool grant', async t => {
+ let received, entered, release;
+ const input = new Promise(resolve => { received = resolve; });
+ const waiting = new Promise(resolve => { entered = resolve; });
+ const barrier = new Promise(resolve => { release = resolve; });
+ const f = fixture({ manualResults: true, onInput: () => received() }); f.transport.toolPermissionPolicy = 'ask';
+ const host = await f.open({ permissionHandler: async () => { entered(); await barrier; return { decision: 'allow' }; } });
+ t.after(async () => { release(); await host.close(); });
+ const boot = host.submit('boot', { id: 'boot' }); await input;
+ f.output.push({ type: 'result', subtype: 'success', session_id: 's', user_message_uuid: 'boot' }); await boot;
+ const observed = new Promise(resolve => host.events.once('command-started', resolve));
+ f.output.push({ type: 'command_lifecycle', state: 'started', command_uuid: 'cron-one', session_id: 's' }); await observed;
+ assert.deepEqual(await f.options.hooks.PreToolUse[0].hooks[0]({ tool_use_id: 'native-tool' }), {});
+ const verdict = f.options.canUseTool('Write', {}, { toolUseID: 'native-tool' }); await waiting;
+ host.submit('queued foreground', { id: 'foreground', source: 'human' }).catch(() => {});
+ release(); assert.equal((await verdict).behavior, 'deny');
+});

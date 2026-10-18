@@ -55,3 +55,13 @@ The iOS orchestration/equivalence suites include source-selection/fixture checks
 they are useful regression evidence but do not establish device scheduling,
 SwiftUI rendering, or live transport acceptance. No DB, model, daemon, installed
 Hook, or device action is required to run the relay service tests.
+
+## Native scheduled-work limits
+
+A persistent writer permits at most 64 autonomous input attempts over seven days.
+Denied or uncertain attempts also consume that existing budget. Limit errors name
+the exhausted bound; ordinary chat and task list/delete/stop remain available.
+Creating another schedule or sending an ordinary message does not reset it. To
+continue scheduled work deliberately close and reopen the writer only after its
+work and result receipts have settled and drained; do not abandon uncertain output
+or automatically reset a writer to evade the limit.

@@ -1,4 +1,5 @@
-import { requestNativeSessionDrain } from './native-session-daemon-drain.mjs';
+import { requestNativeSessionDrain, requestNativeSessionResume } from './native-session-daemon-drain.mjs';
+import { pinDrainedNativeSource, settleDrainedNativeSource } from './native-session-drain-settle.mjs';
 import { preflightNativeSessionSwitch } from './native-session-switch-preflight.mjs';
 import { readDesktopNativeHistory } from './native-session-inspection.mjs';
 import { lstat, readdir } from 'node:fs/promises';
@@ -111,8 +112,10 @@ export function incrementalNativePayload(history, state) {
   return { projection, nativeSnapshot };
 }
 
-export async function restoreDesktopNativeSession({ input, conversationId, relayUrl, relayToken, fetchImpl = fetch,
-  recoveryDirectory = input?.recoveryDirectory ?? path.join(homedir(), '.leileios'), uploadImpl = fetch, sleep, retryDelaysMs }) {
+export const restoreDesktopNativeSession = options => restoreNativeSessionHistory(options, true);
+
+async function restoreNativeSessionHistory({ input, conversationId, relayUrl, relayToken, fetchImpl = fetch,
+  recoveryDirectory = input?.recoveryDirectory ?? path.join(homedir(), '.leileios'), uploadImpl = fetch, sleep, retryDelaysMs }, resumeDaemon) {
   if (!uuid.test(conversationId ?? '')) throw fail('INVALID_NATIVE_RESTORE_ENDPOINT');
   const request = nativeHistoryRequest({ relayUrl, relayToken, fetchImpl, sleep, retryDelaysMs });
   await assertNativeHandoffRecoveryClear(recoveryDirectory);
@@ -148,7 +151,10 @@ export async function restoreDesktopNativeSession({ input, conversationId, relay
   // Only assets the server still lacks; older servers do not say, so check all.
   const assets = await materializeNativeSessionHistoryAssets({ history, conversationId, request, uploadImpl,
     only: result.pendingAssets && new Set(result.pendingAssets.map(ref => `${ref.sourceEntryUuid}:${ref.sourceBlockOrdinal}`)) });
-  return { outcome: result.outcome, conversationId, headMessageId: result.headMessageId, inserted: result.inserted,
+  await preflightNativeSessionSwitch(input);
+  await assertNativeHandoffRecoveryClear(recoveryDirectory);
+  const resumed = resumeDaemon ? await requestNativeSessionResume({ recoveryDirectory, conversationId, providerSessionId: selection.providerSessionId }) : null;
+  return { ...(resumed ? { daemonResumed: true } : {}), outcome: result.outcome, conversationId, headMessageId: result.headMessageId, inserted: result.inserted,
     providerSessionId: selection.providerSessionId, providerCheckpointId: selection.providerCheckpointId,
     nativeRevision: selection.nativeRevision, executionAuthorized: false, assets };
 }
@@ -185,12 +191,12 @@ export async function stageNativeDisplayAssets({ request, sessionId, assets, bat
 // Conservative local gate: outstanding recovery on this Mac must be replayed by
 // the existing daemon, not discarded or marked complete by the switch command.
 export async function assertNativeHandoffRecoveryClear(recoveryDirectory) {
-  const directoryEntries = async directory => {
+  const directoryEntries = async (directory, includeHidden = false) => {
     try {
       if (!(await lstat(directory)).isDirectory()) throw fail('NATIVE_RECOVERY_UNCONFIRMED');
       const entries = await readdir(directory, { withFileTypes: true });
       if (entries.length > 1000) throw fail('NATIVE_RECOVERY_UNCONFIRMED');
-      return entries.filter(entry => !entry.name.startsWith('.'));
+      return includeHidden ? entries : entries.filter(entry => !entry.name.startsWith('.'));
     } catch (error) {
       if (error.code === 'ENOENT') return [];
       throw fail('NATIVE_RECOVERY_UNCONFIRMED');
@@ -199,7 +205,14 @@ export async function assertNativeHandoffRecoveryClear(recoveryDirectory) {
   for (const folder of ['terminal-results', 'background-results', 'session-store-append-receipts']) {
     for (const scope of await directoryEntries(path.join(recoveryDirectory, folder))) {
       if (!scope.isDirectory() || !/^[a-f0-9]{64}$/.test(scope.name)) throw fail('NATIVE_RECOVERY_UNCONFIRMED');
-      if ((await directoryEntries(path.join(recoveryDirectory, folder, scope.name))).length) throw fail('NATIVE_SESSION_RECOVERY_REQUIRED');
+      const directory = path.join(recoveryDirectory, folder, scope.name);
+      for (const entry of await directoryEntries(directory)) {
+        // Quarantine directories persist after the daemon recovers their last
+        // receipt. Only an actually empty background quarantine is inert.
+        if (folder === 'background-results' && entry.name === 'blocked' && entry.isDirectory()
+          && !(await directoryEntries(path.join(directory, 'blocked'), true)).length) continue;
+        throw fail('NATIVE_SESSION_RECOVERY_REQUIRED');
+      }
     }
   }
 }
@@ -228,12 +241,14 @@ export async function launchDesktopNativeSession(selection, execute = runUnderTe
 }
 
 export async function handoffNativeSessionToDesktop({ input, conversationId, relayUrl, relayToken, fetchImpl = fetch,
-  recoveryDirectory = path.join(homedir(), '.leileios'), launchImpl = launchDesktopNativeSession, sleep, retryDelaysMs }) {
+  recoveryDirectory = input?.recoveryDirectory ?? path.join(homedir(), '.leileios'), launchImpl = launchDesktopNativeSession, sleep, retryDelaysMs, drainSettle }) {
   const request = nativeHistoryRequest({ relayUrl, relayToken, fetchImpl, sleep, retryDelaysMs });
+  const pinned = await pinDrainedNativeSource(input);
   const drain = await requestNativeSessionDrain({ recoveryDirectory, conversationId, providerSessionId: input.expectedSessionId });
   if (drain && !drain.ready) throw fail('NATIVE_DAEMON_DRAIN_UNCONFIRMED');
+  if (drain) input = await settleDrainedNativeSource(input, pinned, drainSettle);
   await assertNativeHandoffRecoveryClear(recoveryDirectory);
-  const synced = await restoreDesktopNativeSession({ input, conversationId, relayUrl, relayToken, fetchImpl, recoveryDirectory, sleep, retryDelaysMs });
+  const synced = await restoreNativeSessionHistory({ input, conversationId, relayUrl, relayToken, fetchImpl, recoveryDirectory, sleep, retryDelaysMs }, false);
   const selected = await preflightNativeSessionSwitch(input);
   await assertNativeHandoffRecoveryClear(recoveryDirectory);
   const released = await request('release', { conversationId, sessionId: synced.providerSessionId,

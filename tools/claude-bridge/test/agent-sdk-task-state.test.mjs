@@ -238,3 +238,46 @@ test('malformed or oversized task output fails closed without guessing file path
   }
   delete f.host.query.request;await assert.rejects(f.host.readTaskOutput('task',{handle}),/unavailable/i);
 });
+
+for (const ordering of ['edge-first', 'snapshot-first'])
+test(`a replacement run fences output and stop handles immediately: ${ordering}`, async t => {
+  const f = await fixture(t); await f.event(snapshot([task('001')]));
+  const old = f.host.listTasks()[0].handle; let reads = 0;
+  f.host.query.request = async () => { reads++; return { response: { output: 'replacement', total_bytes: 11, truncated: false } }; };
+  if (ordering === 'snapshot-first') await f.event(snapshot([task('002')]));
+  await f.event({ subtype: 'task_started', task_id: 'task', run_id: '002' });
+  await assert.rejects(f.host.readTaskOutput('task', { handle: old }), /stale/i);
+  await assert.rejects(f.host.stopTask('task', { handle: old }), /stale/i);
+  assert.equal(reads, 0); assert.deepEqual(f.stopped, []);
+  if (ordering === 'edge-first') await f.event(snapshot([task('002')]));
+  const current = f.host.listTasks().find(x => x.active).handle;
+  await f.event({ subtype: 'task_started', task_id: 'task', run_id: '001' });
+  assert.equal((await f.host.readTaskOutput('task', { handle: current })).output, 'replacement');
+  await assert.rejects(f.host.readTaskOutput('task', { handle: old }), /stale/i);
+});
+test('replacement edge fences an already pending output response before its membership snapshot', async t => {
+  const f = await fixture(t); await f.event(snapshot([task('001')]));
+  const handle = f.host.listTasks()[0].handle, reply = deferred(), entered = deferred();
+  f.host.query.request = () => { entered.resolve(); return reply.promise; };
+  const output = f.host.readTaskOutput('task', { handle }); output.catch(() => {}); await entered.promise;
+  await f.event({ subtype: 'task_started', task_id: 'task', run_id: '002' });
+  reply.resolve({ response: { output: 'replacement', total_bytes: 11, truncated: false } });
+  await assert.rejects(output, /stale/i);
+});
+test('replacement edge fences a pending stop acknowledgement without changing SDK membership', async t => {
+  const reply = deferred(); const f = await fixture(t, () => reply.promise);
+  await f.event(snapshot([task('001')])); const handle = f.host.listTasks()[0].handle;
+  const stopped = f.host.stopTask('task', { handle }); stopped.catch(() => {});
+  await f.event({ subtype: 'task_started', task_id: 'task', run_id: '002' });
+  assert.equal(f.host.tasks.size, 1);
+  reply.resolve(); await assert.rejects(stopped, /stale/i); assert.deepEqual(f.stopped, ['task']);
+});
+
+test('an older membership snapshot cannot revalidate a handle superseded by a new run edge', async t => {
+  const f = await fixture(t); await f.event(snapshot([task('001')])); const handle = f.host.listTasks()[0].handle;
+  await f.event({ subtype: 'task_started', task_id: 'task', run_id: '002' });
+  await f.event(snapshot([task('001')]));
+  f.host.query.request = async () => { throw new Error('must not read the task ID'); };
+  await assert.rejects(f.host.readTaskOutput('task', { handle }), /stale/i);
+  await assert.rejects(f.host.stopTask('task', { handle }), /stale/i); assert.deepEqual(f.stopped, []);
+});

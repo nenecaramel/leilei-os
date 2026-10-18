@@ -1,12 +1,10 @@
 import path from 'node:path';
 import { homedir } from 'node:os';
-import { isDeepStrictEqual } from 'node:util';
-import { readNativeSession } from './native-session-catalog.mjs';
-import { readNativeSessionRelease } from './native-session-activity.mjs';
 import { readNativeContinuationEvidence } from './native-session-inspection.mjs';
 import { preflightNativeSessionSwitch } from './native-session-switch-preflight.mjs';
 import { nativeHistoryRequest, assertNativeHandoffRecoveryClear, launchDesktopNativeSession } from './native-session-switch-restore.mjs';
 import { requestNativeSessionDrain, requestNativeSessionResume } from './native-session-daemon-drain.mjs';
+import { pinDrainedNativeSource, settleDrainedNativeSource } from './native-session-drain-settle.mjs';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const hash = /^[a-f0-9]{64}$/;
 const fail = code => Object.assign(new Error(code), { code });
@@ -20,7 +18,7 @@ async function switchContinuation({ input, conversationId, relayUrl, relayToken,
   if (!uuid.test(conversationId ?? '')) throw fail('INVALID_NATIVE_RESTORE_ENDPOINT');
   input = { ...input, historyMode: 'continuation', followNativeContinuation: true };
   const request = nativeHistoryRequest({ relayUrl, relayToken, fetchImpl, sleep, retryDelaysMs });
-  const pinned = owner === 'desktop' ? await readNativeSession(input.projectDirectory, input.expectedSessionId) : null;
+  const pinned = owner === 'desktop' ? await pinDrainedNativeSource(input) : null;
   const drain = owner === 'desktop' ? await requestNativeSessionDrain({ recoveryDirectory, conversationId, providerSessionId: input.expectedSessionId }) : null;
   if (drain && !drain.ready) throw fail('NATIVE_DAEMON_DRAIN_UNCONFIRMED');
   if (drain) input = await settleDrainedNativeSource(input, pinned, drainSettle);
@@ -57,32 +55,4 @@ async function switchContinuation({ input, conversationId, relayUrl, relayToken,
   const resumed = owner === 'leileios' ? await requestNativeSessionResume({ recoveryDirectory, conversationId, providerSessionId: selection.providerSessionId }) : null;
   return { ...result, executionAuthorized: false, ...(drain ? { drain } : {}), ...(resumed ? { daemonResumed: true } : {}),
     ...(owner === 'desktop' ? { desktopLaunchRequested: true, desktopSessionVerified: false } : {}) };
-}
-
-const transcriptRecord = entry => !entry || typeof entry !== 'object' || Object.hasOwn(entry, 'uuid') || Object.hasOwn(entry, 'parentUuid')
-  || ['user', 'assistant', 'system', 'attachment', 'progress'].includes(entry.type);
-
-// The daemon's receipt proves its SDK query stopped, not that the native CLI
-// child exited: it may still flush exit records (last-prompt, cost-state).
-// Wait until no native peer holds the file and it stays quiet, then re-pin the
-// revision only if the pinned bytes survive as a prefix followed by metadata
-// records outside the transcript chain, so session and checkpoint are unchanged.
-async function settleDrainedNativeSource(input, pinned, { pollMs = 100, quietMs = 500, timeoutMs = 10_000 } = {}) {
-  if (pinned.revision !== input.expectedRevision) throw fail('NATIVE_INSPECTION_CHANGED');
-  const deadline = Date.now() + timeoutMs;
-  let current = null, quietSince = 0, open = false;
-  for (;;) {
-    let next = null;
-    try { next = await readNativeSession(input.projectDirectory, input.expectedSessionId); } catch { /* Mid-flush; poll again. */ }
-    open = (await readNativeSessionRelease(input.peerDirectory, input.expectedSessionId, { probeProcessStart: input.probeProcessStart })).state === 'still_open';
-    if (!next || open || next.revision !== current?.revision) { current = next; quietSince = Date.now(); }
-    else if (Date.now() - quietSince >= quietMs) break;
-    if (Date.now() >= deadline) throw fail(open ? 'NATIVE_SESSION_STILL_OPEN' : 'NATIVE_INSPECTION_CHANGED');
-    await new Promise(resolve => setTimeout(resolve, pollMs));
-  }
-  if (current.revision === pinned.revision) return input;
-  const appended = current.entries.slice(pinned.entries.length);
-  if (current.entries.length < pinned.entries.length || appended.some(transcriptRecord)
-    || !pinned.entries.every((entry, i) => isDeepStrictEqual(entry, current.entries[i]))) throw fail('NATIVE_INSPECTION_CHANGED');
-  return { ...input, expectedRevision: current.revision };
 }

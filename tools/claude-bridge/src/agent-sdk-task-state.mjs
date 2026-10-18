@@ -10,6 +10,7 @@ const STOP_TIMEOUT_MS = 2_000;
 export class AgentSdkTaskState {
   constructor(onChange = () => {}) {
     this.records = new Map();
+    this.superseded = new WeakSet();
     this.onChange = onChange;
     this.closed = false;
   }
@@ -25,7 +26,7 @@ export class AgentSdkTaskState {
     if (this.closed) throw new Error('Session task owner is closed.');
     const record = this.records.get(handle);
     const latest = [...this.records.values()].reverse().find(item => item.taskId === id && !item.observedOnly);
-    if (!record || record.taskId !== id || record.observedOnly || record !== latest) throw new Error('Stale task handle.');
+    if (!record || record.taskId !== id || record.observedOnly || this.superseded.has(record) || record !== latest) throw new Error('Stale task handle.');
     return record;
   }
 
@@ -86,6 +87,12 @@ export class AgentSdkTaskState {
   }
 
   createRecord(taskId, runId) {
+    // An exact new run observation fences old handles immediately, even when
+    // the SDK membership snapshot is still in flight. Known old edges reuse
+    // their record and never revoke a newer run. Only levels own membership.
+    for (const record of this.records.values()) {
+      if (record.taskId === taskId) this.superseded.add(record);
+    }
     const record = { taskId, runId, handle: randomUUID(), member: null, observedOnly: true,
       status: 'observed', stopStatus: null, taskType: null, description: null, parentTaskId: null, ambient: false, summary: null };
     this.records.set(record.handle, record);
@@ -97,8 +104,9 @@ export class AgentSdkTaskState {
     const record = this.current(id);
     if (!record) return Promise.reject(new Error('Unknown session task.'));
     if (expected !== undefined && (!expected || Object.keys(expected).some(key => key !== 'handle') || expected.handle !== record.handle)) return Promise.reject(new Error('Stale task handle.'));
-    if (record.stopPromise) return record.stopPromise;
     if (TERMINAL.has(record.status)) return Promise.reject(new Error('Session task has already ended.'));
+    if (this.superseded.has(record)) return Promise.reject(new Error('Stale task handle.'));
+    if (record.stopPromise) return record.stopPromise;
     record.stopStatus = 'requested';
     // Install the shared promise before invoking the SDK: even a reentrant
     // consumer cannot issue a second uncertain control for this task run.
@@ -110,7 +118,7 @@ export class AgentSdkTaskState {
     }, STOP_TIMEOUT_MS);
     const settle = (error) => {
       clearTimeout(timer);
-      if (this.closed || this.current(id) !== record) { reject(new Error('Stale task stop acknowledgement.')); return; }
+      if (this.closed || this.current(id) !== record || this.superseded.has(record)) { reject(new Error('Stale task stop acknowledgement.')); return; }
       if (error) {
         if (!TERMINAL.has(record.status)) record.stopStatus = 'unknown';
         this.changed(); reject(new Error('Task stop outcome unknown.', { cause: error }));
