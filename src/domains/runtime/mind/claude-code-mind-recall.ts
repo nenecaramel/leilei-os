@@ -50,8 +50,13 @@ export class ClaudeCodeMindRecallService {
     const now = new Date().toISOString();
     // Only the Claude adapter uses server-side bounded discovery.
     // Hash exactly the same candidate records that are passed to its renderer.
-    const states = input.retrievalMode === "hybrid_conditional_v1" && this.reader.searchGlobalRecallCandidates
-      ? await this.reader.searchGlobalRecallCandidates({
+    if (input.retrievalMode === "hybrid_conditional_v1"
+        && !this.reader.searchGlobalRecallCandidates) {
+      // Never fall back to a full-database read for an opt-in indexed request.
+      throw new Error("Claude indexed candidate search unavailable.");
+    }
+    const states = input.retrievalMode === "hybrid_conditional_v1"
+      ? await this.reader.searchGlobalRecallCandidates!({
           userId: input.userId, subjectId: this.subjectId,
           query: input.candidateQuery ?? input.query, excludeIds: input.excludeIds,
         })
