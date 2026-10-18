@@ -65,3 +65,19 @@ Creating another schedule or sending an ordinary message does not reset it. To
 continue scheduled work deliberately close and reopen the writer only after its
 work and result receipts have settled and drained; do not abandon uncertain output
 or automatically reset a writer to evade the limit.
+
+## Background attachments
+
+Background images and `send_file` share the foreground sender and one pending-
+inclusive eight-item collector per exact native command/segment. SDK ownership
+and router generation/source/session checks surround uploads. Sealing waits for
+pending uploads; the existing result journal then preserves IDs and metadata
+without uploading again on replay. Canonical publication binds completed owned
+attachments in the existing receipt transaction, including attachment-only and
+covered deferred messages. No separate storage or client message is introduced.
+
+An upload already started by the file sender cannot be physically cancelled; an
+aborted collector may leave an unreferenced upload but cannot attach it to another
+segment. Ambiguous SDK results folding background attachments into foreground
+consumption fail closed; text-only folding keeps its existing behavior. Live
+acceptance must cover separate and interleaved native result boundaries.

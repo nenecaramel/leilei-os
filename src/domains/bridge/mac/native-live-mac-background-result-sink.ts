@@ -194,7 +194,9 @@ export class NativeLiveMacBackgroundResultSink {
       ...(owner.deferred === true ? { deferred: true } : {}),
       result: { protocol_version: 4, prepare_id: owner.source.prepareId, request_id: owner.source.requestId, conversation_id: owner.conversationId,
         status: "success", provider_session_id: owner.providerSessionId, effective_working_directory: owner.workingDirectory,
-        provider_checkpoint_id: frame.providerCheckpointId, normalized_events: frame.normalizedEvents } });
+        provider_checkpoint_id: frame.providerCheckpointId, normalized_events: frame.normalizedEvents,
+        ...(frame.outputAttachmentIds?.length ? {output_attachment_ids:[...frame.outputAttachmentIds]} : {}),
+        ...(frame.outputAttachmentMetadata?.length ? {output_attachment_metadata:frame.outputAttachmentMetadata.map(value => ({...value}))} : {}) } });
     return this.serial(async () => {
       await this.input.outbox.save(pending); // Preserve identity before either HTTP response can be lost.
       try {

@@ -109,6 +109,7 @@ export class NativeLiveMacPersistentRuntime {
     this.executor = new NativeLiveMacPersistentExecutor({ hasCapacity: () => this.registry.size < 4, attachmentMaterializer: input.attachmentMaterializer, outputAttachmentSender: input.outputAttachmentSender, onRuntimeFailure: input.onRuntimeFailure ?? null,
       createRouter: () => { startWatchdog(); return new NativeLiveMacPersistentTurnRouter({ registry: this.registry, listenerInstanceId: input.listenerInstanceId,
         taskControlsAvailable: () => capabilityProbe ?? Promise.resolve(taskControlsSupported),
+        outputAttachmentSender: input.outputAttachmentSender,
         relay: input.relay, onBackgroundResult: (owner, frame) => this.backgroundResults.commit(owner, frame),
         onForegroundCoverage: async (conversationId, generationId, checkpoint) => {
           try { return await this.backgroundResults.cover(conversationId, generationId, checkpoint); }

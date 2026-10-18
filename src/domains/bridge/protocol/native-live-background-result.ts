@@ -25,8 +25,7 @@ export function backgroundResult(value: unknown): NativeLiveRuntimeExecutionResu
     const result = parseNativeLiveRuntimeExecutionResult(structuredClone(value));
     if (result.protocol_version !== 4 || Buffer.byteLength(JSON.stringify(result), "utf8") > 2 * 1024 * 1024) throw Error("bounds");
     if (result.status === "success") {
-      if (!result.provider_checkpoint_id || result.output_attachment_ids?.length || result.output_attachment_metadata?.length
-        || result.normalized_events.length > 1024) throw Error("unsupported background output");
+      if (!result.provider_checkpoint_id || result.normalized_events.length > 1024) throw Error("unsupported background output");
       return { ...result, normalized_events: result.normalized_events.map(event => {
         const normalized = normalizeNativeLiveRuntimeEvent(event);
         if (normalized.type === "attachment") throw Error("unsupported background attachment");

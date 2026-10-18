@@ -1,3 +1,4 @@
+import type { NativeLiveMacOutputAttachmentCollector, NativeLiveMacOutputAttachmentReceipt } from "./native-live-mac-output-attachment-collector.js";
 import { isAbsolute } from "node:path";
 import type { EventEmitter } from "node:events";
 import type {
@@ -65,7 +66,10 @@ export type NativeLiveMacSessionRestore = Readonly<{
 }>;
 export type NativeLiveMacPersistentSessionOptions = {
   authorize(context: { phase: "input" | "tool" | "scheduled"; inputId: string | null; source: NativeLiveMacSessionSource | null; providerSessionId: string | null }): Promise<boolean>;
-  onBackgroundResult(frame: { result: Record<string, unknown>; events: Record<string, unknown>[]; normalizedEvents: NativeLiveNormalizedEvent[] }): Promise<void>;
+  createBackgroundOutput?(input: {segmentId:string;commandUuid:string}): NativeLiveMacOutputAttachmentCollector;
+  onBackgroundResult(frame: { result: Record<string, unknown>; events: Record<string, unknown>[]; normalizedEvents: NativeLiveNormalizedEvent[];
+    segmentId?: string; commandUuid?: string;
+  } & Partial<NativeLiveMacOutputAttachmentReceipt>): Promise<void>;
   execution?: NativeLiveExecutionSelection | null;
   perTaskStopAffordance?: boolean;
   permissionHandler?: NativeLiveMacInteractiveTurnOptions["permissionHandler"];

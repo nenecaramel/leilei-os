@@ -10,7 +10,7 @@ const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
 // Persistent session host used by the Mac daemon transport.
 // The caller owns SDK launch settings, auth, canonical preparations and UI capabilities.
-export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, expectedSessionId = null, beforeSubmit = null, onBackgroundResult = null, observeOutput = null, allowInitialFork = false } = {}) {
+export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, expectedSessionId = null, beforeSubmit = null, onBackgroundResult = null, createBackgroundOutput = null, observeOutput = null, allowInitialFork = false } = {}) {
   if (typeof queryImpl !== 'function') throw new Error('Session host requires an injected SDK query.');
   // Only a caller that has already checked a durable fork checkpoint may launch
   // a forked writer. Ordinary live sessions cannot switch their branch.
@@ -20,15 +20,16 @@ export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, 
   if (!query || typeof query[Symbol.asyncIterator] !== 'function') {
     input.end(); query?.close?.(); throw new Error('SDK query must be async iterable.');
   }
-  return new SessionHost(query, input, expectedSessionId, queryOptions.perTaskStopAffordance === true, beforeSubmit, onBackgroundResult, observeOutput);
+  return new SessionHost(query, input, expectedSessionId, queryOptions.perTaskStopAffordance === true, beforeSubmit, onBackgroundResult, createBackgroundOutput, observeOutput);
 }
 
 class SessionHost {
-  constructor(query, input, expectedSessionId, perTaskStopAffordance, beforeSubmit, onBackgroundResult, observeOutput) {
+  constructor(query, input, expectedSessionId, perTaskStopAffordance, beforeSubmit, onBackgroundResult, createBackgroundOutput, observeOutput) {
     this.query = query; this.input = input; this.expectedSessionId = expectedSessionId;
     this.perTaskStopAffordance = perTaskStopAffordance;
     this.observeOutput = observeOutput;
     this.beforeSubmit = beforeSubmit; this.onBackgroundResult = onBackgroundResult;
+    this.createBackgroundOutput = createBackgroundOutput; this.backgroundOutputs = new Set();
     this.events = new EventEmitter(); this.ids = new Set(); this.startedCommands = new Set();
     this.currentCommandUuid = null;
     this.taskState = new AgentSdkTaskState(() => this.publishTaskState());
@@ -86,6 +87,55 @@ class SessionHost {
     if (this.segment.owner === 'turn' && this.segment.ownerId === turn.id) return turn.id;
     if (this.segment.owner !== null || !this.currentCommandUuid) return null;
     return turn.commandIds.has(this.currentCommandUuid) ? turn.id : null;
+  }
+  // A background capability belongs to one exact SDK segment and native
+  // command. An unstamped frame or queued foreground never supplies its owner.
+  backgroundOutputOwner() {
+    if (!this.createBackgroundOutput || ['closed', 'failed'].includes(this.state)) return null;
+    const segment = this.segment;
+    const commandUuid = this.currentCommandUuid ?? segment.commandUuid;
+    if (!commandUuid || this.active?.commandIds.has(commandUuid)) return null;
+    if (segment.commandUuid && segment.commandUuid !== commandUuid) return null;
+    if (!this.startedCommands.has(commandUuid) && segment.commandUuid !== commandUuid) return null;
+    if (segment.output) return segment.output.commandUuid === commandUuid && !segment.output.sealed ? segment.output : null;
+    const owner = Object.freeze({ segmentId: segment.id, commandUuid });
+    const collector = this.createBackgroundOutput(owner);
+    if (!collector) return null;
+    const output = { ...owner, collector, segment, images: new AbortController(), pending: new Set(), accepting: true, sealed: false,
+      forwardImages: createToolImageForwarder(collector.toolImageHandler ? (image, context) => this.runBackgroundOutput(output,
+        () => collector.toolImageHandler(image, context)) : null) };
+    segment.output = output; this.backgroundOutputs.add(output);
+    return output;
+  }
+  assertBackgroundOutput(output) {
+    if (['closed', 'failed'].includes(this.state) || output.images.signal.aborted || output.sealed
+      || this.segment !== output.segment || this.backgroundOutputOwner() !== output) throw new Error('Background output owner changed or closed.');
+  }
+  runBackgroundOutput(output, send) {
+    if (!output.accepting) throw new Error("Background output owner is sealing.");
+    this.assertBackgroundOutput(output);
+    const work = (async () => { const value = await send(); this.assertBackgroundOutput(output); return value; })();
+    output.pending.add(work);
+    // Keep a rejection handled even if the SDK abandons its tool callback.
+    work.then(() => output.pending.delete(work), () => output.pending.delete(work));
+    return work;
+  }
+  async sealBackgroundOutput(segment, message) {
+    const output = segment.output;
+    if (!output) return {};
+    const stamps = [message.user_message_uuid, ...(Array.isArray(message.user_message_uuids) ? message.user_message_uuids : [])];
+    if (!stamps.includes(output.commandUuid) || stamps.some(id => this.active?.commandIds.has(id))) {
+      throw new Error('Background result does not exclusively own its uploaded attachments.');
+    }
+    output.accepting = false;
+    await Promise.all([...output.pending]);
+    this.assertBackgroundOutput(output);
+    const receipt = await output.collector.seal();
+    this.assertBackgroundOutput(output);
+    output.sealed = true; this.backgroundOutputs.delete(output);
+    return { segmentId: output.segmentId, commandUuid: output.commandUuid,
+      outputAttachmentIds: [...receipt.outputAttachmentIds],
+      ...(receipt.outputAttachmentMetadata ? { outputAttachmentMetadata: [...receipt.outputAttachmentMetadata] } : {}) };
   }
   submit(text, { id = randomUUID(), source = 'unclassified', onNormalizedEvent = null, toolImageHandler = null } = {}) {
     if (this.state === 'closed' || this.state === 'failed') return Promise.reject(new Error('Session host is closed.'));
@@ -189,6 +239,8 @@ class SessionHost {
     return result;
   }
   rejectWork(error) {
+    for (const output of this.backgroundOutputs) { output.images.abort(); output.collector.abort(); }
+    this.backgroundOutputs.clear();
     for (const turn of [this.active, this.finishing]) {
       turn?.images.abort(); turn?.cancelDelivery(); turn?.reject(error);
     }
@@ -208,6 +260,11 @@ class SessionHost {
     if (isReply && stamps.some(id => typeof id === 'string' && id && id !== ZERO_UUID)) {
       const turn = this.active && stamps.some(id => this.active.commandIds.has(id)) ? this.active : null;
       segment.owner = turn ? 'turn' : 'background'; segment.ownerId = turn?.id ?? null;
+      if (!turn) {
+        const commandUuid = stamps.find(id => typeof id === 'string' && id && id !== ZERO_UUID);
+        if (segment.output && segment.output.commandUuid !== commandUuid) throw new Error('Background output command changed before its result.');
+        segment.commandUuid = commandUuid; this.currentCommandUuid = commandUuid;
+      }
       if (turn) {
         turn.stampedReply = true;
         this.currentCommandUuid = stamps.find(id => turn.commandIds.has(id)) ?? this.currentCommandUuid;
@@ -218,10 +275,19 @@ class SessionHost {
       && stamps.some(id => this.active.commandIds.has(id));
     const turn = isOwnedResult ? this.active
       : message.type === 'result' ? null
-      : this.ownedInputId() ? this.active : null;
+      : this.ownedInputId() && (!this.currentCommandUuid || this.active.commandIds.has(this.currentCommandUuid)) ? this.active : null;
     const next = segment.normalizer.normalize(message);
     if (turn && !next.some(event => event.type === 'error')) {
       for (const diagnostic of await turn.forwardImages(message, turn.images.signal)) next.push(...segment.normalizer.normalize({ type: 'system', subtype: 'tool_image_delivery', ...diagnostic }));
+    }
+    if (!turn && message.type === 'user' && message.isSidechain !== true
+      && Array.isArray(message.message?.content)
+      && message.message.content.some(block => block?.type === 'tool_result' && Array.isArray(block.content) && block.content.some(value => value?.type === 'image'))
+      && !next.some(event => event.type === 'error')) {
+      const output = this.backgroundOutputOwner();
+      if (output) for (const diagnostic of await output.forwardImages(message, output.images.signal)) {
+        next.push(...segment.normalizer.normalize({ type: 'system', subtype: 'tool_image_delivery', ...diagnostic }));
+      }
     }
     if (turn) {
       // Keep owned output across an interleaved autonomous result boundary.
@@ -281,12 +347,13 @@ class SessionHost {
         await this.route(message);
         if (this.state === 'closed') break;
         if (message?.type === 'result') {
-          this.currentCommandUuid = null;
-          const segment = this.segment; this.segment = newSegment();
+          const segment = this.segment;
+          const outputReceipt = await this.sealBackgroundOutput(segment, message);
+          this.currentCommandUuid = null; this.segment = newSegment();
           const consumed = [message.user_message_uuid, ...(Array.isArray(message.user_message_uuids) ? message.user_message_uuids : [])].filter(id => id !== ZERO_UUID);
           if (this.active && !consumed.some(id => typeof id === 'string' && id.trim())) throw new Error('SDK input correlation is unavailable.');
           if (!this.active || !consumed.some(id => this.active.commandIds.has(id))) {
-            this.background({ result: message, events: segment.rawBackground, normalizedEvents: segment.background }, message);
+            this.background({ result: message, events: segment.rawBackground, normalizedEvents: segment.background, ...outputReceipt }, message);
             continue;
           }
           const turn = this.active;
@@ -336,7 +403,7 @@ class SessionHost {
 }
 
 function newSegment() {
-  return { owner: null, ownerId: null, background: [], rawBackground: [],
+  return { id: randomUUID(), commandUuid: null, output: null, owner: null, ownerId: null, background: [], rawBackground: [],
     normalizer: new ClaudeEventNormalizer({ logicalConversationId: null, mode: 'resume' }) };
 }
 

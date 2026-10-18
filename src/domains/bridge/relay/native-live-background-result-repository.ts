@@ -545,7 +545,7 @@ export async function submitNativeLiveBackgroundResult(db: Database, input: Nati
         coveringCheckpointId: input.coveringCheckpointId,
         providerCheckpointId: input.coveringCheckpointId,
       };
-      if (canonical.blocks.length > 0) {
+      if (canonical.blocks.length > 0 || result.output_attachment_ids?.length) {
         const visible = await appendBackgroundMessage(tx, {
           userId, conversationId: origin.conversationId, receipt: terminal, result,
         });

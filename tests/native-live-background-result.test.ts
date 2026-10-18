@@ -50,7 +50,11 @@ for (const [name, patch] of [
   ["too many events", { normalized_events: Array.from({ length: 1025 }, () => ({ type: "text", payload: { text: "synthetic" } })) }],
   ["oversized content", { normalized_events: [{ type: "text", payload: { text: "x".repeat(2 * 1024 * 1024) } }] }],
   ["normalized attachment event", { normalized_events: [{ type: "attachment", payload: { attachment_id: receiptId } }] }],
-  ["unbound output attachment", { output_attachment_ids: [receiptId] }],
+  ["invalid attachment UUID", { output_attachment_ids: ["invalid"] }],
+  ["duplicate attachment IDs", { output_attachment_ids: [receiptId, receiptId] }],
+  ["too many attachments", { output_attachment_ids: Array.from({ length: 9 }, () => crypto.randomUUID()) }],
+  ["foreign attachment metadata", { output_attachment_ids: [receiptId], output_attachment_metadata: [{ attachment_id: checkpoint, duration_seconds: 1 }] }],
+  ["invalid attachment duration", { output_attachment_ids: [receiptId], output_attachment_metadata: [{ attachment_id: receiptId, duration_seconds: 0 }] }],
 ] as const) test(`background result rejects ${name}`, () => {
   assert.throws(() => backgroundResult({ ...result, ...patch }), { code: "INVALID_BACKGROUND_RESULT" });
 });
@@ -130,4 +134,10 @@ for (const [code, status] of [["BACKGROUND_NOT_FOUND", 404], ["BACKGROUND_CONFLI
     const response = await fetch(`${baseUrl}/relay/reservations/${prepareId}/background-results/${receiptId}/result`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ listener_instance_id: listenerId, generation_id: generationId, result }) });
     assert.equal(response.status, status); assert.deepEqual(await response.json(), { success: false, error: { code, message: "Native background result could not be accepted." } });
   });
+});
+
+for (const normalized_events of [result.normalized_events, []]) test(`background parser accepts ${normalized_events.length ? "text plus file" : "attachment-only"} output descriptors`, () => {
+  const raw = { ...result, normalized_events, output_attachment_ids: [receiptId],
+    output_attachment_metadata: [{ attachment_id: receiptId, duration_seconds: 3 }] };
+  assert.deepEqual(backgroundResult(raw), { ...raw, effective_working_directory: null });
 });
