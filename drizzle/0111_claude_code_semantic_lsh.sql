@@ -19,11 +19,12 @@ CREATE TABLE IF NOT EXISTS runtime_mind_recall_semantic_bands (
   band smallint NOT NULL CHECK (band BETWEEN 0 AND 19),
   bucket integer NOT NULL CHECK (bucket BETWEEN 0 AND 65535),
   content_sha256 char(64) NOT NULL,
+  algorithm_version varchar(40) NOT NULL DEFAULT 'e5-small-lsh-v1',
   PRIMARY KEY (state_id, band)
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS runtime_mind_recall_semantic_buckets_idx
-  ON runtime_mind_recall_semantic_bands (user_id, subject_id, band, bucket, state_id);
+  ON runtime_mind_recall_semantic_bands (user_id, subject_id, algorithm_version, band, bucket, state_id);
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION runtime_mind_recall_mark_semantic_dirty()
 RETURNS trigger LANGUAGE plpgsql AS $$
