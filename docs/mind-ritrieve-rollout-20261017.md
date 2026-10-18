@@ -191,3 +191,34 @@ pnpm exec tsx scripts/mind-real-blind-review.ts "$BACKUP" --count=8 --manual
 **结论：**混合 Top1 可大量抑制错误注入，但 5 道正例中 1 道未正确命中，且 8 条人工相关记忆只返回 4 条。因此不能把它称作与旧 E5 同等召回，更不能替换生产。接下来应尝试经过审查的**条件式第 2 条输出/置信差距拒绝策略**，并在本地离线生成可重用、用户自己保管的盲测标签，以便同一批 query/label 的可重复 A/B；验证不应将私人文本/记忆上传到 GitHub、第三方模型或聊天。
 
 本次只补录结果：**没有更改生产 Hook、daemon、Railway 或真实 Memory**；PR #1142 继续 Draft。试验不等于旧/新完整 Hook 的线上端到端对照。
+
+## 条件式第二条 + 可重复本地盲测（Draft 实验，2026-10-18）
+
+在 `src/domains/runtime/mind/mind-hybrid-candidates.ts` 新增**独立的离线实验入口** `selectHybridMindCandidatesConditional`，并接入 `scripts/mind-real-blind-review.ts` 的第九种检索方式 `hybrid_conditional_second`。对相同 E5/ritrieve 候选：
+
+- 仍使用 `hybrid_agreement` 已有的双模型筛选、融合排序，**先保留排序第一的 1 条**（如果找不到则 0 条）。
+- 只在第二条的 E5 排名前 3 / 分数 ≥0.86、ritrieve 排名前 5 / 分数 ≥0.70，并且分别与第一条的原始 E5、ritrieve 得分相差不超过 0.035 / 0.05 时，才补入**第二条**。
+- **最多 2 条**；不会返回第三、第四条；原模型分数阈值与相对差距都是需要真实独立标签验证的试验参数，不代表已校准概率。
+- 该新入口没有接线到 daemon、Mind Socket、Hook、Railway 生产 API，也不会修改 Mind。旧模式保持不变。
+
+为避免每轮更换问题造成 A/B 不可比，盲测脚本支持 **`--review-file=绝对路径`** 保存/读取本机固定题目及人工判断。仅当用户显式传入该参数才写文件，且要求文件在**仓库外**、父目录私有（0700）、文件私有（0600），原子写入；以后重新运行同一命令会复用原题和已评过的候选 ID，**新策略额外提议的候选才会再次让用户人工标注**。存档包含私人的用户提问、Memory UUID、已核实候选 ID、快照文本的 SHA-256 指纹，**没有 Memory 原文**；绝对不能把它贴给 ChatGPT 或推送到 GitHub。Memory 变更或样本不同会触发指纹不匹配并拒绝复用旧标签，避免跨版本误计质量。
+
+在 Mac 执行（先拉取试验分支、跑 TypeScript 及逻辑测试）：
+
+```zsh
+cd /tmp/leileios-mind-1142
+git fetch origin codex/mind-ritrieve-staged-20261017
+git switch --detach FETCH_HEAD
+pnpm typecheck
+pnpm exec tsx --test tests/mind-hybrid-candidates.test.ts
+BACKUP="$(find "$HOME/Downloads" -maxdepth 1 -type f -name 'leileios-full-backup_*.json' | sort | tail -n 1)"
+pnpm exec tsx scripts/mind-real-blind-review.ts "$BACKUP" --count=8 --manual --review-file="$HOME/.leileios/mind-eval/fixed-review.json"
+```
+
+同一备份再复测，**直接重跑最后一行**；不会重新输入已保存的 8 道题或重新判定已审候选。终端仍会显示私人问题，只允许复制 `AGGREGATE_RESULT_JSON_START` 后的匿名统计 JSON。首次创建本机保存文件需要用户明确传 `--review-file`，不触碰现有的真实 Mind 记录。脚本还排除无候选且缺乏有效相关性标注的题目；不把未判断的候选当成负例。
+
+### 验收限制
+
+- 之前的 3 轮匿名汇总没有逐题标签文件，**不能复用**，本轮需要一次重新标注，随后才可重复对照。
+- 本地独立小型 TypeScript/Node 测试包含条件第二条的具体分数/rank案例与 300 轮伪随机不变量，已通过；仓库自身的 `pnpm typecheck` 和新测试仍需在用户 Mac 执行。
+- 此实验只比较 embedding 层的新旧/混合候选；尚未证明改善完整生产旧 Hook 的实际体验。PR **继续 Draft**，不得合并/启用 `indexed_v1`、更改生产 Hook 或阈值。
