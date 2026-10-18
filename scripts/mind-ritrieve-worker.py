@@ -15,7 +15,13 @@ os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 MODEL_ID = "richinfoai/ritrieve_zh_v1"
-PASSAGE_CACHE_LIMIT = 512
+# The native-live/default scorer supplies 512. Claude's dedicated on-demand
+# scorer may opt into 4096 volatile passage vectors (~28 MiB of float32 data),
+# all derived ONLY from prompt-supplied candidates. Never downloaded at idle.
+PASSAGE_CACHE_LIMIT = int(os.environ.get("LEILEI_MIND_RITRIEVE_CACHE_ENTRIES", "512"))
+if not 1 <= PASSAGE_CACHE_LIMIT <= 4096:
+    raise ValueError("invalid passage cache capacity")
+
 MAX_REQUEST_CHARS = 1_000_000
 MAX_INDEX_RECORDS = 30000
 
