@@ -42,6 +42,26 @@ test("ritrieve worker scores preserve candidate IDs and reuse one process", asyn
   assert.equal(second.get("memory-three"), 0);
 });
 
+test("Claude-only passage cache capacity is opt-in; legacy default remains 512", async t => {
+  const workerPath = await fakeWorker(t,
+    'process.stdout.write(JSON.stringify({id: input.id, scores: input.passages.map(() => Number(process.env.LEILEI_MIND_RITRIEVE_CACHE_ENTRIES) / 4096)}) + "\\n");');
+  const candidates = [{stateId:"one",kind:"memory" as const,text:"synthetic memory"}];
+  const legacy = new LocalRitrieveBreathSemanticScorer({
+    executable:process.execPath,workerPath,requestTimeoutMs:3000,
+  });
+  const claude = new LocalRitrieveBreathSemanticScorer({
+    executable:process.execPath,workerPath,requestTimeoutMs:3000,
+    passageCacheEntries:4096,
+  });
+  t.after(async()=>{await legacy.close();await claude.close();});
+  const old = await legacy.score({query:"test",candidates});
+  const newer = await claude.score({query:"test",candidates});
+  assert.equal(old.get("one"),512/4096);
+  assert.equal(newer.get("one"),1);
+  const invalid = new LocalRitrieveBreathSemanticScorer({passageCacheEntries:4097});
+  await assert.rejects(invalid.score({query:"test",candidates}),/Invalid Ritrieve passage cache capacity/);
+});
+
 test("ritrieve rejects invalid scores rather than injecting fake semantic evidence", async t => {
   const path = await fakeWorker(t, 'process.stdout.write(JSON.stringify({id: input.id, scores: [1.1]}) + "\\n");');
   const scorer = new LocalRitrieveBreathSemanticScorer({
