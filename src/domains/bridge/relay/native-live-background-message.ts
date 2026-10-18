@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { DrizzleNativeLiveAttachmentBinding } from "../attachment/native-live-attachment-service.js";
 import type { createDatabase } from "../../../database/client.js";
 import { conversationMessages } from "../../../database/schema.js";
 import { canonicalizeNativeLiveEvents } from "../../conversation/native-live-conversation-orchestrator.js";
@@ -30,7 +31,7 @@ export async function appendBackgroundMessage(tx: Transaction, input: {
   const canonical = canonicalizeNativeLiveEvents(result.normalized_events);
   if (canonical.error) throw new NativeLiveBackgroundResultError("INVALID_BACKGROUND_RESULT");
   // Quiet native activity moves its continuation cursor without an empty bubble.
-  if (canonical.blocks.length === 0) return false;
+  if (canonical.blocks.length === 0 && !result.output_attachment_ids?.length) return false;
   const now = new Date();
   await tx.insert(conversationMessages).values({
     id: receipt.identity.receiptId, userId: input.userId, conversationId: input.conversationId,
@@ -39,6 +40,14 @@ export async function appendBackgroundMessage(tx: Transaction, input: {
   const repository = new DrizzleNativeLiveConversationRepository(tx);
   for (const [ordinal, block] of canonical.blocks.entries()) {
     await repository.appendContentBlock({ ...input, messageId: receipt.identity.receiptId, ordinal, block });
+  }
+  if (result.output_attachment_ids?.length) {
+    await new DrizzleNativeLiveAttachmentBinding(tx, 8).bindReadyToMessage({
+      userId: input.userId, messageId: receipt.identity.receiptId,
+      attachmentIds: result.output_attachment_ids,
+      attachmentMetadata: result.output_attachment_metadata,
+      startOrdinal: canonical.blocks.length, contentOrigin: "provider_send",
+    });
   }
   await repository.bindProviderCheckpoint({
     userId: input.userId, conversationId: input.conversationId, canonicalMessageId: receipt.identity.receiptId,

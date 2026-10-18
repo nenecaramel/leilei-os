@@ -28,12 +28,13 @@ function command(n: number, wake = false): NativeLiveRuntimeCommand {
 type BindInput = (input: { phase: "queued" | "started"; commandUuid: string;
   command: NativeLiveRuntimeCommand }) => Promise<{ userMessageId: string; parentProviderCheckpointId: string | null } | null>;
 async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolean>, bindInput?: BindInput,
-  callbacks?: Partial<Pick<ConstructorParameters<typeof NativeLiveMacPersistentTurnRouter>[0], "onForegroundCoverage" | "onForegroundPublished" | "onForegroundUnpublished" | "hasUnpublishedDeferred">>,
+  callbacks?: Partial<Pick<ConstructorParameters<typeof NativeLiveMacPersistentTurnRouter>[0], "onForegroundCoverage" | "onForegroundPublished" | "onForegroundUnpublished" | "hasUnpublishedDeferred" | "outputAttachmentSender">>,
   captureSendFileTool?: (callback: (input: {path: string; displayName: string | null}) => Promise<unknown>) => void) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "persistent-turn-router-")));
   const output = queue<Record<string, unknown>>(), inputs = queue<{ uuid: string; origin: { kind: string } }>();
   const backgroundObserved = queue<string>();
   let launches = 0, closes = 0, nextCheckpoint = 101;
+  let sessionOptions!: NativeLiveMacPersistentSessionOptions;
   const restored = [{ type: "user", uuid: id(500), parentUuid: null, sessionId: sid }, { type: "assistant", uuid: id(102), parentUuid: id(500), sessionId: sid }];
   let transcript: Array<Record<string, unknown>> | null = null;
   let writeTranscript = true;
@@ -51,10 +52,10 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
       ) => { captureSendFileTool(handler); return { type: "sdk", name: "test-files" }; };
     }
     const open = configured.runtime.openPersistentSession!.bind(configured.runtime);
-    configured.runtime.openPersistentSession = (options: NativeLiveMacPersistentSessionOptions) => open({ ...options, onBackgroundResult: frame => {
+    configured.runtime.openPersistentSession = (options: NativeLiveMacPersistentSessionOptions) => {sessionOptions=options;return open({ ...options, onBackgroundResult: frame => {
       backgroundObserved.push(frame.result.user_message_uuid as string);
       return options.onBackgroundResult(frame);
-    } });
+    } });};
     Object.assign(configured.runtime, {
       sessionMessagesImpl: async () => [{}],
       importSessionToStoreImpl: async (_id: string, store: { append(key: unknown, entries: unknown[]): Promise<void> }) => store.append({ sessionId: sid }, (transcript ?? restored).map(entry => ({ ...entry }))),
@@ -67,12 +68,12 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
     } });
     return configured;
   });
-  const admissions: string[] = [], background: string[] = [], results: string[] = [], backgroundOwners: any[] = [];
+  const admissions: string[] = [], background: string[] = [], results: string[] = [], backgroundOwners: any[] = [], backgroundFrames: any[] = [];
   let backgroundSink: (() => Promise<NativeLiveMacPersistentAcknowledgement>) | null = null;
   let allow = true;
   let admissionSink: ((command: NativeLiveRuntimeCommand) => Promise<boolean>) | null = null;
   const router = new NativeLiveMacPersistentTurnRouter({ registry, listenerInstanceId: "listener", relay: { ...(idleAdmission ? { checkTaskAdmission:idleAdmission } : {}), ...(bindInput ? { bindInput } : {}), async checkExecutionAdmission(input) { admissions.push(input.command.prepare_id); return admissionSink ? admissionSink(input.command) : allow; } },
-    async onBackgroundResult(owner, frame) { backgroundOwners.push(structuredClone(owner)); assert.equal(owner.conversationId, conversation); assert.ok(owner.generationId); background.push(frame.result.user_message_uuid as string); return backgroundSink ? backgroundSink() : acknowledged(frame.events.findLast(event => event.type === "assistant")?.uuid as string); }, ...callbacks });
+    async onBackgroundResult(owner, frame) { backgroundFrames.push(structuredClone(frame)); backgroundOwners.push(structuredClone(owner)); assert.equal(owner.conversationId, conversation); assert.ok(owner.generationId); background.push(frame.result.user_message_uuid as string); return backgroundSink ? backgroundSink() : acknowledged(frame.events.findLast(event => event.type === "assistant")?.uuid as string); }, ...callbacks });
   const run = (c: NativeLiveRuntimeCommand, extra = {}) => router.execute({ command: c, async onResult(frame) { results.push(frame.command.prepare_id); return acknowledged(frame.result.events.findLast(event => event.type === "assistant")?.uuid as string); }, ...extra });
   const finish = (uuid: string) => {
     const checkpoint = id(nextCheckpoint++);
@@ -81,7 +82,7 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
     output.push({ type: "result", subtype: "success", session_id: sid, user_message_uuid: uuid });
   };
   t.after(async () => { await router.close(); await registry.closeAll(); await rm(root, { recursive: true, force: true }); });
-  return { router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
+  return { workingDirectory: root, get sessionOptions(){return sessionOptions;}, router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, backgroundFrames, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
 }
 
 test("failed post-F background publication synchronously fences the next foreground send", async t => {
@@ -759,4 +760,74 @@ for (const nextNative of [id(22), id(901)]) test(`native scheduled admission ref
   await emit(nextNative); release.resolve(true);
   assert.equal((await pending).decision, "block", "old native ID cannot grant a different selected command admission");
   f.finish(id(22)); await foreground;
+});
+
+for(const denied of [false,true]) test(`background attachment collectors use durable task admission around upload: denied=${denied}`,async t=>{
+  let taskChecks=0,uploads=0;
+  const f=await fixture(t,async()=>{taskChecks++;return !denied;},undefined,{
+    outputAttachmentSender:{async sendFile(input){uploads++;assert.equal(input.workingDirectory, f.workingDirectory);return {attachmentId:id(750),filename:"out.txt",mimeType:"text/plain",sizeBytes:3,sha256:"0".repeat(64),kind:"file"};}},
+  });
+  const first=f.run(command(1));f.finish((await f.inputs.next()).value!.uuid);await first;
+  const output=f.sessionOptions.createBackgroundOutput!({segmentId:id(700),commandUuid:id(701)});
+  if(denied){await assert.rejects(output.sendFileHandler!({path:"out.txt",displayName:null}),/admission denied/);assert.equal(uploads,0);}
+  else{
+    await output.sendFileHandler!({path:"out.txt",displayName:null});
+    assert.deepEqual((await output.seal()).outputAttachmentIds,[id(750)]);assert.equal(uploads,1);assert.equal(taskChecks,3);
+  }
+  assert.deepEqual(f.admissions,[id(1)],"autonomous output never borrows another foreground admission");
+});
+
+test("background attachment upload finishing after router retirement cannot seal or move to a later segment",async t=>{
+  const entered=deferred<void>(),hold=deferred<void>();
+  const f=await fixture(t,async()=>true,undefined,{outputAttachmentSender:{async sendFile(){entered.resolve();await hold.promise;return {attachmentId:id(750),filename:"out.txt",mimeType:"text/plain",sizeBytes:3,sha256:"0".repeat(64),kind:"file"};}}});
+  const first=f.run(command(1));f.finish((await f.inputs.next()).value!.uuid);await first;
+  const output=f.sessionOptions.createBackgroundOutput!({segmentId:id(700),commandUuid:id(701)});
+  const upload=output.sendFileHandler!({path:"out.txt",displayName:null});const rejected=assert.rejects(upload,/abort|retired/i);
+  await entered.promise;await f.router.close();hold.resolve();await rejected;await assert.rejects(output.seal(),/abort|retired/i);
+});
+
+test("background output enabled policy follows its durable source rather than a queued foreground",async t=>{
+  let uploads=0;
+  const f=await fixture(t,async()=>true,undefined,{outputAttachmentSender:{async sendFile(){uploads++;return {attachmentId:id(750),filename:"out.txt",mimeType:"text/plain",sizeBytes:3,sha256:"0".repeat(64),kind:"file"};}}});
+  const first=f.run({...command(1),output_attachments_enabled:false});f.finish((await f.inputs.next()).value!.uuid);await first;
+  const next=f.run({...command(2),output_attachments_enabled:true});const input=(await f.inputs.next()).value!;
+  const background=f.sessionOptions.createBackgroundOutput!({segmentId:id(700),commandUuid:id(701)});
+  assert.equal(background.sendFileHandler,undefined);assert.equal(background.toolImageHandler,undefined);assert.equal(uploads,0);
+  f.finish(input.uuid);await next;
+});
+
+test("native autonomous file and image share one exact sealed receipt through the actual SDK router path",async t=>{
+  const toolCapture:{callback:((input:{path:string;displayName:string|null})=>Promise<unknown>)|null}={callback:null};
+  const sent:string[]=[];
+  const f=await fixture(t,async()=>true,undefined,{outputAttachmentSender:{
+    async sendFile(input){sent.push(input.path);return {attachmentId:id(750),filename:"out.wav",mimeType:"audio/wav",sizeBytes:3,sha256:"0".repeat(64),kind:"file",durationSeconds:1.25};},
+    async sendInlineImage(input){sent.push(input.mimeType);return {attachmentId:id(751),filename:"image.png",mimeType:"image/png",sizeBytes:3,sha256:"0".repeat(64),kind:"image"};},
+  }},callback=>{toolCapture.callback=callback;});
+  const first=f.run(command(1));f.finish((await f.inputs.next()).value!.uuid);await first;
+  const autonomous=id(700);
+  f.output.push({type:"command_lifecycle",state:"started",command_uuid:autonomous,session_id:sid});
+  await new Promise(setImmediate);
+  assert.ok(toolCapture.callback);
+  await toolCapture.callback!({path:"audio/out.wav",displayName:null});
+  f.output.push({type:"user",session_id:sid,user_message_uuid:autonomous,parent_tool_use_id:null,
+    message:{content:[{type:"tool_result",tool_use_id:id(710),content:[{type:"image",source:{type:"base64",media_type:"image/png",data:"aGk="}}]}]}});
+  f.finish(autonomous);
+  await f.backgroundObserved.next();await new Promise(setImmediate);
+  assert.deepEqual(sent,["audio/out.wav","image/png"]);
+  assert.deepEqual(f.backgroundFrames[0].outputAttachmentIds,[id(750),id(751)]);
+  assert.deepEqual(f.backgroundFrames[0].outputAttachmentMetadata,[{attachment_id:id(750),duration_seconds:1.25}]);
+  assert.equal(f.backgroundFrames[0].commandUuid,autonomous);assert.ok(f.backgroundFrames[0].segmentId);
+  assert.deepEqual(f.backgroundOwners[0].source,{prepareId:id(1),requestId:id(11)});
+});
+
+test("source rotation during autonomous upload rejects the old segment instead of attributing it to the next foreground",async t=>{
+  const entered=deferred<void>(),hold=deferred<void>();
+  const f=await fixture(t,async()=>true,undefined,{outputAttachmentSender:{async sendFile(){entered.resolve();await hold.promise;return {attachmentId:id(750),filename:"out.txt",mimeType:"text/plain",sizeBytes:3,sha256:"0".repeat(64),kind:"file"};}}});
+  const first=f.run(command(1));f.finish((await f.inputs.next()).value!.uuid);await first;
+  const output=f.sessionOptions.createBackgroundOutput!({segmentId:id(700),commandUuid:id(701)});
+  const pending=output.sendFileHandler!({path:"out.txt",displayName:null});const rejected=assert.rejects(pending,/owner changed/i);
+  await entered.promise;
+  const next=f.run(command(2));f.finish((await f.inputs.next()).value!.uuid);await next;
+  hold.resolve();await rejected;
+  assert.deepEqual((await output.seal()).outputAttachmentIds,[]);
 });

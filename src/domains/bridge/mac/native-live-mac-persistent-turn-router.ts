@@ -1,3 +1,4 @@
+import { createNativeLiveMacOutputAttachmentCollector, type NativeLiveMacOutputAttachmentCollector, type NativeLiveMacOutputAttachmentSenderLike } from "./native-live-mac-output-attachment-collector.js";
 import { NativeLiveMacExecutionLease } from "./native-live-mac-execution-lease.js";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -69,11 +70,18 @@ export class NativeLiveMacPersistentTurnRouter {
   private acknowledgement = Promise.resolve();
   private providerCheckpointId: string | null = null;
   private backgroundSource: NativeLiveMacPersistentBackgroundOwner["source"] = null;
+  private backgroundOutputEnabled = false;
+  private readonly backgroundOutputs = new Map<string, {
+    commandUuid: string; collector: NativeLiveMacOutputAttachmentCollector;
+    source: NonNullable<NativeLiveMacPersistentBackgroundOwner["source"]>;
+    binding: NativeLiveMacSessionBinding;
+  }>();
 
   constructor(private readonly input: {
     registry: NativeLiveMacSessionRegistry;
     listenerInstanceId: string;
     taskControlsAvailable?: () => Promise<boolean>;
+    outputAttachmentSender?: NativeLiveMacOutputAttachmentSenderLike | null;
     relay: Pick<NativeLiveMacDaemonRelayClient, "bindInput" | "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission">;
     // Autonomous results deliberately have no foreground command. They require
     // their own durable preparation/branch fence, not the active turn's sink.
@@ -238,7 +246,10 @@ export class NativeLiveMacPersistentTurnRouter {
         const continuationOnly = outcome.status !== "rejected" && outcome.continuationOnly === true;
         if (continuationOnly && command.operation !== "wake") throw new Error("Only a quiet wake can acknowledge continuation without a visible source.");
         this.applyAcknowledgement(outcome, "turn", providerCheckpointId);
-        if (!continuationOnly) this.backgroundSource = Object.freeze({ prepareId: command.prepare_id, requestId: command.request_id });
+        if (!continuationOnly) {
+          this.backgroundSource = Object.freeze({ prepareId: command.prepare_id, requestId: command.request_id });
+          this.backgroundOutputEnabled = command.output_attachments_enabled !== false && command.protocol_version === 4;
+        }
         if (command.operation === "send" && outcome.status !== "rejected") {
           // F is now a canonical head, so buffered autonomous B can be
           // published as the next real message using F's covering checkpoint.
@@ -303,11 +314,12 @@ export class NativeLiveMacPersistentTurnRouter {
   hasActiveTurn(): boolean { return this.active !== null; }
   get providerSessionId(): string | null { return this.binding?.session.sessionId ?? null; }
   async settle(): Promise<void> { await this.acknowledgement; }
-  suspend(): void { this.suspended = true; this.active?.controlAbort?.abort(); }
+  suspend(): void { this.suspended = true; this.active?.controlAbort?.abort(); this.abortBackgroundOutputs(); }
   get workingDirectory(): string | null { return this.binding?.workingDirectory ?? null; }
 
   async close(): Promise<void> {
     this.retired = true; // Fence all callbacks synchronously before closing.
+    this.abortBackgroundOutputs();
     this.active?.lease?.stop();
     this.active?.controlAbort?.abort();
     if (this.closing) return this.closing;
@@ -428,6 +440,38 @@ export class NativeLiveMacPersistentTurnRouter {
     return outcome;
   }
 
+  private abortBackgroundOutputs(): void {
+    for (const output of this.backgroundOutputs.values()) output.collector.abort();
+    this.backgroundOutputs.clear();
+  }
+  private createBackgroundOutput(input: {segmentId:string;commandUuid:string}): NativeLiveMacOutputAttachmentCollector {
+    this.assertLive();
+    const binding = this.binding, source = this.backgroundSource;
+    if (this.suspended || !binding || !source || !binding.session.sessionId || this.backgroundOutputs.has(input.segmentId))
+      throw new Error("No exact autonomous attachment owner is available.");
+    const sessionId = binding.session.sessionId;
+    const assertOwner = () => {
+      this.assertLive();
+      if (this.suspended || this.binding !== binding || this.backgroundSource !== source
+        || binding.session.sessionId !== sessionId || this.generationId !== binding.generationId)
+        throw new Error("Autonomous attachment owner changed.");
+    };
+    const collector = createNativeLiveMacOutputAttachmentCollector({
+      sender: this.backgroundOutputEnabled ? this.input.outputAttachmentSender ?? null : null,
+      workingDirectory: () => binding.workingDirectory,
+      authorize: async () => {
+        assertOwner();
+        const admitted = await this.input.relay.checkTaskAdmission?.({
+          listenerInstanceId:this.input.listenerInstanceId,prepareId:source.prepareId,providerSessionId:sessionId,
+        });
+        assertOwner();
+        if (admitted !== true) throw new Error("Autonomous attachment admission denied.");
+      },
+    });
+    this.backgroundOutputs.set(input.segmentId,{commandUuid:input.commandUuid,collector,source,binding});
+    return collector;
+  }
+
   private async open(slot: Slot): Promise<void> {
     const command = slot.command;
     if (this.input.registry.getGenerationId(command.conversation_id)) throw new Error("Conversation already owns a persistent writer.");
@@ -439,9 +483,18 @@ export class NativeLiveMacPersistentTurnRouter {
       execution: command.execution_selection,
       perTaskStopAffordance: taskControlsAvailable,
       authorize: context => this.authorize(context),
+      ...(this.input.outputAttachmentSender ? {createBackgroundOutput: input => this.createBackgroundOutput(input)} : {}),
       permissionHandler: this.handler("permissionHandler"),
       questionHandler: this.handler("questionHandler"),
       onBackgroundResult: async frame => {
+        const captured = frame.segmentId ? this.backgroundOutputs.get(frame.segmentId) : undefined;
+        if (frame.segmentId && (!captured || captured.commandUuid !== frame.commandUuid))
+          throw new Error("Autonomous attachment segment identity changed.");
+        const assertCaptured = () => {
+          if (captured && (this.binding !== captured.binding || this.backgroundSource !== captured.source))
+            throw new Error("Autonomous attachment source changed before publication.");
+        };
+        assertCaptured();
         this.assertLive();
         const foreground = this.active;
         // The SDK may emit an autonomous B result immediately after its
@@ -465,6 +518,7 @@ export class NativeLiveMacPersistentTurnRouter {
           // been acknowledged is a normal post-F successor, not an in-flight
           // deferred segment still owned by the now-retired foreground slot.
           const stillWithinForeground = foreground !== null && this.active === foreground;
+          assertCaptured();
           const owner: NativeLiveMacPersistentBackgroundOwner = Object.freeze({ conversationId: command.conversation_id,
             generationId: this.generationId!, source: this.backgroundSource, providerSessionId: this.binding!.session.sessionId!,
             ...(stillWithinForeground && foreground.command.operation === "send" && !startedBeforeReceipt
@@ -473,6 +527,7 @@ export class NativeLiveMacPersistentTurnRouter {
               ? { deferred: true } : {}),
             parentProviderCheckpointId: this.providerCheckpointId, workingDirectory: this.binding!.workingDirectory });
           const outcome = await this.input.onBackgroundResult(owner, { ...frame, providerCheckpointId });
+          if (frame.segmentId) this.backgroundOutputs.delete(frame.segmentId);
           this.assertLive();
           this.applyAcknowledgement(outcome, "background", providerCheckpointId);
         });

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
-import { users, conversations, conversationMessages, nativeLiveTurnPreparations, nativeLiveRuntimeEvents, nativeLiveRuntimeListenerLeases, conversationProviderSessionCheckpoints } from "../src/database/schema.js";
+import { users, conversations, conversationMessages, nativeLiveTurnPreparations, nativeLiveRuntimeEvents, nativeLiveRuntimeListenerLeases, conversationProviderSessionCheckpoints, nativeLiveChatAttachments, conversationAttachments, conversationContentBlocks } from "../src/database/schema.js";
 import { NativeLiveBackendTurnCoordinator } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 import { DrizzleNativeLiveBackendRelayRepository } from "../src/domains/bridge/relay/native-live-backend-relay.js";
@@ -740,8 +740,13 @@ test("pre-start native B queues and later publishes H -> U -> F -> B without rep
   assert.equal(await parent(),originalParent);
 });
 
-test("started foreground commits before queued autonomous output, with F covering B's earlier producer checkpoint", { skip: !enabled }, async t => {
+for (const attachmentOnly of [false, true]) test(`started foreground commits before queued ${attachmentOnly ? "attachment-only" : "text"} output, with F covering B earlier checkpoint`, { skip: !enabled }, async t => {
   const f = await fixture(t);
+  let outputAttachmentId: string | undefined;
+  if (attachmentOnly) {
+    outputAttachmentId = await readyBackgroundAttachment(f);
+    Object.assign(f.submit.result, { normalized_events: [], output_attachment_ids: [outputAttachmentId] });
+  }
   // Canonical source H is finalized. Stage U/F on the same native session and
   // bind the exact native input start rather than fabricating source ownership.
   const foreground = await f.coordinator.prepare(f.user.id, {
@@ -768,11 +773,16 @@ test("started foreground commits before queued autonomous output, with F coverin
   await f.repository.prepareBackgroundResult(background);
   const queued = await f.repository.submitBackgroundResult(f.submit);
   assert.deepEqual(queued, { outcome: "queued", duplicate: false, providerCheckpointId: null });
+  if (outputAttachmentId) {
+    const [attachment] = await f.database.db.select().from(nativeLiveChatAttachments).where(eq(nativeLiveChatAttachments.id, outputAttachmentId));
+    assert.equal(attachment.status, "ready", "transport custody must not consume output before canonical publication");
+    assert.equal(attachment.boundMessageId, null);
+  }
   const secondReceiptId = crypto.randomUUID(), secondProducer = crypto.randomUUID();
   const secondPrepare = { ...background, receiptId: secondReceiptId, parentProviderCheckpointId: f.next };
   await f.repository.prepareBackgroundResult(secondPrepare);
   const secondSubmit = { ...f.submit, receiptId: secondReceiptId, result: {
-    ...f.submit.result, provider_checkpoint_id: secondProducer,
+    ...f.submit.result, output_attachment_ids: [], provider_checkpoint_id: secondProducer,
     normalized_events: [{ type: "text" as const, payload: { text: "second deferred background" } }],
   } };
   assert.deepEqual(await f.repository.submitBackgroundResult(secondSubmit),
@@ -781,7 +791,7 @@ test("started foreground commits before queued autonomous output, with F coverin
   const quietPrepare = { ...background, receiptId: quietId, parentProviderCheckpointId: secondProducer };
   await f.repository.prepareBackgroundResult(quietPrepare);
   const quietSubmit = { ...f.submit, receiptId: quietId, result: {
-    ...f.submit.result, provider_checkpoint_id: quietProducer, normalized_events: [],
+    ...f.submit.result, output_attachment_ids: [], provider_checkpoint_id: quietProducer, normalized_events: [],
   } };
   assert.deepEqual(await f.repository.submitBackgroundResult(quietSubmit),
     { outcome: "queued", duplicate: false, providerCheckpointId: null });
@@ -819,6 +829,7 @@ test("started foreground commits before queued autonomous output, with F coverin
   assert.equal(snapshot.messages.length,6);
   assert.equal(snapshot.messages.at(-3)!.id, finished.assistantMessageId);
   assert.equal(snapshot.messages.at(-2)!.id, f.prepare.receiptId);
+  if (attachmentOnly) assert.deepEqual(snapshot.messages.at(-2)!.blocks.map(b=>b.kind), ["attachment"]);
   assert.equal(snapshot.messages.at(-2)!.parentMessageId, finished.assistantMessageId);
   assert.equal(snapshot.messages.at(-1)!.id, secondReceiptId);
   assert.equal(snapshot.messages.at(-1)!.parentMessageId, f.prepare.receiptId);
@@ -886,4 +897,62 @@ test("consecutive autonomous replies advance durable history in commit order", {
   assert.equal(snapshot.messages.length, 4);
   assert.equal(snapshot.messages.at(-1)!.parentMessageId, snapshot.messages.at(-2)!.id);
   assert.equal(snapshot.currentHeadMessageId, snapshot.messages.at(-1)!.id);
+});
+
+async function readyBackgroundAttachment(f: Awaited<ReturnType<typeof fixture>>, patch: Partial<typeof nativeLiveChatAttachments.$inferInsert> = {}) {
+  const id = crypto.randomUUID();
+  await f.database.db.insert(nativeLiveChatAttachments).values({ id, userId: f.user.id,
+    objectKey: `background-test/${id}`, filename: "report.pdf", mimeType: "application/pdf",
+    sizeBytes: 3, content: Buffer.from("pdf"), sha256: "a".repeat(64), kind: "file", status: "ready",
+    readyAt: new Date(), expiresAt: new Date(Date.now() + 600_000), ...patch });
+  return id;
+}
+
+for (const kind of ["file", "image"] as const) for (const attachmentOnly of [false, true]) test(`background ${attachmentOnly ? "attachment-only" : "text plus attachment"} ${kind} binds canonical output and replays after retention`, { skip: !enabled }, async t => {
+  const f = await fixture(t), id = await readyBackgroundAttachment(f, kind === "image" ? {kind,filename:"chart.png",mimeType:"image/png"} : {});
+  const submit = { ...f.submit, result: { ...f.submit.result,
+    normalized_events: attachmentOnly ? [] : f.submit.result.normalized_events, output_attachment_ids: [id] } };
+  await f.repository.prepareBackgroundResult(f.prepare);
+  assert.deepEqual(await f.repository.submitBackgroundResult(submit), { outcome: "committed", duplicate: false, providerCheckpointId: f.next });
+  const read = () => new DrizzleNativeLiveCurrentPathReader(f.database.db).readCurrentPath({userId: f.user.id, conversationId: f.conversation.id, limit: 100});
+  const snapshot = (await read())!, message = snapshot.messages.at(-1)!;
+  assert.equal(message.id, f.prepare.receiptId);
+  assert.deepEqual(message.blocks.map(b => b.kind), attachmentOnly ? ["attachment"] : ["text", "attachment"]);
+  const [bound] = await f.database.db.select().from(nativeLiveChatAttachments).where(eq(nativeLiveChatAttachments.id, id));
+  assert.equal(bound.status, "bound"); assert.equal(bound.boundMessageId, message.id);
+  const [attachment] = await f.database.db.select().from(conversationAttachments).where(eq(conversationAttachments.messageId, message.id));
+  assert.equal(attachment.sourceAttachmentId, id);
+  assert.equal(attachment.name, kind === "image" ? "chart.png" : "report.pdf");
+  const attachmentBlock = message.blocks.at(-1)!;
+  assert.equal(attachmentBlock.payload?.attachment_id, id);
+  await assert.rejects(() => f.repository.submitBackgroundResult({ ...submit, result: { ...submit.result, output_attachment_ids: [crypto.randomUUID()] } }), {code: "BACKGROUND_CONFLICT"});
+  await f.database.db.delete(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.id, f.prepare.sourcePrepareId));
+  assert.deepEqual(await f.repository.submitBackgroundResult(submit), { outcome: "committed", duplicate: true, providerCheckpointId: f.next });
+  assert.deepEqual((await read())!.messages.map(m => [m.id, m.blocks]), snapshot.messages.map(m => [m.id, m.blocks]));
+  assert.equal((await f.database.db.select().from(conversationAttachments).where(eq(conversationAttachments.messageId, message.id))).length, 1);
+});
+
+for (const state of ["foreign", "pending", "already-bound", "expired"] as const) test(`background ${state} attachment rolls back all canonical and receipt mutations`, {skip: !enabled}, async t => {
+  const f = await fixture(t);
+  let foreignId: string | undefined;
+  if (state === "foreign") {
+    const [other] = await f.database.db.insert(users).values({email: `foreign-${crypto.randomUUID()}@example.com`, displayName: "foreign"}).returning();
+    foreignId = other.id;
+    t.after(async () => { const db = createDatabase(process.env.DATABASE_URL!, {ssl:false}); try {await db.db.delete(users).where(eq(users.id, other.id));} finally {await db.close();} });
+  }
+  const good = await readyBackgroundAttachment(f);
+  const bad = await readyBackgroundAttachment(f, state === "foreign" ? {userId: foreignId} : state === "pending" ? {status: "uploading", readyAt: null} : state === "already-bound" ? {status: "bound", boundMessageId: f.completed.assistantMessageId, boundAt: new Date()} : {expiresAt: new Date(Date.now()-1000)});
+  await f.repository.prepareBackgroundResult(f.prepare);
+  await assert.rejects(() => f.repository.submitBackgroundResult({...f.submit, result: {...f.submit.result, output_attachment_ids: [good, bad]}}), {code: state === "foreign" ? "ATTACHMENT_NOT_FOUND" : "ATTACHMENT_NOT_READY"});
+  assert.equal((await f.canonical.getConversation({userId:f.user.id,conversationId:f.conversation.id}))!.currentHeadMessageId, f.completed.assistantMessageId);
+  for (const table of [conversationMessages, conversationContentBlocks, conversationAttachments, conversationProviderSessionCheckpoints]) {
+    const rows = table === conversationMessages ? await f.database.db.select().from(table).where(eq(table.id, f.prepare.receiptId))
+      : table === conversationProviderSessionCheckpoints ? await f.database.db.select().from(table).where(eq(table.canonicalMessageId, f.prepare.receiptId))
+      : await f.database.db.select().from(table).where(eq(table.messageId, f.prepare.receiptId));
+    assert.equal(rows.length, 0);
+  }
+  const [ready] = await f.database.db.select().from(nativeLiveChatAttachments).where(eq(nativeLiveChatAttachments.id,good));
+  assert.equal(ready.status,"ready"); assert.equal(ready.boundMessageId,null);
+  const [receipt] = await f.database.db.select().from(nativeLiveRuntimeEvents).where(eq(nativeLiveRuntimeEvents.id,f.prepare.receiptId));
+  assert.equal(receipt.payload.phase,"prepared");
 });

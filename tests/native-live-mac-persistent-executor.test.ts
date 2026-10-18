@@ -237,3 +237,20 @@ test("a persistent turn failure reports the same bounded diagnostics as the lega
   assert.equal(reports[0]!.causeCode, "ENOENT");
   assert.doesNotMatch(JSON.stringify(reports), /PRIVATE_PROMPT/);
 });
+
+test("persistent foreground waits for its pending output collector before committing immutable attachment receipt", async () => {
+  let release!: () => void, upload!: Promise<unknown>, commits = 0;
+  const hold = new Promise<void>(resolve => { release = resolve; });
+  const f = fixture(async input => {
+    upload = input.sendFileHandler({path:"late.wav",displayName:null});
+    await frame(input);
+    return {};
+  }, {sender:{async sendFile(){await hold;return {attachmentId:id(50),durationSeconds:3.25};}}});
+  let body!: NativeLiveRuntimeExecutionResult;
+  const running = f.executor.execute(command(), {async commit(result){commits++;body=result;return {canonicalOutcome:"completed"};}});
+  await new Promise(setImmediate);
+  assert.equal(commits,0,"a terminal receipt cannot omit an already admitted pending upload");
+  release();await upload;await running;
+  assert.deepEqual(body.output_attachment_ids,[id(50)]);
+  assert.deepEqual(body.output_attachment_metadata,[{attachment_id:id(50),duration_seconds:3.25}]);
+});

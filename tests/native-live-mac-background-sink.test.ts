@@ -485,3 +485,11 @@ for (const path of ["commit", "publishCovered"] as const) test(`${path} recovers
   await sink.flush();
   assert.equal(retirementAttempts, 2);
 });
+
+test("background sink journals sealed segment attachments and duration before transmitting", async t => {
+  const f = await fixture(t);
+  await f.sink.commit(owner,{...frame,outputAttachmentIds:[id(50)],
+    outputAttachmentMetadata:[{attachment_id:id(50),duration_seconds:2.5}]} as any);
+  assert.deepEqual(f.calls[0][1].result.output_attachment_ids,[id(50)]);
+  assert.deepEqual(f.calls[1][1].result.output_attachment_metadata,[{attachment_id:id(50),duration_seconds:2.5}]);
+});

@@ -535,11 +535,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   }
 
   async #openPersistentSession(options = {}, restore = null, fork = null) {
-    const allowed = new Set(["authorize", "onBackgroundResult", "execution", "permissionHandler", "questionHandler", "perTaskStopAffordance"]);
+    const allowed = new Set(["authorize", "onBackgroundResult", "createBackgroundOutput", "execution", "permissionHandler", "questionHandler", "perTaskStopAffordance"]);
     for (const key of Object.keys(options)) if (!allowed.has(key)) throw new Error(`Unsupported persistent session option: ${key}`);
-    const { authorize, onBackgroundResult, execution = null, permissionHandler = null,
+    const { authorize, onBackgroundResult, createBackgroundOutput = null, execution = null, permissionHandler = null,
       questionHandler = null, perTaskStopAffordance = false } = options;
     if (typeof authorize !== "function" || typeof onBackgroundResult !== "function") throw new Error("Persistent sessions require authorize and onBackgroundResult handlers.");
+    if (createBackgroundOutput !== null && typeof createBackgroundOutput !== "function") throw new Error("Invalid background output factory.");
     if (typeof perTaskStopAffordance !== "boolean") throw new Error("Task stop capability must be boolean.");
     if (this.activeQuery || this.activeTurnHandle || this.activeSessionHost || this.legacyOperation) throw runtimeError("Claude transport already has an active session.", { runtimeCode: "RUNTIME_UNAVAILABLE" });
     const claim = { cancelled: false, close: async () => { claim.cancelled = true; } };
@@ -614,6 +615,18 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       // first assistant frame. Background commands cannot borrow that grant.
       const sendFiles = new Map();
       const sendFileServer = await this.createSendFileMcpServerImpl(async input => {
+        const owner = toolOwner();
+        const background = host?.backgroundOutputOwner?.() ?? null;
+        if (background?.collector.sendFileHandler) {
+          if (owner.inputId !== background.commandUuid) throw new Error("send_file background owner is unavailable.");
+          await admitToolOwner(owner);
+          host.assertBackgroundOutput(background);
+          return host.runBackgroundOutput(background, async () => {
+            const attachment = await background.collector.sendFileHandler(input);
+            assertToolOwner(owner);
+            return attachment;
+          });
+        }
         const id = host?.fileToolOwnerInputId?.() ?? null;
         const handler = id === null ? null : sendFiles.get(id);
         if (!handler) throw new Error("send_file is only available to the turn that owns the current reply.");
@@ -630,7 +643,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           if (restore && !firstInputAdmitted && (context.inputId !== restore.inputId || context.source !== restore.source)) throw new Error("Initial native input identity/source does not match its reservation.");
           await admit("input", context.inputId, context.source);
           firstInputAdmitted = true;
-        }, onBackgroundResult,
+        }, onBackgroundResult, createBackgroundOutput,
         queryOptions: {
           cwd: this.cwd, env: this.environment, settingSources: ["user", "project", "local"],
           permissionMode: "default", includePartialMessages: true, perTaskStopAffordance,

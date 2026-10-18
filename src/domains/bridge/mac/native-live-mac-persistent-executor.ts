@@ -7,6 +7,7 @@ import {
   type NativeLiveRuntimeExecutionResult,
 } from "../protocol/native-live-runtime-protocol.js";
 import type { NativeLiveMacAttachmentMaterializer } from "./native-live-mac-attachment-materializer.js";
+import { createNativeLiveMacOutputAttachmentCollector } from "./native-live-mac-output-attachment-collector.js";
 import type { NativeLiveMacOutputAttachmentSender } from "./native-live-mac-output-attachment-sender.js";
 import type { NativeLiveMacPersistentAcknowledgement, NativeLiveMacPersistentTurnRouter } from "./native-live-mac-persistent-turn-router.js";
 import { buildNativeLiveRuntimeMetadata, failure, runtimeFailureCode, runtimeFailureDiagnostics, terminalFallbackEvents, type NativeLiveMacRuntimeFailureDiagnostics } from "./native-live-mac-runtime-executor.js";
@@ -133,17 +134,11 @@ export class NativeLiveMacPersistentExecutor {
     if (!this.canRoute(command)) throw new Error("Command cannot use the persistent writer.");
     let router = this.routers.get(command.conversation_id);
     if (!router) { router = this.input.createRouter(command.conversation_id); this.routers.set(command.conversation_id, router); }
-    const outputIds: string[] = [];
-    const outputMetadata: Array<{ attachment_id: string; duration_seconds: number }> = [];
-    let pendingOutputs = 0;
-    const sendOutput = async <T>(send: () => Promise<T>, id: (value: T) => string, limit: string, signal?: AbortSignal): Promise<T> => {
-      if (outputIds.length + pendingOutputs >= 8) throw new Error(limit);
-      pendingOutputs += 1;
-      try { const value = await send(); signal?.throwIfAborted(); outputIds.push(id(value)); return value; }
-      finally { pendingOutputs -= 1; }
-    };
-    const outputs = this.input.outputAttachmentSender && command.output_attachments_enabled !== false
-      && command.protocol_version === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION ? this.input.outputAttachmentSender : null;
+    const outputs = createNativeLiveMacOutputAttachmentCollector({
+      sender: command.output_attachments_enabled !== false && command.protocol_version === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+        ? this.input.outputAttachmentSender : null,
+      workingDirectory: () => router!.workingDirectory!,
+    });
     let safeUnstartedWake = false;
     let delivery: NativeLiveMacPersistentExecution["delivery"] = "pending";
     let submitted: NativeLiveRuntimeExecutionResult | null = null;
@@ -158,20 +153,10 @@ export class NativeLiveMacPersistentExecutor {
         ...(options.permissionHandler ? { permissionHandler: options.permissionHandler } : {}),
         ...(options.questionHandler ? { questionHandler: options.questionHandler } : {}),
         ...(options.controlPump ? { controlPump: options.controlPump } : {}),
-        ...(outputs?.sendInlineImage ? { toolImageHandler: async (image: { data: string; mimeType: string }, context: { signal: AbortSignal }) => {
-          context.signal.throwIfAborted();
-          return sendOutput(() => outputs.sendInlineImage!({ ...image, signal: context.signal }), value => value.attachmentId,
-            "Tool images and send_file may send at most 8 files in one turn.", context.signal);
-        } } : {}),
-        ...(outputs ? { sendFileHandler: async (file: { path: string; displayName: string | null }) => {
-          const attachment = await sendOutput(() => outputs.sendFile({ path: file.path, displayName: file.displayName, workingDirectory: router!.workingDirectory! }),
-            value => value.attachmentId, "send_file may send at most 8 files in one turn.");
-          if (typeof attachment.durationSeconds === "number" && Number.isFinite(attachment.durationSeconds) && attachment.durationSeconds > 0) {
-            outputMetadata.push({ attachment_id: attachment.attachmentId, duration_seconds: attachment.durationSeconds });
-          }
-          return attachment;
-        } } : {}),
+        ...(outputs.toolImageHandler ? { toolImageHandler: outputs.toolImageHandler } : {}),
+        ...(outputs.sendFileHandler ? { sendFileHandler: outputs.sendFileHandler } : {}),
         onResult: async ({ result, providerCheckpointId }): Promise<NativeLiveMacPersistentAcknowledgement> => {
+          const attachments = await outputs.seal();
           const metadata = buildNativeLiveRuntimeMetadata(result);
           const success: NativeLiveRuntimeExecutionResult = {
             protocol_version: command.protocol_version, prepare_id: command.prepare_id, request_id: command.request_id,
@@ -179,8 +164,8 @@ export class NativeLiveMacPersistentExecutor {
             effective_working_directory: router!.workingDirectory!, provider_checkpoint_id: providerCheckpointId,
             normalized_events: terminalFallbackEvents(result.normalizedEvents),
             ...(metadata ? { runtime_metadata: metadata } : {}),
-            ...(outputIds.length ? { output_attachment_ids: [...outputIds] } : {}),
-            ...(outputMetadata.length ? { output_attachment_metadata: [...outputMetadata] } : {}),
+            ...(attachments.outputAttachmentIds.length ? { output_attachment_ids: attachments.outputAttachmentIds } : {}),
+            ...(attachments.outputAttachmentMetadata ? { output_attachment_metadata: attachments.outputAttachmentMetadata } : {}),
           };
           submitted = success;
           delivery = "unknown"; // From here a lost response is not the same as "not submitted".
@@ -208,6 +193,7 @@ export class NativeLiveMacPersistentExecutor {
       try { this.input.onRuntimeFailure?.(runtimeFailureDiagnostics(command.prepare_id, code, error)); } catch { /* Diagnostics never change the outcome. */ }
       return { result: failure(command, code), delivery };
     } finally {
+      outputs.abort();
       await this.input.attachmentMaterializer?.cleanup(command).catch(() => undefined);
     }
   }
