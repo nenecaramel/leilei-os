@@ -138,32 +138,42 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     // Run independent, indexed channels: whole-query fuzzy match, literal
     // Chinese/English anchors, English FTS and history coverage. Neither
     // 256 nor any subquery limit is a cap on stored Memory.
-    const terms = [...new Set(query.match(/[\p{Script=Han}]{2,6}|[a-z0-9]{3,}/giu) ?? [])].slice(0, 8);
-    const fuzzy = query.length >= 3
-      ? await this.db.select(columns).from(table)
+    const hanRuns = query.match(/[\p{Script=Han}]+/gu) ?? [];
+    const chinese = hanRuns.flatMap(run => {
+      if (run.length < 3) return run.length === 2 ? [run] : [];
+      const slices: string[] = [];
+      for (let i = 0; i + 3 <= run.length; i++) slices.push(run.slice(i, i + 3));
+      return slices;
+    });
+    const english = query.match(/[a-z0-9]{3,}/giu) ?? [];
+    const terms = [...new Set([...chinese, ...english])].slice(0, 16);
+    const [fuzzy, anchored, fullText, recent, oldest] = await Promise.all([
+      query.length >= 3
+      ? this.db.select(columns).from(table)
         .where(and(eligible, sql`${table.text} % ${query}`))
         .orderBy(sql`similarity(${table.text}, ${query}) DESC`, desc(table.createdAt), asc(table.id))
         .limit(96)
       : [];
-    const anchored = terms.length
-      ? await this.db.select(columns).from(table)
+      terms.length
+      ? this.db.select(columns).from(table)
         .where(and(eligible, or(...terms.map(term =>
           sql`${table.text} ILIKE ${`%${term}%`}`
         ))))
         .orderBy(sql`similarity(${table.text}, ${query}) DESC`, desc(table.createdAt), asc(table.id))
         .limit(64)
       : [];
-    const fullText = query.length >= 3
-      ? await this.db.select(columns).from(table)
+      query.length >= 3
+      ? this.db.select(columns).from(table)
         .where(and(eligible,
           sql`to_tsvector('simple', coalesce(${table.text}, '')) @@ plainto_tsquery('simple', ${query})`))
         .orderBy(sql`ts_rank(to_tsvector('simple', coalesce(${table.text}, '')), plainto_tsquery('simple', ${query})) DESC`, desc(table.createdAt), asc(table.id))
         .limit(32)
       : [];
-    const recent = await this.db.select(columns).from(table)
+      this.db.select(columns).from(table)
       .where(eligible).orderBy(desc(table.createdAt), desc(table.id)).limit(32);
-    const oldest = await this.db.select(columns).from(table)
-      .where(eligible).orderBy(asc(table.createdAt), asc(table.id)).limit(32);
+      this.db.select(columns).from(table)
+      .where(eligible).orderBy(asc(table.createdAt), asc(table.id)).limit(32),
+    ]);
     const selected = new Map<string, SubjectStateWrite>();
     for (const row of [...fuzzy, ...anchored, ...fullText, ...recent, ...oldest]) {
       if (!selected.has(row.id)) selected.set(row.id, rowToState(row));
