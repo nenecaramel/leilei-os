@@ -4,22 +4,24 @@
  *
  * pnpm exec tsx scripts/mind-real-blind-review.ts "/local/path/full-backup.json" --count=12
  *
- * Nothing is written; the terminal displays private texts ONLY locally while
- * the final report includes aggregate counts, not memory texts/IDs/prompts.
+ * With --review-file ABSOLUTE_PATH, queries and private judgements are saved
+ * only in a mode-0600 on-device JSON outside the repository for repeat A/B.
+ * Without --review-file, no input/labels are saved. Aggregates hide all text.
  * No LeileiOS DB, auth token, Railway, or remote inference calls.
  * E5 may download PUBLIC model weights if missing from the local cache.
  *
  * This compares embedding ranking/filtering, NOT end-to-end old/new hooks.
  */
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { open, readFile, lstat, realpath, mkdir, rename, unlink } from "node:fs/promises";
+import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { performance } from "node:perf_hooks";
 import { stdin, stdout } from "node:process";
 import { snapshotMemories } from "../src/domains/runtime/mind/mind-snapshot-version.js";
 import { LocalE5BreathSemanticScorer } from "../src/domains/runtime/breath/local-e5-embedding.js";
 import { LocalRitrieveBreathSemanticScorer } from "../src/domains/runtime/breath/local-ritrieve-embedding.js";
-import { selectHybridMindCandidates } from "../src/domains/runtime/mind/mind-hybrid-candidates.js";
+import { selectHybridMindCandidates, selectHybridMindCandidatesConditional } from "../src/domains/runtime/mind/mind-hybrid-candidates.js";
 import type { BreathSemanticCandidate } from "../src/domains/runtime/breath/breath-semantic-recall.js";
 import type { SubjectStateWrite } from "../src/domains/runtime/subject-state/subject-state-contract.js";
 
@@ -28,6 +30,8 @@ type Memory = { id: string; text: string };
 type Probe = { query: string; group: "lexical_overlap" | "diverse" | "manual_entered" };
 type Hit = { id: string; score: number };
 type Review = { relevant: Set<string>; selections: Map<string, string[]>; group: Probe["group"] };
+type SavedCase = Probe & {judged_ids: string[]; relevant_ids: string[]; labeled: boolean};
+type SavedReview = {schema_version: 1; corpus_fingerprint: string; cases: SavedCase[]};
 const object = (v: unknown): v is Json => v !== null && typeof v === "object" && !Array.isArray(v);
 const string = (v: unknown): v is string => typeof v === "string";
 const uuid = (v: unknown): v is string => string(v) && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(v);
@@ -65,6 +69,76 @@ function loadData(doc: unknown): { memories: Memory[]; prompts: string[]; export
   return {memories,prompts,exportedMessageCount:messages.length,
     completedUserMessageCount:completedUserMessages.length};
 }
+/**
+ * Private on-device human labels. The fingerprint binds to IDs and current text;
+ * never reuses labels after any Memory change or corpus sampling change.
+ */
+function parseSavedReview(value: unknown, fingerprint: string, knownIds: Set<string>): SavedReview {
+  if (!object(value) || value.schema_version !== 1 || value.corpus_fingerprint !== fingerprint
+      || !Array.isArray(value.cases) || value.cases.length > 24) {
+    throw new Error("Private label set does not match the current Memory snapshot. Use a new review-file path.");
+  }
+  const seen = new Set<string>();
+  const cases: SavedCase[] = [];
+  for (const item of value.cases as unknown[]) {
+    if (!object(item) || !string(item.query) || item.query.length < 4 || item.query.length > 350
+        || !["lexical_overlap","diverse","manual_entered"].includes(String(item.group))
+        || !Array.isArray(item.judged_ids) || !Array.isArray(item.relevant_ids)
+        || typeof item.labeled !== "boolean"
+        || !item.judged_ids.every((id:unknown)=>string(id)&&knownIds.has(id))
+        || !item.relevant_ids.every((id:unknown)=>string(id)&&knownIds.has(id))
+        || seen.has(item.query) || (item.labeled === false && (item.judged_ids.length > 0 || item.relevant_ids.length > 0))) {
+      throw new Error("Private label file contains invalid data.");
+    }
+    const judgedIds=item.judged_ids as string[];
+    const relevantIds=item.relevant_ids as string[];
+    if (new Set(judgedIds).size !== judgedIds.length
+        || new Set(relevantIds).size !== relevantIds.length
+        || relevantIds.some(id=>!judgedIds.includes(id))) {
+      throw new Error("Private labels contain duplicate or unjudged IDs.");
+    }
+    seen.add(item.query);
+    cases.push({query:item.query,group:item.group as Probe["group"],
+      judged_ids:judgedIds,relevant_ids:relevantIds,labeled:item.labeled});
+  }
+  return {schema_version:1,corpus_fingerprint:fingerprint,cases};
+}
+
+async function loadPrivateReview(filePath: string, fingerprint: string, knownIds: Set<string>): Promise<SavedReview | null> {
+  try {
+    const st=await lstat(filePath);
+    if (!st.isFile() || (st.mode & 0o077)!==0) throw new Error("Private labels must be a regular mode-0600 file.");
+    return parseSavedReview(JSON.parse(await readFile(filePath,"utf8")),fingerprint,knownIds);
+  } catch(error) {
+    if ((error as NodeJS.ErrnoException).code==="ENOENT") return null;
+    throw error;
+  }
+}
+
+async function savePrivateReview(filePath: string, value: SavedReview): Promise<void> {
+  const dir=dirname(filePath);
+  await mkdir(dir,{recursive:true,mode:0o700});
+  const [folder,checkout]=await Promise.all([realpath(dir),realpath(process.cwd())]);
+  if (folder===checkout || folder.startsWith(checkout+sep))
+    throw new Error("Keep the private labels OUTSIDE the repository checkout.");
+  const dirStat=await lstat(dir);
+  if (!dirStat.isDirectory() || (dirStat.mode & 0o077)!==0)
+    throw new Error("Private labels require a private (mode 0700) folder.");
+  try {
+    const existing=await lstat(filePath);
+    if (!existing.isFile() || (existing.mode & 0o077)!==0) throw new Error("Unsafe existing private label file.");
+  }catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error}
+  const temp=filePath+"."+randomUUID()+".tmp";
+  const handle=await open(temp,"wx",0o600);
+  try {
+    await handle.writeFile(JSON.stringify(value,null,2)+"\n","utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  try{await rename(temp,filePath)}catch(error){await unlink(temp).catch(()=>undefined);throw error}
+}
+
 function charBigrams(text: string): Set<string> {
   const normalized=text.replace(/\s+/gu,"").toLowerCase();
   const result=new Set<string>();
