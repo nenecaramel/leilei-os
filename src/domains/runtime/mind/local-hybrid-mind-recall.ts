@@ -16,7 +16,11 @@ export class LocalHybridMindRecallScorer {
     private readonly e5: Pick<LocalE5BreathSemanticScorer, "score"> =
       new LocalE5BreathSemanticScorer(),
     private readonly ritrieve: Pick<LocalRitrieveBreathSemanticScorer,
-      "score" | "warmup" | "close"> = new LocalRitrieveBreathSemanticScorer(),
+      "score" | "warmup" | "close"> = new LocalRitrieveBreathSemanticScorer({
+        // Claude-only, volatile reuse across recently seen SQL candidate sets.
+        // Native Live retains its default 512-entry cache; no full Memory sync.
+        passageCacheEntries: 4096,
+      }),
   ) {}
 
   async warmup(): Promise<void> {
