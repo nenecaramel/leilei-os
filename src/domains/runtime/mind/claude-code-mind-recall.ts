@@ -1,5 +1,6 @@
 import type { ClaudeCodeRecallReceiptPort } from "./claude-code-recall-receipts.js";
 import { createHash, randomUUID } from "node:crypto";
+import type { SubjectStateWrite } from "../subject-state/subject-state-contract.js";
 import type { BreathSemanticCandidate } from "../breath/breath-semantic-recall.js";
 import { mindSnapshotVersion, snapshotMemories } from "./mind-snapshot-version.js";
 import { NativeLiveMindLoopService, type SubjectStateRuntimePort, type MindLoopConfig } from "./native-live-mind-loop-service.js";
@@ -19,21 +20,14 @@ export type ClaudeCodeRecallInput = {
 
 /** Adapter over the canonical Mind loop; only the repository's read capability is given to it. */
 export class ClaudeCodeMindRecallService {
-  private readonly loop: NativeLiveMindLoopService;
   constructor(
-    private readonly reader: Pick<SubjectStateRuntimePort, "list">,
-    config: MindLoopConfig,
+    private readonly reader: Pick<SubjectStateRuntimePort, "list"> & {
+      listForClaudeRecall?: (input: {userId: string; subjectId: string; query: string}) => Promise<SubjectStateWrite[]>;
+    },
+    private readonly config: MindLoopConfig,
     private readonly subjectId: string,
     private readonly receipts: ClaudeCodeRecallReceiptPort,
-  ) {
-    const forbidden = async (): Promise<never> => { throw new Error("Read-only Mind adapter cannot write."); };
-    // Each external prompt is a fresh retrieval, including rewind/resend. Keep
-    // shared scoring weights; only disable the same-context cooldown exclusion.
-    this.loop = new NativeLiveMindLoopService({
-      list: input => reader.list(input), append: forbidden,
-      transition: forbidden, saveContextManifest: forbidden,
-    }, {...config, breathCooldownHours: 0});
-  }
+  ) {}
 
   /** Fully authenticated, bounded pages; the caller retries if version changes. */
   async snapshot(input: {userId: string; offset: number}) {
@@ -51,7 +45,16 @@ export class ClaudeCodeMindRecallService {
 
   async recall(input: ClaudeCodeRecallInput) {
     const now = new Date().toISOString();
-    const result = await this.loop.readOnlyRecall({
+    const forbidden = async (): Promise<never> => { throw new Error("Read-only Mind adapter cannot write."); };
+    const loop = new NativeLiveMindLoopService({
+      // Preserve the complete-snapshot validation contract for old opt-in
+      // clients. Ordinary Hook recall reads only keyword candidates and rules.
+      list: args => this.reader.listForClaudeRecall && input.semanticSnapshotVersion === undefined
+        ? this.reader.listForClaudeRecall({userId: input.userId, subjectId: this.subjectId, query: input.query})
+        : this.reader.list(args),
+      append: forbidden, transition: forbidden, saveContextManifest: forbidden,
+    }, {...this.config, breathCooldownHours: 0});
+    const result = await loop.readOnlyRecall({
       manifestId: randomUUID(), userId: input.userId, subjectId: this.subjectId,
       conversation: {
         id: `claude-code:${input.sessionId}`, userId: input.userId,

@@ -26,22 +26,30 @@ The installer preserves unrelated Claude settings/hooks and installs **both** `h
 
 Server deployment must support the current signed-receipt endpoints and existing migration 0104 before enabling a newly installed Hook. Verify actual deployed SHA/readiness independently; merging a PR does not prove production is live. Existing Claude MCP OAuth registration is separate from the Hook's internal recall credential. A new/updated installed Claude setting may require a fresh Claude session to load; the **local pause switch below does not**.
 
-## Background hybrid scoring without keeping a terminal open
+## On-demand keyword recall
 
-The original Claude Code/Desktop automatic recall works without Native Live: the installed Hook calls authenticated Railway directly. The `hybrid_conditional_v1` scorer is an optional *read-only local enhancement*. If its local socket is missing/cold, the Hook returns to the original signed Railway recall route (the old ranking/count may apply for that request). If a snapshot was supplied but Railway rejects its version, the Hook still refuses that stale result.
+Claude Code recall uses the original keyword scorer, ranking, four-Memory limit,
+and existing optional E5 model. PostgreSQL first filters a superset of keyword
+matches using the same Chinese bigrams/trigrams and English token normalization;
+SQL excludes `hidden_system`; the canonical scorer applies lifecycle, diversity
+and exclusion rules. Keyword-only scoring rejects substring false positives;
+optional E5 can retain candidates under its existing semantic policy. There is no 256-candidate SQL cutoff or
+query-prefix truncation. Non-Memory global context keeps its existing handling.
 
-On the canonical Mac checkout, after updating `main`, configure a separate user-login LaunchAgent once:
+The SQL prefilter reduces rows transferred to the application; it is not a vector
+index and does not guarantee faster database execution for every query. E5 scores
+the keyword candidate pool, without promising paraphrase-only retrieval. Its
+model, thresholds, time budget and lexical timeout fallback remain unchanged.
+Old signed snapshot clients retain complete-snapshot freshness validation.
+Native Live's own retrieval is unchanged.
 
-```sh
-cd ~/Developer/leilei-os-main
-node scripts/install-mind-hybrid-background.mjs
-```
-
-This installs `com.leilei.mind-hybrid` with `RunAtLoad` and `KeepAlive`, installs the current Hook, and sets the private mode/socket paths. It chooses a working Node 22 binary, reads existing private `mind.env` credentials, and creates only `~/.leileios/claude-code-mind/hybrid.sock`. It does **not** start the Native Live/Wake daemon, modify real memories or Railway, or touch the older `semantic.sock`. Model warmup and Mind snapshot synchronization can take a few seconds after login; requests during startup use the Railway-only fallback. The LaunchAgent's log files are private under `~/.leileios/mind-hybrid-background/`.
-
-Check with `launchctl print gui/$(id -u)/com.leilei.mind-hybrid` and a local `curl --unix-socket ~/.leileios/claude-code-mind/hybrid.sock -d '{"query":"..."}' http://localhost/search-hybrid` (the latter can reveal private IDs/text: **do not paste the response**). The new conditional 0/1/2 selection only applies when the local index is ready; Railway fallback retains the original recall behavior.
-
-To restore the original desktop-only configuration, remove `LEILEI_MIND_RECALL_MODE` and `LEILEI_MIND_SEMANTIC_SOCKET` from `mind.env`, then `launchctl bootout gui/$(id -u)/com.leilei.mind-hybrid` and remove **only** `~/Library/LaunchAgents/com.leilei.mind-hybrid.plist`. The real Mind database and Railway are unaffected.
+There is no startup full-Memory download, 60-second snapshot polling, or dedicated
+hybrid login worker. The old `com.leilei.mind-hybrid` installer and worker have been
+retired. Existing installations must unload/disable that LaunchAgent and remove
+only `LEILEI_MIND_RECALL_MODE` and `LEILEI_MIND_SEMANTIC_SOCKET` hybrid overrides
+from private `mind.env`; keep credentials, state and stored memories. Updating
+source does not terminate an already-running old worker. Experimental offline
+model comparison scripts are not part of the running recall path.
 
 ## Pause or resume without changing Railway
 

@@ -1,3 +1,5 @@
+> Historical experiment, retired 19 Oct 2026: the snapshot polling and hybrid runtime setup below must not be enabled. See `claude-code-mind.md` for current recall.
+
 # Mind Hook — 本地 ritrieve 中文语义检索改造
 
 > 实现分支：`codex/mind-ritrieve-staged-20261017` / PR #1142。实现并不等于线上验收。

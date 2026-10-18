@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import {
   runtimeContextManifests,
@@ -24,6 +24,8 @@ import {
   evaluateRecallReinforcement,
   type MemoryLifecyclePolicy,
 } from "../lifecycle/memory-lifecycle.js";
+
+import { breathLexicalTokens } from "../breath/breath-recall.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -70,6 +72,32 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     conversationId: string;
     globalOnly?: boolean;
   }): Promise<SubjectStateWrite[]> {
+    return this.readRows(input);
+  }
+
+  /** No candidate cutoff: SQL is a superset of the original lexical matches. */
+  async listForClaudeRecall(input: {userId: string; subjectId: string; query: string}): Promise<SubjectStateWrite[]> {
+    const tokens = breathLexicalTokens(input.query);
+    // Normalize compatibility characters before DB lower() so even a C-locale
+    // database matches fullwidth Latin text. This is a superset, not a new ranker.
+    // Expand dotted I after normalization (also covers I + combining dot).
+    // Keyword-only scoring rejects word fragments; optional E5 may retain
+    // semantically relevant substring candidates under its existing policy.
+    // JSON parameterization keeps underscores, quotes and backslashes literal.
+    const matchingMemory = tokens.length
+      ? sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${JSON.stringify(tokens)}::jsonb) AS query_token(value)
+          WHERE strpos(lower(replace(normalize(${runtimeSubjectStates.text}, NFKC), ${"İ"}, ${"i\u0307"})), query_token.value) > 0)`
+      : sql`false`;
+    return this.readRows({
+      userId: input.userId, subjectId: input.subjectId,
+      conversationId: "claude-code:keyword-recall", globalOnly: true,
+    }, or(ne(runtimeSubjectStates.kind, "memory"), and(
+      sql`${runtimeSubjectStates.envelope}->'scope'->>'visibility' IS DISTINCT FROM 'hidden_system'`,
+      matchingMemory,
+    )));
+  }
+
+  private async readRows(input: {userId: string; subjectId: string; conversationId: string; globalOnly?: boolean}, keywordFilter?: ReturnType<typeof sql>): Promise<SubjectStateWrite[]> {
     const rows = await this.db
       .select({
         id: runtimeSubjectStates.id,
@@ -84,6 +112,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
           eq(runtimeSubjectStates.userId, input.userId),
           eq(runtimeSubjectStates.subjectId, input.subjectId),
           inArray(runtimeSubjectStates.kind, CURRENT_SUBJECT_STATE_KINDS),
+          keywordFilter,
           input.globalOnly
             ? eq(runtimeSubjectStates.scopeApplicability, "global")
             : or(
