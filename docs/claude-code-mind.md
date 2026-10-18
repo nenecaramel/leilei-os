@@ -61,6 +61,25 @@ The existing Mac E5 + ritrieve pair reranks only these candidates. Railway
 rechecks the current eligible set and signs 0–2 memories. Missing local
 models fall back to the signed Railway result, also at most 2.
 
+**Measured cold-score limit (18 Oct, user's Mac):** CPU and MPS cannot
+process all 256 *previously unseen* ritrieve passages in the Hook's ~1 s
+local scoring window (MPS took 6,021.5 ms on the longer synthetic test).
+Switching to MPS or adjusting batch size did not solve it. Do not claim
+that the full 256-candidate dual-model step passes the same-turn latency
+gate. The Hook must retain the existing signed Railway lexical fallback
+when a local model is late; this is not proof of full hybrid recall.
+
+The independent **Claude-only** hybrid worker now keeps up to 4,096
+recently scored ritrieve passage embeddings in volatile process memory,
+solely from candidate sets that Railway returned for previous *user*
+prompts. It does not prefetch, poll, download a whole library, persist
+the cache to disk, or expand the per-prompt 256 limit. The shared
+ritrieve scorer defaults to 512 entries, so Native Live's effective
+cache configuration remains unchanged. This reduces repeated embedding
+work but **does not speed up the first cold 256-candidate request**.
+Embedding storage is approximately 28 MiB at 4,096 x 1,792 x float32,
+excluding runtime overhead.
+
 **Limit:** the first-stage SQL search is lexical/fuzzy, not a stored
 embedding index. Paraphrases with no common wording may be missed. Do
 not report the original semantic recall goal as complete until that
