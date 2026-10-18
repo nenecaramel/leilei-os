@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, readFile, readdir, rm, mkdir } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { createHash } from "node:crypto";
 import { runHook, writtenMemoryId } from "../tools/claude-code-mind/hook.mjs";
 import { configureHooks, install } from "../tools/claude-code-mind/install.mjs";
@@ -384,96 +384,45 @@ test("second remote recall timeout preserves first lexical stdout and pending re
   assert.equal((await f.state())[0].pending_recalls[0].recall_id, RECALL_ID);
 });
 
-test("indexed Hook uses one Railway call after local full-memory search", async t => {
-  const f = await fixture(t, (_body, res) => res.end(JSON.stringify({
-    success: true, data: {...signedData(), semantic_mode: "snapshot_v1"},
-  })));
-  const version = "a".repeat(64);
-  const socket = join(f.home, "indexed.sock");
-  const close = await startMindRecallSemanticServer({
-    score: async () => new Map([[ID, .5]]),
-    searchSnapshot: async query => {
-      assert.equal(query, "tea");
-      return {version, count: 2, hits: [{stateId: ID, score: .92}]};
-    },
-  }, socket);
-  t.after(close);
-  f.config.semantic_socket = socket;
-  f.config.index_mode = "indexed_v1";
-  await writeFile(join(f.home, "mind.env"), envContent(f.config), {mode: 0o600});
-  let output = "";
-  await runHook(prompt(), async chunk => {output += chunk;});
-  assert.equal(output, `${CONTEXT}\n`);
-  assert.equal(f.calls.length, 1);
-  assert.equal(f.calls[0].semantic_snapshot_version, version);
-  assert.deepEqual(f.calls[0].snapshot_scores, {[ID]: .92});
-  assert.equal(f.calls[0].semantic_candidates, undefined);
-});
+for (const mode of ["indexed_v1", "hybrid_conditional_v1"]) {
+  test(`retired ${mode} config uses current lexical/E5 delivery`, async t => {
+    const f = await fixture(t, (_body, res) => res.end(JSON.stringify({
+      success: true, data: signedData([{stateId: ID, kind: "memory", text: "tea"}]),
+    })));
+    const socket = join(f.home, "semantic.sock");
+    let scored = 0;
+    const close = await startMindRecallSemanticServer({score: async () => {
+      scored++; return new Map([[ID, .99]]);
+    }}, socket);
+    t.after(close); f.config.semantic_socket = socket; f.config.index_mode = mode;
+    await writeFile(join(f.home, "mind.env"), envContent(f.config), {mode: 0o600});
+    let output = ""; await runHook(prompt(), async value => {output += value;});
+    assert.equal(output, `${CONTEXT}\n`);
+    assert.equal(scored, 1);
+    assert.equal(f.calls.length, 2);
+    assert.equal(f.calls[1].semantic_scores[ID], .99);
+    assert.ok(f.calls.every(call => call.semantic_snapshot_version === undefined && call.snapshot_scores === undefined));
+    assert.equal((await f.state())[0].pending_recalls[0].recall_id, RECALL_ID);
+  });
+}
 
-test("indexed Hook without local index uses exactly one lexical Railway fallback", async t => {
+test("retired local index routes are unavailable and never invoke scoring", async t => {
   const f = await fixture(t);
-  f.config.index_mode = "indexed_v1";
-  await writeFile(join(f.home, "mind.env"), envContent(f.config), {mode: 0o600});
-  let output = "";
-  await runHook(prompt(), async chunk => {output += chunk;});
-  assert.equal(output, `${CONTEXT}\n`);
-  assert.equal(f.calls.length, 1);
-  assert.equal(f.calls[0].semantic_snapshot_version, undefined);
-});
-
-test("hybrid conditional Hook makes one signed Railway recall with at most two local picks",async t=>{
-  const f=await fixture(t,(_body,res)=>res.end(JSON.stringify({
-    success:true,data:{...signedData(),semantic_mode:"snapshot_v1"},
-  })));
-  const socket=join(f.home,"hybrid.sock");
-  const version="c".repeat(64);
-  const close=await startMindRecallSemanticServer({
-    score:async()=>new Map<string,number>(),
-    searchHybrid:async query=>{
-      assert.equal(query,"tea");
-      return {version,count:2,hits:[{stateId:ID,score:.99},{stateId:ID2,score:.98}]};
-    },
-  },socket);
+  const socketPath = join(f.home, "semantic.sock");
+  let scored = 0;
+  const close = await startMindRecallSemanticServer({score: async () => {
+    scored++; return new Map();
+  }}, socketPath);
   t.after(close);
-  f.config.semantic_socket=socket;
-  f.config.index_mode="hybrid_conditional_v1";
-  await writeFile(join(f.home,"mind.env"),envContent(f.config),{mode:0o600});
-  let output="";
-  await runHook(prompt(),async text=>{output+=text;});
-  assert.equal(output,CONTEXT+"\n");
-  assert.equal(f.calls.length,1);
-  assert.equal(f.calls[0].semantic_snapshot_version,version);
-  assert.deepEqual(f.calls[0].snapshot_scores,{[ID]:.99,[ID2]:.98});
-});
-
-test("hybrid conditional Hook preserves original Railway recall if Mac local scorer is down",async t=>{
-  const f=await fixture(t);
-  f.config.index_mode="hybrid_conditional_v1";
-  await writeFile(join(f.home,"mind.env"),envContent(f.config),{mode:0o600});
-  let output="";
-  await runHook(prompt(),async text=>{output+=text;});
-  assert.equal(output,CONTEXT+"\n");
-  assert.equal(f.calls.length,1);
-  assert.equal(f.calls[0].semantic_snapshot_version,undefined);
-  assert.equal(f.calls[0].receipt_mode,"signed_v1");
-  assert.equal((await f.state())[0].pending_recalls.length,1);
-});
-
-test("hybrid conditional Hook refuses stale snapshot after Railway review",async t=>{
-  const f=await fixture(t,(_body,res)=>res.end(JSON.stringify({
-    success:true,data:{...signedData(),semantic_mode:"legacy"},
-  })));
-  const socket=join(f.home,"hybrid.sock");
-  const close=await startMindRecallSemanticServer({
-    score:async()=>new Map<string,number>(),
-    searchHybrid:async()=>({version:"b".repeat(64),count:1,hits:[{stateId:ID,score:.99}]}),
-  },socket);
-  t.after(close);
-  f.config.semantic_socket=socket;
-  f.config.index_mode="hybrid_conditional_v1";
-  await writeFile(join(f.home,"mind.env"),envContent(f.config),{mode:0o600});
-  let output="";
-  await runHook(prompt(),async text=>{output+=text;});
-  assert.equal(output,"");
-  assert.equal(f.calls.length,1);
+  for (const path of ["/search", "/search-hybrid"]) {
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const request = httpRequest({socketPath, path, method: "POST"}, response => {
+        response.resume(); response.on("end", () => resolve(response.statusCode));
+        response.on("error", reject);
+      });
+      request.on("error", reject); request.end(JSON.stringify({query: "tea"}));
+    });
+    assert.equal(status, 404);
+  }
+  assert.equal(scored, 0);
 });
