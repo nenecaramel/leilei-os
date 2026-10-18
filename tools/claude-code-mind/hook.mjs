@@ -757,11 +757,13 @@ export async function runHook(input, output = text => new Promise((resolve, reje
               semantic_snapshot_version: data.snapshot_version,
               snapshot_scores: Object.fromEntries(selectedIds.map((id, i) => [id, i === 0 ? .99 : .98])),
             }, Math.min(1200, available));
-            if (scored.semantic_mode === "snapshot_v1" && scored.memory_ids.length <= 2) {
+            if (scored.memory_ids.length <= 2 &&
+                ["snapshot_v1", "legacy"].includes(scored.semantic_mode)) {
+              // If the snapshot changed, use the *new* Railway lexical result,
+              // never the older first response or stale local scores.
               data = scored;
-              await recordDiagnostic(config, "UserPromptSubmit", "semantic_scored");
-            } else {
-              await recordDiagnostic(config, "UserPromptSubmit", "semantic_snapshot_stale");
+              await recordDiagnostic(config, "UserPromptSubmit",
+                scored.semantic_mode === "snapshot_v1" ? "semantic_scored" : "semantic_snapshot_stale");
             }
           }
         }
