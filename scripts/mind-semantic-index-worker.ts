@@ -4,7 +4,8 @@
  * One startup backlog drain, then PostgreSQL LISTEN/NOTIFY on Memory writes.
  * It never calls the Mac, the Hook, or any HTTP recall endpoint.
  */
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { createServer, type Server } from "node:http";
 import postgres from "postgres";
 import { sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
@@ -95,13 +96,59 @@ async function drain():Promise<void>{
   }finally{draining=false;}
 }
 
+async function startPrivateQueryEmbedding(): Promise<Server> {
+  const secret=process.env.LEILEI_MIND_E5_TOKEN;
+  if(!secret || secret.length<32)throw new Error("MIND_PRIVATE_E5_TOKEN_REQUIRED");
+  const expected=Buffer.from(`Bearer ${secret}`);
+  const server=createServer(async(request,response)=>{
+    if(request.method==="GET" && request.url==="/ready"){
+      response.writeHead(200).end("ready");
+      return;
+    }
+    if(request.method!=="POST" || request.url!=="/embed-query"){
+      response.writeHead(404).end();return;
+    }
+    const provided=Buffer.from(request.headers.authorization??"");
+    if(provided.length!==expected.length || !timingSafeEqual(provided,expected)){
+      response.writeHead(401).end();return;
+    }
+    try{
+      const chunks:Buffer[]=[];let size=0;
+      for await(const part of request){
+        size+=part.length;
+        if(size>2048)throw new Error("Oversized query");
+        chunks.push(part);
+      }
+      const data:unknown=JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      if(!data || typeof data!=="object" || !("query" in data) ||
+        typeof data.query!=="string" || !data.query.trim() || data.query.length>512)
+        throw new Error("Invalid query");
+      const vector=await embedder.embedQuery(data.query);
+      if(!response.destroyed){
+        response.setHeader("Cache-Control","no-store");
+        response.setHeader("Content-Type","application/json");
+        response.end(JSON.stringify({vector}));
+      }
+    }catch{if(!response.destroyed)response.writeHead(503).end();}
+  });
+  server.requestTimeout=2000;
+  server.headersTimeout=2000;
+  await new Promise<void>((resolve,reject)=>{
+    server.once("error",reject);
+    server.listen(Number(process.env.PORT??3000),"0.0.0.0",resolve);
+  });
+  return server;
+}
+
 async function main():Promise<void>{
   await embedder.warmup();
+  const server=await startPrivateQueryEmbedding();
   const subscription=await listener.listen("leilei_mind_semantic_dirty",()=>{
     void drain().catch(()=>{process.stderr.write("MIND_SEMANTIC_INDEX_RETRY_REQUIRED\n");});
   });
   const shutdown=()=>{
     stopping=true;
+    server.close();
     void Promise.resolve(subscription).then(()=>listener.end()).then(()=>db.close()).then(()=>{
       process.exit(0);
     }).catch(()=>{process.exitCode=1;});
