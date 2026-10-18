@@ -452,7 +452,7 @@ test("hybrid conditional Hook preserves original Railway recall if Mac local sco
   await writeFile(join(f.home,"mind.env"),envContent(f.config),{mode:0o600});
   let output="";
   await runHook(prompt(),async text=>{output+=text;});
-  assert.equal(output,CONTEXT+"\\n");
+  assert.equal(output,CONTEXT+"\n");
   assert.equal(f.calls.length,1);
   assert.equal(f.calls[0].semantic_snapshot_version,undefined);
   assert.equal(f.calls[0].receipt_mode,"signed_v1");
