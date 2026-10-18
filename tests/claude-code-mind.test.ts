@@ -136,7 +136,11 @@ test("authenticated internal recall binds user, rejects malformed metadata and n
     service: {recall: async input => {
       calls++; assert.equal(input.userId, "u1");
       if (calls === 2) assert.equal(input.receiptMode, "signed_v1");
-      return {context: "", memory_ids: [], semantic_candidates: []};
+      return {context: "", memory_ids: [], semantic_candidates: [], semantic_mode: "legacy" as const};
+    }, snapshot: async input => {
+      assert.equal(input.userId, "u1");
+      assert.equal(input.offset, 0);
+      return {version: "a".repeat(64), total: 0, memories: [], next_offset: null};
     }},
     requireActiveUser: async userId => assert.equal(userId, "u1"),
   }));
@@ -152,6 +156,13 @@ test("authenticated internal recall binds user, rejects malformed metadata and n
   const ok = await post(body); assert.equal(ok.status, 200); assert.equal(ok.headers.get("cache-control"), "no-store");
   const signedOk = await post({...body, receipt_mode: "signed_v1"}); assert.equal(signedOk.status, 200);
   assert.equal(calls, 2);
+  const snapshotUrl = url.replace("/recall", "/snapshot");
+  assert.equal((await fetch(snapshotUrl, {headers:{authorization:"Bearer wrong"}})).status, 401);
+  assert.equal((await fetch(snapshotUrl + "?offset=oops", {headers:{authorization:"Bearer test-secret"}})).status, 400);
+  const snapshot = await fetch(snapshotUrl, {headers:{authorization:"Bearer test-secret"}});
+  assert.equal(snapshot.status, 200);
+  assert.equal(snapshot.headers.get("cache-control"), "private, no-store");
+  assert.deepEqual((await snapshot.json()).data.memories, []);
 });
 
 import { createApp } from "../src/app/create-app.js";

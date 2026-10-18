@@ -2,6 +2,7 @@ import { NativeLiveMacPersistentRuntime } from "../src/domains/bridge/mac/native
 import { flushNativeLiveBackgroundWithListenerLease } from "../src/domains/bridge/mac/native-live-mac-background-lease.js";
 import { createNativeSessionDrainServer } from "../tools/claude-bridge/src/native-session-daemon-drain.mjs";
 import { startMindRecallSemanticServer } from "../src/domains/bridge/mac/native-live-mac-mind-recall-server.js";
+import { MacMindSnapshotSync } from "../src/domains/bridge/mac/native-live-mac-mind-snapshot-sync.js";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -23,6 +24,10 @@ import {
 import {
   LocalE5BreathSemanticScorer,
 } from "../src/domains/runtime/breath/local-e5-embedding.js";
+import {
+  LocalRitrieveBreathSemanticScorer,
+} from "../src/domains/runtime/breath/local-ritrieve-embedding.js";
+import { LocalHybridMindRecallScorer } from "../src/domains/runtime/mind/local-hybrid-mind-recall.js";
 import {
   resolveNativeLiveMacDaemonConfig,
 } from "../src/domains/bridge/mac/native-live-mac-daemon-config.js";
@@ -237,9 +242,28 @@ const closeHandoffServer = await createNativeSessionDrainServer({
 });
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);
+// Keep Native Live's calibrated E5 scorer unchanged. Ritrieve is only for
+// the opt-in Claude Code Mind Hook until its own quality gate has passed.
 const semanticScorer = new LocalE5BreathSemanticScorer();
+const hookSemanticScorer = process.env.LEILEI_MIND_EMBEDDING_PROVIDER === "hybrid_conditional_v1"
+  ? new LocalHybridMindRecallScorer(semanticScorer)
+  : process.env.LEILEI_MIND_EMBEDDING_PROVIDER === "ritrieve"
+    ? new LocalRitrieveBreathSemanticScorer()
+    : semanticScorer;
+// Prepare and periodically refresh the canonical, user-scoped Mind index.
+// This is best-effort: local failures never block live chat or expose plaintext.
+let mindSnapshotTimer: ReturnType<typeof setInterval> | null = null;
+if (hookSemanticScorer instanceof LocalRitrieveBreathSemanticScorer
+    || hookSemanticScorer instanceof LocalHybridMindRecallScorer) {
+  const synchronizer = new MacMindSnapshotSync(relayBaseUrl, relayToken, hookSemanticScorer);
+  void hookSemanticScorer.warmup().then(() => synchronizer.refresh()).catch(() => undefined);
+  mindSnapshotTimer = setInterval(() => {
+    void synchronizer.refresh().catch(() => undefined);
+  }, 60_000);
+  mindSnapshotTimer.unref();
+}
 // Optional hook transport: failures must not stop the canonical daemon.
-const closeMindRecallServer = await startMindRecallSemanticServer(semanticScorer).catch(() => null);
+const closeMindRecallServer = await startMindRecallSemanticServer(hookSemanticScorer).catch(() => null);
 const loop = new NativeLiveMacDaemonLoop(
   listenerInstanceId,
   relay,
@@ -697,5 +721,8 @@ while (!stopping) {
 
 await closeHandoffServer();
 await persistentRuntime.closeAll();
+if (mindSnapshotTimer) clearInterval(mindSnapshotTimer);
 await closeMindRecallServer?.();
+if (hookSemanticScorer instanceof LocalRitrieveBreathSemanticScorer
+    || hookSemanticScorer instanceof LocalHybridMindRecallScorer) await hookSemanticScorer.close();
 daemonLock.release();

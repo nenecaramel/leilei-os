@@ -37,7 +37,9 @@ const WRITE_MEMORY_TOOL = /^mcp__[A-Za-z0-9_-]+__write_memory$/;
 const isWriteMemoryTool = name => typeof name === "string" && WRITE_MEMORY_TOOL.test(name);
 const DIAGNOSTIC_REASONS = new Set(["no_pending", "turn_mismatch", "receipt_expired", "confirm_http", "budget_exhausted",
   "chain_excluded", "chain_nothing_proven", "chain_prompt_not_visible", "chain_prompt_mismatch", "chain_prompt_stale",
-  "chain_read_rejected", "chain_timeout", "chain_anchor_verified", "chain_anchor_diverged"]);
+  "chain_read_rejected", "chain_timeout", "chain_anchor_verified", "chain_anchor_diverged",
+  "semantic_no_candidates", "semantic_skipped_budget", "semantic_scored", "semantic_rerank_failed",
+  "semantic_snapshot_stale", "semantic_index_unavailable"]);
 const DIAGNOSTIC_EVENTS = new Set(["Stop", "UserPromptSubmit"]);
 
 // Opt-in only: emit bounded reason codes, never prompt, tokens, IDs, hashes,
@@ -80,6 +82,8 @@ async function readConfig() {
     mcp_tool_name: `mcp__${serverName}__write_memory`,
     semantic_socket: read("LEILEI_MIND_SEMANTIC_SOCKET"),
     diagnostics: read("LEILEI_MIND_DIAGNOSTICS") === "1",
+    indexed_recall: ["indexed_v1","hybrid_conditional_v1"].includes(read("LEILEI_MIND_RECALL_MODE")),
+    hybrid_recall: read("LEILEI_MIND_RECALL_MODE") === "hybrid_conditional_v1",
   };
   const url = new URL(config.url);
   if (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) throw new Error("Invalid URL.");
@@ -338,7 +342,7 @@ export function chainContextHashes(snapshot, start) {
   const hashes = new Set(); const visited = new Set();
   // A persisted, successful tool result is also ancestry evidence. Unlike
   // per-session written_ids, this survives Desktop's copied-session resume.
-  const writeCalls = new Map(); const toolResults = [];
+  const writeCalls = new Map(); const toolResults = []; const recentUserPrompts = [];
   let id = start; let complete = false;
   while (true) {
     if (id === null || id === undefined) { complete = true; break; }
@@ -347,6 +351,12 @@ export function chainContextHashes(snapshot, start) {
     const record = snapshot.records.get(id);
     if (!record) break;
     if (record.type === "system" && record.subtype === "compact_boundary") { complete = true; break; }
+    if (recentUserPrompts.length < 3 && isPrompt(record)) {
+      const content = record.message.content;
+      const text = typeof content === "string" ? content :
+        content.filter(block => block?.type === "text").map(block => block.text).join(" ");
+      if (typeof text === "string" && text.trim() && text.length <= 1000) recentUserPrompts.push(text.trim());
+    }
     const blocks = record.message?.content;
     if (Array.isArray(blocks)) {
       if (record.type === "assistant") {
@@ -379,7 +389,7 @@ export function chainContextHashes(snapshot, start) {
     const memoryId = writtenMemoryId(response);
     if (memoryId) writtenIds.add(memoryId);
   }
-  return {hashes, writtenIds: [...writtenIds], complete};
+  return {hashes, writtenIds: [...writtenIds], complete, recentUserPrompts};
 }
 
 export async function activeChainHashes(path, prompt, invocationStarted) {
@@ -395,6 +405,7 @@ export async function activeChainHashes(path, prompt, invocationStarted) {
     if (anchor.kind) {
       const proof = chainContextHashes(result.value, anchor.start);
       return {hashes: proof?.hashes ?? null, writtenIds: proof?.writtenIds ?? [],
+        recentUserPrompts: proof?.recentUserPrompts ?? [],
         reason: proof ? null : "chain_read_rejected", kind: anchor.kind, start: anchor.start};
     }
     reason = anchor.reason;
@@ -433,8 +444,8 @@ export async function verifyHeadAnchor(config, input, invocationStarted) {
 
 // Any failure, timeout or ambiguity excludes nothing extra: retrieval proceeds.
 async function chainExclusions(config, input, invocationStarted, activeTurn) {
-  if (input.transcript_path === undefined) return [];
-  let timer; let reason = "chain_timeout"; let ids = [];
+  if (input.transcript_path === undefined) return {ids: [], recentUserPrompts: []};
+  let timer; let reason = "chain_timeout"; let ids = []; let recentUserPrompts = [];
   const budget = new Promise(resolve => { timer = setTimeout(() => resolve(null), CHAIN_BUDGET_MS); });
   try {
     const chain = await Promise.race([activeChainHashes(input.transcript_path, input.prompt, invocationStarted), budget]);
@@ -445,6 +456,7 @@ async function chainExclusions(config, input, invocationStarted, activeTurn) {
       }).catch(() => undefined);
     }
     if (chain?.hashes) {
+      recentUserPrompts = (chain.recentUserPrompts ?? []).filter(text => typeof text === "string");
       const proven = await Promise.race([provenMemoryIds(config, chain.hashes), budget]);
       if (proven) {
         ids = [...new Set([...proven, ...(chain.writtenIds ?? [])])];
@@ -455,7 +467,7 @@ async function chainExclusions(config, input, invocationStarted, activeTurn) {
   finally { clearTimeout(timer); }
   // Reason codes only: never prompt, transcript, hash or memory ID.
   await recordDiagnostic(config, "UserPromptSubmit", reason);
-  return ids;
+  return {ids, recentUserPrompts};
 }
 
 export function writtenMemoryId(response) {
@@ -582,6 +594,58 @@ async function acknowledgeStop(config, sessionId, invocationStarted) {
   await recordDiagnostic(config, "Stop", reason);
 }
 
+async function indexedSearch(config, query, timeoutMs) {
+  const socketPath = config.semantic_socket || join(homedir(), ".leileios", "claude-code-mind", "semantic.sock");
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({socketPath, path: config.hybrid_recall ? "/search-hybrid" : "/search", method: "POST",
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: {"content-type": "application/json"}}, response => {
+      const chunks = []; let size = 0;
+      response.on("data", chunk => {
+        size += chunk.length;
+        if (size > 20000) request.destroy(new Error("Oversized index response."));
+        else chunks.push(chunk);
+      });
+      response.on("end", () => {
+        try {
+          if (response.statusCode !== 200) throw new Error("Index unavailable.");
+          const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          if (!/^[a-f0-9]{64}$/.test(value?.version) || !Array.isArray(value.hits) ||
+              value.hits.length > 48 ||
+              (value.floor !== undefined && (typeof value.floor !== "number" ||
+                !Number.isFinite(value.floor) || value.floor < 0 || value.floor > 1)) ||
+              !value.hits.every(hit =>
+                UUID.test(hit?.stateId) && typeof hit.score === "number" &&
+                Number.isFinite(hit.score) && hit.score >= 0 && hit.score <= 1)) {
+            throw new Error("Invalid indexed result.");
+          }
+          resolve(value);
+        } catch (error) { reject(error); }
+      });
+      response.on("error", reject);
+    });
+    request.on("error", reject);
+    request.end(JSON.stringify({query, limit: 48}));
+  });
+}
+
+async function commitRecallContext(config, input, snapshot, data, exclude, output) {
+  await withState(config, input.session_id, async (state, save) => {
+    const seen = new Set(state.written_ids);
+    if (state.epoch !== snapshot.epoch || state.active_turn !== snapshot.active_turn ||
+        data.memory_ids.some(id => seen.has(id) || exclude.includes(id))) return;
+    if (seen.size + data.memory_ids.length > MAX_SEEN) return;
+    const issuedAt = Date.now();
+    await output(`${data.context}\n`);
+    await recordDelivery(config, hash(data.context), data.memory_ids, issuedAt).catch(() => undefined);
+    if (data.recall_id) state.pending_recalls = [{recall_id: data.recall_id, context_sha256: data.context_sha256,
+      ...(data.recall_token ? {recall_token: data.recall_token} : {}),
+      memory_ids: data.memory_ids, epoch: state.epoch, context_epoch: state.context_epoch,
+      turn_id: state.active_turn, issued_at: issuedAt}];
+    await save(state);
+  });
+}
+
 export async function runHook(input, output = text => new Promise((resolve, reject) => process.stdout.write(text, error => error ? reject(error) : resolve()))) {
   const invocationStarted = Date.now();
   if (process.env.LEILEI_MIND_HOOK_DISABLED === "1" ||
@@ -624,7 +688,8 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     await save(state); return structuredClone(state);
   });
   // Memories whose delivered context is provably still on the active chain.
-  const chainIds = await chainExclusions(config, input, invocationStarted, snapshot.active_turn);
+  const chain = await chainExclusions(config, input, invocationStarted, snapshot.active_turn);
+  const chainIds = chain.ids;
   // Keep existing written IDs first; the server accepts at most MAX_SEEN.
   // If the chain contributes too many IDs, dropping the tail only weakens dedupe.
   const exclude = [...new Set([...snapshot.written_ids, ...chainIds])].slice(0, MAX_SEEN);
@@ -636,6 +701,46 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     context_epoch: snapshot.context_epoch,
     receipt_mode: "signed_v1",
   };
+  if (config.indexed_recall) {
+    // This mode uses the cached local index and exactly one Railway round trip.
+    // On missing/stale local results Railway applies its existing lexical safety net.
+    const context = chain.recentUserPrompts.slice(0, 2).reverse().join("；").slice(-400);
+    const usesContext = context && input.prompt.length <= 80 &&
+      /(?:你|我|他|她|这|那|又|刚才|之前|为什么|怎么)/u.test(input.prompt);
+    const query = usesContext ? `前文：${context}。现在：${input.prompt}` : input.prompt;
+    try {
+      const available = HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted);
+      if (available > 1300) {
+        const indexed = await indexedSearch(config, query, Math.min(850, available - 1100));
+        body.semantic_snapshot_version = indexed.version;
+        body.snapshot_scores = config.hybrid_recall
+          ? Object.fromEntries(indexed.hits.slice(0,2).map(hit => [hit.stateId,hit.score]))
+          : Object.fromEntries(indexed.hits
+              .filter(hit => hit.score >= Math.max(0.68, indexed.floor ?? 0.68)).slice(0, 48)
+              .map(hit => [hit.stateId, hit.score]));
+      } else {
+        await recordDiagnostic(config, "UserPromptSubmit", "semantic_skipped_budget");
+      }
+    } catch {
+      await recordDiagnostic(config, "UserPromptSubmit", "semantic_index_unavailable");
+    }
+    // This opt-in mode NEVER substitutes lexical recall if the dual-model
+    // index is missing; it must use the validated selection or abstain.
+    if (config.hybrid_recall && !body.semantic_snapshot_version) return;
+    const timeout = Math.min(2500, HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted));
+    if (timeout <= 0) return;
+    const data = await recall(config, body, timeout);
+    if (body.semantic_snapshot_version) {
+      await recordDiagnostic(config, "UserPromptSubmit",
+        data.semantic_mode === "snapshot_v1" ? "semantic_scored" : "semantic_snapshot_stale");
+    }
+    if (config.hybrid_recall && (data.semantic_mode !== "snapshot_v1" || data.memory_ids.length > 2))
+      return; // Stale/invalid snapshot must NOT fall back to lexical injection.
+    if (!data.context || data.memory_ids.some(id => exclude.includes(id))) return;
+    await commitRecallContext(config, input, snapshot, data, exclude, output);
+    return;
+  }
+  // Legacy behavior remains the default until indexed recall passes acceptance.
   // Stop accounting never consumes this invocation's retrieval budget.
   const firstTimeout = Math.min(2500, HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted));
   if (firstTimeout <= 0) return;
@@ -643,31 +748,26 @@ export async function runHook(input, output = text => new Promise((resolve, reje
   // Preserve the 3.8s process deadline. Semantic scoring is opportunistic:
   // if the first cross-Pacific recall consumed too much of the budget, emit its
   // lexical result instead of risking a second request that suppresses all recall.
-  if (Array.isArray(data.semantic_candidates) && data.semantic_candidates.length > 0 &&
-      data.semantic_candidates.length <= 256 && Date.now() - invocationStarted < 1500) {
+  if (!Array.isArray(data.semantic_candidates) || data.semantic_candidates.length === 0) {
+    await recordDiagnostic(config, "UserPromptSubmit", "semantic_no_candidates");
+  } else if (data.semantic_candidates.length > 256 || Date.now() - invocationStarted >= 1500) {
+    await recordDiagnostic(config, "UserPromptSubmit", "semantic_skipped_budget");
+  } else {
     try {
       const scores = await semanticScores(config, input.prompt, data.semantic_candidates);
       if (HOOK_DEADLINE_MS - (Date.now() - invocationStarted) > 1200 + DELIVERY_RESERVE_MS) {
         data = await recall(config, {...body, semantic_candidates: data.semantic_candidates, semantic_scores: scores}, 1200);
+        await recordDiagnostic(config, "UserPromptSubmit", "semantic_scored");
+      } else {
+        await recordDiagnostic(config, "UserPromptSubmit", "semantic_skipped_budget");
       }
-    } catch { /* Use the already returned canonical lexical context. */ }
+    } catch {
+      await recordDiagnostic(config, "UserPromptSubmit", "semantic_rerank_failed");
+      // Keep existing canonical lexical recall on scoring or HTTP failure.
+    }
   }
   if (!data.context || data.memory_ids.some(id => exclude.includes(id))) return;
-  await withState(config, input.session_id, async (state, save) => {
-    // Compact/fork or another hook may have changed the view while networking.
-    const seen = new Set(state.written_ids);
-    if (state.epoch !== snapshot.epoch || state.active_turn !== snapshot.active_turn || data.memory_ids.some(id => seen.has(id))) return;
-    if (seen.size + data.memory_ids.length > MAX_SEEN) return;
-    const issuedAt = Date.now();
-    await output(`${data.context}\n`);
-    // Only a delivered context may enter the ledger; a ledger failure loses dedupe, not state.
-    await recordDelivery(config, hash(data.context), data.memory_ids, issuedAt).catch(() => undefined);
-    if (data.recall_id) state.pending_recalls = [{recall_id: data.recall_id, context_sha256: data.context_sha256,
-      ...(data.recall_token ? {recall_token: data.recall_token} : {}),
-      memory_ids: data.memory_ids, epoch: state.epoch, context_epoch: state.context_epoch,
-      turn_id: state.active_turn, issued_at: issuedAt}];
-    await save(state);
-  });
+  await commitRecallContext(config, input, snapshot, data, exclude, output);
 }
 
 async function main() {
