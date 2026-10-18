@@ -741,6 +741,7 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     const candidateQuery = useContext
       ? `现在：${input.prompt}。前文：${recent}`
       : input.prompt;
+    body.retrieval_mode = "hybrid_conditional_v1";
     if (useContext) body.candidate_query = candidateQuery;
     // First Railway request supplies the signed lexical fallback and a bounded
     // candidate set. A second request uses ONLY locally selected IDs, with
