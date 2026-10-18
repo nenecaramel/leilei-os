@@ -155,22 +155,30 @@ async function main() {
         receipt_issued:beforeStop===1,receipt_cleared:afterStop===0});
     }
 
-    // Local index unavailable: real hybrid Hook must NOT fall back to lexical.
-    phase="missing_index_fail_closed";
+    // A missing Mac scorer preserves the original signed Railway recall.
+    phase="missing_index_railway_fallback";
     phaseStart=performance.now();
     const callsBefore=socketQueries;
     await stopServer();
     stopServer=undefined;
-    const failStart=performance.now();
-    let missingOutput="";
+    const fallbackSessionId="mind-staging-hybrid2-fallback-"+randomUUID();
+    const fallbackStart=performance.now();
+    let fallbackOutput="";
     await runHook({hook_event_name:"UserPromptSubmit",
-      session_id:`mind-staging-hybrid2-failclosed-${randomUUID()}`,
-      prompt:"怎么让面包发得更好"},async text=>{missingOutput+=text;});
-    const failMs=ms(failStart);
-    if(missingOutput || socketQueries!==callsBefore)
-      throw new Error("INDEX_ABSENCE_FALLBACK");
-    reports.push({case:"missing_index_fail_closed",passed:true,hook_elapsed_ms:failMs});
-    const passed=reports.every(r=>r.case==="missing_index_fail_closed"||
+      session_id:fallbackSessionId,
+      prompt:"怎么让面包发得更好"},async text=>{fallbackOutput+=text;});
+    const fallbackMs=ms(fallbackStart);
+    if(!fallbackOutput || socketQueries!==callsBefore)
+      throw new Error("RAILWAY_FALLBACK_UNAVAILABLE");
+    if((await pendingReceiptCount(home))!==1)
+      throw new Error("FALLBACK_SIGNED_RECEIPT_MISSING");
+    await runHook({hook_event_name:"Stop",session_id:fallbackSessionId});
+    if((await pendingReceiptCount(home))!==0)
+      throw new Error("FALLBACK_STOP_NOT_CONFIRMED");
+    reports.push({case:"missing_index_railway_fallback",passed:true,
+      context_injected:true,receipt_issued:true,receipt_cleared:true,
+      hook_elapsed_ms:fallbackMs});
+    const passed=reports.every(r=>r.case==="missing_index_railway_fallback"||
       r.receipt_cleared===true);
     console.log(JSON.stringify({
       stage:"isolated_real_hybrid2_socket_hook_railway_staging",
