@@ -82,7 +82,7 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
     output.push({ type: "result", subtype: "success", session_id: sid, user_message_uuid: uuid });
   };
   t.after(async () => { await router.close(); await registry.closeAll(); await rm(root, { recursive: true, force: true }); });
-  return { get sessionOptions(){return sessionOptions;}, router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, backgroundFrames, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
+  return { workingDirectory: root, get sessionOptions(){return sessionOptions;}, router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, backgroundFrames, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
 }
 
 test("failed post-F background publication synchronously fences the next foreground send", async t => {
@@ -765,7 +765,7 @@ for (const nextNative of [id(22), id(901)]) test(`native scheduled admission ref
 for(const denied of [false,true]) test(`background attachment collectors use durable task admission around upload: denied=${denied}`,async t=>{
   let taskChecks=0,uploads=0;
   const f=await fixture(t,async()=>{taskChecks++;return !denied;},undefined,{
-    outputAttachmentSender:{async sendFile(input){uploads++;assert.ok(input.workingDirectory.startsWith("/private/"));return {attachmentId:id(750),filename:"out.txt",mimeType:"text/plain",sizeBytes:3,sha256:"0".repeat(64),kind:"file"};}},
+    outputAttachmentSender:{async sendFile(input){uploads++;assert.equal(input.workingDirectory, f.workingDirectory);return {attachmentId:id(750),filename:"out.txt",mimeType:"text/plain",sizeBytes:3,sha256:"0".repeat(64),kind:"file"};}},
   });
   const first=f.run(command(1));f.finish((await f.inputs.next()).value!.uuid);await first;
   const output=f.sessionOptions.createBackgroundOutput!({segmentId:id(700),commandUuid:id(701)});
