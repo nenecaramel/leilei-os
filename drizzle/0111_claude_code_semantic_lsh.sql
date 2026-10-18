@@ -29,6 +29,9 @@ CREATE OR REPLACE FUNCTION runtime_mind_recall_mark_semantic_dirty()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP = 'UPDATE'
+    AND NEW.user_id IS NOT DISTINCT FROM OLD.user_id
+    AND NEW.subject_id IS NOT DISTINCT FROM OLD.subject_id
+    AND NEW.kind IS NOT DISTINCT FROM OLD.kind
     AND NEW.text IS NOT DISTINCT FROM OLD.text
     AND NEW.scope_applicability IS NOT DISTINCT FROM OLD.scope_applicability
     AND NEW.settlement_status IS NOT DISTINCT FROM OLD.settlement_status
@@ -76,7 +79,7 @@ $$;
 DROP TRIGGER IF EXISTS runtime_mind_recall_semantic_dirty_trigger ON runtime_subject_states;
 --> statement-breakpoint
 CREATE TRIGGER runtime_mind_recall_semantic_dirty_trigger
-AFTER INSERT OR UPDATE OF text, scope_applicability, settlement_status,
+AFTER INSERT OR UPDATE OF user_id, subject_id, kind, text, scope_applicability, settlement_status,
   path_status, validity_status, envelope, payload
 ON runtime_subject_states FOR EACH ROW
 EXECUTE FUNCTION runtime_mind_recall_mark_semantic_dirty();
