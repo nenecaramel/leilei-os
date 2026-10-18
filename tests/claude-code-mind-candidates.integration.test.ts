@@ -6,7 +6,7 @@ import { createDatabase } from "../src/database/client.js";
 import { users, runtimeSubjectStates } from "../src/database/schema.js";
 import { createMindState } from "../src/domains/runtime/mind/mind-writer.js";
 import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state/subject-state-runtime-repository.js";
-import { breathLexicalTokens } from "../src/domains/runtime/breath/breath-recall.js";
+import { breathLexicalScore, breathLexicalTokens } from "../src/domains/runtime/breath/breath-recall.js";
 
 const url = process.env.DATABASE_URL;
 const enabled = process.env.RUN_CLAUDE_CODE_MIND_DATABASE_TEST === "1" && Boolean(url) &&
@@ -64,6 +64,12 @@ test("indexed discovery scales past 256 Memory and tracks edits/hide/delete", {s
   const shortOverlap=await find("你喜欢哪种颜色");
   assert.ok(shortOverlap.some(x=>x.id===twoCharacterOnly.id),
     "Original two-character lexical matching must reach SQL candidates");
+  const oldScoreSorted = [...shortOverlap].sort((a,b) =>
+    breathLexicalScore("你喜欢哪种颜色",b.text??"") -
+    breathLexicalScore("你喜欢哪种颜色",a.text??"") ||
+    a.id.localeCompare(b.id));
+  assert.deepEqual(shortOverlap.map(x=>x.id),oldScoreSorted.map(x=>x.id),
+    "Bounded SQL candidates must use the actual 16 Oct lexical score order");
   assert.equal((await find("XylophoneNebulaQuasar")).length, 0,
     "unrelated historical memories must not fill the candidate budget");
   const excluded=await find("喜欢柠檬黄",[target.id]);
