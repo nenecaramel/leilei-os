@@ -10,7 +10,7 @@ import postgres from "postgres";
 import { sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import { ClaudeCodeRailwayE5 } from "../src/domains/runtime/mind/claude-code-railway-e5.js";
-import { mindLshBands } from "../src/domains/runtime/mind/claude-code-semantic-lsh.js";
+import { LSH_ALGORITHM, mindLshBands } from "../src/domains/runtime/mind/claude-code-semantic-lsh.js";
 
 type Job = {stateId:string;userId:string;subjectId:string;revision:number;text:string};
 const url = process.env.DATABASE_URL;
@@ -70,10 +70,10 @@ async function commit(job:Job,buckets:number[]):Promise<void>{
     const digest=hashText(job.text);
     const rows=buckets.map((bucket,band)=>sql`(
       ${job.stateId}::uuid,${job.userId}::uuid,${job.subjectId},
-      ${band},${bucket},${digest}
+      ${band},${bucket},${digest},${LSH_ALGORITHM}
     )`);
     await tx.execute(sql`INSERT INTO runtime_mind_recall_semantic_bands
-      (state_id,user_id,subject_id,band,bucket,content_sha256)
+      (state_id,user_id,subject_id,band,bucket,content_sha256,algorithm_version)
       VALUES ${sql.join(rows,sql`,`)}`);
     await tx.execute(sql`DELETE FROM runtime_mind_recall_semantic_dirty
       WHERE state_id=${job.stateId}::uuid AND revision=${job.revision}`);
