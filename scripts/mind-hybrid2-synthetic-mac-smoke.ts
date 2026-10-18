@@ -1,7 +1,8 @@
 /**
  * Actual on-device E5 + ritrieve smoke/latency check on SYNTHETIC candidates.
- * No personal backup, Mind records, network API requests, DB, Hook installation
- * or Railway needed. Public model dependencies must already be prepared.
+ * No personal backup, Mind records, DB, Hook installation or Railway
+ * calls. Public models may download if they were not cached previously.
+ * Both public model runtimes must already be installed.
  *
  * pnpm exec tsx scripts/mind-hybrid2-synthetic-mac-smoke.ts
  */
