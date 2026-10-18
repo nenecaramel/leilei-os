@@ -4,7 +4,10 @@
  *
  * No HTTP, Railway, daemon, Hook, DB, log files or Memory writes.
  * Private backup/query/labels are read solely in this process on the user's Mac.
- * Only anonymous aggregate metrics are printed.
+ * Only anonymous aggregate metrics are printed. It verifies the original
+ * SHA256 fingerprint and reuses the exact historic 20..256-memory sample,
+ * even if the current backup contains more than 256 eligible records.
+ * This does NOT test the new Railway SQL full-library candidate stage.
  *
  * Usage:
  *   pnpm exec tsx scripts/mind-hybrid2-local-smoke.ts \
@@ -47,7 +50,7 @@ function loadCorpus(value: unknown): CorpusMemory[] {
     .map(m => ({stateId: m.stateId, text: m.text}))
     // Match the exact corpus ordering/fingerprint of mind-real-blind-review.ts
     .sort((a, b) => sha(a.stateId).localeCompare(sha(b.stateId)));
-  if (result.length === 0 || result.length > 256) throw new Error("CORPUS_UNAVAILABLE");
+  if (result.length === 0) throw new Error("CORPUS_UNAVAILABLE");
   return result;
 }
 
@@ -80,13 +83,27 @@ async function main() {
   const [backupPath, ...reviewPaths] = process.argv.slice(2);
   if (!backupPath || reviewPaths.length !== 2 || reviewPaths.some(p => !p))
     throw new Error("ARGS_REQUIRE_BACKUP_AND_TWO_PRIVATE_REVIEW_FILES");
-  const memory = loadCorpus(JSON.parse(await readFile(backupPath, "utf8")));
-  const fingerprint = sha(JSON.stringify(memory.map(m => [m.stateId, m.text])));
+  const allEligible = loadCorpus(JSON.parse(await readFile(backupPath, "utf8")));
+  // The historic human review used a deterministic SHA256(ID) ordered prefix
+  // with --limit=20..256, not necessarily the entire exported Memory library.
+  // Find the original sampled corpus by its exact ID+text fingerprint. Never
+  // silently attach old human labels to newly edited/added memory content.
+  const rawReviews: unknown[] = [];
+  for (const path of reviewPaths) rawReviews.push(JSON.parse(await readFile(path, "utf8")));
+  const reviewFingerprints = rawReviews.map(r =>
+    object(r) && text(r.corpus_fingerprint) ? r.corpus_fingerprint : "");
+  if (!reviewFingerprints[0] || reviewFingerprints[0] !== reviewFingerprints[1])
+    throw new Error("PRIVATE_REVIEW_FINGERPRINT_MISMATCH");
+  const sampledLength = Array.from(
+    {length:Math.min(256,allEligible.length)-Math.min(20,allEligible.length)+1},
+    (_,i)=>Math.min(20,allEligible.length)+i,
+  ).find(length =>
+    sha(JSON.stringify(allEligible.slice(0,length).map(m=>[m.stateId,m.text])))
+      === reviewFingerprints[0]);
+  if (!sampledLength) throw new Error("PRIVATE_REVIEW_CORPUS_MISMATCH");
+  const memory = allEligible.slice(0,sampledLength);
   const known = new Set(memory.map(m => m.stateId));
-  const reviews: HumanCase[][] = [];
-  for (const path of reviewPaths) {
-    reviews.push(loadReview(JSON.parse(await readFile(path, "utf8")), fingerprint, known));
-  }
+  const reviews = rawReviews.map(r=>loadReview(r,reviewFingerprints[0]!,known));
   const scorer = new LocalHybridMindRecallScorer();
   try {
     const started = performance.now();
@@ -117,10 +134,11 @@ async function main() {
         const relevant = new Set(c.relevant_ids);
         const judged = new Set(c.judged_ids);
         const matches = selected.filter(id => relevant.has(id)).length;
-        const misses = selected.length - matches;
-        unlabeledSelections += selected.filter(id => !judged.has(id)).length;
+        const unjudged = selected.filter(id=>!judged.has(id)).length;
+        const judgedWrong = selected.filter(id=>judged.has(id) && !relevant.has(id)).length;
+        unlabeledSelections += unjudged;
         totalReturn += selected.length;
-        wrong += misses;
+        wrong += judgedWrong;
         relevantReturn += matches;
         maxReturned = Math.max(maxReturned, selected.length);
         if (relevant.size > 0) {
@@ -151,7 +169,9 @@ async function main() {
     console.log(JSON.stringify({
       experiment: "local_on_demand_conditional_two_selector_against_private_fixed_reviews",
       model: "E5_plus_ritrieve",
-      memory_count: memory.length,
+      eligible_memory_total: allEligible.length,
+      reviewed_corpus_memory_count: memory.length,
+      scope: "Previously fixed, SHA-verified blind-review subset; tests local dual-model scorer only, not Railway SQL candidate discovery.",
       model_warmup_ms: Math.round(warmupMs),
       candidate_count_per_query: candidates.length,
       queries: allLatencies.length,
@@ -160,7 +180,7 @@ async function main() {
       local_query_max_ms: Math.round(Math.max(...allLatencies)),
       local_p95_under_hook_1000ms_budget: percentile(allLatencies, 0.95) < 1000,
       groups: reports,
-      limitations: "On-device on-demand selector only: no installed Hook/socket/Railway latency or authorization; labels cover reviewed candidate union only.",
+      limitations: "On-device fixed-review subset only: no Railway SQL candidate discovery, no installed Hook/socket/network authorization, and not all Memory. Wrong-return count includes judged-wrong selections only; unjudged selections reported separately and require human review. A no-positive-in-union case is not necessarily a globally negative question.",
     }, null, 2));
     if (reports.some(r => r.unlabeled_selections > 0)) process.exitCode = 2;
   } finally {
