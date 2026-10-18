@@ -197,6 +197,7 @@ function summarize(reviews:Review[]):Json {
     "hybrid_agreement",
     "hybrid_anchored_rescue",
     "hybrid_agreement_top1",
+    "hybrid_conditional_second",
   ];
   const report:Json={};
   for(const name of names){
@@ -239,6 +240,10 @@ const argv=process.argv.slice(2);
 const path=argv.find(x=>!x.startsWith("--"));
 const countString=argv.find(x=>x.startsWith("--count="));
 const forceManual=argv.includes("--manual");
+const reviewFileArgument=argv.find(x=>x.startsWith("--review-file="));
+const reviewFile=reviewFileArgument?.slice("--review-file=".length);
+if (reviewFile!==undefined && (!isAbsolute(reviewFile) || reviewFile===resolve(process.cwd())))
+  throw new Error("--review-file needs an absolute file path in a private directory outside this checkout.");
 const limitString=argv.find(x=>x.startsWith("--limit="));
 const count=countString?Number(countString.slice(8)):8;
 const limit=limitString?Number(limitString.slice(8)):256;
@@ -252,7 +257,11 @@ if(loaded.memories.length===0)throw new Error("No eligible global Memory in this
 // Some valid Full Backups have Mind but zero exported native_live messages.
 // Never fabricate historical questions or call an online model to generate them.
 const corpus=loaded.memories.sort((a,b)=>digest(a.id).localeCompare(digest(b.id))).slice(0,limit);
-const probes:Probe[]=forceManual ? [] : selectProbes(loaded.prompts,corpus,count);
+const fingerprint=digest(JSON.stringify(corpus.map(m=>[m.id,m.text])));
+const stored=reviewFile ? await loadPrivateReview(reviewFile,fingerprint,new Set(corpus.map(m=>m.id))) : null;
+let savedReview:SavedReview|null=stored;
+const probes:Probe[]=stored?.cases.length ? stored.cases.map(x=>({query:x.query,group:x.group}))
+  : forceManual ? [] : selectProbes(loaded.prompts,corpus,count);
 const candidates:BreathSemanticCandidate[]=corpus.map(m=>({stateId:m.id,text:m.text,kind:"memory"}));
 const byId=new Map(corpus.map(m=>[m.id,m] as const));
 const e5=new LocalE5BreathSemanticScorer();
@@ -261,6 +270,7 @@ const reviews:Review[]=[];
 const rl=createInterface({input:stdin,output:stdout});
 try {
   console.log(`本地盲测：${corpus.length} 条当前有效 Memory，备份消息数 ${loaded.exportedMessageCount}，其中已完成用户消息 ${loaded.completedUserMessageCount}，可用历史提问 ${loaded.prompts.length}。`);
+  if(stored?.cases.length) console.log("已读取本机固定题库；完全标注过的候选无需再次作答。");
   if(probes.length===0) {
     console.log("这份备份没有符合条件的历史提问，或启用了 --manual。现在直接在这台 Mac 输入真实测试问题。");
     console.log("建议一半关于实际记忆（可用含糊的说法），一半完全无关或仅主题相似，来衡量漏召回和误召回。");
@@ -284,12 +294,17 @@ try {
       throw error;
     }
   }
+  if (reviewFile) {
+    if (!savedReview) savedReview={schema_version:1,corpus_fingerprint:fingerprint,
+      cases:probes.map(p=>({...p,judged_ids:[],relevant_ids:[],labeled:false}))};
+    await savePrivateReview(reviewFile,savedReview);
+  }
   console.log(`本次共 ${probes.length} 题，下面开始两个模型的本地盲测。`);
   console.log("屏幕会显示私人提问与记忆，仅留在本机终端。输入编号表示相关记忆，0=全都无关，s=跳过。");
   console.log("最后只复制 AGGREGATE_RESULT_JSON 标记后的统计 JSON，不要复制上方私人正文。");
   await ritrieve.warmup();
   await ritrieve.replaceSnapshot({
-    version:digest(JSON.stringify(corpus.map(m=>[m.id,m.text]))),
+    version:fingerprint,
     memories:corpus.map(m=>({stateId:m.id,text:m.text})),
   });
   await e5Scores(e5,"语义模型准备完成",candidates); // warm the old model/corpus
@@ -302,6 +317,7 @@ try {
     "hybrid_agreement",
     "hybrid_anchored_rescue",
     "hybrid_agreement_top1",
+    "hybrid_conditional_second",
   ];
   for(let i=0;i<probes.length;i++){
     const probe=probes[i]!;
@@ -335,6 +351,13 @@ try {
         ritrieveRanked:next.map(x=>({stateId:x.id,score:x.score})),
         mode:"agreement",
         maxItems:1,
+      }).map(x=>x.stateId)],
+      [names[8]!,selectHybridMindCandidatesConditional({
+        query:probe.query,
+        memories:corpus.map(m=>({stateId:m.id,text:m.text})),
+        e5Ranked:old.map(x=>({stateId:x.id,score:x.score})),
+        ritrieveRanked:next.map(x=>({stateId:x.id,score:x.score})),
+        mode:"agreement",
       }).map(x=>x.stateId)],
     ]);
     const union=new Set<string>();
