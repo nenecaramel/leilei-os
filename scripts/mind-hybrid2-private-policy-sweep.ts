@@ -129,7 +129,8 @@ function display(bucket:Counts){
   };
 }
 async function main(){
-  const [backup,...reviewPaths]=process.argv.slice(2);
+  const compact=process.argv.includes("--compact");
+  const [backup,...reviewPaths]=process.argv.slice(2).filter(x=>x!=="--compact");
   if(!backup||reviewPaths.length!==2||reviewPaths.some(p=>!p))
     throw new Error("EXPECTED_BACKUP_AND_TWO_REVIEWS");
   const all=loadCorpus(JSON.parse(await readFile(backup,"utf8")));
@@ -208,11 +209,23 @@ async function main(){
       model_scoring_p50_ms:pct(latency,.5),
       model_scoring_p95_ms:pct(latency,.95),
       model_scoring_max_ms:pct(latency,1),
-      policies:Object.fromEntries(policies.map(policy=>[policy.name,{
-        overall:display(summaries[policy.name]!.total),
-        fixed_8:display(summaries[policy.name]!.fixed_8),
-        fixed_12:display(summaries[policy.name]!.fixed_12),
-      }])),
+      policies:Object.fromEntries(policies
+        .filter(policy=>!compact||policy.name.startsWith("CURRENT_")
+          ||policy.name.startsWith("SECOND_ONLY_"))
+        .map(policy=>{
+          const data=summaries[policy.name]!;
+          const concise=(c:Counts)=>({
+            positive_hits:c.positiveQueryHits,
+            correct:c.correct,wrong:c.wrong,unjudged:c.unjudged,
+            returned:c.returned,negative_empty:c.negativeEmpty,
+            judged_precision:display(c).judged_precision,
+          });
+          return [policy.name,compact
+            ?{overall:concise(data.total),fixed_8:concise(data.fixed_8),
+              fixed_12:concise(data.fixed_12)}
+            :{overall:display(data.total),fixed_8:display(data.fixed_8),
+              fixed_12:display(data.fixed_12)}];
+        })),
       limitations:[
         "Exploratory in-sample comparison only: the SAME 20 labeled questions are being used for tuning; gains can be overfitting, not independent validation.",
         "Candidates are the matching historic 20..256-memory subset, not the complete Railway SQL recall stage.",
