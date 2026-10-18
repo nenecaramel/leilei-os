@@ -46,8 +46,14 @@ To restore the original desktop-only configuration, remove `LEILEI_MIND_RECALL_M
 ## PostgreSQL candidate index (Claude Code only)
 
 Migration `0110_claude_code_recall_trgm_index.sql` adds a single
-PostgreSQL-maintained keyword/fuzzy candidate index on the existing Memory
-table. Insert, update and delete require no extra worker or Mac polling.
+PostgreSQL-maintained trigram index on the existing Memory table.
+Railway's single SQL lookup reuses the 16 Oct lexical tokenizer (Chinese
+2- and 3-character overlaps, original low-information token exclusions,
+and English words), instead of requiring a three-character match.
+Insert, update and delete require no extra worker or Mac polling.
+**Performance caveat:** a two-character `ILIKE '%词组%'` predicate may
+not use a selective trigram index scan; measure real PostgreSQL execution
+time before accepting the change for large libraries.
 Railway filters the full eligible library and returns **at most 256
 candidates per prompt**, not a 256-memory total storage cap.
 
