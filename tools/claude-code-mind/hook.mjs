@@ -724,21 +724,24 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     } catch {
       await recordDiagnostic(config, "UserPromptSubmit", "semantic_index_unavailable");
     }
-    // This opt-in mode NEVER substitutes lexical recall if the dual-model
-    // index is missing; it must use the validated selection or abstain.
-    if (config.hybrid_recall && !body.semantic_snapshot_version) return;
-    const timeout = Math.min(2500, HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted));
-    if (timeout <= 0) return;
-    const data = await recall(config, body, timeout);
-    if (body.semantic_snapshot_version) {
-      await recordDiagnostic(config, "UserPromptSubmit",
-        data.semantic_mode === "snapshot_v1" ? "semantic_scored" : "semantic_snapshot_stale");
+    // When the *local* hybrid index is unavailable, keep the original
+    // Desktop -> Railway recall path. Mac startup must never be a prerequisite
+    // for automatic recall. A versioned but STALE snapshot still fails closed.
+    if (!config.hybrid_recall || body.semantic_snapshot_version) {
+      const timeout = Math.min(2500, HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted));
+      if (timeout <= 0) return;
+      const data = await recall(config, body, timeout);
+      if (body.semantic_snapshot_version) {
+        await recordDiagnostic(config, "UserPromptSubmit",
+          data.semantic_mode === "snapshot_v1" ? "semantic_scored" : "semantic_snapshot_stale");
+      }
+      if (config.hybrid_recall && (data.semantic_mode !== "snapshot_v1" || data.memory_ids.length > 2))
+        return; // Stale/invalid snapshot must NOT fall back to lexical injection.
+      if (!data.context || data.memory_ids.some(id => exclude.includes(id))) return;
+      await commitRecallContext(config, input, snapshot, data, exclude, output);
+      return;
     }
-    if (config.hybrid_recall && (data.semantic_mode !== "snapshot_v1" || data.memory_ids.length > 2))
-      return; // Stale/invalid snapshot must NOT fall back to lexical injection.
-    if (!data.context || data.memory_ids.some(id => exclude.includes(id))) return;
-    await commitRecallContext(config, input, snapshot, data, exclude, output);
-    return;
+    // No local model yet: fall through to the existing read-only Railway path.
   }
   // Legacy behavior remains the default until indexed recall passes acceptance.
   // Stop accounting never consumes this invocation's retrieval budget.
