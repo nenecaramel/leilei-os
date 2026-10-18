@@ -836,7 +836,8 @@ export async function runHook(input, output = text => new Promise((resolve, reje
   // if the first cross-Pacific recall consumed too much of the budget, emit its
   // lexical result instead of risking a second request that suppresses all recall.
   if (!Array.isArray(data.semantic_candidates) || data.semantic_candidates.length === 0) {
-    await recordDiagnostic(config, "UserPromptSubmit", "semantic_no_candidates");
+    // A lexical-only result with no semantic candidates is normal.
+    // Don't add an unrelated semantic diagnostic to the existing dedupe log.
   } else if (data.semantic_candidates.length > 256 || Date.now() - invocationStarted >= 1500) {
     await recordDiagnostic(config, "UserPromptSubmit", "semantic_skipped_budget");
   } else {
