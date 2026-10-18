@@ -36,8 +36,8 @@ test("indexed discovery scales past 256 Memory and tracks edits/hide/delete", {s
   const invalid=memory("无效的柠檬黄色记忆");
   invalid.envelope.status.validityStatus="invalidated";
   const port=new DrizzleSubjectStateRuntimePort(db);
-  // Place the target in the middle of >256 rows: recent/oldest coverage alone
-  // must not accidentally make this indexed regression pass.
+  // Place the target among >256 rows to ensure one indexed search
+  // reaches a relevant middle-history memory without recent/oldest filler.
   await port.append({userId,subjectId:"G",states:[
     ...states.slice(0,150),target,...states.slice(150),hidden,invalid,
   ]});
@@ -48,6 +48,8 @@ test("indexed discovery scales past 256 Memory and tracks edits/hide/delete", {s
   assert.ok(first.length<=256);
   assert.ok(first.some(x=>x.id===target.id));
   assert.ok(!first.some(x=>x.id===hidden.id || x.id===invalid.id));
+  assert.equal((await find("XylophoneNebulaQuasar")).length, 0,
+    "unrelated historical memories must not fill the candidate budget");
   const excluded=await find("喜欢柠檬黄",[target.id]);
   assert.ok(!excluded.some(x=>x.id===target.id));
   await db.update(runtimeSubjectStates).set({text:"最喜欢蓝色的头发"})
