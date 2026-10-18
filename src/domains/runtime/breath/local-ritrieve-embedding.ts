@@ -12,6 +12,8 @@ export type LocalRitrieveOptions = {
   executable?: string;
   workerPath?: string;
   requestTimeoutMs?: number;
+  /** Volatile embedding reuse only; no saved snapshots or Railway sync. */
+  passageCacheEntries?: number;
 };
 type PendingRequest = {
   resolve: (value: Record<string, unknown>) => void;
@@ -146,10 +148,18 @@ export class LocalRitrieveBreathSemanticScorer implements BreathSemanticScorer {
 
   private ensureWorker(): ChildProcessWithoutNullStreams {
     if (this.worker) return this.worker;
+    const cacheEntries = this.options.passageCacheEntries ?? 512;
+    if (!Number.isSafeInteger(cacheEntries) || cacheEntries < 1 || cacheEntries > 4096) {
+      throw new Error("Invalid Ritrieve passage cache capacity.");
+    }
     const worker = spawn(
       this.options.executable ?? process.env.LEILEI_MIND_RITRIEVE_PYTHON ?? defaultRitrievePython(),
       [this.options.workerPath ?? defaultRitrieveWorkerPath()],
-      { stdio: "pipe", env: {...process.env, PYTHONUNBUFFERED: "1"} },
+      { stdio: "pipe", env: {
+        ...process.env,
+        PYTHONUNBUFFERED: "1",
+        LEILEI_MIND_RITRIEVE_CACHE_ENTRIES: String(cacheEntries),
+      } },
     );
     this.worker = worker;
     this.snapshotReady = false;
