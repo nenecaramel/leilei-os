@@ -66,6 +66,7 @@ const baseEnvSchema = z.object({
   WEB_AUTH0_AUDIENCE: httpsUrl.optional(),
   WEB_AUTH0_REQUIRED_SCOPE: z.string().trim().min(1).optional(),
   OAUTH_AS_ENABLED: booleanEnv.optional(),
+  OAUTH_REFRESH_TOKEN_KEY: z.string().regex(/^[A-Za-z0-9_-]{43}$/u).optional(),
   OAUTH_AS_UPSTREAM_CLIENT_ID: z.string().trim().min(1).optional(),
   OAUTH_AS_UPSTREAM_REDIRECT_URI: httpsUrl.optional(),
   OAUTH_CIMD_TRUSTED_CLIENT_IDS: z.string().optional(),
@@ -205,6 +206,7 @@ export type OAuthAuthorizationServerConfig = {
   fetchTimeoutMs: number;
   upstreamClientId: string;
   upstreamRedirectUri: string;
+  refreshTokenKey?: string;
 };
 
 const DEFAULT_CIMD_TRUSTED_CLIENT_IDS = [
@@ -553,6 +555,7 @@ export function getOAuthAuthorizationServerConfig(
     fetchTimeoutMs: environment.OAUTH_CIMD_FETCH_TIMEOUT_MS ?? 5_000,
     upstreamClientId,
     upstreamRedirectUri,
+    ...(environment.OAUTH_REFRESH_TOKEN_KEY ? { refreshTokenKey: environment.OAUTH_REFRESH_TOKEN_KEY } : {}),
   };
 }
 

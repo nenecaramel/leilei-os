@@ -1,5 +1,5 @@
 import { createPublicKey, createVerify } from "node:crypto";
-import type { ResolvedClient } from "./client-registry.js";
+import { ClientMetadataUnavailable, type ResolvedClient } from "./client-registry.js";
 import { isCompliantSecureJsonUrl } from "./secure-metadata-fetch.js";
 
 export const CLIENT_ASSERTION_TYPE =
@@ -23,6 +23,7 @@ export type JwksKeyCache = {
 type JwksCacheEntry = {
   expiresAt: number;
   keys: readonly RsaJwk[];
+  refreshUnavailable?: boolean;
 };
 
 const DEFAULT_JWKS_TTL_MS = 5 * 60 * 1_000;
@@ -119,6 +120,10 @@ export function createJwksKeyCache(options: {
     if (pending) return pending;
 
     const request = options.fetchJwks(jwksUri)
+      .catch(() => {
+        if (cached) cached.refreshUnavailable = true;
+        throw new ClientMetadataUnavailable();
+      })
       .then((body) => ({ expiresAt: now() + ttlMs, keys: parseJwks(body) }))
       .then((entry) => {
         if (!entries.has(jwksUri) && entries.size >= maxEntries) {
@@ -149,8 +154,9 @@ export function createJwksKeyCache(options: {
         } else {
           const cached = entries.get(jwksUri);
           if (!cached || cached.expiresAt <= now()) {
-            throw new Error("JWKS refresh is cooling down");
+            throw new ClientMetadataUnavailable();
           }
+          if (cached.refreshUnavailable) throw new ClientMetadataUnavailable();
           entry = cached;
         }
       } else {
@@ -159,6 +165,7 @@ export function createJwksKeyCache(options: {
       let key = entry.keys.find((candidate) => candidate.kid === kid);
       if (!key && !forceRefresh) {
         if (!claimForcedRefresh(jwksUri)) {
+          if (entry.refreshUnavailable) throw new ClientMetadataUnavailable();
           throw new Error("JWKS key id is unknown");
         }
         entry = await load(jwksUri, true);

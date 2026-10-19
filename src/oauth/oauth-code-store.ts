@@ -16,7 +16,9 @@ export type PendingOAuthTransaction = {
   upstreamVerifier?: string;
 };
 
-export type RedeemedOAuthCode = {
+export type OAuthTokenMetadata = { accessTokenExpiresAt?: number; refreshToken?: string };
+
+export type RedeemedOAuthCode = OAuthTokenMetadata & {
   accessToken: string;
   clientId: string;
   redirectUri: string;
@@ -31,7 +33,7 @@ export type OAuthCodeStore = {
   beginUpstream(id: string): { state: string; verifier: string };
   getTransactionByUpstreamState(state: string): PendingOAuthTransaction | undefined;
   claimTransactionByUpstreamState(state: string): PendingOAuthTransaction | undefined;
-  issueCode(transaction: PendingOAuthTransaction, accessToken: string): string;
+  issueCode(transaction: PendingOAuthTransaction, accessToken: string, metadata?: OAuthTokenMetadata): string;
   completeUpstream(state: string, accessToken: string): string;
   removeTransaction(id: string): PendingOAuthTransaction | undefined;
   redeemCode(input: {
@@ -78,7 +80,7 @@ export function createOAuthCodeStore(options: {
   const maxPendingTransactions = options.maxPendingTransactions ?? MAX_PENDING_TRANSACTIONS;
   const maxPendingCodes = options.maxPendingCodes ?? MAX_PENDING_CODES;
   const transactions = new Map<string, PendingOAuthTransaction>();
-  const codes = new Map<string, PendingOAuthTransaction & { accessToken: string }>();
+  const codes = new Map<string, PendingOAuthTransaction & { accessToken: string } & OAuthTokenMetadata>();
 
   const sweep = (): void => {
     const timestamp = now();
@@ -103,13 +105,13 @@ export function createOAuthCodeStore(options: {
     return undefined;
   };
 
-  const issueCode = (transaction: PendingOAuthTransaction, accessToken: string): string => {
+  const issueCode = (transaction: PendingOAuthTransaction, accessToken: string, metadata: OAuthTokenMetadata = {}): string => {
     sweep();
     if (codes.size >= maxPendingCodes) {
       throw new Error("OAuth code capacity is temporarily unavailable");
     }
     const code = randomOpaqueValue();
-    codes.set(code, { ...transaction, accessToken });
+    codes.set(code, { ...transaction, accessToken, ...metadata });
     return code;
   };
 
@@ -156,8 +158,8 @@ export function createOAuthCodeStore(options: {
       return claimTransactionByUpstreamState(state);
     },
 
-    issueCode(transaction, accessToken) {
-      return issueCode(transaction, accessToken);
+    issueCode(transaction, accessToken, metadata) {
+      return issueCode(transaction, accessToken, metadata);
     },
 
     completeUpstream(state, accessToken) {
@@ -191,6 +193,8 @@ export function createOAuthCodeStore(options: {
       }
       return {
         accessToken: record.accessToken,
+        ...(record.accessTokenExpiresAt !== undefined ? { accessTokenExpiresAt: record.accessTokenExpiresAt } : {}),
+        ...(record.refreshToken !== undefined ? { refreshToken: record.refreshToken } : {}),
         clientId: record.client.client_id,
         redirectUri: record.redirectUri,
         scope: record.scope,

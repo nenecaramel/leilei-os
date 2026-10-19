@@ -41,6 +41,7 @@ async function withServer(
 
 function buildRouter(calls: { verifiedTokens: string[]; exchangedCodes: string[] }) {
   return createOAuthAuthorizationServer({
+    now: () => 1_700_000_000_000,
     issuer: ISSUER,
     resource: RESOURCE,
     audience: RESOURCE,
@@ -66,7 +67,7 @@ function buildRouter(calls: { verifiedTokens: string[]; exchangedCodes: string[]
     allowedSubject: "allowed-subject",
     exchangeUpstreamCode: async ({ code }) => {
       calls.exchangedCodes.push(code);
-      return { accessToken: "auth0-access-token" };
+      return { accessToken: "auth0-access-token", expiresIn: 3600 };
     },
   });
 }

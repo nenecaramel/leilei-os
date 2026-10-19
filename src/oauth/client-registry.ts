@@ -5,6 +5,10 @@ import {
   type MetadataFetcher,
 } from "./secure-metadata-fetch.js";
 
+export class ClientMetadataUnavailable extends Error {
+  constructor() { super("Trusted OAuth client metadata is temporarily unavailable"); }
+}
+
 export type OAuthClientMetadata = {
   client_id: string;
   client_name: string;
@@ -227,7 +231,10 @@ export function createClientRegistry(options: {
       if (!isCompliantCimdClientIdentifier(clientId) || !trustedClientMetadataUrls.has(clientId)) {
         return undefined;
       }
-      return validateClientMetadata(await options.fetchMetadata(clientId), clientId);
+      let metadata: Record<string, unknown>;
+      try { metadata = await options.fetchMetadata(clientId); }
+      catch { throw new ClientMetadataUnavailable(); }
+      return validateClientMetadata(metadata, clientId);
     },
   };
 }

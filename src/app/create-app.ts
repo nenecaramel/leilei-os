@@ -29,7 +29,7 @@ import { createProtectedResourceMetadataHandler } from "../oauth/protected-resou
 import { createClientRegistry } from "../oauth/client-registry.js";
 import { createOAuthAuthorizationServer } from "../oauth/oauth-authorization-server.js";
 import { createSecureMetadataFetcher } from "../oauth/secure-metadata-fetch.js";
-import { createAuth0CodeExchange } from "../oauth/upstream-client.js";
+import { createAuth0CodeExchange, createAuth0RefreshExchange } from "../oauth/upstream-client.js";
 import { createWebApiRouter } from "../web-api/router.js";
 import { createWebApiAuthMiddleware } from "../web-api/web-api-auth.js";
 import { createWebApiCorsMiddleware } from "../web-api/web-api-cors.js";
@@ -375,6 +375,11 @@ export function createApp(
         upstreamClientId: oauthAuthorizationServerConfig.upstreamClientId,
         upstreamRedirectUri: oauthAuthorizationServerConfig.upstreamRedirectUri,
         registry: clientRegistry,
+        refreshTokenKey: oauthAuthorizationServerConfig.refreshTokenKey,
+        exchangeUpstreamRefresh: createAuth0RefreshExchange({
+          tokenEndpoint: new URL("oauth/token", config.AUTH0_ISSUER).toString(),
+          timeoutMs: oauthAuthorizationServerConfig.fetchTimeoutMs,
+        }),
         fetchJwks: metadataFetcher.fetch,
         verifyAccessToken,
         allowedSubject: config.AUTH0_ALLOWED_SUBJECT,

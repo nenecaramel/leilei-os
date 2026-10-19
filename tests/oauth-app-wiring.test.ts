@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 
@@ -15,13 +16,15 @@ const ENVIRONMENT_KEYS = [
   "WEB_AUTH0_AUDIENCE",
   "WEB_AUTH0_REQUIRED_SCOPE",
   "OAUTH_AS_ENABLED",
+  "OAUTH_REFRESH_TOKEN_KEY",
   "OAUTH_AS_UPSTREAM_CLIENT_ID",
   "OAUTH_AS_UPSTREAM_REDIRECT_URI",
   "OAUTH_CIMD_TRUSTED_CLIENT_IDS",
   "OAUTH_STATIC_CLIENTS_JSON",
 ] as const;
 
-test("mounts the opt-in AS while preserving Auth0 token and resource semantics", async () => {
+const renewal = process.env.OAUTH_WIRING_REFRESH_TEST === "1";
+test(`mounts AS and preserves Auth0 resource semantics (refresh=${renewal})`, async () => {
   const previous = Object.fromEntries(ENVIRONMENT_KEYS.map((key) => [key, process.env[key]]));
   Object.assign(process.env, {
     MCP_USER_ID: "11111111-1111-4111-8111-111111111111",
@@ -44,6 +47,8 @@ test("mounts the opt-in AS while preserving Auth0 token and resource semantics",
       jwks_uri: "https://chatgpt.com/oauth/jwks.json",
     }]),
   });
+  if (renewal) process.env.OAUTH_REFRESH_TOKEN_KEY = Buffer.alloc(32, 3).toString("base64url");
+  else delete process.env.OAUTH_REFRESH_TOKEN_KEY;
   delete process.env.DATABASE_URL;
   delete process.env.WEB_APP_ORIGIN;
   delete process.env.WEB_AUTH0_AUDIENCE;
@@ -65,7 +70,10 @@ test("mounts the opt-in AS while preserving Auth0 token and resource semantics",
     try {
       const asMetadata = await fetch(`http://127.0.0.1:${address.port}/.well-known/oauth-authorization-server`);
       assert.equal(asMetadata.status, 200);
-      assert.equal((await asMetadata.json()).client_id_metadata_document_supported, true);
+      const metadata = await asMetadata.json();
+      assert.equal(metadata.client_id_metadata_document_supported, true);
+      assert.equal(metadata.grant_types_supported.includes("refresh_token"), renewal);
+      assert.equal(metadata.scopes_supported.includes("offline_access"), renewal);
 
       const protectedMetadata = await fetch(`http://127.0.0.1:${address.port}/.well-known/oauth-protected-resource`);
       assert.equal(protectedMetadata.status, 200);
@@ -87,4 +95,13 @@ test("mounts the opt-in AS while preserving Auth0 token and resource semantics",
       else process.env[key] = value;
     }
   }
+});
+
+// env is intentionally parsed once at application startup. Exercise the
+// enabled configuration in a new process, as a real deployment would.
+if (!renewal) test("fresh application startup advertises configured offline renewal", () => {
+  const child = spawnSync(process.execPath, ["--import", "tsx", "--test", "tests/oauth-app-wiring.test.ts"], {
+    env: { ...process.env, OAUTH_WIRING_REFRESH_TEST: "1" }, encoding: "utf8", timeout: 30_000,
+  });
+  assert.equal(child.status, 0, child.stdout + child.stderr);
 });

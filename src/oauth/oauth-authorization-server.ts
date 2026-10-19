@@ -1,8 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
 import express, { type Response, type Router } from "express";
-import type { AccessTokenVerifier } from "../auth/jwt-verifier.js";
+import { AccessTokenError, type AccessTokenVerifier } from "../auth/jwt-verifier.js";
 import {
   assertRedirectUriAllowed,
+  ClientMetadataUnavailable,
   type ClientRegistry,
   type ResolvedClient,
 } from "./client-registry.js";
@@ -23,7 +24,8 @@ import {
   type JwksFetcher,
   type JwksKeyCache,
 } from "./client-assertion-authentication.js";
-import { createAuth0CodeExchange } from "./upstream-client.js";
+import { createAuth0CodeExchange, createAuth0RefreshExchange, UpstreamTokenError, type UpstreamTokenSet, type UpstreamRefreshExchange } from "./upstream-client.js";
+import { createRefreshTokenEnvelope } from "./refresh-token-envelope.js";
 
 export type UpstreamCodeExchange = (input: {
   code: string;
@@ -32,7 +34,7 @@ export type UpstreamCodeExchange = (input: {
   codeVerifier: string;
   resource: string;
   audience: string;
-}) => Promise<{ accessToken: string }>;
+}) => Promise<UpstreamTokenSet>;
 
 export type OAuthAuthorizationServerOptions = {
   issuer: string;
@@ -47,6 +49,8 @@ export type OAuthAuthorizationServerOptions = {
   verifyAccessToken: AccessTokenVerifier;
   allowedSubject: string;
   exchangeUpstreamCode?: UpstreamCodeExchange;
+  exchangeUpstreamRefresh?: UpstreamRefreshExchange;
+  refreshTokenKey?: string;
   fetchJwks?: JwksFetcher;
   jwksCache?: JwksKeyCache;
   jwksTtlMs?: number;
@@ -121,8 +125,9 @@ function scopeIsAllowed(
   requested: readonly string[],
   requiredScope: string,
   client: ResolvedClient,
+  refreshEnabled = false,
 ): boolean {
-  const supported = new Set(requiredScope.split(/\s+/u).filter(Boolean));
+  const supported = new Set((refreshEnabled ? `${requiredScope} offline_access` : requiredScope).split(/\s+/u).filter(Boolean));
   const clientScopes = client.scope === undefined ? undefined : new Set(parseScope(client.scope) ?? []);
   return (
     requiredScope.split(/\s+/u).filter(Boolean).every((scope) => requested.includes(scope)) &&
@@ -159,6 +164,9 @@ function createClientAuthorizationRouter(
   const exchangeUpstreamCode = options.exchangeUpstreamCode ?? createAuth0CodeExchange({
     tokenEndpoint: options.upstreamTokenEndpoint,
   });
+  const now = options.now ?? Date.now;
+  const envelope = options.refreshTokenKey ? createRefreshTokenEnvelope({ key: options.refreshTokenKey, issuer: options.issuer, now }) : undefined;
+  const exchangeUpstreamRefresh = options.exchangeUpstreamRefresh ?? createAuth0RefreshExchange({ tokenEndpoint: options.upstreamTokenEndpoint });
   const verifyClientAssertion = createClientAssertionVerifier({
     fetchJwks: options.fetchJwks ?? (async () => {
       throw new Error("JWKS fetcher is not configured");
@@ -169,13 +177,14 @@ function createClientAuthorizationRouter(
     jwksMaxEntries: options.jwksMaxEntries,
     replayMaxEntries: options.replayMaxEntries,
   });
-  router.use(express.urlencoded({ extended: false, limit: "10kb" }));
+  router.use(express.urlencoded({ extended: false, limit: "64kb" }));
 
   router.get("/.well-known/oauth-authorization-server", createAuthorizationServerMetadataHandler({
     issuer: options.issuer,
     authorizationEndpoint: new URL("/oauth/authorize", options.issuer).toString(),
     tokenEndpoint: new URL("/oauth/token", options.issuer).toString(),
     requiredScope: options.requiredScope,
+    refreshEnabled: !!envelope,
   }));
 
   router.get("/oauth/authorize", async (request, response) => {
@@ -189,8 +198,10 @@ function createClientAuthorizationRouter(
     let client: ResolvedClient | undefined;
     try {
       client = await options.registry.resolve(clientId);
-    } catch {
-      sendError(response, "invalid_client");
+    } catch (error) {
+      if (error instanceof ClientMetadataUnavailable) {
+        response.status(503).setHeader("Cache-Control", "no-store").json({ error: "temporarily_unavailable" });
+      } else sendError(response, "invalid_client");
       return;
     }
     if (!client) {
@@ -223,7 +234,8 @@ function createClientAuthorizationRouter(
       codeChallengeMethod !== "S256" ||
       !isValidPkceCodeChallenge(codeChallenge) ||
       (state !== undefined && state.length > 2048) ||
-      !scopeIsAllowed(scopes, options.requiredScope, client)
+      !scopeIsAllowed(scopes, options.requiredScope, client, !!envelope) ||
+      (scopes.includes("offline_access") && !client.grant_types.includes("refresh_token"))
     ) {
       sendInvalidRequest(response);
       return;
@@ -313,6 +325,7 @@ function createClientAuthorizationRouter(
     }
 
     try {
+      const startedAt = now();
       const result = await exchangeUpstreamCode({
         code: upstreamCode,
         clientId: options.upstreamClientId,
@@ -322,7 +335,15 @@ function createClientAuthorizationRouter(
         audience: transaction.audience,
       });
       await verifyIssuedToken(options, result.accessToken);
-      const code = store.issueCode(transaction, result.accessToken);
+      const accessTokenExpiresAt = startedAt + result.expiresIn * 1000;
+      if (!Number.isSafeInteger(accessTokenExpiresAt) || result.expiresIn <= 0) throw new Error("Invalid upstream token expiry");
+      const offline = transaction.scope.split(/\s+/u).includes("offline_access");
+      if (offline && (!envelope || !result.refreshToken)) throw new Error("Offline access is unavailable");
+      const refreshToken = offline ? envelope!.seal({
+        clientId: transaction.client.client_id, subject: options.allowedSubject, resource: transaction.resource,
+        audience: transaction.audience, scope: transaction.scope, upstreamToken: result.refreshToken!, expiresAt: now() + 30 * 86400_000,
+      }) : undefined;
+      const code = store.issueCode(transaction, result.accessToken, { accessTokenExpiresAt, ...(refreshToken ? { refreshToken } : {}) });
       const location = new URL(transaction.redirectUri);
       location.searchParams.set("code", code);
       if (transaction.state) location.searchParams.set("state", transaction.state);
@@ -345,7 +366,9 @@ function createClientAuthorizationRouter(
     const code = valueOf(body?.code);
     const redirectUri = valueOf(body?.redirect_uri);
     const codeVerifier = valueOf(body?.code_verifier);
-    if (!clientId || !code || !redirectUri || !codeVerifier || grantType !== "authorization_code") {
+    if (!clientId || (grantType !== "authorization_code" && grantType !== "refresh_token") ||
+      (grantType === "authorization_code" && (!code || !redirectUri || !codeVerifier)) ||
+      (grantType === "refresh_token" && (!envelope || !valueOf(body?.refresh_token)))) {
       sendInvalidRequest(response);
       return;
     }
@@ -353,7 +376,7 @@ function createClientAuthorizationRouter(
     let client: ResolvedClient | undefined;
     try {
       client = await options.registry.resolve(clientId);
-      if (!client) throw new Error("OAuth client is unknown");
+      if (!client || !client.grant_types.includes(grantType!)) throw new Error("OAuth client grant is not allowed");
       if (client.token_endpoint_auth_method === "none") {
         if (
           body?.client_assertion !== undefined ||
@@ -372,13 +395,49 @@ function createClientAuthorizationRouter(
       } else {
         throw new Error("OAuth client authentication method is unsupported");
       }
-    } catch {
-      sendError(response, "invalid_client");
+    } catch (error) {
+      if (error instanceof ClientMetadataUnavailable) {
+        response.status(503).setHeader("Cache-Control", "no-store").json({ error: "temporarily_unavailable" });
+      } else sendError(response, "invalid_client");
       return;
     }
 
+    if (grantType === "refresh_token") {
+      let stage: "grant" | "upstream" | "verify" | "response" = "grant";
+      try {
+        const grant = envelope!.open(valueOf(body?.refresh_token)!);
+        if (grant.clientId !== clientId || grant.subject !== options.allowedSubject || grant.resource !== options.resource || grant.audience !== options.audience ||
+          !scopeIsAllowed(grant.scope.split(/\s+/u), options.requiredScope, client, true) ||
+          (body?.resource !== undefined && body.resource !== grant.resource) || (body?.audience !== undefined && body.audience !== grant.audience) ||
+          (body?.scope !== undefined && body.scope !== grant.scope)) throw new Error("Invalid refresh binding");
+        const startedAt = now();
+        stage = "upstream";
+        const result = await exchangeUpstreamRefresh({ refreshToken: grant.upstreamToken, clientId: options.upstreamClientId, resource: grant.resource, audience: grant.audience });
+        stage = "verify";
+        await verifyIssuedToken(options, result.accessToken);
+        stage = "response";
+        // Public-client renewal requires upstream rotation/reuse detection. Never
+        // silently accept an unrotated or absent replacement refresh token.
+        if (!result.refreshToken || result.refreshToken === grant.upstreamToken || !Number.isSafeInteger(result.expiresIn) || result.expiresIn <= 0) throw new Error("Invalid upstream refresh rotation");
+        const expiresIn = Math.floor((startedAt + result.expiresIn * 1000 - now()) / 1000);
+        if (expiresIn <= 0) throw new Error("Refreshed access token expired");
+        const refreshToken = envelope!.seal({ ...grant, upstreamToken: result.refreshToken });
+        response.status(200).setHeader("Cache-Control", "no-store").json({ access_token: result.accessToken, token_type: "Bearer",
+          expires_in: expiresIn, refresh_token: refreshToken, scope: grant.scope, resource: grant.resource, audience: grant.audience });
+      } catch (error) {
+        const transientVerification = error instanceof AccessTokenError &&
+          ["jwks_unavailable", "verification_unknown", "token_expired"].includes(error.diagnosticReason);
+        const terminalVerification = error instanceof AccessTokenError && !transientVerification;
+        const temporary = error instanceof UpstreamTokenError ? error.retryable :
+          stage !== "grant" && !terminalVerification;
+        if (temporary) {
+          response.status(503).setHeader("Cache-Control", "no-store").json({ error: "temporarily_unavailable" });
+        } else sendError(response, "invalid_grant");
+      }
+      return;
+    }
     try {
-      const redeemed = store.redeemCode({ code, clientId, redirectUri, codeVerifier });
+      const redeemed = store.redeemCode({ code: code!, clientId, redirectUri: redirectUri!, codeVerifier: codeVerifier! });
       if (redeemed.clientId !== client.client_id) {
         throw new Error("OAuth client authentication does not match the authorization code");
       }
@@ -389,13 +448,16 @@ function createClientAuthorizationRouter(
       ) {
         throw new Error("OAuth token request binding is invalid");
       }
+      const expiresIn = Math.floor(((redeemed.accessTokenExpiresAt ?? 0) - now()) / 1000);
+      if (expiresIn <= 0) throw new Error("Access token expired before redemption");
       response
         .status(200)
         .setHeader("Cache-Control", "no-store")
         .json({
           access_token: redeemed.accessToken,
           token_type: "Bearer",
-          expires_in: 3600,
+          expires_in: expiresIn,
+          ...(redeemed.refreshToken ? { refresh_token: redeemed.refreshToken } : {}),
           scope: redeemed.scope,
           resource: redeemed.resource,
           audience: redeemed.audience,
@@ -414,7 +476,7 @@ async function verifyIssuedToken(
 ): Promise<void> {
   if (typeof accessToken !== "string" || accessToken.length === 0) throw new Error("upstream token is invalid");
   const principal = await options.verifyAccessToken(accessToken);
-  if (principal.subject !== options.allowedSubject) throw new Error("upstream token subject is not allowed");
+  if (principal.subject !== options.allowedSubject) throw new AccessTokenError("upstream token subject is not allowed", "invalid_token", "subject_not_allowed");
 }
 
 export function createOAuthAuthorizationServer(
