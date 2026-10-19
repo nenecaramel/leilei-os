@@ -203,64 +203,46 @@ extension AppModel {
         conversationID: UUID,
         includeInteractions: Bool
     ) async -> Bool {
-        guard var surface =
-                nativeLiveBackgroundRuntimeSurfaces[prepareID],
-              surface.conversationID == conversationID else {
-            return false
-        }
-
+        guard let initial = nativeLiveBackgroundRuntimeSurfaces[prepareID],
+              initial.prepareID == prepareID,
+              initial.conversationID == conversationID else { return false }
         var changed = false
-
         do {
             let page = try await api.nativeLiveRuntimeEvents(
-                prepareID: prepareID,
-                afterSequence: surface.nextAfterSequence
+                prepareID: prepareID, afterSequence: initial.nextAfterSequence
             )
-            guard page.prepareID == prepareID else {
-                return false
+            guard page.prepareID == prepareID,
+                  var latest = nativeLiveBackgroundRuntimeSurfaces[prepareID],
+                  latest.prepareID == prepareID,
+                  latest.conversationID == conversationID else { return false }
+            let known = Set(latest.events.map(\.sequence))
+            let newEvents = page.events.filter { !known.contains($0.sequence) }
+            if !newEvents.isEmpty { latest.events.append(contentsOf: newEvents); changed = true }
+            let cursorAdvanced = page.nextAfterSequence > latest.nextAfterSequence
+            if cursorAdvanced {
+                latest.nextAfterSequence = page.nextAfterSequence; changed = true
             }
-
-            if !page.events.isEmpty {
-                let known = Set(surface.events.map(\.sequence))
-                let newEvents = page.events.filter {
-                    !known.contains($0.sequence)
-                }
-                if !newEvents.isEmpty {
-                    surface.events.append(contentsOf: newEvents)
-                    changed = true
-                }
-            }
-            if surface.nextAfterSequence != page.nextAfterSequence {
-                surface.nextAfterSequence = page.nextAfterSequence
-                changed = true
+            // Publish streamed output before waiting on secondary state reads.
+            if !newEvents.isEmpty || cursorAdvanced {
+                nativeLiveBackgroundRuntimeSurfaces[prepareID] = latest
             }
         } catch {
-            // Background observation is fail-soft. Durable runtime rows
-            // remain available to the next refresh or app launch.
+            // Fail-soft; durable rows remain available on the next refresh.
         }
-
         if includeInteractions {
+            guard let before = nativeLiveBackgroundRuntimeSurfaces[prepareID], before.prepareID == prepareID else { return false }
             do {
-                let interactions =
-                    try await api.nativeLiveRuntimeInteractions(
-                        prepareID: prepareID
-                    )
-                if interactions != surface.interactions {
-                    surface.interactions = interactions
-                    changed = true
+                let interactions = try await api.nativeLiveRuntimeInteractions(prepareID: prepareID)
+                guard var latest = nativeLiveBackgroundRuntimeSurfaces[prepareID], latest.prepareID == prepareID else { return false }
+                // A user resolution may have completed while this read waited.
+                if latest.interactions == before.interactions && latest.interactions != interactions {
+                    latest.interactions = interactions; nativeLiveBackgroundRuntimeSurfaces[prepareID] = latest; changed = true
                 }
             } catch {
-                // Fail-soft; the next cycle can recover.
+                // Fail-soft; the next observation can recover.
             }
         }
-
-        guard changed,
-              nativeLiveBackgroundRuntimeSurfaces[prepareID]
-                != nil else {
-            return false
-        }
-        nativeLiveBackgroundRuntimeSurfaces[prepareID] = surface
-        return true
+        return changed
     }
 
     func continueNativeLiveRuntimeObservationForBackgroundTasks(
@@ -368,75 +350,55 @@ extension AppModel {
         conversationID: UUID,
         includeInteractions: Bool
     ) async {
-        guard var surface = nativeLiveRuntimeSurface,
-              surface.prepareID == prepareID,
-              surface.conversationID == conversationID else {
-            return
-        }
-
-        var changed = false
-
+        guard let initial = nativeLiveRuntimeSurface,
+              initial.prepareID == prepareID,
+              initial.conversationID == conversationID else { return }
         do {
             let page = try await api.nativeLiveRuntimeEvents(
-                prepareID: prepareID,
-                afterSequence: surface.nextAfterSequence
+                prepareID: prepareID, afterSequence: initial.nextAfterSequence
             )
-            guard page.prepareID == prepareID else {
-                return
+            guard page.prepareID == prepareID,
+                  var latest = nativeLiveRuntimeSurface,
+                  latest.prepareID == prepareID,
+                  latest.conversationID == conversationID else { return }
+            let known = Set(latest.events.map(\.sequence))
+            let newEvents = page.events.filter { !known.contains($0.sequence) }
+            if !newEvents.isEmpty { latest.events.append(contentsOf: newEvents) }
+            let cursorAdvanced = page.nextAfterSequence > latest.nextAfterSequence
+            if cursorAdvanced {
+                latest.nextAfterSequence = page.nextAfterSequence
             }
-
-            if !page.events.isEmpty {
-                let known = Set(surface.events.map(\.sequence))
-                let newEvents = page.events.filter {
-                    !known.contains($0.sequence)
-                }
-                if !newEvents.isEmpty {
-                    surface.events.append(contentsOf: newEvents)
-                    changed = true
-                }
-            }
-            if surface.nextAfterSequence != page.nextAfterSequence {
-                surface.nextAfterSequence = page.nextAfterSequence
-                changed = true
+            // Publish streamed output before waiting on secondary state reads.
+            if !newEvents.isEmpty || cursorAdvanced {
+                nativeLiveRuntimeSurface = latest
             }
         } catch {
-            // Runtime observation is fail-soft. Canonical turn completion
-            // remains authoritative.
+            // Fail-soft; durable rows remain available on the next refresh.
         }
-
         if includeInteractions {
+            guard let before = nativeLiveRuntimeSurface, before.prepareID == prepareID else { return }
             do {
-                let interactions =
-                    try await api.nativeLiveRuntimeInteractions(
-                        prepareID: prepareID
-                    )
-                if interactions != surface.interactions {
-                    surface.interactions = interactions
-                    changed = true
+                let interactions = try await api.nativeLiveRuntimeInteractions(prepareID: prepareID)
+                guard var latest = nativeLiveRuntimeSurface, latest.prepareID == prepareID else { return }
+                // A user resolution may have completed while this read waited.
+                if latest.interactions == before.interactions && latest.interactions != interactions {
+                    latest.interactions = interactions; nativeLiveRuntimeSurface = latest
                 }
             } catch {
                 // Fail-soft; the next observation can recover.
             }
-
+            guard let beforeControls = nativeLiveRuntimeSurface,
+                  beforeControls.prepareID == prepareID else { return }
             do {
-                let controls =
-                    try await api.nativeLiveRuntimeControls(
-                        prepareID: prepareID
-                    )
-                if controls != surface.controls {
-                    surface.controls = controls
-                    changed = true
+                let controls = try await api.nativeLiveRuntimeControls(prepareID: prepareID)
+                guard var latest = nativeLiveRuntimeSurface, latest.prepareID == prepareID else { return }
+                if latest.controls == beforeControls.controls && latest.controls != controls {
+                    latest.controls = controls; nativeLiveRuntimeSurface = latest
                 }
             } catch {
                 // Fail-soft; the next observation can recover.
             }
         }
-
-        guard changed,
-              nativeLiveRuntimeSurface?.prepareID == prepareID else {
-            return
-        }
-        nativeLiveRuntimeSurface = surface
     }
 
     func resolveNativeLiveRuntimeInteraction(
@@ -530,7 +492,7 @@ extension AppModel {
         kind: String,
         payload: [String: NativeLiveJSONValue]
     ) async throws -> NativeLiveRuntimeControlSnapshot {
-        guard var surface = nativeLiveRuntimeSurface else {
+        guard let surface = nativeLiveRuntimeSurface else {
             throw NativeLiveRuntimeControlClientError.notReady
         }
 
@@ -545,19 +507,17 @@ extension AppModel {
                     payload: payload
                 )
 
-            guard nativeLiveRuntimeSurface?.prepareID
-                    == surface.prepareID else {
+            guard var latest = nativeLiveRuntimeSurface,
+                  latest.prepareID == surface.prepareID else {
                 return created
             }
 
-            if let index = surface.controls.firstIndex(where: {
-                $0.controlID == created.controlID
-            }) {
-                surface.controls[index] = created
-            } else {
-                surface.controls.append(created)
+            // A concurrent poll may already have observed this control as
+            // applied/failed. Creation's earlier snapshot cannot regress it.
+            if !latest.controls.contains(where: { $0.controlID == created.controlID }) {
+                latest.controls.append(created)
             }
-            nativeLiveRuntimeSurface = surface
+            nativeLiveRuntimeSurface = latest
             return created
         } catch LeileiAPIError.missingAccessToken {
             clearNativeLiveSessionData()

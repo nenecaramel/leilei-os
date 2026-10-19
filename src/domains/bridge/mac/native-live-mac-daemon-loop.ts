@@ -69,6 +69,7 @@ export class NativeLiveMacDaemonLoop {
     }
 
     this.running = true;
+    let runtimeEventTimer: ReturnType<typeof setTimeout> | null = null;
     try {
       for (const entry of await this.resultOutbox?.listQuarantined() ?? []) {
         this.fenceResultConversation(entry.result.conversation_id);
@@ -210,6 +211,7 @@ export class NativeLiveMacDaemonLoop {
       }> = [];
       let runtimeEventFlush: Promise<void> | null = null;
       const flushRuntimeEvents = async (): Promise<void> => {
+        if (runtimeEventTimer !== null) { clearTimeout(runtimeEventTimer); runtimeEventTimer = null; }
         if (runtimeEventFlush) {
           await runtimeEventFlush;
           if (pendingRuntimeEvents.length > 0) {
@@ -272,9 +274,16 @@ export class NativeLiveMacDaemonLoop {
         // keep running in parallel with a different presentation branch.
         if (command.operation === "edit" || command.operation === "retry") {
           await this.persistentExecutor?.retire(command.conversation_id);
-          // Branch replacements are not part of the send/wake execution-lease
-          // protocol. Use the existing exact-checkpoint branch executor instead
-          // of advertising a persistent fork that admission must reject.
+          // Only exact-checkpoint replacements can own a persistent child.
+          // The executor still leaves legacy checkpoint-less forks one-shot.
+          if (this.persistentExecutor?.canRoute(command)) {
+            persistentRun = await this.persistentExecutor.execute(command, { ...options, commit });
+            return persistentRun.result;
+          }
+          const exactReplacement = command.parent_provider_checkpoint_id !== undefined
+            && (command.runtime_mode === "new" || command.runtime_mode === "fork"
+              && !!command.parent_provider_session_id && !!command.parent_provider_checkpoint_id);
+          if (this.persistentExecutor && exactReplacement) return runtimeFailure(command, "RUNTIME_UNAVAILABLE");
           return this.executor.execute(command, options);
         }
         if (command.operation === "wake") {
@@ -312,6 +321,11 @@ export class NativeLiveMacDaemonLoop {
                       await flushRuntimeEvents();
                     } else if (pendingRuntimeEvents.length >= 8 && !runtimeEventFlush) {
                       void flushRuntimeEvents();
+                    } else if (!runtimeEventFlush && runtimeEventTimer === null) {
+                      // Sparse output must not wait for another seven deltas.
+                      // One upload owner still drains all batches in order.
+                      runtimeEventTimer = setTimeout(() => { void flushRuntimeEvents(); }, 100);
+                      runtimeEventTimer.unref();
                     }
                   },
                 }
@@ -451,6 +465,7 @@ export class NativeLiveMacDaemonLoop {
           : {}),
       };
     } finally {
+      if (runtimeEventTimer !== null) clearTimeout(runtimeEventTimer);
       this.running = false;
     }
   }

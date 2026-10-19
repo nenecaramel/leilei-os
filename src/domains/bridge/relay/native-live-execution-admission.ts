@@ -35,6 +35,17 @@ export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "exec
             AND c.provider_metadata->'native_live_presentation_owner'->>'prepareId' = p.id::text
             AND (c.provider_metadata->'native_live_presentation_owner' ? 'anchorHeadMessageId')
             AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM c.current_head_message_id::text)
+          OR (p.operation IN ('edit', 'retry') AND u.role = 'user'
+            AND c.provider_metadata->'native_live_presentation_owner'->>'prepareId' = p.id::text
+            AND (c.provider_metadata->'native_live_presentation_owner' ? 'anchorHeadMessageId')
+            AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM c.current_head_message_id::text
+            AND EXISTS (
+              SELECT 1 FROM conversation_messages target
+              WHERE target.user_id=p.user_id AND target.conversation_id=p.conversation_id
+                AND target.id=p.replacement_target_user_message_id AND target.role='user'
+                AND target.parent_message_id IS NOT DISTINCT FROM u.parent_message_id
+                AND ((p.operation='retry' AND u.id=target.id)
+                  OR (p.operation='edit' AND u.id<>target.id))))
           OR (p.operation = 'wake' AND p.canonical_user_message_id IS NULL
             AND jsonb_typeof(p.wake_context->'runtime_generation') = 'object'
             AND (p.wake_context->'runtime_generation') ? 'source_revision'
@@ -59,8 +70,24 @@ export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "exec
             ))
         )
         AND (
-          (p.runtime_mode = 'new' AND p.operation = 'send' AND u.parent_message_id IS NULL
+          (p.runtime_mode = 'new' AND p.operation IN ('send', 'edit', 'retry') AND u.parent_message_id IS NULL
             AND p.parent_provider_session_id IS NULL AND p.parent_provider_checkpoint_id IS NULL)
+          OR (p.runtime_mode='fork' AND p.operation IN ('edit','retry')
+            AND p.parent_provider_session_id IS NOT NULL AND p.parent_provider_checkpoint_id IS NOT NULL
+            AND (
+              (c.provider_metadata->'nativeSessionSource'->>'mode'='continuation'
+                AND (u.parent_message_id::text) IS NOT DISTINCT FROM (c.provider_metadata->'nativeSessionSource'->>'headMessageId')
+                AND p.parent_provider_session_id=c.provider_metadata->'nativeSessionSource'->>'sessionId'
+                AND p.parent_provider_checkpoint_id=c.provider_metadata->'nativeSessionSource'->>'checkpointId'
+                AND p.expected_working_directory=c.provider_metadata->'nativeSessionSource'->>'effectiveWorkingDirectory')
+              OR EXISTS (SELECT 1 FROM conversation_provider_session_checkpoints cp
+                WHERE NOT (coalesce(c.provider_metadata->'nativeSessionSource'->>'mode','')='continuation'
+                    AND (u.parent_message_id::text) IS NOT DISTINCT FROM (c.provider_metadata->'nativeSessionSource'->>'headMessageId'))
+                  AND cp.user_id=p.user_id AND cp.conversation_id=p.conversation_id AND cp.provider='claude_code'
+                  AND cp.canonical_message_id=u.parent_message_id
+                  AND cp.provider_session_id=p.parent_provider_session_id
+                  AND cp.provider_checkpoint_id=p.parent_provider_checkpoint_id
+                  AND cp.effective_working_directory IS NOT DISTINCT FROM p.expected_working_directory)))
           OR (p.runtime_mode = 'resume' AND p.operation = 'send'
             AND c.provider_metadata->'nativeSessionSource'->>'mode' = 'continuation'
             AND (u.parent_message_id::text) IS NOT DISTINCT FROM (c.provider_metadata->'nativeSessionSource'->>'headMessageId')

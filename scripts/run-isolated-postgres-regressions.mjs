@@ -90,6 +90,7 @@ run([
   "tests/native-live-task-controls.integration.test.ts",
   "tests/native-live-backend-relay.integration.test.ts",
   "tests/native-live-execution-admission.integration.test.ts",
+  "tests/native-live-replacement-admission.integration.test.ts",
   "tests/native-live-persistent-wake.integration.test.ts",
   "tests/runtime-subject-state-repository.integration.test.ts",
   "tests/mind-memory-migration.integration.test.ts",
