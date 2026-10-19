@@ -404,3 +404,25 @@ test("Universe source picker keeps searched Diary metadata for the selected chip
     restoreDom(context.dom, context.previous);
   }
 });
+
+test("same-node detail refresh updates canonical metadata", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  const render = async (current: typeof node) => {
+    await React.act(async () => root.render(React.createElement(UniverseNodePaper, {
+      node: current, galaxies: [], mode: { kind: "detail", nodeId: node.id }, open: true,
+      saving: false, triggerRef: { current: null }, onRequestClose: () => true, onSave: async () => {},
+    })));
+  };
+  try {
+    await render(node);
+    assert.match(context.dom.window.document.body.textContent ?? "", /experience/);
+    await render({ ...node, type: "question", importance: "anchor", galaxies: [] });
+    const metadata = context.dom.window.document.querySelector(".universe-node-metadata") ?? context.dom.window.document.body;
+    assert.match(metadata.textContent ?? "", /question/);
+    assert.match(metadata.textContent ?? "", /anchor/);
+    assert.doesNotMatch(metadata.textContent ?? "", /experience/);
+  } finally {
+    await React.act(async () => root.unmount()); restoreDom(context.dom, context.previous);
+  }
+});
