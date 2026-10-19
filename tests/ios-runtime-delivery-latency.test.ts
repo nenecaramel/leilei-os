@@ -48,8 +48,9 @@ struct Surface {
 }
 @MainActor final class AppModel {
  let api = API()
- var nativeLiveRuntimeSurface: Surface?
- var nativeLiveBackgroundRuntimeSurfaces: [String: Surface] = [:]
+ var foregroundWrites = 0, backgroundWrites = 0
+ var nativeLiveRuntimeSurface: Surface? { didSet { foregroundWrites += 1 } }
+ var nativeLiveBackgroundRuntimeSurfaces: [String: Surface] = [:] { didSet { backgroundWrites += 1 } }
  func clearNativeLiveSessionData() { nativeLiveRuntimeSurface = nil }
  ${method("createNativeLiveRuntimeControl")}
  ${method("refreshNativeLiveRuntimeSurface")}
@@ -95,6 +96,16 @@ struct Surface {
    _ = await control.value
    precondition(nativeLiveRuntimeSurface?.events == [Event(sequence: 5)] && nativeLiveRuntimeSurface?.nextAfterSequence == 5, "control response must not roll back streamed events")
    precondition(nativeLiveRuntimeSurface?.controls.map(\\.label) == ["applied"], "late create response cannot regress an already applied same-ID control")
+   nativeLiveRuntimeSurface = Surface(prepareID: "unchanged", conversationID: cid,
+     events: [Event(sequence: 1)], nextAfterSequence: 1)
+   let writes = foregroundWrites
+   await refreshNativeLiveRuntimeSurface(prepareID: "unchanged", conversationID: cid, includeInteractions: false)
+   precondition(foregroundWrites == writes, "unchanged foreground polls must not trigger presentation churn")
+   nativeLiveBackgroundRuntimeSurfaces["unchanged"] = Surface(prepareID: "unchanged", conversationID: cid,
+     events: [Event(sequence: 1)], nextAfterSequence: 1)
+   let backgroundCount = backgroundWrites
+   let changed = await refreshNativeLiveBackgroundRuntimeSurface(prepareID: "unchanged", conversationID: cid, includeInteractions: false)
+   precondition(!changed && backgroundWrites == backgroundCount, "unchanged background polls must not trigger presentation churn")
    print("Runtime delivery PASS")
  }
 }
