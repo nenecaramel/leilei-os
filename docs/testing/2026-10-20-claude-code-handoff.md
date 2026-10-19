@@ -1,5 +1,22 @@
 # Claude Code handoff — native runtime reliability
 
+## Resume checkpoint (supersedes historical next steps below)
+
+The user asked Codex to continue after this handoff was first written.
+`e598e57b` replaces the obsolete whole-snapshot source regexes with actual Swift
+unchanged-poll write-count assertions; the actual Swift harness plus original
+turn lifecycle file passed all four tests. `f7981f65` safely merges origin/main
+`fa98819e`, including #1177–#1179, without conflicts. Both are pushed.
+
+Final verification on this integrated source is running in these logs:
+`/tmp/leileios-reliability-merged-full.log`, `-merged-typecheck.log`,
+`-merged-build.log`, `-merged-gate.log`, `-merged-xcode.log`, `-merged-db.log`.
+Full Node24 ordinary suite and Node22 production gate must be counted only from
+their completed summaries. The DB run includes all nine relevant files, including
+#1179 concerns and silence wake tests; it uses only the explicit local test DB.
+The PostgreSQL task cluster has been restarted for this validation. No PR, merge,
+deployment or daemon refresh has happened for this feature branch yet.
+
 ## Start here
 
 Continue existing work; do not reimplement from scratch. User requested four repairs plus associated behavior coverage: Wake backoff, persistent edit/retry, authentication refresh investigation, and delivery latency. Work is NOT complete, merged, deployed or loaded in the daemon.
