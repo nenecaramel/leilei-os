@@ -118,7 +118,7 @@ private struct NativeLiveThoughtProcessSheet: View {
             .navigationTitle("Thought process")
             .navigationBarTitleDisplayMode(.inline)
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
 }
