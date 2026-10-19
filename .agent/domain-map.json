@@ -408,7 +408,8 @@
         "tests/system-data-activity-contract.test.ts",
         "tests/todo-web-search.test.ts",
         "tests/universe-monochrome-ui.test.ts",
-        "tests/diary-page.test.ts"
+        "tests/diary-page.test.ts",
+        "tests/global-search-page-behavior.test.ts"
       ],
       "verification": [
         "web-typecheck",
@@ -442,6 +443,7 @@
         "tests/ios-*.test.ts",
         "tests/fixtures/universe-import-parser.swift",
         "tests/fixtures/ios-*.swift",
+        "tests/fixtures/global-search/**",
         "tests/fixtures/voice-audio-approved-20261006/**",
         "tests/fixtures/spotify-result-surface-main-c47b0975/**",
         "tests/helpers/ios-swift-declarations.ts"
