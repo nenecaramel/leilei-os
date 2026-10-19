@@ -20,6 +20,8 @@ test("CIMD identifiers and OAuth values are rejected by the safe logger", () => 
     redirectUri: "https://claude.ai/oauth/callback",
     authorizationCode: "authorization-code",
     accessToken: "access-token",
+    refreshToken: "private-refresh-token",
+    refreshTokenKey: "private-encryption-key",
     verifier: "pkce-verifier",
     reason: "metadata fetch failed",
   });
@@ -29,6 +31,8 @@ test("CIMD identifiers and OAuth values are rejected by the safe logger", () => 
   assert.equal(line.includes("claude.ai"), false);
   assert.equal(line.includes("authorization-code"), false);
   assert.equal(line.includes("access-token"), false);
+  assert.equal(line.includes("private-refresh-token"), false);
+  assert.equal(line.includes("private-encryption-key"), false);
   assert.equal(line.includes("pkce-verifier"), false);
   assert.match(line, /metadata fetch failed/u);
 });

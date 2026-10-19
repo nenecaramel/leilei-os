@@ -130,3 +130,45 @@ When enabled, configuration includes `OAUTH_AS_ENABLED=true`, an Auth0 public PK
 Static client authentication metadata must match the registered record exactly. The adapter preserves Auth0 as the identity/token issuer and does not replace the existing `/mcp` JWT verifier.
 
 Any change to production authorization discovery or client registration requires a controlled deployment and explicit verification of metadata, consent, callback, token exchange, and existing client connectivity.
+
+### Connector automatic renewal
+
+`OAUTH_REFRESH_TOKEN_KEY` opts the adapter into `refresh_token` / `offline_access`.
+Use a dedicated random 32-byte base64url key, identical across replicas and
+redeploys. Store it as a secret; do not reuse an internal/relay credential, log
+it, or generate a new key on startup. Without the key the adapter retains its
+existing authorization-code-only behavior. Changing the key or issuer URL
+invalidates existing connector refresh envelopes and requires authorization again.
+
+Before enabling it, verify the specific upstream Auth0 public PKCE application
+allows the refresh-token grant, the target API allows offline access, and Auth0
+refresh-token rotation/reuse detection is enabled. Do not disable expiration or
+rotation to make a smoke test pass. Preserve other application grants, callbacks,
+clients and permissions. Downstream clients must declare `refresh_token`; an
+explicit client scope allowlist must also permit `offline_access` to request it.
+
+Refresh credentials are AES-256-GCM envelopes bound to the client, subject,
+resource, audience and granted scope. Their absolute lifetime is 30 days from
+initial consent, never extended by refreshing; Auth0 can expire/revoke the
+upstream credential sooner. Auth0 owns rotation and replay/revocation decisions,
+including its configured reuse interval. The adapter does not add an independent
+refresh database or process-local grant registry. Token response `expires_in`
+uses upstream validity with time consumed in exchange/verification/code redemption
+deducted, rather than a fixed hour. Authorization response bodies remain no-store;
+upstream token JSON is bounded to 64KiB and token requests to 64KiB.
+
+All refresh requests repeat registered-client authentication, binding checks and
+new access-token verification. Unknown/tampered/expired grants and explicit
+upstream revocation fail closed. Trusted metadata/JWKS outages and upstream
+network/rate/configuration failures return 503 `temporarily_unavailable`, without
+credentials or private error details. There is no automatic upstream refresh
+retry: a response lost after Auth0 rotates is ambiguous, and recovery depends on
+Auth0's reuse interval; it can still require reauthorization. This is not a
+promise that every interruption can be recovered invisibly.
+
+After deployment, verify the exact SHA, readiness and advertised grants/scopes.
+Existing access-only authorizations cannot acquire refresh credentials magically:
+reconnect once to grant offline access. Then verify a real refresh after access
+expiry and an authenticated MCP call, without printing tokens or invoking tools
+that mutate product data. Local mocked HTTP tests do not prove the live Auth0
+configuration or claude.ai renewal policy.

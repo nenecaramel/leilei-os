@@ -1,3 +1,4 @@
+const TEST_NOW = Date.now();
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import express from "express";
@@ -69,6 +70,7 @@ async function withServer(callback: (baseUrl: string, calls: Calls) => Promise<v
     },
   });
   app.use(createOAuthAuthorizationServer({
+    now: () => TEST_NOW,
     issuer: ISSUER,
     resource: RESOURCE,
     audience: RESOURCE,
@@ -87,7 +89,7 @@ async function withServer(callback: (baseUrl: string, calls: Calls) => Promise<v
     allowedSubject: "allowed-subject",
     exchangeUpstreamCode: async ({ code }) => {
       calls.exchangedCodes.push(code);
-      return { accessToken: "auth0-access-token" };
+      return { accessToken: "auth0-access-token", expiresIn: 3600 };
     },
     fetchJwks: async (jwksUri) => {
       calls.jwksUris.push(jwksUri);
@@ -453,4 +455,17 @@ test("refetches JWKS when a signing key rotates under the same kid", async () =>
     tokenEndpoint: CHATGPT_TOKEN_ENDPOINT,
   });
   assert.equal(fetches, 2);
+});
+
+test("JWKS retrieval failure stays unavailable throughout forced-refresh cooldown", async () => {
+  const { ClientMetadataUnavailable } = await import("../src/oauth/client-registry.js");
+  let timestamp = 1_800_000_000_000, fetches = 0;
+  const cache = createJwksKeyCache({ fetchJwks: async () => { fetches++; if (fetches > 1) throw new Error("private DNS detail"); return CHATGPT_JWKS; }, now: () => timestamp });
+  await cache.getKey(CHATGPT_JWKS_URI, CHATGPT_KID);
+  await assert.rejects(cache.getKey(CHATGPT_JWKS_URI, "rotated-kid"), ClientMetadataUnavailable);
+  await assert.rejects(cache.getKey(CHATGPT_JWKS_URI, "rotated-kid"), ClientMetadataUnavailable);
+  assert.equal(fetches, 2);
+  timestamp += 11_000;
+  await assert.rejects(cache.getKey(CHATGPT_JWKS_URI, "rotated-kid"), ClientMetadataUnavailable);
+  assert.equal(fetches, 3);
 });
