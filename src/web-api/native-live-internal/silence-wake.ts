@@ -164,7 +164,7 @@ function errorRecord(
 
 function parseFireBody(value: unknown): {
   epoch_id: string;
-  slot: "post_turn_idle" | "long_idle";
+  slot: "post_turn_idle" | "long_idle" | "concern";
 } | null {
   if (
     !value
@@ -185,6 +185,7 @@ function parseFireBody(value: unknown): {
     || (
       record.slot !== "post_turn_idle"
       && record.slot !== "long_idle"
+      && record.slot !== "concern"
     )
   ) {
     return null;

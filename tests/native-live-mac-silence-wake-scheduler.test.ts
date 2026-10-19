@@ -23,7 +23,7 @@ class FakeClient implements NativeLiveMacSilenceWakeClient {
     return this.schedule;
   }
 
-  async fireSilenceWake(input: { epochId: string; slot: "post_turn_idle" | "long_idle" }) {
+  async fireSilenceWake(input: { epochId: string; slot: "post_turn_idle" | "long_idle" | "concern" }) {
     this.fired.push(input);
     if (input.slot === "post_turn_idle") this.schedule.postTurnConsumed = true;
     else this.schedule.longIdleConsumed = true;
@@ -130,4 +130,87 @@ test("local switch blocks due wake and resumes without replacing the epoch", asy
   enabled=true;
   assert.deepEqual(await scheduler.fireDue(),{outcome:"queued",slot:"post_turn_idle"});
   assert.deepEqual(client.fired,[{epochId,slot:"post_turn_idle"}]);
+});
+
+test("Mac scheduler fires a concern wake after both fixed slots are spent", async () => {
+  let now = Date.parse("2026-10-04T05:00:00.000Z");
+  const fired: unknown[] = [];
+  const schedule = {
+    epochId,
+    conversationId,
+    postTurnDueAt: "2026-10-04T01:08:00.000Z",
+    longIdleDueAt: "2026-10-04T02:40:00.000Z",
+    postTurnConsumed: true,
+    longIdleConsumed: true,
+    concernDueAt: "2026-10-04T06:00:00.000Z" as string | null,
+  };
+  const client: NativeLiveMacSilenceWakeClient = {
+    async readSilenceWakeSchedule() { return schedule; },
+    async fireSilenceWake(input) {
+      fired.push(input);
+      return { outcome: "queued", schedule: { ...schedule, concernDueAt: null } };
+    },
+  };
+  const scheduler = new NativeLiveMacSilenceWakeScheduler(client, () => now);
+  await scheduler.refresh();
+  assert.equal(scheduler.nextDeadlineAt(), Date.parse("2026-10-04T06:00:00.000Z"));
+  assert.deepEqual(await scheduler.fireDue(), { outcome: "not_due" });
+  now = Date.parse("2026-10-04T06:00:00.000Z");
+  assert.deepEqual(await scheduler.fireDue(), { outcome: "queued", slot: "concern" });
+  assert.deepEqual(fired, [{ epochId, slot: "concern" }]);
+  assert.equal(scheduler.nextDeadlineAt(), null);
+});
+
+test("an ignored fire that still looks due locally backs off instead of spinning", async () => {
+  let now = Date.parse("2026-10-04T06:00:00.000Z");
+  let calls = 0;
+  const schedule = {
+    epochId,
+    conversationId,
+    postTurnDueAt: "2026-10-04T01:08:00.000Z",
+    longIdleDueAt: "2026-10-04T02:40:00.000Z",
+    postTurnConsumed: true,
+    longIdleConsumed: true,
+    concernDueAt: "2026-10-04T05:59:59.000Z",
+  };
+  const client: NativeLiveMacSilenceWakeClient = {
+    async readSilenceWakeSchedule() { return schedule; },
+    async fireSilenceWake() {
+      calls += 1;
+      return { outcome: "ignored", reason: "slot_not_due", schedule };
+    },
+  };
+  const scheduler = new NativeLiveMacSilenceWakeScheduler(client, () => now);
+  await scheduler.refresh();
+  assert.deepEqual(await scheduler.fireDue(), {
+    outcome: "ignored", slot: "concern", reason: "slot_not_due",
+  });
+  assert.equal(scheduler.nextDeadlineAt(), now + 60_000);
+  assert.deepEqual(await scheduler.fireDue(), { outcome: "not_due" });
+  assert.equal(calls, 1);
+  now += 60_000;
+  await scheduler.fireDue();
+  assert.equal(calls, 2);
+});
+
+test("local switch also blocks concern wakes", async () => {
+  const client: NativeLiveMacSilenceWakeClient = {
+    async readSilenceWakeSchedule() {
+      return {
+        epochId, conversationId,
+        postTurnDueAt: "2026-10-04T01:08:00.000Z",
+        longIdleDueAt: "2026-10-04T02:40:00.000Z",
+        postTurnConsumed: true, longIdleConsumed: true,
+        concernDueAt: "2026-10-04T05:00:00.000Z",
+      };
+    },
+    async fireSilenceWake() { throw new Error("must not fire while paused"); },
+  };
+  const scheduler = new NativeLiveMacSilenceWakeScheduler(
+    client, () => Date.parse("2026-10-04T06:00:00.000Z"),
+    { isEnabled: () => false, watch: () => () => {} },
+  );
+  await scheduler.refresh();
+  assert.equal(scheduler.nextDeadlineAt(), null);
+  assert.deepEqual(await scheduler.fireDue(), { outcome: "not_due" });
 });

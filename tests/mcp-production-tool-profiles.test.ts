@@ -110,6 +110,7 @@ test("production public MCP defaults expose current core, device, and UI tools o
     "archive_diary",
     "list_deleted_conversation_branches",
     "archive_conversation",
+    "update_concern",
   ]) {
     assert.equal(
       names.includes(hidden),
@@ -143,6 +144,7 @@ test("production internal MCP defaults expose current advanced maintenance inven
     "read_memory_day",
     "update_memory",
     "replace_todo_paper",
+    "update_concern",
   ]) {
     assert.equal(
       names.includes(required),

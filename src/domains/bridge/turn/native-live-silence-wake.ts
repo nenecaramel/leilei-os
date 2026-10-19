@@ -3,10 +3,21 @@ import { createHash } from "node:crypto";
 import { and, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import {
-  conversationMessages,
   nativeLiveSilenceWakeReceipts,
   nativeLiveTurnPreparations,
+  type NativeLiveWakeReceiptSlot,
 } from "../../../database/schema.js";
+import {
+  concernWakeDueAt,
+  formatConcernWakeBlock,
+  isConcernWakeSlot,
+  markConcernsWoken,
+  nextConcernWakeSlot,
+  selectConversationConcerns,
+  CONCERN_LIMITS,
+  CONCERN_WAKE_SLOTS,
+  type ConcernWakeReceipt,
+} from "../concern/native-live-concern.js";
 import type {
   DrizzleNativeLiveWorkWakePublisher,
 } from "../relay/native-live-work-wake.js";
@@ -15,6 +26,11 @@ export type NativeLiveSilenceWakeSlot =
   | "post_turn_idle"
   | "long_idle";
 
+// What the Mac may ask to fire; the server maps "concern" to a bounded slot.
+export type NativeLiveWakeFireSlot =
+  | NativeLiveSilenceWakeSlot
+  | "concern";
+
 export type NativeLiveSilenceWakeSchedule = {
   epochId: string;
   conversationId: string;
@@ -22,6 +38,8 @@ export type NativeLiveSilenceWakeSchedule = {
   longIdleDueAt: string;
   postTurnConsumed: boolean;
   longIdleConsumed: boolean;
+  // Absent from older servers; null when no concern wake is pending.
+  concernDueAt?: string | null;
 };
 
 export type NativeLiveSilenceWakeIgnoredReason =
@@ -96,21 +114,41 @@ export function chooseDueSilenceWakeSlot(
   return null;
 }
 
+// Fixed slots keep priority; a due fixed wake carries due concerns itself.
+export function chooseDueWakeFireSlot(
+  schedule: NativeLiveSilenceWakeSchedule | null,
+  nowMs: number,
+): NativeLiveWakeFireSlot | null {
+  const fixed = chooseDueSilenceWakeSlot(schedule, nowMs);
+  if (fixed) return fixed;
+  const concernDue = schedule?.concernDueAt
+    ? Date.parse(schedule.concernDueAt)
+    : Number.NaN;
+  return Number.isFinite(concernDue) && nowMs >= concernDue
+    ? "concern"
+    : null;
+}
+
 export function nextSilenceWakeDeadline(
   schedule: NativeLiveSilenceWakeSchedule | null,
   nowMs: number,
 ): number | null {
-  if (!schedule || schedule.longIdleConsumed) return null;
-  const due = chooseDueSilenceWakeSlot(schedule, nowMs);
-  if (due) return nowMs;
+  if (!schedule) return null;
+  if (chooseDueWakeFireSlot(schedule, nowMs)) return nowMs;
 
   const candidates: number[] = [];
-  const longDue = Date.parse(schedule.longIdleDueAt);
-  if (Number.isFinite(longDue)) candidates.push(longDue);
-  if (!schedule.postTurnConsumed) {
-    const postDue = Date.parse(schedule.postTurnDueAt);
-    if (Number.isFinite(postDue)) candidates.push(postDue);
+  if (!schedule.longIdleConsumed) {
+    const longDue = Date.parse(schedule.longIdleDueAt);
+    if (Number.isFinite(longDue)) candidates.push(longDue);
+    if (!schedule.postTurnConsumed) {
+      const postDue = Date.parse(schedule.postTurnDueAt);
+      if (Number.isFinite(postDue)) candidates.push(postDue);
+    }
   }
+  const concernDue = schedule.concernDueAt
+    ? Date.parse(schedule.concernDueAt)
+    : Number.NaN;
+  if (Number.isFinite(concernDue)) candidates.push(concernDue);
   return candidates.length > 0 ? Math.min(...candidates) : null;
 }
 
@@ -178,6 +216,7 @@ type SilenceWakeSource = {
   providerCheckpointId: string | null;
   presentationOwnerId: string | null;
   nativeSourceRevision: string | null;
+  nativeSourceOwner: string | null;
 };
 
 export class NativeLiveSilenceWakeService {
@@ -200,7 +239,7 @@ export class NativeLiveSilenceWakeService {
   async fire(input: {
     userId: string;
     epochId: string;
-    slot: NativeLiveSilenceWakeSlot;
+    slot: NativeLiveWakeFireSlot;
   }): Promise<NativeLiveSilenceWakeFireResult> {
     const firedAt = this.now();
     const result = await this.db.transaction(
@@ -228,11 +267,39 @@ export class NativeLiveSilenceWakeService {
           input.userId,
           source,
         );
-        const dueSlot = chooseDueSilenceWakeSlot(
+        const dueSlot = chooseDueWakeFireSlot(
           schedule,
           firedAt.getTime(),
         );
-        if (dueSlot !== input.slot) {
+        const receiptSlot: NativeLiveWakeReceiptSlot | null =
+          input.slot === "concern"
+            ? nextConcernWakeSlot(
+                await this.readReceipts(
+                  transaction as SilenceWakeTransaction,
+                  input.userId,
+                  source.epochId,
+                ),
+              )
+            : input.slot;
+        if (dueSlot !== input.slot || !receiptSlot) {
+          return {
+            outcome: "ignored" as const,
+            reason: "slot_not_due" as const,
+            schedule,
+          };
+        }
+        // Every wake, fixed or concern, carries the concerns now due so a
+        // concern handled by a fixed wake never fires again on its own.
+        const carried = handedOff(source)
+          ? []
+          : (await selectConversationConcerns(transaction, {
+              userId: input.userId,
+              conversationId: source.conversationId,
+              now: firedAt,
+              pendingOnly: true,
+              dueOnly: true,
+            })).slice(0, CONCERN_LIMITS.maxConcernsPerWake);
+        if (input.slot === "concern" && carried.length === 0) {
           return {
             outcome: "ignored" as const,
             reason: "slot_not_due" as const,
@@ -282,14 +349,14 @@ export class NativeLiveSilenceWakeService {
 
         const preparationId = silenceWakePreparationId(
           input.epochId,
-          input.slot,
+          receiptSlot,
         );
         const [receipt] = await transaction
           .insert(nativeLiveSilenceWakeReceipts)
           .values({
             userId: input.userId,
             epochId: input.epochId,
-            slot: input.slot,
+            slot: receiptSlot,
             consumedAt: firedAt,
           })
           .onConflictDoNothing()
@@ -314,13 +381,13 @@ export class NativeLiveSilenceWakeService {
           if (existing?.status === "prepared") {
             return {
               outcome: "queued" as const,
-              schedule: markConsumed(schedule, input.slot),
+              schedule: markConsumed(schedule, receiptSlot),
             };
           }
           return {
             outcome: "ignored" as const,
             reason: "already_consumed" as const,
-            schedule: markConsumed(schedule, input.slot),
+            schedule: markConsumed(schedule, receiptSlot),
           };
         }
 
@@ -328,8 +395,11 @@ export class NativeLiveSilenceWakeService {
           now: firedAt,
           userActivityAt: source.userActivityAt,
         });
+        const prompt = carried.length > 0
+          ? `${marker}\n${formatConcernWakeBlock(carried)}`
+          : marker;
         const requestId = silenceWakeDeterministicUuid(
-          `silence-wake:request:${input.userId}:${input.epochId}:${input.slot}`,
+          `silence-wake:request:${input.userId}:${input.epochId}:${receiptSlot}`,
         );
         const requestHash = createHash("sha256")
           .update(
@@ -337,9 +407,9 @@ export class NativeLiveSilenceWakeService {
               version: 1,
               conversationId: source.conversationId,
               epochId: input.epochId,
-              slot: input.slot,
+              slot: receiptSlot,
               sourceHeadMessageId: source.currentHeadMessageId,
-              marker,
+              marker: prompt,
             }),
             "utf8",
           )
@@ -357,7 +427,15 @@ export class NativeLiveSilenceWakeService {
           wakeContext: {
             version: 1,
             epoch_id: input.epochId,
-            slot: input.slot,
+            slot: receiptSlot,
+            ...(carried.length > 0
+              ? {
+                  concerns: carried.map((concern) => ({
+                    id: concern.id,
+                    revision: concern.revision,
+                  })),
+                }
+              : {}),
             source_user_message_id: input.epochId,
             source_head_message_id:
               source.currentHeadMessageId,
@@ -369,15 +447,24 @@ export class NativeLiveSilenceWakeService {
           parentProviderCheckpointId: source.providerCheckpointId,
           executionSelection: null,
           attachments: [],
-          prompt: marker,
+          prompt,
           mindPrepared: true,
           status: "prepared",
           dispatchStatus: "pending",
         });
+        await markConcernsWoken(transaction, {
+          userId: input.userId,
+          concernIds: carried.map((concern) => concern.id),
+          now: firedAt,
+        });
 
         return {
           outcome: "queued" as const,
-          schedule: markConsumed(schedule, input.slot),
+          schedule: await this.scheduleForSource(
+            transaction as SilenceWakeTransaction,
+            input.userId,
+            source,
+          ),
         };
       },
       { isolationLevel: "serializable" },
@@ -396,15 +483,11 @@ export class NativeLiveSilenceWakeService {
     userId: string,
     source: SilenceWakeSource,
   ): Promise<NativeLiveSilenceWakeSchedule> {
-    const receipts = await executor
-      .select({ slot: nativeLiveSilenceWakeReceipts.slot })
-      .from(nativeLiveSilenceWakeReceipts)
-      .where(
-        and(
-          eq(nativeLiveSilenceWakeReceipts.userId, userId),
-          eq(nativeLiveSilenceWakeReceipts.epochId, source.epochId),
-        ),
-      );
+    const receipts = await this.readReceipts(
+      executor,
+      userId,
+      source.epochId,
+    );
     const consumed = new Set(receipts.map((row) => row.slot));
     const deadlines = silenceWakeDeadlines({
       epochId: source.epochId,
@@ -412,13 +495,50 @@ export class NativeLiveSilenceWakeService {
       assistantCompletedAt:
         source.assistantCompletedAt.toISOString(),
     });
-    return {
-      epochId: source.epochId,
-      conversationId: source.conversationId,
+    const fixed = {
       ...deadlines,
       postTurnConsumed: consumed.has("post_turn_idle"),
       longIdleConsumed: consumed.has("long_idle"),
     };
+    const pending = handedOff(source)
+      ? []
+      : await selectConversationConcerns(executor, {
+          userId,
+          conversationId: source.conversationId,
+          now: this.now(),
+          pendingOnly: true,
+        });
+    const concernDueAt = concernWakeDueAt({
+      pending,
+      receipts,
+      fixed,
+      assistantCompletedAt: source.assistantCompletedAt,
+    });
+    return {
+      epochId: source.epochId,
+      conversationId: source.conversationId,
+      ...fixed,
+      concernDueAt: concernDueAt?.toISOString() ?? null,
+    };
+  }
+
+  private async readReceipts(
+    executor: SilenceWakeExecutor,
+    userId: string,
+    epochId: string,
+  ): Promise<ConcernWakeReceipt[]> {
+    return executor
+      .select({
+        slot: nativeLiveSilenceWakeReceipts.slot,
+        consumedAt: nativeLiveSilenceWakeReceipts.consumedAt,
+      })
+      .from(nativeLiveSilenceWakeReceipts)
+      .where(
+        and(
+          eq(nativeLiveSilenceWakeReceipts.userId, userId),
+          eq(nativeLiveSilenceWakeReceipts.epochId, epochId),
+        ),
+      );
   }
 
   private async readSource(
@@ -436,6 +556,7 @@ export class NativeLiveSilenceWakeService {
       provider_checkpoint_id: string | null;
       presentation_owner_id: string | null;
       source_revision: string | null;
+      source_owner: string | null;
     }>(sql`
       WITH RECURSIVE latest_user AS (
         SELECT
@@ -515,7 +636,8 @@ export class NativeLiveSilenceWakeService {
         checkpoint.effective_working_directory,
         ${nativeResumeCheckpointSql("checkpoint", "tail_surface")} AS provider_checkpoint_id,
         tail_surface.provider_metadata->'native_live_presentation_owner'->>'prepareId' AS presentation_owner_id,
-        tail_surface.provider_metadata->'nativeSessionSource'->>'revision' AS source_revision
+        tail_surface.provider_metadata->'nativeSessionSource'->>'revision' AS source_revision,
+        tail_surface.provider_metadata->'nativeSessionSource'->>'owner' AS source_owner
       FROM latest_user AS source
       JOIN conversations tail_surface ON tail_surface.id = source.conversation_id AND tail_surface.user_id = ${userId}::uuid
       JOIN direct_reply AS reply ON TRUE
@@ -550,6 +672,7 @@ export class NativeLiveSilenceWakeService {
           providerCheckpointId: row.provider_checkpoint_id,
           presentationOwnerId: row.presentation_owner_id ?? null,
           nativeSourceRevision: row.source_revision ?? null,
+          nativeSourceOwner: row.source_owner ?? null,
         }
       : null;
   }
@@ -571,17 +694,24 @@ function readDatabaseTimestamp(
   return date;
 }
 
+const RECEIPT_SLOT_CODES: Record<NativeLiveWakeReceiptSlot, number> = {
+  post_turn_idle: 0x01,
+  long_idle: 0x02,
+  concern_1: 0x03,
+  concern_2: 0x04,
+  concern_3: 0x05,
+};
+
 export function silenceWakePreparationId(
   epochId: string,
-  slot: NativeLiveSilenceWakeSlot,
+  slot: NativeLiveWakeReceiptSlot,
 ): string {
   const compact = epochId.replaceAll("-", "");
   if (!/^[0-9a-fA-F]{32}$/u.test(compact)) {
     throw new Error("Silence wake epoch id must be a UUID.");
   }
   const bytes = Buffer.from(compact, "hex");
-  bytes[15] = (bytes[15] ?? 0)
-    ^ (slot === "post_turn_idle" ? 0x01 : 0x02);
+  bytes[15] = (bytes[15] ?? 0) ^ RECEIPT_SLOT_CODES[slot];
   const hex = bytes.toString("hex");
   return [
     hex.slice(0, 8),
@@ -594,7 +724,7 @@ export function silenceWakePreparationId(
 
 export function silenceWakeEpochFromPreparationId(
   preparationId: string,
-  slot: NativeLiveSilenceWakeSlot,
+  slot: NativeLiveWakeReceiptSlot,
 ): string {
   return silenceWakePreparationId(preparationId, slot);
 }
@@ -603,18 +733,28 @@ export function silenceWakeReceiptCandidatesForPreparationId(
   preparationId: string,
 ): Array<{
   epochId: string;
-  slot: NativeLiveSilenceWakeSlot;
+  slot: NativeLiveWakeReceiptSlot;
 }> {
-  return (["post_turn_idle", "long_idle"] as const).map((slot) => ({
+  return ([
+    "post_turn_idle",
+    "long_idle",
+    ...CONCERN_WAKE_SLOTS,
+  ] as const).map((slot) => ({
     epochId: silenceWakeEpochFromPreparationId(preparationId, slot),
     slot,
   }));
 }
 
+// A Native Live session handed to the official client is not ours to wake.
+function handedOff(source: SilenceWakeSource): boolean {
+  return (source.nativeSourceOwner ?? "leileios") !== "leileios";
+}
+
 function markConsumed(
   schedule: NativeLiveSilenceWakeSchedule,
-  slot: NativeLiveSilenceWakeSlot,
+  slot: NativeLiveWakeReceiptSlot,
 ): NativeLiveSilenceWakeSchedule {
+  if (isConcernWakeSlot(slot)) return { ...schedule, concernDueAt: null };
   return {
     ...schedule,
     ...(slot === "post_turn_idle"
