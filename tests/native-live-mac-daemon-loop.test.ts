@@ -639,6 +639,31 @@ test("foreground normalized events are delivered in reservation-local sequence b
   );
 });
 
+test("sparse deltas reach the relay within 100ms without waiting for turn completion", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const relay = new FakeRuntimeEventRelay();
+  let ready!: () => void, finish!: () => void;
+  const emitted = new Promise<void>(resolve => { ready = resolve; });
+  const held = new Promise<void>(resolve => { finish = resolve; });
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, {
+    async execute(_command, options) {
+      await options?.onNormalizedEvent?.({ type: "partial_text", payload: { delta: "synthetic" } } as NativeLiveNormalizedEvent);
+      ready(); await held; return success();
+    },
+  });
+  const running = loop.runOnce();
+  await emitted;
+  t.mock.timers.tick(99); await Promise.resolve();
+  assert.equal(relay.calls.some(c => c.name === "appendRuntimeEvents"), false);
+  t.mock.timers.tick(1); await Promise.resolve();
+  assert.equal(relay.calls.filter(c => c.name === "appendRuntimeEvents").length, 1,
+    "one sparse delta must not wait indefinitely for seven more events");
+  finish(); assert.equal((await running).outcome, "completed");
+  const count = relay.calls.length;
+  t.mock.timers.tick(1_000); await Promise.resolve();
+  assert.equal(relay.calls.length, count, "completed turns leave no flush timer");
+});
+
 test("foreground runtime event buffering flushes in bounded batches", async () => {
   class NineEventExecutor implements NativeLivePreparedCommandExecutor {
     async execute(
@@ -1340,7 +1365,7 @@ test("a routable Wake submits to the live SDK writer without entering legacy", a
 });
 
 for (const operation of ["edit", "retry"] as const) for (const runtime_mode of ["new", "fork"] as const) {
-  test(`${operation}/${runtime_mode} retires the old writer before the supported branch executor, even if persistent claims support`, async () => {
+  test(`${operation}/${runtime_mode} retires the old writer before opening the authorized persistent child`, async () => {
     const relay = new FakeRelay(); relay.canonicalOutcome = "completed";
     const replacement: NativeLiveRuntimeCommand = { ...command(), operation, runtime_mode,
       parent_provider_session_id: runtime_mode === "fork" ? "original-session" : null,
@@ -1350,19 +1375,35 @@ for (const operation of ["edit", "retry"] as const) for (const runtime_mode of [
     const persistent = {
       assertAccepting() { steps.push("accepting"); },
       async retire() { steps.push("retire-old"); },
-      canRoute() { assert.fail("unsupported replacement must not consult persistent admission"); },
-      async execute() { assert.fail("replacement must not enter unsupported execution lease"); },
+      canRoute(c: NativeLiveRuntimeCommand) { assert.deepEqual(c,replacement); assert.deepEqual(steps,["accepting","retire-old"]); return true; },
+      async execute(c: NativeLiveRuntimeCommand, options: { commit(result: NativeLiveRuntimeExecutionResult): Promise<unknown> }) {
+        assert.deepEqual(c,replacement); steps.push("persistent-child");
+        await options.commit(success());
+        return { result: success(), delivery: "committed", canonicalOutcome: "completed" };
+      },
     };
     const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, {
-      async execute(c) { assert.deepEqual(c, replacement); assert.deepEqual(steps,["accepting","retire-old"]);
-        steps.push("branch-execute"); return success(); },
+      async execute() { assert.fail("supported replacement must not fall back to one-shot"); },
     }, null, null, null, null, null, null, null, persistent as never);
     const outcome = await loop.runOnce();
     assert.equal(outcome.outcome, "completed");
-    assert.deepEqual(steps, ["accepting", "retire-old", "branch-execute"]);
+    assert.deepEqual(steps, ["accepting", "retire-old", "persistent-child"]);
     assert.equal(relay.calls.filter(c => c.name === "submitResult").length, 1);
   });
 }
+
+test("exact replacement cannot fall back to one-shot when persistent capacity is exhausted",async()=>{
+  const relay=new FakeRelay();
+  relay.reservation={reservationId,command:{...command(),operation:"edit",runtime_mode:"fork",
+    parent_provider_session_id:"original-session",parent_provider_checkpoint_id:"original-checkpoint"}};
+  let legacy=0;
+  const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){legacy++;return success();}},
+    null,null,null,null,null,null,null,{async retire(){},canRoute(){return false;},async execute(){assert.fail("capacity denied");}} as never);
+  const outcome=await loop.runOnce();
+  assert.equal(legacy,0,"an exact replacement must keep its promised persistent execution contract");
+  assert.equal(outcome.outcome,"completed");
+  if(outcome.outcome==="completed")assert.equal(outcome.result.status,"failure");
+});
 
 test("legacy fallback never starts if retiring the persistent writer failed",async()=>{
   const relay=new FakeRelay();let legacy=0;

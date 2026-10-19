@@ -30,3 +30,19 @@ test("unavailable relay never authorizes and caller mutation cannot retarget cap
   original.conversation_id = "changed";
   assert.equal(await gate({ phase: "input", inputId: "user-input", source: "human", providerSessionId: null }), false); assert.equal(captured, "conversation");
 });
+
+for (const operation of ["edit", "retry"] as const) for (const runtime_mode of ["new", "fork"] as const) {
+  test(`${operation}/${runtime_mode} pins the admitted child session and rejects parent/foreign callbacks`, async () => {
+    let calls = 0;
+    const replacement = { ...command, operation, runtime_mode,
+      parent_provider_session_id: runtime_mode === "fork" ? "parent" : null,
+      parent_provider_checkpoint_id: runtime_mode === "fork" ? "checkpoint" : null };
+    const gate = createNativeLiveMacExecutionAdmission({ listenerInstanceId: "listener", command: replacement,
+      relay: { async checkExecutionAdmission() { calls++; return true; } } });
+    assert.equal(await gate({ phase: "input", inputId: "user-input", source: "human", providerSessionId: "child" }), true);
+    assert.equal(await gate({ phase: "tool", inputId: "user-input", source: null, providerSessionId: "child" }), true);
+    for (const providerSessionId of ["parent", "foreign"])
+      assert.equal(await gate({ phase: "tool", inputId: "user-input", source: null, providerSessionId }), false);
+    assert.equal(calls, 2);
+  });
+}

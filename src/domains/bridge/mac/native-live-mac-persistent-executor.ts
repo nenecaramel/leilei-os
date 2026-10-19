@@ -26,8 +26,8 @@ export type NativeLiveMacPersistentExecution = Readonly<{
   canonicalOutcome?: string | null;
 }>;
 
-// One writer per conversation. Edit/retry belongs to the branch executor;
-// subsequent ordinary chat can resume its committed native session here.
+// One writer per conversation. Exact-checkpoint edits/retries replace the old
+// writer with an owned persistent child; checkpoint-less legacy forks stay one-shot.
 export class NativeLiveMacPersistentExecutor {
   private readonly routers = new Map<string, Router>();
   private readonly retiring = new Set<string>();
@@ -63,7 +63,10 @@ export class NativeLiveMacPersistentExecutor {
     let command: NativeLiveRuntimeCommand;
     try { command = parseNativeLiveRuntimeCommand(rawCommand); } catch { return false; }
     const ordinary = ["send", "wake"].includes(command.operation) && ["new", "resume"].includes(command.runtime_mode);
-    if (!ordinary || command.parent_provider_checkpoint_id === undefined
+    const replacement = ["edit", "retry"].includes(command.operation)
+      && (command.runtime_mode === "new" || command.runtime_mode === "fork"
+        && !!command.parent_provider_session_id && !!command.parent_provider_checkpoint_id);
+    if ((!ordinary && !replacement) || command.parent_provider_checkpoint_id === undefined
       || command.failed_user_message_uuids?.length) return false;
     if (command.attachments?.length && !this.input.attachmentMaterializer) return false;
     if (this.retiring.has(command.conversation_id) || this.suspended.has(command.conversation_id)) return false;

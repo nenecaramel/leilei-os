@@ -487,7 +487,9 @@ implements NativeLiveBackendRelayPort {
           WHERE user_id = ${input.userId}::uuid
             AND status = 'prepared'
             AND dispatch_status = 'pending'
-            AND (reservation_expires_at IS NULL OR reservation_expires_at <= now())
+            AND (operation <> 'wake'
+              OR dispatch_error_code IS DISTINCT FROM 'EXECUTION_START_FAILED'
+              OR updated_at <= now() - interval '3 seconds')
           ORDER BY (operation = 'wake') ASC, created_at ASC, id ASC
           FOR UPDATE SKIP LOCKED
           LIMIT 1
@@ -873,9 +875,9 @@ implements NativeLiveBackendRelayPort {
         reservedAt: null,
         // A transiently busy Wake remains a single durable pending request.
         // Back off rather than spinning on the same reservation every poll.
-        reservationExpiresAt: input.code === "EXECUTION_START_FAILED"
-          ? sql`CASE WHEN ${nativeLiveTurnPreparations.operation} = 'wake' THEN now() + interval '3 seconds' ELSE NULL END`
-          : null,
+        // Pending rows have no reservation lease. reserveNext uses this
+        // rejection's updatedAt/error code for the bounded Wake backoff.
+        reservationExpiresAt: null,
         executionStartedAt: null,
         dispatchErrorCode: input.code,
         updatedAt: sql`now()`,

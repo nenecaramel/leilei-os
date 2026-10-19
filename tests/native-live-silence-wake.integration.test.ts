@@ -4,6 +4,8 @@ import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   conversations,
+  conversationMessages,
+  nativeLiveTurnPreparations,
   nativeLiveProviderSessionCleanups,
   nativeLiveRuntimeListenerLeases,
   nativeLiveSilenceWakeReceipts,
@@ -176,7 +178,7 @@ test(
     );
     assert.match(
       shortPreparation.prompt,
-      /^\[\d{2}-\d{2} 周. \d{2}:\d{2} · wake · \+\d+m · no reply\]$/u,
+      /^\[wake · \+\d+m · no reply\]$/u,
     );
 
     const quiet = await coordinator.finalize(user.id, {
@@ -626,6 +628,14 @@ test(
       throw new Error("expected stranded prepare success");
     }
 
+    // Make "older stranded work" an explicit fixture fact, not a millisecond
+    // timestamp tie resolved by random UUID order in the latest-user query.
+    const strandedAt = new Date(Date.now() - 60_000);
+    await database.db.update(conversationMessages).set({ createdAt: strandedAt })
+      .where(eq(conversationMessages.id, stranded.command.canonical_user_message_id!));
+    await database.db.update(nativeLiveTurnPreparations).set({ createdAt: strandedAt })
+      .where(eq(nativeLiveTurnPreparations.id, stranded.command.prepare_id));
+
     const sourceRequestId = crypto.randomUUID();
     const source = await coordinator.prepare(user.id, {
       dispatch_target: "claude_code",
@@ -712,6 +722,7 @@ test(
       userId: user.id,
       listenerInstanceId: listenerId,
       dispatchTarget: "claude_code",
+      persistentSessions: true,
     });
     assert.ok(reserved);
     assert.equal(
@@ -730,6 +741,7 @@ test(
       prepareId: shortPrepareId,
     });
     assert.ok(shortPreparation);
+    assert.equal(shortPreparation.runtimeMode, "resume", "modern Wake must retain its original session");
     const quiet = await relay.submitResult({
       userId: user.id,
       listenerInstanceId: listenerId,
@@ -740,7 +752,7 @@ test(
         request_id: shortPreparation.requestId,
         conversation_id: sourceConversation.id,
         status: "success",
-        provider_session_id: "provider-stranded-wake",
+        provider_session_id: "provider-current-source",
         provider_checkpoint_id: shortPrepareId,
         normalized_events: [
           {
@@ -759,7 +771,9 @@ test(
     });
     assert.equal(quiet.ok, true);
     if (!quiet.ok) throw new Error("expected quiet wake success");
-    assert.equal(quiet.outcome, "wake_quiet");
+    assert.equal(quiet.outcome, "wake_stale", "remaining staged intent suppresses visible Wake publication");
+    assert.equal(quiet.nativeResumeCheckpointId, shortPrepareId,
+      "same-session quiet completion still commits its cursor despite older staged work");
 
     const freshRetry = await coordinator.prepare(user.id, {
       dispatch_target: "claude_code",

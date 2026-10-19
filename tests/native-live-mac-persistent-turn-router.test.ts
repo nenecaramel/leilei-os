@@ -29,11 +29,12 @@ type BindInput = (input: { phase: "queued" | "started"; commandUuid: string;
   command: NativeLiveRuntimeCommand }) => Promise<{ userMessageId: string; parentProviderCheckpointId: string | null } | null>;
 async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolean>, bindInput?: BindInput,
   callbacks?: Partial<Pick<ConstructorParameters<typeof NativeLiveMacPersistentTurnRouter>[0], "onForegroundCoverage" | "onForegroundPublished" | "onForegroundUnpublished" | "hasUnpublishedDeferred" | "outputAttachmentSender">>,
-  captureSendFileTool?: (callback: (input: {path: string; displayName: string | null}) => Promise<unknown>) => void) {
+  captureSendFileTool?: (callback: (input: {path: string; displayName: string | null}) => Promise<unknown>) => void, forkChild?: string) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "persistent-turn-router-")));
   const output = queue<Record<string, unknown>>(), inputs = queue<{ uuid: string; origin: { kind: string } }>();
   const backgroundObserved = queue<string>();
   let launches = 0, closes = 0, nextCheckpoint = 101;
+  const activeSid = forkChild ?? sid;
   let sessionOptions!: NativeLiveMacPersistentSessionOptions;
   const restored = [{ type: "user", uuid: id(500), parentUuid: null, sessionId: sid }, { type: "assistant", uuid: id(102), parentUuid: id(500), sessionId: sid }];
   let transcript: Array<Record<string, unknown>> | null = null;
@@ -57,13 +58,17 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
       return options.onBackgroundResult(frame);
     } });};
     Object.assign(configured.runtime, {
+      prepareLocalCheckpointForkImpl: async (fork: { sessionId: string; checkpointId: string }) => {
+        assert.equal(fork.sessionId, sid); assert.equal(fork.checkpointId, id(102));
+        return { sessionId: activeSid, async cleanup() {} };
+      },
       sessionMessagesImpl: async () => [{}],
-      importSessionToStoreImpl: async (_id: string, store: { append(key: unknown, entries: unknown[]): Promise<void> }) => store.append({ sessionId: sid }, (transcript ?? restored).map(entry => ({ ...entry }))),
+      importSessionToStoreImpl: async (_id: string, store: { append(key: unknown, entries: unknown[]): Promise<void> }) => store.append({ sessionId: sid }, (transcript ?? restored).map(entry => ({ ...entry, sessionId: _id }))),
       queryImpl: ({ prompt, options }: { prompt: AsyncIterable<{ uuid: string; origin: { kind: string } }>; options: typeof sdk }) => {
       launches++; sdk = options; resumes.push((options as { resume?: string }).resume ?? null); if ((options as { resume?: string }).resume) nextCheckpoint = 103;
-      transcript = (options as { resume?: string }).resume ? [...restored] : [];
+      transcript = (options as { resume?: string }).resume ? restored.map(entry => ({ ...entry, sessionId: activeSid })) : [];
       void (async () => { for await (const item of prompt) { submitted.push(item.uuid); inputs.push(item); } })();
-      output.push({ type: "system", subtype: "init", session_id: sid });
+      output.push({ type: "system", subtype: "init", session_id: activeSid });
       return { [Symbol.asyncIterator]: () => output, close() { closes++; output.end(); inputs.end(); }, async interrupt() { return { still_queued: [] }; } };
     } });
     return configured;
@@ -77,9 +82,9 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
   const run = (c: NativeLiveRuntimeCommand, extra = {}) => router.execute({ command: c, async onResult(frame) { results.push(frame.command.prepare_id); return acknowledged(frame.result.events.findLast(event => event.type === "assistant")?.uuid as string); }, ...extra });
   const finish = (uuid: string) => {
     const checkpoint = id(nextCheckpoint++);
-    if (writeTranscript) transcript?.push({ type: "assistant", uuid: checkpoint, parentUuid: transcript.at(-1)?.uuid ?? null, sessionId: sid });
-    output.push({ type: "assistant", session_id: sid, uuid: checkpoint, message: { role: "assistant", content: [{ type: "text", text: "synthetic" }] } });
-    output.push({ type: "result", subtype: "success", session_id: sid, user_message_uuid: uuid });
+    if (writeTranscript) transcript?.push({ type: "assistant", uuid: checkpoint, parentUuid: transcript.at(-1)?.uuid ?? null, sessionId: activeSid });
+    output.push({ type: "assistant", session_id: activeSid, uuid: checkpoint, message: { role: "assistant", content: [{ type: "text", text: "synthetic" }] } });
+    output.push({ type: "result", subtype: "success", session_id: activeSid, user_message_uuid: uuid });
   };
   t.after(async () => { await router.close(); await registry.closeAll(); await rm(root, { recursive: true, force: true }); });
   return { workingDirectory: root, get sessionOptions(){return sessionOptions;}, router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, backgroundFrames, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
@@ -831,3 +836,37 @@ test("source rotation during autonomous upload rejects the old segment instead o
   hold.resolve();await rejected;
   assert.deepEqual((await output.seal()).outputAttachmentIds,[]);
 });
+
+for (const operation of ["edit", "retry"] as const) {
+  test(`${operation} exact fork retains child background delivery and later sends through real registry/transport`, async t => {
+    const child = id(700);
+    const f = await fixture(t, async () => true, undefined, undefined, undefined, child);
+    const replacement = { ...command(2), operation, runtime_mode: "fork" as const, parent_provider_checkpoint_id: id(102) };
+    let admitted = 0;
+    f.setAdmission(async raw => {
+      const { parseNativeLiveExecutionAdmissionBody } = await import("../src/domains/bridge/protocol/native-live-execution-admission.js");
+      const parsed = parseNativeLiveExecutionAdmissionBody({ listener_instance_id: id(800), request_id: raw.request_id,
+        conversation_id: raw.conversation_id, runtime_mode: raw.runtime_mode, canonical_user_message_id: raw.canonical_user_message_id,
+        parent_provider_session_id: raw.parent_provider_session_id, parent_provider_checkpoint_id: raw.parent_provider_checkpoint_id });
+      assert.ok(parsed, "exercise production admission parser rather than assuming fork support");
+      admitted++; return true;
+    });
+    const running = f.run(replacement);
+    const first = (await f.inputs.next()).value!;
+    assert.equal(first.uuid, replacement.canonical_user_message_id);
+    f.finish(first.uuid); await running;
+    assert.equal(f.router.providerSessionId, child);
+    assert.equal(f.closes, 0);
+    const backgroundDone = deferred<void>();
+    f.setBackground(async () => { backgroundDone.resolve(); return acknowledged(id(104)); });
+    f.finish(id(777)); await backgroundDone.promise;
+    await f.router.settle();
+    assert.equal(f.backgroundOwners.at(-1)?.providerSessionId, child);
+    assert.equal(f.backgroundOwners.at(-1)?.source.prepareId, replacement.prepare_id);
+    const later = f.run({ ...command(3), parent_provider_session_id: child, parent_provider_checkpoint_id: id(104) });
+    f.finish((await f.inputs.next()).value!.uuid); await later;
+    assert.equal(f.launches, 1, "ordinary continuation reuses the child writer");
+    assert.equal(f.closes, 0);
+    assert.ok(admitted >= 2);
+  });
+}

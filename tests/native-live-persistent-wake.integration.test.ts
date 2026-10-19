@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import { users,conversations,nativeLiveTurnPreparations as preparations,nativeLiveRuntimeListenerLeases as leases } from "../src/database/schema.js";
 import { DrizzleNativeLiveBackendRelayRepository } from "../src/domains/bridge/relay/native-live-backend-relay.js";
@@ -27,10 +27,16 @@ test("Wake requires modern persistent session; never dispatch a fork",{skip:proc
    assert.equal(deferred,"applied");
    const [waiting]=await db.select().from(preparations).where(eq(preparations.id,id));
    assert.equal(waiting?.dispatchStatus,"pending","busy Wake must remain durable");
-   assert.ok(waiting?.reservationExpiresAt && waiting.reservationExpiresAt.getTime()>Date.now(),
-     "a retry-after is persisted to avoid an immediate polling loop");
+   assert.equal(waiting?.reservationExpiresAt,null,"pending rows must have no reservation lease");
+   assert.equal(waiting?.reservedBy,null);
+   assert.equal(waiting?.executionStartedAt,null);
+   assert.equal(waiting?.dispatchErrorCode,"EXECUTION_START_FAILED");
    assert.equal(await repository.reserveNext({userId,listenerInstanceId,persistentSessions:true}),null,
      "deferred Wake must not be reserved again before retry-after");
+   assert.equal(await repository.rejectReservation({userId,listenerInstanceId,reservationId:id,code:"EXECUTION_START_FAILED"}),"idempotent");
+   await db.update(preparations).set({updatedAt:sql`now() - interval '4 seconds'`}).where(eq(preparations.id,id));
+   assert.equal((await repository.reserveNext({userId,listenerInstanceId,persistentSessions:true}))?.prepareId,id,"same Wake becomes eligible after bounded backoff");
+   assert.equal(await repository.reserveNext({userId,listenerInstanceId,persistentSessions:true}),null,"reserved Wake cannot dispatch twice");
   }
   await db.delete(preparations).where(eq(preparations.id,id));
  }

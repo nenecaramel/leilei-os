@@ -104,7 +104,10 @@ export class NativeLiveMacPersistentTurnRouter {
     if (this.active) throw new Error("Persistent turn is active or awaiting durable acknowledgement.");
     const command = freezeCommand(parseNativeLiveRuntimeCommand(input.command));
     const ordinary = ["send", "wake"].includes(command.operation) && ["new", "resume"].includes(command.runtime_mode);
-    if (!ordinary
+    const replacement = ["edit", "retry"].includes(command.operation)
+      && (command.runtime_mode === "new" || command.runtime_mode === "fork"
+        && !!command.parent_provider_session_id && !!command.parent_provider_checkpoint_id);
+    if ((!ordinary && !replacement)
       || (command.attachments?.length && typeof input.prompt !== "string") || command.failed_user_message_uuids?.length
       || command.parent_provider_checkpoint_id === undefined) throw new Error("Unsupported command for persistent turn routing.");
     if (typeof input.onResult !== "function") throw new Error("Durable turn result sink is required.");
@@ -534,7 +537,11 @@ export class NativeLiveMacPersistentTurnRouter {
     const input = { conversationId: command.conversation_id, expectedWorkingDirectory: command.expected_working_directory, options };
     const opening = command.runtime_mode === "new"
       ? this.input.registry.openNew(input)
-      : this.input.registry.openExisting({ ...input, restore: {
+      : command.runtime_mode === "fork"
+        ? this.input.registry.openFork({ ...input, fork: {
+            sessionId: command.parent_provider_session_id!, checkpointId: command.parent_provider_checkpoint_id!,
+          } })
+        : this.input.registry.openExisting({ ...input, restore: {
           sessionId: command.parent_provider_session_id!, checkpointId: command.parent_provider_checkpoint_id!,
           inputId: slot.inputId, source: command.operation === "wake" ? "task-notification" : "human",
         } });

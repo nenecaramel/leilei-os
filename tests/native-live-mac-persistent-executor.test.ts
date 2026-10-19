@@ -95,16 +95,17 @@ test("a failure before any commit is pending: the caller submits the failure res
   assert.deepEqual([run.result.status, (run.result as { error_code?: string }).error_code], ["failure", "NO_PROVIDER_SESSION"]);
 });
 
-test("edit and retry use the branch executor while persistent admission supports only send and wake", async () => {
-  const f = fixture(async () => { assert.fail("replacement must never enter persistent SDK"); });
+test("edit and retry own a persistent child across supported new/fork modes", async () => {
   for (const operation of ["edit", "retry"] as const) for (const runtime_mode of ["new", "fork"] as const) {
+    const f = fixture(async input => { await frame(input); return {}; });
     const replacement = command({ operation, runtime_mode,
       ...(runtime_mode === "new" ? { parent_provider_session_id: null, parent_provider_checkpoint_id: null } : {}) });
-    assert.equal(f.executor.canRoute(replacement), false);
-    await assert.rejects(f.executor.execute(replacement, { async commit() { assert.fail("no replacement commit"); } }), /cannot use the persistent writer/);
+    assert.equal(f.executor.canRoute(replacement), true);
+    const result = await f.executor.execute(replacement, { async commit() { return { canonicalOutcome: "completed" }; } });
+    assert.equal(result.delivery, "committed");
+    assert.equal(f.routers.length, 1);
+    assert.equal(f.routers[0]!.closed, 0, "reply completion preserves the new writer");
   }
-  assert.equal(f.routers.length, 0);
-  assert.equal(f.executor.canRoute(command()), true, "ordinary chat remains persistent");
 });
 
 test("Wake uses the current matching writer, or restores its original SID after restart; never forks", async () => {

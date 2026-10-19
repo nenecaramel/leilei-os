@@ -111,18 +111,10 @@ test("composer typing is isolated from unrelated chat churn", () => {
     2,
   );
 
-  const runtimeStore = fs.readFileSync(
-    "ios/LeileiOS/LeileiOS/App/NativeLiveRuntimeStore.swift",
-    "utf8",
-  );
-  assert.match(
-    runtimeStore,
-    /guard changed,[\s\S]{0,160}nativeLiveBackgroundRuntimeSurfaces\[prepareID\]/,
-  );
-  assert.match(
-    runtimeStore,
-    /guard changed,[\s\S]{0,160}nativeLiveRuntimeSurface\?\.prepareID == prepareID/,
-  );
+  // Runtime refresh identity and unchanged-poll churn are exercised against
+  // the actual Swift methods in ios-runtime-delivery-latency.test.ts. Do not
+  // require the old whole-snapshot writeback syntax: it delayed streamed text
+  // behind secondary reads and could overwrite concurrent control state.
 
   const presentationStore = fs.readFileSync(
     "ios/LeileiOS/LeileiOS/App/NativeLiveConversationPresentationStore.swift",
