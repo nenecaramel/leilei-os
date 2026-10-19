@@ -33,6 +33,7 @@ export function UniverseNodePaper({
   mode,
   open,
   saving,
+  saveBlocked = false,
   errorMessage,
   triggerRef,
   revisionsAvailable,
@@ -56,6 +57,7 @@ export function UniverseNodePaper({
   mode: UniverseNodePaperMode | null;
   open: boolean;
   saving: boolean;
+  saveBlocked?: boolean;
   errorMessage?: string | null;
   triggerRef: RefObject<HTMLElement | null>;
   revisionsAvailable?: boolean;
@@ -120,7 +122,9 @@ export function UniverseNodePaper({
     setDetailOverflowOpen(false);
     setDeleteConfirmPending(false);
     if (!isCreate) createTimestampRef.current = null;
-  }, [effectiveNode, mode?.kind]);
+    // Reconciliation replaces node objects. Seed per node/mode, not per read,
+    // so a failed save cannot silently discard the editor's draft.
+  }, [effectiveNode?.id, mode?.kind]);
 
   useEffect(() => {
     const incoming = [...sources.map(sourceOptionFromSummary), ...diarySourceOptions];
@@ -180,6 +184,7 @@ export function UniverseNodePaper({
     setSourcePickerSelection((current) => current.includes(diaryId) ? current.filter((id) => id !== diaryId) : [...current, diaryId]);
   };
   const submit = () => {
+    if (saving || saveBlocked) return;
     const nextMemberships = buildMemberships();
     if (!nextMemberships) return;
     void onSave({ title: title.trim(), summary: summary.trim(), content: content.trim(), type, importance, tags: parseUniverseTags(tags), galaxies: nextMemberships, sourceDiaryIds });
@@ -208,11 +213,11 @@ export function UniverseNodePaper({
   const metadata = (
     <UniverseNodeMetadata
       galaxies={galaxies}
-      type={type as UniverseNode["type"]}
-      importance={importance}
+      type={isEdit ? type as UniverseNode["type"] : effectiveNode!.type}
+      importance={isEdit ? importance : effectiveNode!.importance ?? "normal"}
       tags={isEdit ? parseUniverseTags(tags) : (effectiveNode?.tags ?? [])}
       tagsValue={isEdit ? tags : undefined}
-      memberships={memberships}
+      memberships={isEdit ? memberships : effectiveNode!.galaxies.map((membership) => ({ id: membership.id, weightText: String(membership.weight) }))}
       editable={isEdit}
       onTypeChange={(value) => setType(value)}
       onImportanceChange={setImportance}
@@ -286,7 +291,7 @@ export function UniverseNodePaper({
   const editTopRight = (
     <div className="universe-node-paper-top-actions">
       <button type="button" className="tertiary-button" onClick={cancelEditor}>取消</button>
-      <button type="button" className="tertiary-button" disabled={saving || !title.trim() || canonicalMemberships === null} onClick={submit}>{saving ? "保存中…" : "保存"}</button>
+      <button type="button" className="tertiary-button" disabled={saving || saveBlocked || !title.trim() || canonicalMemberships === null} onClick={submit}>{saving ? "保存中…" : "保存"}</button>
     </div>
   );
 
@@ -385,7 +390,7 @@ export function UniverseNodePaper({
 
       <footer className="universe-standalone-editor-footer">
         <button className="universe-standalone-cancel" type="button" onClick={cancelEditor}>取消</button>
-        <button className="universe-standalone-primary" type="button" disabled={saving || !title.trim() || canonicalMemberships === null} onClick={submit}>{saving ? "保存中…" : isCreate ? "点亮星球" : "保存星球"}</button>
+        <button className="universe-standalone-primary" type="button" disabled={saving || saveBlocked || !title.trim() || canonicalMemberships === null} onClick={submit}>{saving ? "保存中…" : isCreate ? "点亮星球" : "保存星球"}</button>
       </footer>
     </section>
   ) : (

@@ -55,6 +55,7 @@ struct SettingsExportContent: View {
 
     @MainActor
     private func exportData() async {
+        guard !isExporting else { return }
         isExporting = true
         errorMessage = nil
         exportedDocument = nil

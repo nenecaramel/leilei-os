@@ -76,6 +76,6 @@ test("mobile editor footer keeps only text actions while edit-only destructive a
   assert.match(nodePaper, /点亮星球/);
   assert.match(nodePaper, /保存星球/);
   assert.match(nodePaper, /保存中…/);
-  assert.match(nodePaper, /disabled=\{saving \|\| !title\.trim\(\) \|\| canonicalMemberships === null\}/);
+  assert.match(nodePaper, /disabled=\{saving \|\| saveBlocked \|\| !title\.trim\(\) \|\| canonicalMemberships === null\}/);
   assert.match(nodePaper, /onClick=\{submit\}/);
 });

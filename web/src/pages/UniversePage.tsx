@@ -61,7 +61,9 @@ function UniversePageContent({ api }: { api: WebApiClient }) {
   const [notice, setNotice] = useState<UniverseNotice | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<UniverseNode | null>(null);
+  const editingVersion = useRef<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [nodeSaveConflict, setNodeSaveConflict] = useState(false);
   const [paperError, setPaperError] = useState<string | null>(null);
   const [relationEditorOpen, setRelationEditorOpen] = useState(false);
   const [relationSourceId, setRelationSourceId] = useState<string | null>(null);
@@ -149,7 +151,12 @@ function UniversePageContent({ api }: { api: WebApiClient }) {
   }, [location, selectedId, state]);
 
   async function saveNode(values: UniverseNodePaperDraft) {
-    if (saving) return;
+    if (saving || nodeSaveConflict) return;
+    if (editingNode && editingVersion.current !== service.getState()?.version) {
+      setNodeSaveConflict(true);
+      setPaperError("Universe 已发生变化。草稿已保留，请取消编辑后重新打开，再决定如何修改。");
+      return;
+    }
     setSaving(true);
     setPaperError(null);
     try {
@@ -186,7 +193,12 @@ function UniversePageContent({ api }: { api: WebApiClient }) {
         refreshFromService();
       }
     } catch (error) {
-      setPaperError(safeUniverseError(error));
+      if (isUniverseVersionConflict(error)) {
+        setNodeSaveConflict(true);
+        setPaperError("Universe 已在其他设备发生变化。草稿已保留，请取消编辑后重新打开，再决定如何修改。");
+      } else {
+        setPaperError(safeUniverseError(error));
+      }
       void reconcileAfterMutationFailure();
     } finally {
       setSaving(false);
@@ -311,7 +323,7 @@ function UniversePageContent({ api }: { api: WebApiClient }) {
         revealNodeId={revealNodeId}
         onRevealNodeHandled={() => setRevealNodeId(null)}
         onOpenNode={(nodeId) => { setPaperError(null); setSelectedId(nodeId); setPaperMode({ kind: "detail", nodeId }); setEditorOpen(true); }}
-        onPlaceNode={(position) => { setPlacementOpen(false); setPaperError(null); setPendingPosition(position); setEditingNode(null); setPaperMode({ kind: "create", position }); setMapMode({ kind: "browse" }); setEditorOpen(true); }}
+        onPlaceNode={(position) => { setNodeSaveConflict(false); setPlacementOpen(false); setPaperError(null); setPendingPosition(position); setEditingNode(null); setPaperMode({ kind: "create", position }); setMapMode({ kind: "browse" }); setEditorOpen(true); }}
         onMoveNode={async (nodeId, position) => {
           try {
             await service.updateNode(nodeId, { position }, "Universe Web 移动星球");
@@ -329,6 +341,7 @@ function UniversePageContent({ api }: { api: WebApiClient }) {
         mode={paperMode}
         open={editorOpen}
         saving={saving}
+        saveBlocked={nodeSaveConflict}
         errorMessage={paperError}
         triggerRef={paperTriggerRef}
         revisionsAvailable={selectedNode ? snapshot.revisions.some((revision) => revision.nodeId === selectedNode.id) : false}
@@ -345,15 +358,15 @@ function UniversePageContent({ api }: { api: WebApiClient }) {
             : createDiaryDetailLocation(diaryId, returnTo);
           navigateWithinApp(next, window.history.state, { resetScroll: false });
         }}
-        onRequestClose={() => { setEditorOpen(false); setPaperMode(null); setPaperError(null); return true; }}
+        onRequestClose={() => { setNodeSaveConflict(false); setEditorOpen(false); setPaperMode(null); setPaperError(null); return true; }}
         onSave={saveNode}
         onDelete={(node) => void removeNode(node)}
         onRestore={(node) => { void service.restoreLatestRevision(node.id).then(() => { showNotice("已恢复最近的认知版本。"); refreshFromService(); }).catch((error) => { showNotice(safeUniverseError(error)); void reconcileAfterMutationFailure(); }); }}
         onCreateRelation={(node) => { setSelectedId(node.id); setRelationSourceId(node.id); setPaperError(null); setMapMode({ kind: "browse" }); setRelationEditorOpen(true); setEditorOpen(false); setPaperMode(null); }}
         onDeleteRelation={(relation) => void removeRelation(relation)}
         onOpenRelatedNode={(nodeId) => { setEditorOpen(false); setPaperMode(null); setSelectedId(nodeId); setRevealNodeId(nodeId); setPaperError(null); }}
-        onEdit={(node) => { setEditingNode(node); setPaperMode({ kind: "edit", nodeId: node.id }); setEditorOpen(true); }}
-        onCancelEdit={(node) => { setEditingNode(null); setPaperMode({ kind: "detail", nodeId: node.id }); setPaperError(null); setEditorOpen(true); }}
+        onEdit={(node) => { editingVersion.current = service.getState()?.version ?? null; setNodeSaveConflict(false); setEditingNode(node); setPaperMode({ kind: "edit", nodeId: node.id }); setEditorOpen(true); }}
+        onCancelEdit={(node) => { setNodeSaveConflict(false); setEditingNode(null); setPaperMode({ kind: "detail", nodeId: node.id }); setPaperError(null); setEditorOpen(true); }}
       />
       <UniverseRelationPaper
         source={snapshot.nodes.find((node) => node.id === relationSourceId) ?? null}

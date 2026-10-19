@@ -409,7 +409,8 @@
         "tests/todo-web-search.test.ts",
         "tests/universe-monochrome-ui.test.ts",
         "tests/diary-page.test.ts",
-        "tests/global-search-page-behavior.test.ts"
+        "tests/global-search-page-behavior.test.ts",
+        "tests/universe-page-behavior.test.ts"
       ],
       "verification": [
         "web-typecheck",
@@ -444,6 +445,8 @@
         "tests/fixtures/universe-import-parser.swift",
         "tests/fixtures/ios-*.swift",
         "tests/fixtures/global-search/**",
+        "tests/fixtures/settings/**",
+        "tests/fixtures/universe/**",
         "tests/fixtures/voice-audio-approved-20261006/**",
         "tests/fixtures/spotify-result-surface-main-c47b0975/**",
         "tests/helpers/ios-swift-declarations.ts"

@@ -9,12 +9,13 @@ struct SettingsRestoreContent: View {
     @State private var selectedFileURL: URL?
     @State private var preview: SettingsRestorePreview?
     @State private var restoreResult: SettingsRestoreResult?
+    @State private var previewGeneration = 0
     @State private var isPreviewing = false
     @State private var isRestoring = false
     @State private var errorMessage: String?
 
     private var canRestore: Bool {
-        preview?.canExecute == true && !isRestoring
+        preview?.canExecute == true && !isPreviewing && !isRestoring
     }
 
     var body: some View {
@@ -25,6 +26,7 @@ struct SettingsRestoreContent: View {
                 } label: {
                     Label("Choose Export File", systemImage: "doc")
                 }
+                .disabled(isRestoring)
 
                 if let selectedFileURL {
                     LabeledContent("File", value: selectedFileURL.lastPathComponent)
@@ -147,12 +149,9 @@ struct SettingsRestoreContent: View {
         ) { result in
             switch result {
             case .success(let url):
-                selectedFileURL = url
-                preview = nil
-                restoreResult = nil
-                errorMessage = nil
+                guard let generation = prepareRestorePreview(fileURL: url) else { return }
                 Task {
-                    await previewRestore(fileURL: url)
+                    await previewRestore(fileURL: url, generation: generation)
                 }
             case .failure:
                 errorMessage = "Unable to choose this backup file."
@@ -161,10 +160,25 @@ struct SettingsRestoreContent: View {
     }
 
     @MainActor
-    private func previewRestore(fileURL: URL) async {
-        isPreviewing = true
+    private func prepareRestorePreview(fileURL: URL) -> Int? {
+        guard !isRestoring else { return nil }
+        previewGeneration += 1
+        selectedFileURL = fileURL
+        preview = nil
+        restoreResult = nil
         errorMessage = nil
-        defer { isPreviewing = false }
+        isPreviewing = true
+        return previewGeneration
+    }
+
+    @MainActor
+    private func previewRestore(fileURL: URL, generation: Int) async {
+        guard !isRestoring, generation == previewGeneration, selectedFileURL == fileURL else { return }
+        defer {
+            if generation == previewGeneration, selectedFileURL == fileURL {
+                isPreviewing = false
+            }
+        }
 
         let accessedSecurityScopedResource = fileURL.startAccessingSecurityScopedResource()
         defer {
@@ -174,8 +188,11 @@ struct SettingsRestoreContent: View {
         }
 
         do {
-            preview = try await dataService.previewRestore(fileURL: fileURL)
+            let result = try await dataService.previewRestore(fileURL: fileURL)
+            guard generation == previewGeneration, selectedFileURL == fileURL else { return }
+            preview = result
         } catch {
+            guard generation == previewGeneration, selectedFileURL == fileURL else { return }
             preview = nil
             errorMessage = settingsDataErrorMessage(error)
         }
@@ -183,7 +200,7 @@ struct SettingsRestoreContent: View {
 
     @MainActor
     private func restoreData() async {
-        guard let selectedFileURL else { return }
+        guard canRestore, let selectedFileURL, let preview else { return }
 
         isRestoring = true
         errorMessage = nil
@@ -198,12 +215,15 @@ struct SettingsRestoreContent: View {
         }
 
         do {
-            guard let preview else { return }
             restoreResult = try await dataService.executeRestore(
                 fileURL: selectedFileURL,
                 previewFingerprint: preview.previewFingerprint
             )
         } catch {
+            if case let LeileiAPIError.backend(_, code, _) = error,
+               code == "IMPORT_PREVIEW_STALE" {
+                self.preview = nil
+            }
             errorMessage = settingsDataErrorMessage(error)
         }
     }
