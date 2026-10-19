@@ -1,21 +1,30 @@
 # Claude Code handoff — native runtime reliability
 
-## Resume checkpoint (supersedes historical next steps below)
+## Final local verification checkpoint (supersedes historical next steps below)
 
-The user asked Codex to continue after this handoff was first written.
-`e598e57b` replaces the obsolete whole-snapshot source regexes with actual Swift
-unchanged-poll write-count assertions; the actual Swift harness plus original
-turn lifecycle file passed all four tests. `f7981f65` safely merges origin/main
-`fa98819e`, including #1177–#1179, without conflicts. Both are pushed.
+Codex resumed and finished implementation/verification. `e598e57b` replaces the
+obsolete snapshot regex with actual Swift unchanged-poll assertions. `f7981f65`
+integrates main `fa98819e` (#1177–#1179); `7c982896` updates baseline Wake and sheet
+test prerequisites after reproducing the same failures on unmodified main.
 
-Final verification on this integrated source is running in these logs:
-`/tmp/leileios-reliability-merged-full.log`, `-merged-typecheck.log`,
-`-merged-build.log`, `-merged-gate.log`, `-merged-xcode.log`, `-merged-db.log`.
-Full Node24 ordinary suite and Node22 production gate must be counted only from
-their completed summaries. The DB run includes all nine relevant files, including
-#1179 concerns and silence wake tests; it uses only the explicit local test DB.
-The PostgreSQL task cluster has been restarted for this validation. No PR, merge,
-deployment or daemon refresh has happened for this feature branch yet.
+Final full Node24 suite: **2934 PASS /0 FAIL /312 SKIP**, 3246 total.
+Final Node22 production gate: **724 +401 PASS**, no failures/skips.
+Integrated real PostgreSQL regression including concerns/silence Wake: **99 PASS**.
+Continuation database:27 PASS; bridge:623 PASS/8 SKIP; targeted:201 PASS;
+repeat concurrency runs:199 PASS each, twice; mapped extra gates:30 PASS.
+Typecheck/build/Xcode simulator build/db:check/diff/hygiene passed.
+Real native CLI offline fork/Cron/later-chat/idle-fire test:1 PASS (loopback model).
+Independent re-reviews found no remaining blockers in the delivered scope.
+
+Read `docs/testing/2026-10-20-native-runtime-reliability.md` for final scope and
+limits. Original authentication refresh failure root cause remains unproven;
+no token manager/replay workaround was added. Serial network overhead and
+connection-close policy remain. No real user message/model call was replayed.
+
+The next actions are PR creation, normal authorized merge if eligible, deployment
+readiness verification and safe local activation if idle. Check GitHub/current
+runtime before repeating any action. The task-only PostgreSQL cluster remains
+running until closeout. Final feature PR status supersedes these historical notes.
 
 ## Start here
 
