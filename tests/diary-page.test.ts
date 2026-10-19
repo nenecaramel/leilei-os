@@ -1128,3 +1128,44 @@ test("Diary archive rejects late details after navigation even when transport ig
     await page.cleanup();
   }
 });
+
+test("Diary list keeps the newest filter result when an aborted read settles late", async () => {
+  for (const lateOutcome of ["success", "failure"] as const) {
+    const old = deferred<unknown>();
+    const current = deferred<unknown>();
+    const calls: Request[] = [];
+    const page = await render("/diary?tag=old", {
+      request<T>(path: string, init?: RequestInit): Promise<T> {
+        calls.push({ path, init });
+        // Deliberately ignore abort, as a transport/cache can settle afterwards.
+        return (path === "/diary?tag=old" ? old.promise : current.promise) as Promise<T>;
+      },
+    });
+    try {
+      await React.act(async () => {
+        page.window.history.pushState(null, "", "/diary?tag=current");
+        page.window.dispatchEvent(new page.window.PopStateEvent("popstate"));
+      });
+      assert.equal(calls[0].init?.signal?.aborted, true);
+      assert.equal(calls.at(-1)?.path, "/diary?tag=current");
+      await React.act(async () => {
+        current.resolve({ success: true, data: { diaries: [{ ...diary, title: "Current list" }], metadata: { count: 1 } } });
+        await current.promise;
+      });
+      assert.match(page.container.textContent ?? "", /Current list/);
+      await React.act(async () => {
+        if (lateOutcome === "success") {
+          old.resolve({ success: true, data: { diaries: [{ ...diary, title: "Obsolete list" }], metadata: { count: 1 } } });
+        } else {
+          old.reject(new Error("obsolete failure"));
+        }
+        await old.promise.catch(() => undefined);
+      });
+      assert.match(page.container.textContent ?? "", /Current list/);
+      assert.doesNotMatch(page.container.textContent ?? "", /Obsolete list|Unable to read diary entries/);
+      assert.equal(page.window.location.search, "?tag=current");
+    } finally {
+      await page.cleanup();
+    }
+  }
+});

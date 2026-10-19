@@ -383,4 +383,3 @@ export function resolveLimit(limit?: number): number {
 
   return Math.min(limit, MAX_DIARY_LIMIT);
 }
-

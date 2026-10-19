@@ -7,4 +7,3 @@ export type Transaction = Parameters<Database["transaction"]>[0] extends (
   ? T
   : never;
 export type DbExecutor = Database | Transaction;
-

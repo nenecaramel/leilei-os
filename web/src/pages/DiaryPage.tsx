@@ -1,3 +1,4 @@
+import { useDiaryList } from "./diary/use-diary-list";
 import { useDiaryArchive } from "./diary/use-diary-archive";
 import { ModuleListLoading, ModuleListEmpty } from "./ModuleListState";
 import {
@@ -18,7 +19,7 @@ import {
 import { MobileDiaryRows } from "./diary/DiaryListPresentation";
 import { MobileDiaryDetail } from "./diary/DiaryDetailPresentation";
 import { MobileArchivedDiaryList, MobileArchivedDiaryDetail } from "./diary/DiaryArchivePresentation";
-import type { DiaryEntry, LoadState, DetailState } from "./diary/diary-page-types";
+import type { DiaryEntry, DetailState } from "./diary/diary-page-types";
 import { isSearchLocation, navigateWithinApp } from "./app-navigation";
 import { consumeQuickCreateTarget } from "./quick-create";
 import {
@@ -34,8 +35,6 @@ import {
 } from "./diary-filter-history";
 import {
   buildDiaryListRequest,
-  createLatestDiaryRequestTracker,
-  settleLatestDiaryRequest,
 } from "./diary-list-request";
 import {
   EMPTY_DIARY_FILTERS,
@@ -57,10 +56,6 @@ import {
   saveDiaryScrollPosition,
 } from "./diary-scroll-restoration";
 
-type DiaryListResponse = {
-  success: true;
-  data: { diaries: DiaryEntry[]; metadata: { count: number } };
-};
 type DiaryEntryResponse = { success: true; data: DiaryEntry };
 
 function getToday(): string {
@@ -151,14 +146,11 @@ export function DiaryPageContent({
   const [detailState, setDetailState] = useState<DetailState>(
     () => initialLocation().diaryId ? "loading" : "idle",
   );
-  const [state, setState] = useState<LoadState>({ status: "loading" });
   const [reloadKey, setReloadKey] = useState(0);
   const [archiveReloadKey, setArchiveReloadKey] = useState(0);
   const [detailReloadKey, setDetailReloadKey] = useState(0);
   const { archivedState, setArchivedState, archivedDetailState, setArchivedDetailState, archivedDiary, setArchivedDiary } =
     useDiaryArchive({ api, isArchived, archiveReloadKey, archivedDetailLocation, isMobileRef });
-  const tracker = useRef(createLatestDiaryRequestTracker());
-  const listController = useRef<AbortController | null>(null);
   const listAvailableRef = useRef(false);
   const loadedListUrlRef = useRef("");
   const pendingScrollRestore = useRef<number | null>(null);
@@ -283,12 +275,6 @@ export function DiaryPageContent({
   const moodDebouncer = useRef<
     ReturnType<typeof createDiaryFilterDebouncer> | null
   >(null);
-
-  function invalidateList(): void {
-    tracker.current.invalidate();
-    listController.current?.abort();
-    listController.current = null;
-  }
 
   function commitFilters(
     next: DiaryFilters,
@@ -426,75 +412,10 @@ export function DiaryPageContent({
     invalidateList();
   }, []);
 
-  useEffect(() => {
-    const listUrl = buildDiaryListRequest(filters).url;
-
-    if (isDetail) {
-      if (
-        !isMobileRef.current ||
-        !listAvailableRef.current ||
-        loadedListUrlRef.current !== listUrl
-      ) {
-        invalidateList();
-      }
-      return;
-    }
-
-    if (isArchived || isArchivedDetail) {
-      invalidateList();
-      return;
-    }
-
-    if (
-      isMobileRef.current &&
-      listAvailableRef.current &&
-      loadedListUrlRef.current === listUrl
-    ) {
-      const position = pendingScrollRestore.current;
-      pendingScrollRestore.current = null;
-      if (position !== null) {
-        requestAnimationFrame(() => window.scrollTo({ top: position }));
-      }
-      return;
-    }
-
-    const controller = new AbortController();
-    listController.current = controller;
-    const ticket = tracker.current.begin();
-    setState({ status: "loading" });
-    void settleLatestDiaryRequest({
-      request: api.request<DiaryListResponse>(
-        listUrl,
-        { signal: controller.signal },
-      ),
-      ticket,
-      signal: controller.signal,
-      onSuccess: (response) => {
-        listAvailableRef.current = true;
-        loadedListUrlRef.current = listUrl;
-        setState({
-          status: "ready",
-          diaries: response.data.diaries,
-          count: response.data.metadata.count,
-        });
-        const position = pendingScrollRestore.current;
-        pendingScrollRestore.current = null;
-        if (position !== null) {
-          requestAnimationFrame(() => {
-            window.scrollTo({ top: position });
-          });
-        }
-      },
-      onError: () => setState({ status: "error" }),
-    }).finally(() => {
-      if (listController.current === controller) listController.current = null;
-    });
-    return () => {
-      tracker.current.invalidate();
-      controller.abort();
-      if (listController.current === controller) listController.current = null;
-    };
-  }, [api, filters, isArchived, isArchivedDetail, isDetail, reloadKey]);
+  const { state, setState, invalidateList } = useDiaryList({
+    api, filters, isArchived, isArchivedDetail, isDetail, reloadKey,
+    isMobileRef, listAvailableRef, loadedListUrlRef, pendingScrollRestore,
+  });
 
   useEffect(() => {
     const id = location.diaryId;

@@ -26,4 +26,3 @@ export class DiaryDomainError extends Error {
     this.name = "DiaryDomainError";
   }
 }
-
