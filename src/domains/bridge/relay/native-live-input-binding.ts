@@ -4,6 +4,7 @@ import { conversationMessages, nativeLiveTurnPreparations } from "../../../datab
 import type { NativeLiveExecutionAdmission } from "../protocol/native-live-execution-admission.js";
 import { hashJson } from "../turn/turn-repository/records.js";
 import { nativeResumeCheckpointSql } from "../turn/native-live-resume-checkpoint.js";
+import { nativeContinuationBinding } from "../../conversation/native-session-continuation-repository.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 export type NativeLiveInputBindingRequest = NativeLiveExecutionAdmission & { phase: "queued" | "started" };
@@ -51,8 +52,9 @@ export async function bindNativeLiveInput(db: Database, input: NativeLiveInputBi
       || !p.canonicalUserMessageId || p.canonicalUserMessageId !== input.canonicalUserMessageId
       || p.parentProviderSessionId !== input.parentProviderSessionId || !p.reservationExpiresAt
       || p.reservationExpiresAt.getTime() <= Date.now()) return null;
-    const [c] = await tx.execute<{ head: string | null; revision: string | null }>(sql`
-      SELECT current_head_message_id::text AS head, provider_metadata->'nativeSessionSource'->>'revision' AS revision
+    const [c] = await tx.execute<{ head: string | null; revision: string | null; metadata: Record<string, unknown> }>(sql`
+      SELECT current_head_message_id::text AS head, provider_metadata->'nativeSessionSource'->>'revision' AS revision,
+        provider_metadata AS metadata
       FROM conversations WHERE user_id=${input.userId}::uuid AND id=${p.conversationId}::uuid
         AND origin='native_live' AND lifecycle_status='active'
         AND coalesce(provider_metadata->'nativeSessionSource'->>'owner','leileios')='leileios'
@@ -103,15 +105,26 @@ export async function bindNativeLiveInput(db: Database, input: NativeLiveInputBi
         )) AS safe
     `);
     if (!suffix?.safe) return null;
-    const [cp] = await tx.execute<{ checkpoint: string | null; session: string; cwd: string | null }>(sql`
-      SELECT ${nativeResumeCheckpointSql("cp", "c", false)} AS checkpoint,cp.provider_session_id AS session,cp.effective_working_directory AS cwd
+    const [cp] = await tx.execute<{ checkpoint: string | null; baseCheckpoint: string | null; session: string; cwd: string | null }>(sql`
+      SELECT ${nativeResumeCheckpointSql("cp", "c", false)} AS checkpoint,cp.provider_checkpoint_id AS "baseCheckpoint",
+        cp.provider_session_id AS session,cp.effective_working_directory AS cwd
       FROM conversation_provider_session_checkpoints cp JOIN conversations c ON c.id=cp.conversation_id AND c.user_id=cp.user_id
       WHERE cp.user_id=${input.userId}::uuid AND cp.conversation_id=${p.conversationId}::uuid
         AND cp.canonical_message_id=${c.head}::uuid AND cp.provider='claude_code' LIMIT 1
     `);
-    if (p.runtimeMode === "resume" && (!cp || cp.session !== p.parentProviderSessionId || cp.cwd !== p.expectedWorkingDirectory || !cp.checkpoint)) return null;
+    // A Desktop handoff is an execution anchor, not an imported UI row. At
+    // that anchor its checkpoint supersedes the older canonical checkpoint;
+    // only a native tail based on that same checkpoint may advance it.
+    const source = nativeContinuationBinding(c.metadata);
+    const atHandoff = source?.headMessageId === c.head && source.owner === "leileios";
+    const cursor = atHandoff && (!cp || cp.baseCheckpoint !== source.checkpointId)
+      ? { checkpoint: source.checkpointId, session: source.sessionId, cwd: source.effectiveWorkingDirectory }
+      : cp;
+    if (atHandoff && (!cp || cp.baseCheckpoint !== source.checkpointId)
+      && p.parentProviderCheckpointId !== source.checkpointId) return null;
+    if (p.runtimeMode === "resume" && (!cursor || cursor.session !== p.parentProviderSessionId || cursor.cwd !== p.expectedWorkingDirectory || !cursor.checkpoint)) return null;
     if (p.runtimeMode === "new" && (c.head !== null || u.parentMessageId !== null)) return null;
-    let startedCheckpoint = cp?.checkpoint ?? null;
+    let startedCheckpoint = cursor?.checkpoint ?? null;
     if (input.phase === "started") {
       const [busy] = await tx.execute(sql`SELECT 1 FROM native_live_runtime_events e
         JOIN native_live_turn_preparations source ON source.id=e.prepare_id AND source.user_id=e.user_id

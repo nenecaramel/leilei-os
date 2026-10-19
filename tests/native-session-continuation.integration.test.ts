@@ -43,10 +43,66 @@ test('continuation attaches an empty UI and first send resumes the exact native 
     parentProviderSessionId: f.input.sessionId, parentProviderCheckpointId: f.input.checkpointId };
   assert.equal(await checkNativeLiveExecutionAdmission(f.db, admission), true);
   assert.equal(await checkNativeLiveExecutionAdmission(f.db, { ...admission, parentProviderCheckpointId: randomUUID() }), false);
+  const { bindNativeLiveInput } = await import('../src/domains/bridge/relay/native-live-input-binding.js');
+  const expectedBinding = { userMessageId: p.canonical_user_message_id, parentProviderCheckpointId: f.input.checkpointId };
+  assert.deepEqual(await bindNativeLiveInput(f.db, { ...admission, phase: 'queued' }), expectedBinding);
+  assert.deepEqual(await bindNativeLiveInput(f.db, { ...admission, phase: 'started' }), expectedBinding);
+  assert.deepEqual(await bindNativeLiveInput(f.db, { ...admission, phase: 'started' }), expectedBinding);
+  assert.equal(await checkNativeLiveExecutionAdmission(f.db, admission), true);
+  assert.equal(await f.count(), 1, 'binding must not import history or create synthetic checkpoint messages');
+  const completed = await new NativeLiveBackendTurnCoordinator(port).finalize(f.input.userId, {
+    protocol_version: 4, prepare_id: p.id, request_id: p.request_id, conversation_id: f.input.conversationId,
+    status: 'success', provider_session_id: f.input.sessionId, provider_checkpoint_id: randomUUID(),
+    effective_working_directory: f.input.effectiveWorkingDirectory,
+    normalized_events: [{ type: 'text', payload: { text: 'synthetic reply' } }],
+  });
+  assert.equal(completed.outcome, 'completed');
+  const next = await port.prepareSend({ prepareId: randomUUID(), userId: f.input.userId, requestId: randomUUID(),
+    conversationId: f.input.conversationId, expectedHeadMessageId: completed.assistantMessageId,
+    text: 'synthetic second input', attachmentIds: [], executionSelection: null });
+  assert.equal(next.ok, true);
   await f.db.update(nativeLiveRuntimeListenerLeases).set({ leaseExpiresAt: new Date(0) }).where(eq(nativeLiveRuntimeListenerLeases.userId, f.input.userId));
   assert.equal(await checkNativeLiveExecutionAdmission(f.db, admission), false);
   await assert.rejects(f.attach(), { code: 'NATIVE_CONVERSATION_BUSY' });
 }));
+
+test('continuation input binding keeps exact identity, source and lease fences before and after queueing', { skip: !enabled }, async t => {
+  const { bindNativeLiveInput } = await import('../src/domains/bridge/relay/native-live-input-binding.js');
+  for (const phase of ['queued', 'started'] as const) {
+    for (const invalid of ['session', 'checkpoint', 'cwd', 'anchor', 'owner', 'revision', 'listener', 'expiry'] as const) {
+      await t.test(`${phase}: rejects changed ${invalid}`, async () => fixture(async f => {
+        await f.attach();
+        const port = new DrizzleNativeLiveBackendTurnPort(f.db);
+        const prepared = await port.prepareSend({ prepareId: randomUUID(), userId: f.input.userId, requestId: randomUUID(),
+          conversationId: f.input.conversationId, expectedHeadMessageId: null, text: 'synthetic input', attachmentIds: [], executionSelection: null });
+        assert.equal(prepared.ok, true);
+        const [p] = await f.db.select().from(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.conversationId, f.input.conversationId));
+        const listener = randomUUID(), later = new Date(Date.now() + 600_000);
+        await f.db.insert(nativeLiveRuntimeListenerLeases).values({ userId: f.input.userId, dispatchTarget: 'claude_code', listenerInstanceId: listener, leaseExpiresAt: later });
+        await f.db.update(nativeLiveTurnPreparations).set({ dispatchStatus: 'executing', executionStartedAt: new Date(), reservedBy: listener,
+          reservedAt: new Date(), reservationExpiresAt: later }).where(eq(nativeLiveTurnPreparations.id, p.id));
+        const admission = { userId: f.input.userId, listenerInstanceId: listener, reservationId: p.id, requestId: p.requestId,
+          conversationId: f.input.conversationId, runtimeMode: 'resume' as const, canonicalUserMessageId: p.canonicalUserMessageId,
+          parentProviderSessionId: f.input.sessionId, parentProviderCheckpointId: f.input.checkpointId };
+        if (phase === 'started') assert.ok(await bindNativeLiveInput(f.db, { ...admission, phase: 'queued' }));
+        const [c] = await f.db.select().from(conversations).where(eq(conversations.id, f.input.conversationId));
+        if (invalid === 'listener' || invalid === 'expiry') {
+          await f.db.update(nativeLiveRuntimeListenerLeases).set(invalid === 'listener'
+            ? { listenerInstanceId: randomUUID() } : { leaseExpiresAt: new Date(0) }).where(eq(nativeLiveRuntimeListenerLeases.userId, f.input.userId));
+        } else {
+          const field = { session: 'sessionId', checkpoint: 'checkpointId', cwd: 'effectiveWorkingDirectory', anchor: 'headMessageId', owner: 'owner', revision: 'revision' }[invalid];
+          const value = invalid === 'cwd' ? '/synthetic/other' : invalid === 'owner' ? 'desktop' : invalid === 'revision' ? rev(99) : randomUUID();
+          // Revision rotation before queueing alone is legitimate; changing the
+          // source checkpoint at the same time proves this command is stale.
+          const changed = { ...c.providerMetadata.nativeSessionSource, [field]: value,
+            ...(invalid === 'revision' && phase === 'queued' ? { checkpointId: randomUUID() } : {}) };
+          await f.db.update(conversations).set({ providerMetadata: { ...c.providerMetadata, nativeSessionSource: changed } }).where(eq(conversations.id, f.input.conversationId));
+        }
+        assert.equal(await bindNativeLiveInput(f.db, { ...admission, phase }), null);
+      }));
+    }
+  }
+});
 
 test('empty continuation release and reacquire are idempotent, CAS fenced, and preserve native ancestry', { skip: !enabled }, async () => fixture(async f => {
   await f.attach();
@@ -60,6 +116,40 @@ test('empty continuation release and reacquire are idempotent, CAS fenced, and p
   await assert.rejects(f.api.releaseNativeContinuation(f.db, release), { code: 'STALE_NATIVE_PROJECTION' });
   await assert.rejects(f.attach({ sessionId: randomUUID(), expectedRevision: (await f.state()).expectedRevision }), { code: 'EXPLICIT_BRANCH_SELECTION_REQUIRED' });
   await assert.rejects(f.attach({ conversationId: randomUUID() }), { code: 'NATIVE_SESSION_ALREADY_ATTACHED' });
+}));
+
+test('a verified quiet tail on the current handoff checkpoint remains the first send cursor', { skip: !enabled }, async () => fixture(async f => {
+  await f.attach();
+  const u = randomUUID(), a = randomUUID(), tail = randomUUID(), owner = randomUUID();
+  await f.db.insert(conversationMessages).values([
+    { id: u, userId: f.input.userId, conversationId: f.input.conversationId, role: 'user', status: 'completed' },
+    { id: a, userId: f.input.userId, conversationId: f.input.conversationId, parentMessageId: u, role: 'assistant', status: 'completed' },
+  ]);
+  const [c] = await f.db.select().from(conversations).where(eq(conversations.id, f.input.conversationId));
+  const source = { ...c.providerMetadata.nativeSessionSource, headMessageId: a };
+  await f.db.update(conversations).set({ currentHeadMessageId: a, providerMetadata: { ...c.providerMetadata,
+    nativeSessionSource: source, native_live_presentation_owner: { prepareId: owner, anchorHeadMessageId: a } } }).where(eq(conversations.id, f.input.conversationId));
+  await f.db.insert(conversationProviderSessionCheckpoints).values({ userId: f.input.userId, conversationId: f.input.conversationId,
+    canonicalMessageId: a, provider: 'claude_code', providerSessionId: f.input.sessionId, providerCheckpointId: f.input.checkpointId,
+    effectiveWorkingDirectory: f.input.effectiveWorkingDirectory, runtimeMetadata: { native_live_resume_tail: {
+      canonical_message_id: a, provider_session_id: f.input.sessionId, base_checkpoint_id: f.input.checkpointId,
+      checkpoint_id: tail, cwd: f.input.effectiveWorkingDirectory, source_revision: source.revision, presentation_owner_id: owner,
+    } } });
+  const prepared = await new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.db)).prepare(f.input.userId,
+    { request_id: randomUUID(), conversation_id: f.input.conversationId, operation: 'send', dispatch_target: 'claude_code',
+      expected_head_message_id: a, text: 'synthetic after quiet' });
+  assert.ok(prepared.ok, JSON.stringify(prepared));
+  assert.equal(prepared.command.parent_provider_checkpoint_id, tail);
+  const listener = randomUUID(), later = new Date(Date.now() + 600_000), command = prepared.command;
+  await f.db.insert(nativeLiveRuntimeListenerLeases).values({ userId: f.input.userId, dispatchTarget: 'claude_code', listenerInstanceId: listener, leaseExpiresAt: later });
+  await f.db.update(nativeLiveTurnPreparations).set({ dispatchStatus: 'executing', executionStartedAt: new Date(), reservedBy: listener,
+    reservedAt: new Date(), reservationExpiresAt: later }).where(eq(nativeLiveTurnPreparations.id, command.prepare_id));
+  const { bindNativeLiveInput } = await import('../src/domains/bridge/relay/native-live-input-binding.js');
+  const admission = { userId: f.input.userId, listenerInstanceId: listener, reservationId: command.prepare_id, requestId: command.request_id,
+    conversationId: f.input.conversationId, runtimeMode: 'resume' as const, canonicalUserMessageId: command.canonical_user_message_id,
+    parentProviderSessionId: f.input.sessionId, parentProviderCheckpointId: tail };
+  for (const phase of ['queued', 'started'] as const) assert.deepEqual(await bindNativeLiveInput(f.db, { ...admission, phase }),
+    { userMessageId: command.canonical_user_message_id, parentProviderCheckpointId: tail });
 }));
 
 test('handoff follows a finalized local fork without importing its transcript and retains the canonical rows', { skip: !enabled }, async () => fixture(async f => {
@@ -123,6 +213,16 @@ test('latest handoff anchor is immutable while a subsequent local turn forks the
     operation: 'send', dispatch_target: 'claude_code', expected_head_message_id: oldReply, text: 'new local turn' });
   assert.ok(prepared.ok, JSON.stringify(prepared));
   assert.equal(prepared.command.runtime_mode, 'resume'); assert.equal(prepared.command.parent_provider_checkpoint_id, desktopCheckpoint);
+  const command = prepared.command, listener = randomUUID(), later = new Date(Date.now() + 600_000);
+  await f.db.insert(nativeLiveRuntimeListenerLeases).values({ userId: f.input.userId, dispatchTarget: 'claude_code', listenerInstanceId: listener, leaseExpiresAt: later });
+  await f.db.update(nativeLiveTurnPreparations).set({ dispatchStatus: 'executing', executionStartedAt: new Date(), reservedBy: listener,
+    reservedAt: new Date(), reservationExpiresAt: later }).where(eq(nativeLiveTurnPreparations.id, command.prepare_id));
+  const { bindNativeLiveInput } = await import('../src/domains/bridge/relay/native-live-input-binding.js');
+  const admission = { userId: f.input.userId, listenerInstanceId: listener, reservationId: command.prepare_id, requestId: command.request_id,
+    conversationId: f.input.conversationId, runtimeMode: 'resume' as const, canonicalUserMessageId: command.canonical_user_message_id,
+    parentProviderSessionId: f.input.sessionId, parentProviderCheckpointId: desktopCheckpoint };
+  for (const phase of ['queued', 'started'] as const) assert.deepEqual(await bindNativeLiveInput(f.db, { ...admission, phase }),
+    { userMessageId: command.canonical_user_message_id, parentProviderCheckpointId: desktopCheckpoint });
 }));
 
 test('racing initial attachment and lost-ack retries create one empty conversation without duplicate messages', { skip: !enabled }, async () => fixture(async f => {
