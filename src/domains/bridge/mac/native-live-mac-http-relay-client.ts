@@ -1,4 +1,24 @@
-import { backgroundIdentity, backgroundResult, type NativeLiveBackgroundPrepare, type NativeLiveBackgroundSubmit, type NativeLiveBackgroundPrepared, type NativeLiveBackgroundAck } from "../protocol/native-live-background-result.js";
+import {
+  NativeLiveMacRelayHttp,
+  awaitRelayDeadline,
+} from "./native-live-mac-relay-http.js";
+import {
+  parseAttachmentDescriptor,
+  readStringRecord,
+  parseSilenceWakeSchedule,
+  readRecord,
+  abortedInteractionError,
+  isAbortedInteraction,
+  isRelayPayloadTooLarge,
+} from "./native-live-mac-relay-response.js";
+import {
+  backgroundIdentity,
+  backgroundResult,
+  type NativeLiveBackgroundPrepare,
+  type NativeLiveBackgroundSubmit,
+  type NativeLiveBackgroundPrepared,
+  type NativeLiveBackgroundAck,
+} from "../protocol/native-live-background-result.js";
 import { requireUuid } from "../protocol/runtime-protocol/parsing.js";
 import { parseNativeLiveExecutionAdmissionBody } from "../protocol/native-live-execution-admission.js";
 import { randomUUID } from "node:crypto";
@@ -28,18 +48,10 @@ import type {
 
 type FetchLike = typeof fetch;
 
-export class NativeLiveMacHttpRelayClient
+export class NativeLiveMacHttpRelayClient extends NativeLiveMacRelayHttp
 implements NativeLiveMacDaemonRelayClient {
-  private readonly baseUrl: string;
-
-  constructor(
-    baseUrl: string,
-    private readonly token: string,
-    private readonly fetchImpl: FetchLike = fetch,
-  ) {
-    this.baseUrl = baseUrl.replace(/\/+$/u, "");
-    if (!this.baseUrl) throw new Error("Native live relay base URL is required.");
-    if (!token.trim()) throw new Error("Native live relay token is required.");
+  constructor(baseUrl: string, token: string, fetchImpl: FetchLike = fetch) {
+    super(baseUrl, token, fetchImpl);
   }
 
   async createAttachmentUploadSlot(input: {
@@ -164,7 +176,6 @@ implements NativeLiveMacDaemonRelayClient {
       attachment,
     };
   }
-
 
   async reserveSemanticScoring(input: {
     listenerInstanceId: string;
@@ -1003,310 +1014,4 @@ implements NativeLiveMacDaemonRelayClient {
       },
     );
   }
-
-  private async postRetryableBounded(
-    path: string,
-    body: unknown,
-    maxAttempts: number,
-    signal: AbortSignal | null = null,
-  ): Promise<unknown> {
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      try {
-        return await this.post(path, body, signal);
-      } catch (error) {
-        if (
-          signal?.aborted || !isTransientRelayWaitError(error)
-          || attempt >= maxAttempts
-        ) {
-          throw error;
-        }
-        await delayRelayRetry(
-          Math.min(250 * 2 ** (attempt - 1), 1_000),
-          signal,
-        );
-      }
-    }
-    throw new Error("Native live relay retry budget exhausted.");
-  }
-
-  private async postRetryable(
-    path: string,
-    body: unknown,
-  ): Promise<unknown> {
-    let attempt = 0;
-    while (true) {
-      try {
-        return await this.post(path, body);
-      } catch (error) {
-        if (!isTransientRelayWaitError(error)) {
-          throw error;
-        }
-        attempt += 1;
-        await delayRelayRetry(
-          Math.min(250 * 2 ** Math.min(attempt - 1, 4), 3_000),
-          null,
-        );
-      }
-    }
-  }
-
-  private async postWait(
-    path: string,
-    body: unknown,
-    signal: AbortSignal | null = null,
-  ): Promise<unknown> {
-    let attempt = 0;
-    while (true) {
-      if (signal?.aborted) {
-        throw new DOMException("Aborted", "AbortError");
-      }
-      try {
-        return await this.post(path, body, signal);
-      } catch (error) {
-        if (!isTransientRelayWaitError(error) || signal?.aborted) {
-          throw error;
-        }
-        attempt += 1;
-        await delayRelayRetry(
-          Math.min(250 * 2 ** Math.min(attempt - 1, 4), 3_000),
-          signal,
-        );
-      }
-    }
-  }
-
-  private async post(
-    path: string,
-    body: unknown,
-    signal: AbortSignal | null = null,
-  ): Promise<unknown> {
-    const response = await this.fetchImpl(
-      `${this.baseUrl}/internal/native-live-relay${path}`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${this.token}`,
-          "content-type": "application/json",
-          connection: "close",
-        },
-        body: JSON.stringify(body),
-        ...(signal ? { signal } : {}),
-      },
-    );
-
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch (error) {
-      const invalidJson = error instanceof SyntaxError;
-      throw Object.assign(new Error("Native live relay returned malformed JSON."), {
-        httpStatus: response.status,
-        relayPath: path,
-        relayCode: invalidJson
-          ? "RELAY_RESPONSE_INVALID_JSON"
-          : "RELAY_RESPONSE_BODY_UNAVAILABLE",
-        // Whitelist the type only. Parse/transport messages can contain body
-        // fragments, credentials or transcript text and must not reach logs.
-        responseErrorName: invalidJson
-          ? "SyntaxError"
-          : error instanceof TypeError ? "TypeError" : "Error",
-      });
-    }
-
-    const record = readRecord(payload);
-    if (!response.ok || record.success !== true) {
-      const error =
-        record.error
-        && typeof record.error === "object"
-        && !Array.isArray(record.error)
-          ? record.error as Record<string, unknown>
-          : {};
-      throw Object.assign(
-        new Error("Native live relay request failed."),
-        {
-          relayCode:
-            typeof error.code === "string"
-              ? error.code
-              : null,
-          relayMessage:
-            typeof error.message === "string"
-            && error.message.trim()
-              ? error.message
-              : null,
-          finalizeCode:
-            typeof error.finalizeCode === "string"
-              ? error.finalizeCode
-              : null,
-          httpStatus: response.status,
-        },
-      );
-    }
-    return record.data;
-  }
-}
-
-function parseAttachmentDescriptor(
-  value: unknown,
-): {
-  attachmentId: string;
-  filename: string;
-  mimeType: string;
-  sizeBytes: number;
-  sha256: string;
-  kind: "image" | "file";
-} {
-  const attachment = readRecord(value);
-  if (
-    typeof attachment.attachmentId !== "string"
-    || typeof attachment.filename !== "string"
-    || typeof attachment.mimeType !== "string"
-    || typeof attachment.sizeBytes !== "number"
-    || typeof attachment.sha256 !== "string"
-    || (
-      attachment.kind !== "image"
-      && attachment.kind !== "file"
-    )
-  ) {
-    throw new Error(
-      "Native live attachment descriptor is invalid.",
-    );
-  }
-  return {
-    attachmentId: attachment.attachmentId,
-    filename: attachment.filename,
-    mimeType: attachment.mimeType,
-    sizeBytes: attachment.sizeBytes,
-    sha256: attachment.sha256,
-    kind: attachment.kind,
-  };
-}
-
-function readStringRecord(
-  value: unknown,
-): Record<string, string> {
-  const record = readRecord(value);
-  return Object.fromEntries(
-    Object.entries(record).map(([key, field]) => {
-      if (typeof field !== "string") {
-        throw new Error(
-          "Native live attachment slot header is invalid.",
-        );
-      }
-      return [key, field];
-    }),
-  );
-}
-
-function parseSilenceWakeSchedule(
-  value: unknown,
-): NativeLiveSilenceWakeSchedule {
-  const record = readRecord(value);
-  if (
-    typeof record.epochId !== "string"
-    || typeof record.conversationId !== "string"
-    || typeof record.postTurnDueAt !== "string"
-    || typeof record.longIdleDueAt !== "string"
-    || typeof record.postTurnConsumed !== "boolean"
-    || typeof record.longIdleConsumed !== "boolean"
-    || !Number.isFinite(Date.parse(record.postTurnDueAt))
-    || !Number.isFinite(Date.parse(record.longIdleDueAt))
-  ) {
-    throw new Error(
-      "Native live silence wake schedule is invalid.",
-    );
-  }
-  return {
-    epochId: record.epochId,
-    conversationId: record.conversationId,
-    postTurnDueAt: record.postTurnDueAt,
-    longIdleDueAt: record.longIdleDueAt,
-    postTurnConsumed: record.postTurnConsumed,
-    longIdleConsumed: record.longIdleConsumed,
-  };
-}
-
-function readRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Native live relay response is invalid.");
-  }
-  return value as Record<string, unknown>;
-}
-
-function abortedInteractionError(): Error {
-  return Object.assign(
-    new Error("Native live runtime interaction was aborted."),
-    { runtimeCode: "ABORTED" },
-  );
-}
-
-function isAbortedInteraction(error: unknown): boolean {
-  return (
-    typeof error === "object"
-    && error !== null
-    && "runtimeCode" in error
-    && (error as { runtimeCode?: unknown }).runtimeCode === "ABORTED"
-  );
-}
-
-function isRelayPayloadTooLarge(error: unknown): boolean {
-  return Boolean(
-    error
-    && typeof error === "object"
-    && "httpStatus" in error
-    && (error as { httpStatus?: unknown }).httpStatus === 413,
-  );
-}
-
-function isTransientRelayWaitError(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const record = error as {
-    httpStatus?: unknown;
-    name?: unknown;
-  };
-  if (
-    typeof record.httpStatus === "number"
-    && (
-      record.httpStatus === 502
-      || record.httpStatus === 503
-      || record.httpStatus === 504
-    )
-  ) {
-    return true;
-  }
-  return record.name === "TypeError";
-}
-
-function delayRelayRetry(
-  milliseconds: number,
-  signal: AbortSignal | null,
-): Promise<void> {
-  if (signal?.aborted) {
-    return Promise.reject(new DOMException("Aborted", "AbortError"));
-  }
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      cleanup();
-      resolve();
-    }, milliseconds);
-    const onAbort = () => {
-      clearTimeout(timer);
-      cleanup();
-      reject(new DOMException("Aborted", "AbortError"));
-    };
-    const cleanup = () => {
-      signal?.removeEventListener("abort", onAbort);
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-function awaitRelayDeadline<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason);
-    signal.addEventListener("abort", onAbort, { once: true });
-    if (signal.aborted) onAbort();
-    operation.then(resolve, reject).finally(() => {
-      signal.removeEventListener("abort", onAbort);
-    });
-  });
 }
