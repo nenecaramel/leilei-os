@@ -1,42 +1,35 @@
-import { createHash, randomUUID } from "node:crypto";
+import { DIARY_TITLE_MAX_LENGTH, DIARY_CONTENT_MAX_LENGTH } from "../resource-limits.js";
+import { DiaryDomainError } from "./diary-domain-error.js";
+export { DiaryDomainError, type DiaryDomainErrorCode } from "./diary-domain-error.js";
+import {
+  requireAuthenticatedUserId,
+  requireAuthor,
+  normalizeInput,
+  normalizeDiaryFields,
+  normalizeRequiredText,
+  normalizeDate,
+  normalizeTags,
+  normalizeMood,
+  normalizeListQuery,
+  resolveOffset,
+  resolveLimit,
+} from "./diary-validation.js";
+import { randomUUID } from "node:crypto";
 import type {
   DiaryAuditRequestSummary,
   DiaryEntryRecord,
   DiaryRecord,
   DiaryRepository,
-  DiaryListQuery,
   DiaryLifecycleMutationInput,
   NormalizedDiaryCreate,
   UpdateDiaryInput,
 } from "./diary-repository.js";
 import { createBodyMatchSnippet } from "../compact-text.js";
 import { WEB_USER_LIFECYCLE_CONTEXT } from "../lifecycle/lifecycle-audit-repository.js";
-import { hashMcpWriteRequest } from "../mcp-write/mcp-write-idempotency.js";
 import {
   isContentAuthor,
   type ContentAuthor,
 } from "../content-author.js";
-import {
-  DIARY_CONTENT_MAX_LENGTH,
-  DIARY_MOOD_MAX_LENGTH,
-  DIARY_TAGS_MAX_COUNT,
-  DIARY_TAG_MAX_LENGTH,
-  DIARY_TITLE_MAX_LENGTH,
-} from "../resource-limits.js";
-
-const MAX_TITLE_LENGTH = DIARY_TITLE_MAX_LENGTH;
-const MAX_CONTENT_LENGTH = DIARY_CONTENT_MAX_LENGTH;
-const MAX_TAGS = DIARY_TAGS_MAX_COUNT;
-const MAX_TAG_LENGTH = DIARY_TAG_MAX_LENGTH;
-const MAX_MOOD_LENGTH = DIARY_MOOD_MAX_LENGTH;
-const MIN_IDEMPOTENCY_KEY_LENGTH = 16;
-const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
-const DEFAULT_DIARY_LIMIT = 50;
-const MAX_DIARY_LIMIT = 100;
-const MAX_SEARCH_LENGTH = 200;
-
-const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 type DiaryLifecycleAttribution = Pick<
   DiaryLifecycleMutationInput,
@@ -175,35 +168,6 @@ export type UpdateMcpDiaryInput = {
   author?: ContentAuthor;
 };
 
-export type DiaryDomainErrorCode =
-  | "AUTHOR_REQUIRED"
-  | "INVALID_AUTHENTICATED_USER"
-  | "USER_NOT_FOUND"
-  | "USER_DISABLED"
-  | "DIARY_NOT_FOUND"
-  | "INVALID_DIARY_ID"
-  | "INVALID_DIARY_LIMIT"
-  | "INVALID_DIARY_OFFSET"
-  | "INVALID_DIARY_QUERY"
-  | "INVALID_TITLE"
-  | "INVALID_CONTENT"
-  | "INVALID_DATE"
-  | "INVALID_TAGS"
-  | "INVALID_MOOD"
-  | "INVALID_DIARY_PATCH"
-  | "INVALID_IDEMPOTENCY_KEY"
-  | "IDEMPOTENCY_CONFLICT";
-
-export class DiaryDomainError extends Error {
-  constructor(
-    readonly code: DiaryDomainErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = "DiaryDomainError";
-  }
-}
-
 export class DiaryService {
   constructor(private readonly repository: DiaryRepository) {}
 
@@ -212,7 +176,7 @@ export class DiaryService {
     input: CreateDiaryInput,
   ): Promise<CreateDiaryResult> {
     const userId = await this.requireActiveUser(context.userId);
-    const normalized = this.normalizeInput(userId, input);
+    const normalized = normalizeInput(userId, input);
     const requestSummary = this.createAuditSummary(normalized);
 
     const persisted = await this.repository.createDiaryWithAudit(
@@ -239,7 +203,7 @@ export class DiaryService {
     input: CreateDiaryInput,
   ): Promise<CreateDiaryResult> {
     const userId = await this.requireActiveUser(context.userId);
-    const normalized = this.normalizeInput(userId, input);
+    const normalized = normalizeInput(userId, input);
     const requestSummary = this.createAuditSummary(normalized);
     const persisted = await this.repository.createDiaryWithAudit(
       normalized,
@@ -265,9 +229,9 @@ export class DiaryService {
     input: ListDiariesInput,
   ): Promise<ListDiariesResult> {
     const userId = await this.requireActiveUser(input.userId);
-    const limit = this.resolveLimit(input.limit);
-    const offset = this.resolveOffset(input.offset);
-    const query = this.normalizeListQuery(input.query ?? {});
+    const limit = resolveLimit(input.limit);
+    const offset = resolveOffset(input.offset);
+    const query = normalizeListQuery(input.query ?? {});
 
     const [diaries, count] = await Promise.all([
       this.repository.findDiaryEntries(
@@ -296,9 +260,9 @@ export class DiaryService {
     input: ListDiariesInput,
   ): Promise<SearchDiaryDiscoveryResult> {
     const userId = await this.requireActiveUser(input.userId);
-    const limit = this.resolveLimit(input.limit);
-    const offset = this.resolveOffset(input.offset);
-    const query = this.normalizeListQuery(input.query ?? {});
+    const limit = resolveLimit(input.limit);
+    const offset = resolveOffset(input.offset);
+    const query = normalizeListQuery(input.query ?? {});
     const [diaries, count] = await Promise.all([
       this.repository.findDiaryEntriesCompact(userId, limit, query, offset),
       this.repository.countDiaryEntries(userId, query),
@@ -334,7 +298,7 @@ export class DiaryService {
     input: { userId: string; date: string },
   ): Promise<DiariesByDateResult> {
     const userId = await this.requireActiveUser(input.userId);
-    const date = this.normalizeDate(input.date);
+    const date = normalizeDate(input.date);
     const diaries = await this.repository.findActiveByDate(userId, date);
     return {
       date,
@@ -376,7 +340,7 @@ export class DiaryService {
     limit?: number;
   }): Promise<ListDiariesResult> {
     const userId = await this.requireActiveUser(input.userId);
-    const limit = this.resolveLimit(input.limit);
+    const limit = resolveLimit(input.limit);
     const [diaries, count] = await Promise.all([
       this.repository.findArchivedDiaries(
         userId,
@@ -601,7 +565,7 @@ export class DiaryService {
       );
     }
 
-    const normalized = this.normalizeDiaryFields({
+    const normalized = normalizeDiaryFields({
       title: input.title,
       content: input.content,
       date: input.date,
@@ -617,7 +581,7 @@ export class DiaryService {
       );
     }
     const author = input.author ?? existing.author ?? null;
-    this.requireAuthor(author);
+    requireAuthor(author);
 
     const updated = await this.repository.updateDiary({
       userId,
@@ -653,23 +617,23 @@ export class DiaryService {
     let hasPatch = false;
     const patch: Omit<UpdateDiaryInput, "userId" | "id"> = {};
     if (input.title !== undefined) {
-      patch.title = this.normalizeRequiredText(input.title, MAX_TITLE_LENGTH, "INVALID_TITLE", "Diary title");
+      patch.title = normalizeRequiredText(input.title, DIARY_TITLE_MAX_LENGTH, "INVALID_TITLE", "Diary title");
       hasPatch = true;
     }
     if (input.content !== undefined) {
-      patch.content = this.normalizeRequiredText(input.content, MAX_CONTENT_LENGTH, "INVALID_CONTENT", "Diary content");
+      patch.content = normalizeRequiredText(input.content, DIARY_CONTENT_MAX_LENGTH, "INVALID_CONTENT", "Diary content");
       hasPatch = true;
     }
     if (input.date !== undefined) {
-      patch.date = this.normalizeDate(input.date);
+      patch.date = normalizeDate(input.date);
       hasPatch = true;
     }
     if (input.tags !== undefined) {
-      patch.tags = this.normalizeTags(input.tags);
+      patch.tags = normalizeTags(input.tags);
       hasPatch = true;
     }
     if (input.mood !== undefined) {
-      patch.mood = this.normalizeMood(input.mood);
+      patch.mood = normalizeMood(input.mood);
       hasPatch = true;
     }
     if (input.author !== undefined) {
@@ -696,7 +660,7 @@ export class DiaryService {
   private async requireActiveUser(
     userId: string,
   ): Promise<string> {
-    const normalized = this.requireAuthenticatedUserId(userId);
+    const normalized = requireAuthenticatedUserId(userId);
     const user = await this.repository.findUserById(normalized);
 
     if (!user) {
@@ -714,364 +678,6 @@ export class DiaryService {
     }
 
     return normalized;
-  }
-
-  private requireAuthenticatedUserId(userId: string): string {
-    const normalized = userId.trim();
-
-    if (normalized.length === 0) {
-      throw new DiaryDomainError(
-        "INVALID_AUTHENTICATED_USER",
-        "Authenticated user is required.",
-      );
-    }
-
-    return normalized;
-  }
-
-  private requireAuthor(value: unknown): asserts value is ContentAuthor {
-    if (!isContentAuthor(value)) {
-      throw new DiaryDomainError(
-        "AUTHOR_REQUIRED",
-        "A content author must be selected.",
-      );
-    }
-  }
-
-  private normalizeInput(
-    userId: string,
-    input: CreateDiaryInput,
-  ): NormalizedDiaryCreate {
-    const normalized = this.normalizeDiaryFields(input);
-    this.requireAuthor(input.author);
-    const idempotencyKey = this.normalizeIdempotencyKey(
-      input.idempotencyKey,
-    );
-
-    const hashPayload = {
-      title: normalized.title,
-      content: normalized.content,
-      date: normalized.date,
-      tags: normalized.tags,
-      mood: normalized.mood,
-      author: input.author!,
-    };
-
-    const requestHash = createHash("sha256")
-      .update(JSON.stringify(hashPayload), "utf8")
-      .digest("hex");
-
-    return {
-      userId,
-      title: normalized.title,
-      content: normalized.content,
-      date: normalized.date,
-      tags: normalized.tags,
-      mood: normalized.mood,
-      author: input.author,
-      idempotencyKey,
-      requestHash,
-      mcpRequestHash: hashMcpWriteRequest(hashPayload),
-    };
-  }
-
-  private normalizeDiaryFields(input: {
-    title: string;
-    content: string;
-    date: string;
-    tags: readonly string[];
-    mood?: string | null;
-    author?: ContentAuthor;
-  }): {
-    title: string;
-    content: string;
-    date: string;
-    tags: string[];
-    mood: string | null;
-  } {
-    return {
-      title: this.normalizeRequiredText(
-        input.title,
-        MAX_TITLE_LENGTH,
-        "INVALID_TITLE",
-        "Diary title",
-      ),
-      content: this.normalizeRequiredText(
-        input.content,
-        MAX_CONTENT_LENGTH,
-        "INVALID_CONTENT",
-        "Diary content",
-      ),
-      date: this.normalizeDate(input.date),
-      tags: this.normalizeTags(input.tags),
-      mood: this.normalizeMood(input.mood),
-    };
-  }
-
-  private normalizeRequiredText(
-    value: string,
-    maxLength: number,
-    code: "INVALID_TITLE" | "INVALID_CONTENT",
-    label: string,
-  ): string {
-    const normalized = value.normalize("NFC").trim();
-
-    if (
-      normalized.length === 0 ||
-      normalized.length > maxLength
-    ) {
-      throw new DiaryDomainError(
-        code,
-        `${label} must contain between 1 and ${maxLength} characters.`,
-      );
-    }
-
-    return normalized;
-  }
-
-  private normalizeDate(value: string): string {
-    const normalized = value.trim();
-
-    if (!DATE_PATTERN.test(normalized)) {
-      throw new DiaryDomainError(
-        "INVALID_DATE",
-        "Diary date must use YYYY-MM-DD format.",
-      );
-    }
-
-    const [year, month, day] = normalized
-      .split("-")
-      .map(Number);
-
-    const parsed = new Date(
-      Date.UTC(year!, month! - 1, day!),
-    );
-
-    if (
-      parsed.getUTCFullYear() !== year ||
-      parsed.getUTCMonth() + 1 !== month ||
-      parsed.getUTCDate() !== day
-    ) {
-      throw new DiaryDomainError(
-        "INVALID_DATE",
-        "Diary date is not valid.",
-      );
-    }
-
-    return normalized;
-  }
-
-  private normalizeTags(tags: readonly string[]): string[] {
-    if (!Array.isArray(tags)) {
-      throw new DiaryDomainError(
-        "INVALID_TAGS",
-        "Diary tags must be an array.",
-      );
-    }
-
-    const normalized = [
-      ...new Set(
-        tags.map((tag) => {
-          const value = tag.normalize("NFC").trim();
-
-          if (
-            value.length === 0 ||
-            value.length > MAX_TAG_LENGTH
-          ) {
-            throw new DiaryDomainError(
-              "INVALID_TAGS",
-              `Each diary tag must contain between 1 and ${MAX_TAG_LENGTH} characters.`,
-            );
-          }
-
-          return value;
-        }),
-      ),
-    ];
-
-    if (normalized.length > MAX_TAGS) {
-      throw new DiaryDomainError(
-        "INVALID_TAGS",
-        `Diary entries may contain at most ${MAX_TAGS} tags.`,
-      );
-    }
-
-    return normalized;
-  }
-
-  private normalizeMood(
-    mood?: string | null,
-  ): string | null {
-    if (mood === undefined || mood === null) {
-      return null;
-    }
-
-    const normalized = mood.normalize("NFC").trim();
-
-    if (
-      normalized.length === 0 ||
-      normalized.length > MAX_MOOD_LENGTH
-    ) {
-      throw new DiaryDomainError(
-        "INVALID_MOOD",
-        `Diary mood must contain between 1 and ${MAX_MOOD_LENGTH} characters.`,
-      );
-    }
-
-    return normalized;
-  }
-
-  private normalizeListQuery(
-    input: RawDiaryListQuery,
-  ): DiaryListQuery {
-    const q = this.normalizeOptionalQueryText(
-      input.q,
-      MAX_SEARCH_LENGTH,
-      "search query",
-    );
-    const tag = this.normalizeOptionalQueryText(
-      input.tag,
-      MAX_TAG_LENGTH,
-      "tag",
-    );
-    const mood = this.normalizeOptionalQueryText(
-      input.mood,
-      MAX_MOOD_LENGTH,
-      "mood",
-    );
-    const author = this.normalizeOptionalQueryAuthor(input.author);
-    const dateFrom = this.normalizeOptionalQueryDate(
-      input.dateFrom,
-      "date_from",
-    );
-    const dateTo = this.normalizeOptionalQueryDate(
-      input.dateTo,
-      "date_to",
-    );
-
-    if (dateFrom && dateTo && dateFrom > dateTo) {
-      throw new DiaryDomainError(
-        "INVALID_DIARY_QUERY",
-        "date_from cannot be later than date_to.",
-      );
-    }
-
-    return {
-      ...(q ? { q } : {}),
-      ...(tag ? { tag } : {}),
-      ...(mood ? { mood } : {}),
-      ...(author ? { author } : {}),
-      ...(dateFrom ? { dateFrom } : {}),
-      ...(dateTo ? { dateTo } : {}),
-    };
-  }
-
-  private normalizeOptionalQueryText(
-    value: string | undefined,
-    maxLength: number,
-    label: string,
-  ): string | undefined {
-    if (value === undefined) return undefined;
-    if (typeof value !== "string") {
-      throw new DiaryDomainError(
-        "INVALID_DIARY_QUERY",
-        `Diary ${label} is invalid.`,
-      );
-    }
-
-    const normalized = value.normalize("NFC").trim();
-    if (!normalized) return undefined;
-    if (normalized.length > maxLength) {
-      throw new DiaryDomainError(
-        "INVALID_DIARY_QUERY",
-        `Diary ${label} is too long.`,
-      );
-    }
-    return normalized;
-  }
-
-  private normalizeOptionalQueryAuthor(
-    value: unknown,
-  ): ContentAuthor | undefined {
-    if (value === undefined) return undefined;
-    if (typeof value !== "string") {
-      throw new DiaryDomainError(
-        "INVALID_DIARY_QUERY",
-        "Diary author is invalid.",
-      );
-    }
-
-    const normalized = value.normalize("NFC").trim();
-    if (!isContentAuthor(normalized)) {
-      throw new DiaryDomainError(
-        "INVALID_DIARY_QUERY",
-        "Diary author is invalid.",
-      );
-    }
-
-    return normalized;
-  }
-
-  private normalizeOptionalQueryDate(
-    value: string | undefined,
-    label: string,
-  ): string | undefined {
-    if (value === undefined || value.trim() === "") return undefined;
-    try {
-      return this.normalizeDate(value);
-    } catch {
-      throw new DiaryDomainError(
-        "INVALID_DIARY_QUERY",
-        `Diary ${label} is invalid.`,
-      );
-    }
-  }
-
-  private normalizeIdempotencyKey(value: string): string {
-    const normalized = value.trim();
-
-    if (
-      normalized.length < MIN_IDEMPOTENCY_KEY_LENGTH ||
-      normalized.length > MAX_IDEMPOTENCY_KEY_LENGTH ||
-      !IDEMPOTENCY_KEY_PATTERN.test(normalized)
-    ) {
-      throw new DiaryDomainError(
-        "INVALID_IDEMPOTENCY_KEY",
-        "Idempotency key must be 16-128 characters using letters, numbers, dot, underscore, colon, or hyphen.",
-      );
-    }
-
-    return normalized;
-  }
-
-  private resolveOffset(offset?: number): number {
-    if (offset === undefined) {
-      return 0;
-    }
-
-    if (!Number.isInteger(offset) || offset < 0) {
-      throw new DiaryDomainError(
-        "INVALID_DIARY_OFFSET",
-        "Diary offset must be a non-negative integer.",
-      );
-    }
-
-    return offset;
-  }
-
-  private resolveLimit(limit?: number): number {
-    if (limit === undefined) {
-      return DEFAULT_DIARY_LIMIT;
-    }
-
-    if (!Number.isInteger(limit) || limit < 1) {
-      throw new DiaryDomainError(
-        "INVALID_DIARY_LIMIT",
-        "Diary limit must be a positive integer.",
-      );
-    }
-
-    return Math.min(limit, MAX_DIARY_LIMIT);
   }
 
   private createAuditSummary(
