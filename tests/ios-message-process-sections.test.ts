@@ -81,7 +81,7 @@ test('thought process opens a native sheet with a leading icon and no toolbar bu
   assert.match(sheet, /Text\(item.text\)/);
   assert.match(sheet, /\.textSelection\(\.enabled\)/);
   assert.match(sheet, /\.navigationTitle\("Thought process"\)/);
-  assert.match(sheet, /\.presentationDetents\(\[\.medium\]\)/);
+  assert.match(sheet, /\.presentationDetents\(\[\.medium, \.large\]\)/);
   assert.match(sheet, /\.presentationDragIndicator\(\.visible\)/);
   assert.doesNotMatch(sheet, /toolbar|Button|dismiss|raw_metadata/);
 });
