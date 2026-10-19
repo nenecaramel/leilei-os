@@ -141,10 +141,10 @@ test("Agent SDK appends the exact silence-wake prompt with real paragraph breaks
   );
 
   const transport = readFileSync(
-    "tools/claude-bridge/src/agent-sdk-claude-transport.mjs",
+    "tools/claude-bridge/src/agent-sdk-transport-support.mjs",
     "utf8",
   );
-  // The active transport imports Wake + Murmur; the removed Mind prompt is
+  // The transport support module composes Wake + Murmur; the removed Mind prompt is
   // neither shipped nor loaded. Require physical source newlines and a
   // two-paragraph composition rather than the old obsolete import sequence.
   assert.match(
