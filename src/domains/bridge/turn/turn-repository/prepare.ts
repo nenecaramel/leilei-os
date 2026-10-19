@@ -588,7 +588,12 @@ export async function resolveRuntimeParent(
         // checkpoint, but a later LeileiOS quiet Wake may have advanced the
         // native JSONL invisibly while leaving the canonical head unchanged.
         // Never resume the original handoff cursor after that hidden advance.
-        const nativeCursor = continuation === "send" && parentMessageId
+        const canonical = continuation === "send" && parentMessageId
+          ? await conversations.getProviderCheckpointForHead({ userId, conversationId, canonicalMessageId: parentMessageId })
+          : null;
+        const nativeCursor = parentMessageId && canonical?.providerCheckpointId === binding.checkpointId
+          && canonical.providerSessionId === binding.sessionId
+          && canonical.effectiveWorkingDirectory === binding.effectiveWorkingDirectory
           ? await readNativeResumeCheckpoint(executor, { userId, conversationId, canonicalMessageId: parentMessageId })
           : null;
         return { ok: true, runtimeMode: continuation === "send" ? "resume" : "fork",
