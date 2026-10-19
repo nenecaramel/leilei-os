@@ -25,6 +25,7 @@ import {
   createDefaultSendFileMcpServer,
   nonblankString,
   sdkInterruptedTailStart,
+  sdkAuthenticationFailureTailStart,
   sdkResultFailed,
   sdkMirrorFailed,
   clippedSessionStoreReason,
@@ -492,7 +493,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     let failedInputOnly = false;
     const orderedSuffix = suffix.reverse();
     const interruptedStart = sdkInterruptedTailStart(orderedSuffix,
-      new Set([...failedInputs, ...(userMessageUuid ? [userMessageUuid] : [])]), sessionId);
+      new Set([...failedInputs, ...(userMessageUuid ? [userMessageUuid] : [])]), sessionId)
+      ?? sdkAuthenticationFailureTailStart(orderedSuffix, failedInputs, sessionId);
     // Keep validating any earlier residue. Only the proven closed SDK segment
     // is superseded by resumeSessionAt; the underlying JSONL is never edited.
     const unprovenSuffix = interruptedStart === null ? orderedSuffix : orderedSuffix.slice(0, interruptedStart);

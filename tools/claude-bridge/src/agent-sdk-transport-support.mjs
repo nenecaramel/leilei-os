@@ -204,6 +204,34 @@ export function sdkInterruptedTailStart(entries, approvedInputs, sessionId) {
   return start;
 }
 
+// Authentication rejection is SDK-generated output, not a model reply. Only
+// closed, zero-token SDK segments for server-confirmed failed inputs qualify.
+export function sdkAuthenticationFailureTailStart(entries, failedInputs, sessionId) {
+  const start = entries.findIndex(entry => entry.type === "user" && failedInputs.has(entry.uuid));
+  if (start < 0) return null;
+  let awaitingError = false;
+  for (const entry of entries.slice(start)) {
+    if (entry.entrypoint !== "sdk-ts" || entry.sessionId !== sessionId || entry.isSidechain === true) return null;
+    if (!awaitingError) {
+      if (entry.type !== "user" || !failedInputs.has(entry.uuid) || !nonblankString(entry.promptId)) return null;
+      const content = entry.message?.content;
+      if (!(typeof content === "string" || (Array.isArray(content) && content.length > 0
+        && content.every(block => block?.type === "text" && typeof block.text === "string")))) return null;
+      awaitingError = true;
+    } else if (entry.type !== "attachment") {
+      const message = entry.message;
+      if (entry.type !== "assistant" || entry.isApiErrorMessage !== true || entry.error !== "authentication_failed"
+        || message?.role !== "assistant" || message.model !== "<synthetic>" || message.stop_reason !== "stop_sequence"
+        || !Array.isArray(message.content) || message.content.length !== 1
+        || message.content[0]?.type !== "text" || typeof message.content[0].text !== "string"
+        || !["input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"]
+          .every(key => message.usage?.[key] === 0)) return null;
+      awaitingError = false;
+    }
+  }
+  return awaitingError ? null : start;
+}
+
 export function isNativeClaudeScheduleCommand(value) {
   return typeof value === "string"
     && /^\/(?:schedule|routines)(?:\s|$)/iu.test(value);

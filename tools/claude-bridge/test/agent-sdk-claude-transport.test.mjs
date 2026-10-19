@@ -3113,3 +3113,55 @@ test('one SDK tool shares hook admission with permission entry but still recheck
   await sdk.canUseTool('Bash',{command:'true'},{toolUseID:'tool-one',signal:new AbortController().signal});
   assert.equal(admissions.length-next,2);
 });
+
+
+test("local resume recovers only proven SDK authentication failure tails", async t => {
+  const sessionId="00000000-0000-4000-8000-000000000161", cp="00000000-0000-4000-8000-000000000162";
+  const failed="00000000-0000-4000-8000-000000000163", user="00000000-0000-4000-8000-000000000164", child="00000000-0000-4000-8000-000000000165";
+  const makeTail=()=>[
+    {type:"user",uuid:failed,parentUuid:cp,promptId:"auth-prompt",message:{role:"user",content:[{type:"text",text:"synthetic input"}]}},
+    {type:"attachment",uuid:"context",parentUuid:failed},
+    {type:"assistant",uuid:"auth-error",parentUuid:"context",isApiErrorMessage:true,error:"authentication_failed",
+      message:{role:"assistant",model:"<synthetic>",stop_reason:"stop_sequence",usage:{input_tokens:0,output_tokens:0,cache_creation_input_tokens:0,cache_read_input_tokens:0},content:[{type:"text",text:"synthetic auth error"}]}}
+  ].map(row=>({entrypoint:"sdk-ts",sessionId,...row}));
+  const cases=[
+    ["confirmed failed input",tail=>tail,[failed],true],
+    ["two closed confirmed failures",tail=>[...tail,
+      {...tail[0],uuid:"second-failed",parentUuid:"auth-error",promptId:"second-prompt"},
+      {...tail[2],uuid:"second-error",parentUuid:"second-failed"}],[failed,"second-failed"],true],
+    ["no server failure evidence",tail=>tail,[],false],
+    ["Desktop error",tail=>{tail.at(-1).entrypoint="claude-desktop";return tail;},[failed],false],
+    ["foreign session",tail=>{tail.at(-1).sessionId="another";return tail;},[failed],false],
+    ["ordinary assistant text",tail=>{delete tail.at(-1).isApiErrorMessage;return tail;},[failed],false],
+    ["different error",tail=>{tail.at(-1).error="rate_limit";return tail;},[failed],false],
+    ["real model output",tail=>{tail.at(-1).message.model="real-model";return tail;},[failed],false],
+    ["nonzero output",tail=>{tail.at(-1).message.usage.output_tokens=1;return tail;},[failed],false],
+    ["missing usage",tail=>{delete tail.at(-1).message.usage;return tail;},[failed],false],
+    ["tool call",tail=>{tail.at(-1).message.content=[{type:"tool_use",id:"tool"}];return tail;},[failed],false],
+    ["generated text before error",tail=>{tail[1].parentUuid="real-output";return [tail[0],{...tail[2],uuid:"real-output",parentUuid:failed,isApiErrorMessage:false},...tail.slice(1)];},[failed],false],
+    ["new unrelated input",tail=>[...tail,{type:"user",uuid:"new-user",parentUuid:"auth-error",entrypoint:"sdk-ts",sessionId,promptId:"new",message:{content:"new text"}}],[failed],false],
+    ["unclosed input",tail=>tail.slice(0,-1),[],false],
+  ];
+  await t.test("approved input-only residue is not classified as a closed authentication failure",async()=>{
+    const {sdkAuthenticationFailureTailStart}=await import("../src/agent-sdk-transport-support.mjs");
+    assert.equal(sdkAuthenticationFailureTailStart(makeTail().slice(0,-1),new Set([failed]),sessionId),null);
+  });
+  for(const [name,mutate,evidence,allowed] of cases) await t.test(name,async()=>{
+    const entries=[{type:"assistant",uuid:cp,parentUuid:null},...mutate(makeTail())];
+    const original=structuredClone(entries);let queries=0;
+    const transport=new AgentSdkClaudeTransport({environment:{},cwd:"/synthetic/auth-recovery",
+      sessionMessagesImpl:async()=>[{type:"assistant"}],importSessionToStoreImpl:async(_id,store)=>store.append({},entries),
+      queryImpl:input=>{queries++;assert.equal(input.options.resume,sessionId);assert.equal(input.options.resumeSessionAt,cp);assert.notEqual(input.options.forkSession,true);
+        return{close(){},async *[Symbol.asyncIterator](){
+          yield successFixture(sessionId)[0];const prompt=await input.prompt[Symbol.asyncIterator]().next();assert.equal(prompt.value.uuid,user);
+          assert.deepEqual(entries,original,"recovery must not edit original history");
+          entries.push({type:"user",uuid:user,parentUuid:cp},{type:"assistant",uuid:child,parentUuid:user});
+          yield successFixture(sessionId)[1];yield successFixture(sessionId)[2];
+        }};
+      }});
+    const run=transport.executeTurn("synthetic retry",{mode:"resume",parentProviderSessionId:sessionId,parentProviderCheckpointId:cp,
+      requireProviderCheckpoint:true,userMessageUuid:user,failedUserMessageUuids:evidence});
+    if(allowed){const result=await run;assert.equal(result.providerCheckpointId,child);assert.equal(queries,1);}
+    else{await assert.rejects(run,error=>error.runtimeCode==="PROVIDER_SESSION_CONFLICT");assert.equal(queries,0);assert.deepEqual(entries,original);}
+  });
+});
