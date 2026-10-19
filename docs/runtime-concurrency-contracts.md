@@ -16,6 +16,7 @@ boundaries. Product and receipt semantics remain in
 | `NativeLiveBackendRelayService` owns orchestration, not durable state | Result preparation ID must equal reservation ID; repository checks user/listener/reservation ownership before canonical finalize. Completion/rejection mutations must return applied/idempotent; stale mutations cannot emit a terminal wake. Canonical `FINALIZE_CONFLICT` gets a durable rejection receipt. Wake delivery is advisory and cannot undo durable state. | `native-live-backend-relay.test.ts` |
 | `native-live-background-result-repository.ts` owns independent background receipts and the native continuation cursor | Prepare captures source/head/session/cwd/effective parent and server generation/revision. Submit locks source, receipt, conversation and live listener lease in a serializable transaction; stale branches discard result content, matching terminal retries return the original outcome without advancing again. No canonical/Mind finalization or execution authorization. | `native-live-background-result.integration.test.ts`: real row-lock barriers overlap head rotation, lease takeover and a competing receipt; authenticated HTTP path and duplicate delivery are also exercised. |
 | `NativeLiveMacDaemonLoop` owns the active provider turn handle | Relay reserves work, execution-start is recorded before execution, and controls act through the active turn controller. Result delivery uncertainty is recorded rather than reexecuting provider work. | `native-live-mac-daemon-loop.test.ts`, `native-live-mac-http-relay-client.test.ts` |
+| `NativeLiveSilenceWakeService` owns silence and [concern](native-live-concerns.md) wake receipts; `NativeLiveConcernService` owns concern rows | Fire recomputes the schedule, foreground block, receipt slot and due concerns in one serializable transaction; a duplicate fire finds the receipt and queues nothing. Concern edits/releases are `expected_revision`-fenced in the `UPDATE` predicate; program-owned wake counters never bump that revision. | `native-live-concern.integration.test.ts` (isolated DB opt-in): repeated fire, parallel same-revision updates, foreground block, Rewind, session switch, handoff, sleep catch-up |
 | `tools/claude-code-mind/hook.mjs` owns local session receipt state | State is read/written under the session lock. Prompt submit rotates active turn and retires pending receipts; reset rotates epoch/context epoch. Stop captures epoch/active-turn/context-epoch and receipt identity under lock, performs HTTP outside the lock, then reacquires the lock and rechecks the fence before clearing its receipt. | `claude-code-mind-finalized.test.ts` |
 
 Stop is a **weak receipt acknowledgement**, separate from iOS interrupt and
@@ -110,7 +111,8 @@ pnpm wake status
 ```
 
 This persistent local switch controls only the post-reply 5–10 minute and
-last-user-message 90–120 minute silence opportunities. It does not change
+last-user-message 90–120 minute silence opportunities, and the
+[concern](native-live-concerns.md) wakes that share them. It does not change
 normal chat, Cron/Monitor/Bash jobs, Mind recall, or Railway configuration.
 The commands need no credentials. Default is ON; the private marker is
 `~/.leileios/wake/disabled`. Status reports the local switch; a backend

@@ -21,6 +21,7 @@ test("user-visible thinking is explicitly projected without exposing raw tool ou
   assert.match(parser, /seen\.insert\(id\)\.inserted/);
   assert.match(surface, /ForEach\(items\)/);
   assert.match(surface, /\.textSelection\(\.enabled\)/);
+  assert.match(surface, /\.presentationDetents\(\[\.medium, \.large\]\)/);
   assert.match(assembler, /turn\.visibleThinking = NativeLiveVisibleThinkingProjector\.project/);
   assert.match(turn, /var visibleThinking: \[NativeLiveVisibleThinkingItem\] = \[\]/);
   assert.match(row, /NativeLiveVisibleThinkingSurface\(items: turn\.visibleThinking\)/);

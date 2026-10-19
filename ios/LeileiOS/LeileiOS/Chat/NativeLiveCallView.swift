@@ -255,7 +255,7 @@ final class NativeLiveCallAudioController: NSObject, ObservableObject, AVAudioPl
             try audioSession.setCategory(
                 .playAndRecord,
                 mode: .voiceChat,
-                options: [.defaultToSpeaker, .allowBluetooth]
+                options: [.defaultToSpeaker, .allowBluetoothHFP]
             )
             try audioSession.setActive(true)
 
@@ -337,7 +337,7 @@ final class NativeLiveCallAudioController: NSObject, ObservableObject, AVAudioPl
     func play(_ audio: Data, onFinished: @escaping () -> Void) throws {
         guard phase == .processing else { return }
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
+        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
         try session.setActive(true)
         let newPlayer = try AVAudioPlayer(data: audio)
         newPlayer.delegate = self
