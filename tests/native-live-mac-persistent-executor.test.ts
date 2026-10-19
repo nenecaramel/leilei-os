@@ -95,17 +95,16 @@ test("a failure before any commit is pending: the caller submits the failure res
   assert.deepEqual([run.result.status, (run.result as { error_code?: string }).error_code], ["failure", "NO_PROVIDER_SESSION"]);
 });
 
-test("edited and retried forks may own a fresh persistent writer without evicting it after commit", async () => {
-  const f = fixture(async input => { await frame(input); return {}; });
-  const edit = command({ operation: "edit", runtime_mode: "fork", canonical_user_message_id: id(4) });
-  assert.equal(f.executor.canRoute(edit), true, "a new replacement branch needs a persistent native owner");
-  const run = await f.executor.execute(edit, { async commit() { return { canonicalOutcome: "completed" }; } });
-  assert.equal(run.delivery, "committed");
-  assert.equal(f.routers[0]!.closed, 0, "Cron scheduled by edit must retain its SDK writer");
-  assert.equal(f.executor.canRoute(command()), true, "the forked writer can accept later ordinary chat");
-  await f.executor.retire(id(3));
-  assert.equal(f.routers[0]!.closed, 1, "old branch retirement is explicit");
-  assert.equal(f.executor.canRoute(command({ operation: "retry", runtime_mode: "fork" })), true);
+test("edit and retry use the branch executor while persistent admission supports only send and wake", async () => {
+  const f = fixture(async () => { assert.fail("replacement must never enter persistent SDK"); });
+  for (const operation of ["edit", "retry"] as const) for (const runtime_mode of ["new", "fork"] as const) {
+    const replacement = command({ operation, runtime_mode,
+      ...(runtime_mode === "new" ? { parent_provider_session_id: null, parent_provider_checkpoint_id: null } : {}) });
+    assert.equal(f.executor.canRoute(replacement), false);
+    await assert.rejects(f.executor.execute(replacement, { async commit() { assert.fail("no replacement commit"); } }), /cannot use the persistent writer/);
+  }
+  assert.equal(f.routers.length, 0);
+  assert.equal(f.executor.canRoute(command()), true, "ordinary chat remains persistent");
 });
 
 test("Wake uses the current matching writer, or restores its original SID after restart; never forks", async () => {

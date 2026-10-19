@@ -1339,36 +1339,30 @@ test("a routable Wake submits to the live SDK writer without entering legacy", a
   assert.equal(calls,1);
 });
 
-test("an edited branch retires the OLD writer before running the replacement in a NEW persistent fork", async () => {
-  const relay = new FakeRelay(); relay.canonicalOutcome = "completed";
-  relay.reservation = { reservationId, command: {
-    ...command(), operation: "edit", runtime_mode: "fork",
-    parent_provider_session_id: "original-session", parent_provider_checkpoint_id: "original-checkpoint",
-  } };
-  const steps: string[] = [];
-  let oldWriterRetired = false;
-  const persistent = {
-    assertAccepting() { steps.push("accepting"); },
-    async retire() { steps.push("retire-old"); oldWriterRetired = true; },
-    canRoute(c: NativeLiveRuntimeCommand) {
-      steps.push("canRoute"); assert.equal(c.operation, "edit");
-      return oldWriterRetired;
-    },
-    async execute(_c: NativeLiveRuntimeCommand, options: any) {
-      steps.push("execute-new-fork");
-      const receipt = await options.commit(success());
-      assert.equal(receipt.canonicalOutcome, "completed");
-      return { result: success(), delivery: "committed" as const, canonicalOutcome: "completed" };
-    },
-  };
-  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay,
-    {async execute() { throw Error("a branch edit must not use a one-shot SDK query"); }},
-    null, null, null, null, null, null, null, persistent as never);
-  const outcome = await loop.runOnce();
-  assert.equal(outcome.outcome, "completed");
-  assert.deepEqual(steps, ["accepting", "retire-old", "canRoute", "execute-new-fork"]);
-  assert.equal(relay.calls.filter(c => c.name === "submitResult").length, 1);
-});
+for (const operation of ["edit", "retry"] as const) for (const runtime_mode of ["new", "fork"] as const) {
+  test(`${operation}/${runtime_mode} retires the old writer before the supported branch executor, even if persistent claims support`, async () => {
+    const relay = new FakeRelay(); relay.canonicalOutcome = "completed";
+    const replacement: NativeLiveRuntimeCommand = { ...command(), operation, runtime_mode,
+      parent_provider_session_id: runtime_mode === "fork" ? "original-session" : null,
+      parent_provider_checkpoint_id: runtime_mode === "fork" ? "original-checkpoint" : null };
+    relay.reservation = { reservationId, command: replacement };
+    const steps: string[] = [];
+    const persistent = {
+      assertAccepting() { steps.push("accepting"); },
+      async retire() { steps.push("retire-old"); },
+      canRoute() { assert.fail("unsupported replacement must not consult persistent admission"); },
+      async execute() { assert.fail("replacement must not enter unsupported execution lease"); },
+    };
+    const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, {
+      async execute(c) { assert.deepEqual(c, replacement); assert.deepEqual(steps,["accepting","retire-old"]);
+        steps.push("branch-execute"); return success(); },
+    }, null, null, null, null, null, null, null, persistent as never);
+    const outcome = await loop.runOnce();
+    assert.equal(outcome.outcome, "completed");
+    assert.deepEqual(steps, ["accepting", "retire-old", "branch-execute"]);
+    assert.equal(relay.calls.filter(c => c.name === "submitResult").length, 1);
+  });
+}
 
 test("legacy fallback never starts if retiring the persistent writer failed",async()=>{
   const relay=new FakeRelay();let legacy=0;
@@ -1376,6 +1370,29 @@ test("legacy fallback never starts if retiring the persistent writer failed",asy
     {canRoute:()=>false,async retire(){throw new Error("close unknown");}} as never);
   assert.equal((await loop.runOnce()).outcome,"rejected");assert.equal(legacy,0);
 });
+
+for (const operation of ["edit", "retry"] as const) {
+  test(`${operation} waits for verified old-writer retirement and never executes after a failed close`,async()=>{
+    const relay=new FakeRelay();
+    relay.reservation={reservationId,command:{...command(),operation,runtime_mode:"fork",
+      parent_provider_session_id:"original-session",parent_provider_checkpoint_id:"original-checkpoint"}};
+    let entered!:()=>void,rejectClose!:(error:Error)=>void,legacy=0;
+    const retiring=new Promise<void>(resolve=>{entered=resolve;});
+    const close=new Promise<void>((_resolve,reject)=>{rejectClose=reject;});
+    const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){legacy++;return success();}},
+      null,null,null,null,null,null,null,{
+        async retire(){entered();await close;},
+        canRoute(){assert.fail("cannot route a replacement before retirement");},
+        async execute(){assert.fail("cannot use unsupported persistent branch execution");},
+      } as never);
+    const running=loop.runOnce();await retiring;
+    assert.equal(legacy,0,"branch execution must wait for the close acknowledgement");
+    rejectClose(new Error("old writer close is unknown"));
+    assert.equal((await running).outcome,"rejected");
+    assert.equal(legacy,0);
+    assert.equal(relay.calls.some(c=>c.name==="submitResult"),false);
+  });
+}
 
 test("pending background recovery fence blocks both persistent execution and legacy fallback", async () => {
   const relay=new FakeRelay();let legacy=0,retired=0,persistentRuns=0;

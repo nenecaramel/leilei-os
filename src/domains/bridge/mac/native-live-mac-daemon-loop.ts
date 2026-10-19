@@ -272,6 +272,10 @@ export class NativeLiveMacDaemonLoop {
         // keep running in parallel with a different presentation branch.
         if (command.operation === "edit" || command.operation === "retry") {
           await this.persistentExecutor?.retire(command.conversation_id);
+          // Branch replacements are not part of the send/wake execution-lease
+          // protocol. Use the existing exact-checkpoint branch executor instead
+          // of advertising a persistent fork that admission must reject.
+          return this.executor.execute(command, options);
         }
         if (command.operation === "wake") {
           // Wake NEVER reaches the branch/fork/one-shot execution below.
