@@ -84,6 +84,7 @@ run([
   "tests/native-live-branch-session.integration.test.ts",
   "tests/native-live-stale-replacement.integration.test.ts",
   "tests/native-live-silence-wake.integration.test.ts",
+  "tests/native-live-concern.integration.test.ts",
   "tests/native-live-wake-session-safety.integration.test.ts",
   "tests/native-live-native-tail.integration.test.ts",
   "tests/native-live-background-result.integration.test.ts",

@@ -591,7 +591,11 @@ test("Mac HTTP relay client reads and fires silence wake without sending user id
     fakeFetch,
   );
 
-  assert.deepEqual(await client.readSilenceWakeSchedule(), schedule);
+  // An older server omits concernDueAt; the Mac reads that as no concern.
+  assert.deepEqual(await client.readSilenceWakeSchedule(), {
+    ...schedule,
+    concernDueAt: null,
+  });
   assert.deepEqual(
     await client.fireSilenceWake({
       epochId,
@@ -602,6 +606,7 @@ test("Mac HTTP relay client reads and fires silence wake without sending user id
       schedule: {
         ...schedule,
         postTurnConsumed: true,
+        concernDueAt: null,
       },
     },
   );
@@ -622,6 +627,39 @@ test("Mac HTTP relay client reads and fires silence wake without sending user id
   ]);
   assert.equal(JSON.stringify(calls).includes("user_id"), false);
   assert.equal(JSON.stringify(calls).includes("userId"), false);
+});
+
+test("Mac HTTP relay client carries the concern deadline and fires the concern slot", async () => {
+  const calls: unknown[] = [];
+  const schedule = {
+    epochId: userMessageId,
+    conversationId,
+    postTurnDueAt: "2026-10-04T01:08:00.000Z",
+    longIdleDueAt: "2026-10-04T02:40:00.000Z",
+    postTurnConsumed: true,
+    longIdleConsumed: true,
+    concernDueAt: "2026-10-04T05:00:00.000Z",
+  };
+  const responses = [
+    { success: true, data: schedule },
+    { success: true, data: { outcome: "queued", schedule: { ...schedule, concernDueAt: null } } },
+    { success: true, data: { ...schedule, concernDueAt: "not a date" } },
+  ];
+  const fakeFetch: typeof fetch = async (_input, init) => {
+    calls.push(init?.body ? JSON.parse(String(init.body)) : null);
+    return new Response(JSON.stringify(responses.shift()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "secret-token", fakeFetch);
+  assert.deepEqual(await client.readSilenceWakeSchedule(), schedule);
+  assert.deepEqual(
+    await client.fireSilenceWake({ epochId: userMessageId, slot: "concern" }),
+    { outcome: "queued", schedule: { ...schedule, concernDueAt: null } },
+  );
+  assert.deepEqual(calls[1], { epoch_id: userMessageId, slot: "concern" });
+  await assert.rejects(client.readSilenceWakeSchedule(), /silence wake schedule is invalid/u);
 });
 
 test("Mac HTTP relay client round-trips a durable permission interaction", async () => {

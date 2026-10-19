@@ -65,6 +65,14 @@ export function parseSilenceWakeSchedule(
     || typeof record.longIdleConsumed !== "boolean"
     || !Number.isFinite(Date.parse(record.postTurnDueAt))
     || !Number.isFinite(Date.parse(record.longIdleDueAt))
+    || !(
+      record.concernDueAt === undefined
+      || record.concernDueAt === null
+      || (
+        typeof record.concernDueAt === "string"
+        && Number.isFinite(Date.parse(record.concernDueAt))
+      )
+    )
   ) {
     throw new Error(
       "Native live silence wake schedule is invalid.",
@@ -77,6 +85,10 @@ export function parseSilenceWakeSchedule(
     longIdleDueAt: record.longIdleDueAt,
     postTurnConsumed: record.postTurnConsumed,
     longIdleConsumed: record.longIdleConsumed,
+    concernDueAt:
+      typeof record.concernDueAt === "string"
+        ? record.concernDueAt
+        : null,
   };
 }
 

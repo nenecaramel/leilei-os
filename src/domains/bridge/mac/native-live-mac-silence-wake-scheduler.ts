@@ -1,9 +1,9 @@
 import {
-  chooseDueSilenceWakeSlot,
+  chooseDueWakeFireSlot,
   nextSilenceWakeDeadline,
   type NativeLiveSilenceWakeIgnoredReason,
   type NativeLiveSilenceWakeSchedule,
-  type NativeLiveSilenceWakeSlot,
+  type NativeLiveWakeFireSlot,
 } from "../turn/native-live-silence-wake.js";
 
 export interface NativeLiveMacSilenceWakeClient {
@@ -12,7 +12,7 @@ export interface NativeLiveMacSilenceWakeClient {
   >;
   fireSilenceWake(input: {
     epochId: string;
-    slot: NativeLiveSilenceWakeSlot;
+    slot: NativeLiveWakeFireSlot;
   }): Promise<{
     outcome: "queued" | "ignored";
     schedule: NativeLiveSilenceWakeSchedule | null;
@@ -20,11 +20,16 @@ export interface NativeLiveMacSilenceWakeClient {
   }>;
 }
 
+// When the server ignores a fire but the local clock still sees it as due
+// (clock skew, a race), back off instead of re-firing in a tight loop.
+const IGNORED_STILL_DUE_BACKOFF_MS = 60_000;
+
 export class NativeLiveMacSilenceWakeScheduler {
   private schedule: NativeLiveSilenceWakeSchedule | null = null;
+  private retryNotBefore = 0;
   private firePromise: Promise<{
     outcome: "queued" | "ignored" | "not_due";
-    slot?: NativeLiveSilenceWakeSlot;
+    slot?: NativeLiveWakeFireSlot;
     reason?: NativeLiveSilenceWakeIgnoredReason;
   }> | null = null;
 
@@ -45,12 +50,13 @@ export class NativeLiveMacSilenceWakeScheduler {
 
   nextDeadlineAt(): number | null {
     if(this.control && !this.control.isEnabled())return null;
-    return nextSilenceWakeDeadline(this.schedule, this.now());
+    const deadline = nextSilenceWakeDeadline(this.schedule, this.now());
+    return deadline === null ? null : Math.max(deadline, this.retryNotBefore);
   }
 
   fireDue(): Promise<{
     outcome: "queued" | "ignored" | "not_due";
-    slot?: NativeLiveSilenceWakeSlot;
+    slot?: NativeLiveWakeFireSlot;
     reason?: NativeLiveSilenceWakeIgnoredReason;
   }> {
     if (this.firePromise) return this.firePromise;
@@ -63,16 +69,22 @@ export class NativeLiveMacSilenceWakeScheduler {
 
   private async fireDueOnce(): Promise<{
     outcome: "queued" | "ignored" | "not_due";
-    slot?: NativeLiveSilenceWakeSlot;
+    slot?: NativeLiveWakeFireSlot;
     reason?: NativeLiveSilenceWakeIgnoredReason;
   }> {
     if(this.control && !this.control.isEnabled())return {outcome:"not_due"};
-    const slot = chooseDueSilenceWakeSlot(this.schedule, this.now());
+    if (this.now() < this.retryNotBefore) return { outcome: "not_due" };
+    const slot = chooseDueWakeFireSlot(this.schedule, this.now());
     if (!slot || !this.schedule) return { outcome: "not_due" };
 
     const epochId = this.schedule.epochId;
     const result = await this.client.fireSilenceWake({ epochId, slot });
     this.schedule = result.schedule;
+    this.retryNotBefore =
+      result.outcome === "ignored"
+      && chooseDueWakeFireSlot(result.schedule, this.now()) !== null
+        ? this.now() + IGNORED_STILL_DUE_BACKOFF_MS
+        : 0;
     return {
       outcome: result.outcome,
       slot,

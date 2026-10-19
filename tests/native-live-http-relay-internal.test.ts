@@ -587,6 +587,32 @@ test("internal relay silence wake endpoints use authenticated user scope and rej
       );
       assert.equal(malformed.status, 400);
       assert.equal(calls.length, 2);
+
+      const concern = await fetch(
+        `${baseUrl}/internal/native-live-relay/silence-wake/fire`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ epoch_id: epochId, slot: "concern" }),
+        },
+      );
+      assert.equal(concern.status, 200);
+      assert.deepEqual(calls[2], {
+        name: "fire",
+        input: { userId, epochId, slot: "concern" },
+      });
+
+      // Concrete receipt slots stay server-owned; the Mac cannot pick one.
+      const concrete = await fetch(
+        `${baseUrl}/internal/native-live-relay/silence-wake/fire`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ epoch_id: epochId, slot: "concern_2" }),
+        },
+      );
+      assert.equal(concrete.status, 400);
+      assert.equal(calls.length, 3);
     },
   );
 });

@@ -13,6 +13,17 @@ export type NativeLiveSilenceWakeSlot =
   | "post_turn_idle"
   | "long_idle";
 
+// Concern wakes share the epoch receipt ledger; each slot is one bounded,
+// program-owned opportunity per unanswered user message.
+export type NativeLiveConcernWakeSlot =
+  | "concern_1"
+  | "concern_2"
+  | "concern_3";
+
+export type NativeLiveWakeReceiptSlot =
+  | NativeLiveSilenceWakeSlot
+  | NativeLiveConcernWakeSlot;
+
 export const nativeLiveSilenceWakeReceipts = pgTable(
   "native_live_silence_wake_receipts",
   {
@@ -24,7 +35,7 @@ export const nativeLiveSilenceWakeReceipts = pgTable(
       }),
     epochId: uuid("epoch_id").notNull(),
     slot: varchar("slot", { length: 32 })
-      .$type<NativeLiveSilenceWakeSlot>()
+      .$type<NativeLiveWakeReceiptSlot>()
       .notNull(),
     consumedAt: timestamp("consumed_at", { withTimezone: true })
       .defaultNow()
@@ -36,7 +47,7 @@ export const nativeLiveSilenceWakeReceipts = pgTable(
     }),
     check(
       "native_live_silence_wake_receipts_slot_allowed",
-      sql`${table.slot} IN ('post_turn_idle', 'long_idle')`,
+      sql`${table.slot} IN ('post_turn_idle', 'long_idle', 'concern_1', 'concern_2', 'concern_3')`,
     ),
   ],
 );
