@@ -75,7 +75,7 @@ async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirec
   if ((index && currentIndex.revision !== index.revision) || currentSource.revision !== snapshot.revision) throw fail("NATIVE_INSPECTION_CHANGED");
   await verifyNativeHistorySources(projectDirectory, sourceSnapshots);
   const activityTime = new Date(metadata.lastActivityAt ?? snapshot.entries.findLast(entry => typeof entry.timestamp === "string")?.timestamp ?? NaN);
-  return { inspection: { readOnly: true, ...identity, title: typeof metadata.title === 'string' ? metadata.title.slice(0, 160) : null,
+  return { inspection: { readOnly: true, ...identity, isArchived: metadata.isArchived === true, title: typeof metadata.title === 'string' ? metadata.title.slice(0, 160) : null,
     updatedAt: Number.isFinite(activityTime.getTime()) ? activityTime.toISOString() : null,
     activity, history, historyRevision, ...(historyMode === "continuation" ? { continuationReady: true } : {}), handoffAllowed: false }, projection,
     nativeSnapshot: { sessionId: snapshot.sessionId, revision: snapshot.revision, entries: snapshot.entries, ...(displayAssets ? { displayAssets } : {}) } };
@@ -141,7 +141,7 @@ async function discoverDesktopNativeSessions({ desktopSessionsDirectory, project
           const activityTime = new Date(metadata.lastActivityAt ?? NaN);
           // Display-only identity survives inspection failure; error still blocks
           // selection and no checkpoint, path or private index data is exposed.
-          display = { providerSessionId,
+          display = { providerSessionId, isArchived: metadata.isArchived === true,
             title: typeof metadata.title === "string" ? metadata.title.slice(0, 160) : null,
             updatedAt: Number.isFinite(activityTime.getTime()) ? activityTime.toISOString() : null };
           const candidates = locations.get(metadata.cliSessionId) ?? [];

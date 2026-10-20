@@ -139,3 +139,14 @@ test('continuation picker reuses only the current exact Session; a fork creates 
   assert.equal(module.buildSwitchChoices('leileios', [obsoleteSource], [s], options)[0].conversationId, A);
   assert.equal(module.buildSwitchChoices('desktop', [row()], [s], options)[0].reason, null);
 });
+
+test('reverse picker hides archived Desktop windows without deleting or mutating catalog rows', () => {
+  const active = { ...desktop(), continuationReady: true };
+  const archived = { ...desktop(), providerSessionId: B, desktopSessionId: `local_${D}`, title: 'Archived', isArchived: true, error: 'UNSUPPORTED_DESKTOP_SESSION_INDEX' };
+  const sessions = [active, archived];
+  const before = structuredClone(sessions);
+  const choices = module.buildSwitchChoices('leileios', [], sessions, { historyMode: 'continuation' });
+  assert.equal(choices.length, 1);
+  assert.equal(choices[0].sessionId, A);
+  assert.deepEqual(sessions, before);
+});

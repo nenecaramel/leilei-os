@@ -32,7 +32,9 @@ export function buildSwitchChoices(mode, conversations, sessions, { localSession
     return { ...c, sessionId: c.providerSessionId, desktopSessionId: s?.desktopSessionId ?? null, nativeRevision: s?.nativeRevision, historyRevision: s?.historyRevision,
       branch: 'current', opensNewWindow: localOnly, reason };
   });
-  return sessions.map(s => {
+  // Archived Desktop windows remain in the inspection catalog for identity and
+  // safety checks, but are not offered as new reverse-handoff selections.
+  return sessions.filter(s => s.isArchived !== true).map(s => {
     // Existing attachment wins over a newly generated conversation identity.
     // Multiple bindings require an explicit branch operation, not a guess.
     const exact = conversations.filter(c => (historyMode !== "continuation" && c.sourceSessionId === s.providerSessionId) || c.providerSessionId === s.providerSessionId);

@@ -419,7 +419,7 @@ test('unavailable catalog entries retain safe identity and title but stay unsele
     const desktopSessionsDirectory = path.join(root, 'indices'), projectsDirectory = path.join(root, 'projects');
     const org = path.join(desktopSessionsDirectory, 'account', 'org'), project = path.join(projectsDirectory, '-fixture');
     await mkdir(org, { recursive: true }); await mkdir(project, { recursive: true });
-    await writeFile(path.join(org, `local_${D}.json`), JSON.stringify({ ...metadata, title: 'Claude', lastActivityAt: 1791676800000 }));
+    await writeFile(path.join(org, `local_${D}.json`), JSON.stringify({ ...metadata, title: 'Claude', isArchived: true, lastActivityAt: 1791676800000 }));
     await writeFile(path.join(project, `${A}.jsonl`), [...entries,
       { type: 'user', uuid: C, parentUuid: CP, message: { content: 'PRIVATE_PENDING' } },
     ].map(JSON.stringify).join('\n'));
@@ -429,8 +429,9 @@ test('unavailable catalog entries retain safe identity and title but stay unsele
     assert.equal(entry.providerSessionId, A); assert.equal(entry.title, 'Claude');
     assert.equal(entry.updatedAt, '2026-10-11T00:00:00.000Z');
     assert.equal(entry.handoffAllowed, false);
+    assert.equal(entry.isArchived, true);
     assert.doesNotMatch(JSON.stringify(entry), /PRIVATE_|\/fixture|lastAssistantUuid/);
-    const choices = buildSwitchChoices('leileios', [], sessions, { historyMode: 'continuation' });
+    const choices = buildSwitchChoices('leileios', [], [{ ...entry, isArchived: false }], { historyMode: 'continuation' });
     assert.equal(choices[0].sessionId, A);
     assert.throws(() => pickSwitchChoice(choices, '1'), { code: 'NATIVE_TURN_UNFINISHED' });
   });
