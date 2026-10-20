@@ -28,7 +28,7 @@ function command(n: number, wake = false): NativeLiveRuntimeCommand {
 type BindInput = (input: { phase: "queued" | "started"; commandUuid: string;
   command: NativeLiveRuntimeCommand }) => Promise<{ userMessageId: string; parentProviderCheckpointId: string | null } | null>;
 async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolean>, bindInput?: BindInput,
-  callbacks?: Partial<Pick<ConstructorParameters<typeof NativeLiveMacPersistentTurnRouter>[0], "onForegroundCoverage" | "onForegroundPublished" | "onForegroundUnpublished" | "hasUnpublishedDeferred" | "outputAttachmentSender">>,
+  callbacks?: Partial<Pick<ConstructorParameters<typeof NativeLiveMacPersistentTurnRouter>[0], "onForegroundCoverage" | "onForegroundPublished" | "onForegroundUnpublished" | "hasUnpublishedDeferred" | "outputAttachmentSender" | "onSessionClose">>,
   captureSendFileTool?: (callback: (input: {path: string; displayName: string | null}) => Promise<unknown>) => void, forkChild?: string) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "persistent-turn-router-")));
   const output = queue<Record<string, unknown>>(), inputs = queue<{ uuid: string; origin: { kind: string } }>();
@@ -77,7 +77,8 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
   let backgroundSink: (() => Promise<NativeLiveMacPersistentAcknowledgement>) | null = null;
   let allow = true;
   let admissionSink: ((command: NativeLiveRuntimeCommand) => Promise<boolean>) | null = null;
-  const router = new NativeLiveMacPersistentTurnRouter({ registry, listenerInstanceId: "listener", relay: { ...(idleAdmission ? { checkTaskAdmission:idleAdmission } : {}), ...(bindInput ? { bindInput } : {}), async checkExecutionAdmission(input) { admissions.push(input.command.prepare_id); return admissionSink ? admissionSink(input.command) : allow; } },
+  const relay = { renewExecutionLease: undefined as undefined | (() => Promise<boolean>), ...(idleAdmission ? { checkTaskAdmission:idleAdmission } : {}), ...(bindInput ? { bindInput } : {}), async checkExecutionAdmission(input: {command: NativeLiveRuntimeCommand}) { admissions.push(input.command.prepare_id); return admissionSink ? admissionSink(input.command) : allow; } };
+  const router = new NativeLiveMacPersistentTurnRouter({ registry, listenerInstanceId: "listener", relay,
     async onBackgroundResult(owner, frame) { backgroundFrames.push(structuredClone(frame)); backgroundOwners.push(structuredClone(owner)); assert.equal(owner.conversationId, conversation); assert.ok(owner.generationId); background.push(frame.result.user_message_uuid as string); return backgroundSink ? backgroundSink() : acknowledged(frame.events.findLast(event => event.type === "assistant")?.uuid as string); }, ...callbacks });
   const run = (c: NativeLiveRuntimeCommand, extra = {}) => router.execute({ command: c, async onResult(frame) { results.push(frame.command.prepare_id); return acknowledged(frame.result.events.findLast(event => event.type === "assistant")?.uuid as string); }, ...extra });
   const finish = (uuid: string) => {
@@ -87,7 +88,7 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
     output.push({ type: "result", subtype: "success", session_id: activeSid, user_message_uuid: uuid });
   };
   t.after(async () => { await router.close(); await registry.closeAll(); await rm(root, { recursive: true, force: true }); });
-  return { workingDirectory: root, get sessionOptions(){return sessionOptions;}, router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, backgroundFrames, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
+  return { relay, workingDirectory: root, get sessionOptions(){return sessionOptions;}, router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, backgroundFrames, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
 }
 
 test("failed post-F background publication synchronously fences the next foreground send", async t => {
@@ -870,3 +871,23 @@ for (const operation of ["edit", "retry"] as const) {
     assert.ok(admitted >= 2);
   });
 }
+
+
+test("control receipt timeout records its cause before execute cleanup closes again", {timeout:5000}, async t=>{
+ const diagnostics:any[]=[];const f=await fixture(t,undefined,undefined,{onSessionClose:value=>diagnostics.push(value)});
+ const ready=deferred<void>();
+ const active=f.run(command(1),{async controlPump(controller:any){await ready.promise;await controller.interrupt();}});
+ const rejected=assert.rejects(active,/closed/);await f.inputs.next();
+ const binding=f.registry.snapshot()[0]!;
+ // The transport operation is the external boundary; timeout/retirement remain real.
+ binding.session.interruptTurn=()=>new Promise(()=>{});ready.resolve();await rejected;
+ assert.equal(f.closes,1);assert.deepEqual(diagnostics.map(x=>[x.phase,x.reasonCode]),[['requested','CONTROL_RECEIPT_TIMEOUT'],['completed','CONTROL_RECEIPT_TIMEOUT']]);
+ assert.equal(diagnostics[0].prepareId,id(1));assert.equal(diagnostics[0].conversationId,conversation);
+ assert.equal(diagnostics[0].generationId,binding.generationId);
+});
+test("revoked turn lease records a different cause from control timeout",async t=>{
+ const diagnostics:any[]=[];const f=await fixture(t,undefined,undefined,{onSessionClose:value=>diagnostics.push(value)});
+ f.relay.renewExecutionLease=async()=>false;
+ await assert.rejects(f.run(command(1)),/lease was not renewed/);
+ assert.equal(diagnostics[0]?.reasonCode,'EXECUTION_LEASE_REVOKED');assert.equal(f.closes,1);
+});

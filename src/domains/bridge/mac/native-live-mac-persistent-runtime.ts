@@ -32,6 +32,7 @@ export class NativeLiveMacPersistentRuntime {
     attachmentMaterializer: NativeLiveMacAttachmentMaterializer | null;
     outputAttachmentSender: NativeLiveMacOutputAttachmentSender | null;
     createTransport?: typeof createNativeLiveMacClaudeTransport;
+    onSessionClose?: ConstructorParameters<typeof NativeLiveMacPersistentTurnRouter>[0]["onSessionClose"];
     onRuntimeFailure?: ConstructorParameters<typeof NativeLiveMacPersistentExecutor>[0]["onRuntimeFailure"];
   }) {
     this.registry = new NativeLiveMacSessionRegistry(input.environment, input.defaultWorkingDirectory, input.createTransport, () => null, input.mcpServerConfig ?? null);
@@ -45,7 +46,7 @@ export class NativeLiveMacPersistentRuntime {
       ...(input.backgroundRecoveryNow ? { now: input.backgroundRecoveryNow } : {}),
       isForegroundActive:conversationId=>this.executor.isForegroundActive(conversationId),
       onImmediateFence: conversationId=>this.executor.suspend(conversationId,"recovery"),
-      onRecoveryBlocked:async conversationId=>{this.executor.suspend(conversationId,"recovery");await this.executor.retire(conversationId);},
+      onRecoveryBlocked:async conversationId=>{this.executor.suspend(conversationId,"recovery");await this.executor.retire(conversationId,"BACKGROUND_RECOVERY_BLOCKED");},
       onRecovered:conversationId=>this.executor.recovered(conversationId),
     });
     this.flushBackground = async () => {
@@ -101,13 +102,13 @@ export class NativeLiveMacPersistentRuntime {
         onRevoked:async()=>{
           if(this.watchdog===lease)this.watchdog=null;
           await Promise.allSettled(captured.map(binding=>this.registry.getGenerationId(binding.conversationId)===binding.generationId
-            ?this.executor.retire(binding.conversationId):Promise.resolve()));
+            ?this.executor.retire(binding.conversationId,"SESSION_LEASE_REVOKED"):Promise.resolve()));
         },
       });
       this.watchdog=lease;void lease.start().catch(()=>{});
     };
     this.executor = new NativeLiveMacPersistentExecutor({ hasCapacity: () => this.registry.size < 4, attachmentMaterializer: input.attachmentMaterializer, outputAttachmentSender: input.outputAttachmentSender, onRuntimeFailure: input.onRuntimeFailure ?? null,
-      createRouter: () => { startWatchdog(); return new NativeLiveMacPersistentTurnRouter({ registry: this.registry, listenerInstanceId: input.listenerInstanceId,
+      createRouter: () => { startWatchdog(); return new NativeLiveMacPersistentTurnRouter({ registry: this.registry, onSessionClose: input.onSessionClose, listenerInstanceId: input.listenerInstanceId,
         taskControlsAvailable: () => capabilityProbe ?? Promise.resolve(taskControlsSupported),
         outputAttachmentSender: input.outputAttachmentSender,
         relay: input.relay, onBackgroundResult: (owner, frame) => this.backgroundResults.commit(owner, frame),
@@ -148,7 +149,7 @@ export class NativeLiveMacPersistentRuntime {
     }
     if (binding.session.sessionId !== providerSessionId) throw new Error("Handoff session identity mismatch.");
     return drainNativeLiveMacSession({ session: binding.session,
-      fence: () => this.executor.suspend(conversationId), close: () => this.executor.retire(conversationId),
+      fence: () => this.executor.suspend(conversationId), close: () => this.executor.retire(conversationId,"HANDOFF_DRAIN"),
       settle: async () => {
         if (!this.backgroundResults.hasPendingRecovery(conversationId)) return;
         this.executor.suspend(conversationId, "recovery");

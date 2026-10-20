@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAgentSdkSessionHost } from '../src/agent-sdk-session-host.mjs';
 function queue(){const values=[];let waiter;let ended=false;return {push(v){if(waiter){const w=waiter;waiter=null;w({value:v,done:false});}else values.push(v);},end(){ended=true;waiter?.({done:true});},[Symbol.asyncIterator](){return {next(){return values.length?Promise.resolve({value:values.shift(),done:false}):ended?Promise.resolve({done:true}):new Promise(r=>{waiter=r;});}};}};}
-async function fixture(options={}){
+async function fixture(options={}, onCloseDiagnostic=null){
  const output=queue(),inputs=[];let calls=0,closed=0,interrupts=0;const stopped=[];
- const host=await createAgentSdkSessionHost({queryOptions:{perTaskStopAffordance:true,...options},queryImpl:({prompt})=>{
+ const host=await createAgentSdkSessionHost({onCloseDiagnostic,queryOptions:{perTaskStopAffordance:true,...options},queryImpl:({prompt})=>{
  calls++;(async()=>{for await(const input of prompt)inputs.push(input);})();
  return {async *[Symbol.asyncIterator](){yield* output;},close(){closed++;output.end();},async interrupt(){interrupts++;return {still_queued:[]};},async stopTask(id){stopped.push(id);}};
  }});
@@ -342,4 +342,50 @@ test('input submitted at a result boundary waits for foreground delivery before 
  await new Promise(setImmediate);
  assert.deepEqual(f.inputs.map(input => input.uuid), ['first', 'second']);
  await f.event({ ...result(), user_message_uuid: 'second' }); await second;
+});
+
+// Removing the host callback or replacing the first reason with catch cleanup
+// must fail these assertions; the SDK itself is an in-process stream only.
+test('close diagnostics preserve the initiating cause and finishing state without output',async t=>{
+ const diagnostics=[];const f=await fixture({},value=>diagnostics.push(value));
+ const turn=f.host.submit('PRIVATE_PROMPT',{id:'one',onNormalizedEvent:()=>new Promise(()=>{})});
+ turn.catch(()=>{});
+ const ready=new Promise(resolve=>f.host.events.once('turn-result',resolve));
+ f.output.push({...result(),user_message_uuid:'one'});await ready;
+ await f.host.close(Object.assign(new Error('PRIVATE_REASON'),{sessionCloseReason:'CONTROL_RECEIPT_TIMEOUT'}));
+ await assert.rejects(turn,/PRIVATE_REASON/);await f.host.close();
+ assert.deepEqual(diagnostics.map(x=>[x.phase,x.reasonCode]),[['requested','CONTROL_RECEIPT_TIMEOUT'],['completed','CONTROL_RECEIPT_TIMEOUT']]);
+ assert.equal(diagnostics[0].inputId,'one');assert.equal(diagnostics[0].resultReceived,true);
+ assert.equal(diagnostics[0].providerSessionId,'s');assert.equal(diagnostics[0].state,'idle');
+ assert.doesNotMatch(JSON.stringify(diagnostics),/PRIVATE_PROMPT|PRIVATE_REASON|synthetic/);
+});
+test('a failed SDK stream records SDK_FAILURE, without replacing the provider failure',async()=>{
+ const diagnostics=[];const f=await fixture({},value=>diagnostics.push(value));
+ f.output.end();await assert.rejects(f.host.completion,/ended unexpectedly/);
+ assert.deepEqual(diagnostics.map(x=>[x.phase,x.reasonCode]),[['requested','SDK_FAILURE'],['completed','SDK_FAILURE']]);
+});
+test('a throwing close observer cannot prevent closing or alter the original rejection',async()=>{
+ const f=await fixture({},()=>{throw Error('diagnostic disk unavailable');});const turn=f.host.submit('private',{id:'one'});
+ const rejected=assert.rejects(turn,/original/);await f.host.close(new Error('original'));await rejected;assert.equal(f.closed,1);
+});
+
+test('failed query close and retry keep the first reason and close identity',async()=>{
+ const diagnostics=[];const f=await fixture({},value=>diagnostics.push(value));
+ const close=f.host.query.close;let calls=0;
+ f.host.query.close=()=>{if(calls++===0)throw Error('PRIVATE_IO_ERROR');return close();};
+ const turn=f.host.submit('private',{id:'one'});const rejected=assert.rejects(turn,/closed/);
+ await assert.rejects(f.host.close(Object.assign(new Error('closed'),{sessionCloseReason:'HANDOFF_DRAIN'})),/PRIVATE_IO_ERROR/);await rejected;
+ await f.host.close(Object.assign(new Error('other cleanup'),{sessionCloseReason:'TURN_FAILED'}));
+ assert.deepEqual(diagnostics.map(x=>[x.phase,x.reasonCode]),[['requested','HANDOFF_DRAIN'],['failed','HANDOFF_DRAIN'],['completed','HANDOFF_DRAIN']]);
+ assert.equal(new Set(diagnostics.map(x=>x.closeId)).size,1);assert.equal(f.host.queryClosed,true);
+ assert.doesNotMatch(JSON.stringify(diagnostics),/PRIVATE_IO_ERROR|private/);
+});
+
+test('a rejected background acknowledgement is distinct from an SDK stream failure',async()=>{
+ const diagnostics=[];const f=await fixture({},value=>diagnostics.push(value));
+ const failed=barrier();f.host.onBackgroundResult=async()=>{throw Error('PRIVATE_COMMIT_FAILURE');};
+ const close=f.host.query.close;f.host.query.close=()=>{close();failed.resolve();};
+ f.output.push({...result(),user_message_uuid:'background'});await failed.promise;
+ assert.equal(diagnostics[0]?.reasonCode,'BACKGROUND_ACK_FAILED');assert.equal(f.closed,1);
+ assert.doesNotMatch(JSON.stringify(diagnostics),/PRIVATE_COMMIT_FAILURE/);
 });

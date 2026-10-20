@@ -16,15 +16,15 @@ import {
 
 // State stays on the transport owner; private checkpoint operations are bound by its entry point.
 export async function openAgentSdkPersistentSession(owner, checkpoints, options = {}, restore = null, fork = null) {
-    const allowed = new Set(["authorize", "onBackgroundResult", "createBackgroundOutput", "execution", "permissionHandler", "questionHandler", "perTaskStopAffordance"]);
+    const allowed = new Set(["authorize", "onBackgroundResult", "createBackgroundOutput", "execution", "permissionHandler", "questionHandler", "perTaskStopAffordance", "onCloseDiagnostic"]);
     for (const key of Object.keys(options)) if (!allowed.has(key)) throw new Error(`Unsupported persistent session option: ${key}`);
     const { authorize, onBackgroundResult, createBackgroundOutput = null, execution = null, permissionHandler = null,
-      questionHandler = null, perTaskStopAffordance = false } = options;
+      questionHandler = null, perTaskStopAffordance = false, onCloseDiagnostic = null } = options;
     if (typeof authorize !== "function" || typeof onBackgroundResult !== "function") throw new Error("Persistent sessions require authorize and onBackgroundResult handlers.");
     if (createBackgroundOutput !== null && typeof createBackgroundOutput !== "function") throw new Error("Invalid background output factory.");
     if (typeof perTaskStopAffordance !== "boolean") throw new Error("Task stop capability must be boolean.");
     if (owner.activeQuery || owner.activeTurnHandle || owner.activeSessionHost || owner.legacyOperation) throw runtimeError("Claude transport already has an active session.", { runtimeCode: "RUNTIME_UNAVAILABLE" });
-    const claim = { cancelled: false, close: async () => { claim.cancelled = true; } };
+    const claim = { cancelled: false, reason: null, close: async reason => { if (!claim.cancelled) claim.reason = reason; claim.cancelled = true; } };
     owner.activeSessionHost = claim;
     let host, startup = null, rejectStartup = null;
     let firstInputAdmitted = false;
@@ -116,7 +116,7 @@ export async function openAgentSdkPersistentSession(owner, checkpoints, options 
       });
       if (owner.activeSessionHost !== claim || claim.cancelled) throw runtimeError("Persistent session startup was aborted.", { runtimeCode: "ABORTED" });
       const executionOptions = normalizeAgentSdkExecutionSelection(execution);
-      host = await createAgentSdkSessionHost({ queryImpl,
+      host = await createAgentSdkSessionHost({ queryImpl, onCloseDiagnostic,
         expectedSessionId: restore?.sessionId ?? null,
         allowInitialFork: fork !== null,
         observeOutput: startup ? message => observeNativeSessionStartup(startup, message) : null,
@@ -266,7 +266,7 @@ export async function openAgentSdkPersistentSession(owner, checkpoints, options 
       const close = host.close.bind(host);
       host.close = async reason => { rejectStartup?.(new Error("Native session startup was closed.")); await close(reason); release(); };
       void host.completion.then(release, release);
-      if (claim.cancelled) { await host.close(); throw runtimeError("Persistent session startup was aborted.", { runtimeCode: "ABORTED" }); }
+      if (claim.cancelled) { await host.close(claim.reason ?? Object.assign(new Error("Session host was closed."), {sessionCloseReason:"STARTUP_ABORTED"})); throw runtimeError("Persistent session startup was aborted.", { runtimeCode: "ABORTED" }); }
       if (startupReady) {
         let timer;
         try {
@@ -275,7 +275,7 @@ export async function openAgentSdkPersistentSession(owner, checkpoints, options 
             new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Native startup identity deadline expired.")), restore.timeoutMs); }),
           ]);
         } catch (error) {
-          if (!host.queryClosed && host.state !== "failed") await host.close();
+          if (!host.queryClosed && host.state !== "failed") await host.close(Object.assign(new Error("Session host was closed."), {sessionCloseReason:"STARTUP_FAILED"}));
           throw error;
         } finally { clearTimeout(timer); }
       }

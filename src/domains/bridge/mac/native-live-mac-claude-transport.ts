@@ -39,6 +39,20 @@ export type NativeLiveMacTaskState = {
   taskType: string | null; description: string | null; parentTaskId: string | null;
   ambient: boolean; summary: string | null;
 };
+export type NativeLiveMacSessionCloseReason =
+  | "EXPLICIT_CLOSE" | "CONTROL_RECEIPT_TIMEOUT" | "EXECUTION_LEASE_REVOKED"
+  | "SESSION_LEASE_REVOKED" | "TURN_FAILED" | "EXECUTOR_FAILED" | "BRANCH_REPLACED"
+  | "LEGACY_FALLBACK" | "HANDOFF_DRAIN" | "BACKGROUND_RECOVERY_BLOCKED"
+  | "BACKGROUND_RECOVERED" | "MANUAL_COMPACT" | "SESSION_CLEANUP" | "DAEMON_SHUTDOWN"
+  | "STARTUP_FAILED" | "STARTUP_ABORTED" | "TRANSPORT_ABORT" | "SDK_FAILURE"
+  | "INTERRUPT_WITH_BACKGROUND_TASKS" | "BACKGROUND_ACK_FAILED";
+export type NativeLiveMacSessionCloseDiagnostic = Readonly<{
+  closeId: string; reasonCode: string; phase: "requested" | "completed" | "failed"; state: string;
+  providerSessionId: string | null; inputId: string | null;
+  pendingInputs: number; backgroundTasks: number; resultReceived: boolean;
+  conversationId?: string; generationId?: string; prepareId?: string | null;
+}>;
+
 export type NativeLiveMacPersistentSession = {
   readonly state: string;
   readonly sessionId: string | null;
@@ -54,7 +68,7 @@ export type NativeLiveMacPersistentSession = {
   readTaskOutput?(id: string, expected: { handle: string; signal?: AbortSignal }): Promise<{ output: string; totalBytes: number; truncated: boolean }>;
   /** The frame's last top-level assistant record, once durable and descended from the parent. */
   verifyCheckpoint(input: { events: Record<string, unknown>[]; parentCheckpointId: string | null; timeoutMs?: number }): Promise<string>;
-  close(): Promise<void>;
+  close(reason?: Error): Promise<void>;
 };
 export type NativeLiveMacSessionFork = Readonly<{ sessionId: string; checkpointId: string }>;
 export type NativeLiveMacSessionRestore = Readonly<{
@@ -72,6 +86,7 @@ export type NativeLiveMacPersistentSessionOptions = {
   } & Partial<NativeLiveMacOutputAttachmentReceipt>): Promise<void>;
   execution?: NativeLiveExecutionSelection | null;
   perTaskStopAffordance?: boolean;
+  onCloseDiagnostic?(frame: NativeLiveMacSessionCloseDiagnostic): void;
   permissionHandler?: NativeLiveMacInteractiveTurnOptions["permissionHandler"];
   questionHandler?: NativeLiveMacInteractiveTurnOptions["questionHandler"];
 };
@@ -131,11 +146,11 @@ export type NativeLiveMacInteractiveTurnOptions = {
 
 export type NativeLiveMacClaudeTransport =
   NativeLiveClaudeRuntime & {
-    closePersistentSession?(): Promise<void>;
+    closePersistentSession?(reason?: Error): Promise<void>;
     restorePersistentSession?(restore: NativeLiveMacSessionRestore, options: NativeLiveMacPersistentSessionOptions): Promise<NativeLiveMacPersistentSession>;
     forkPersistentSession?(fork: NativeLiveMacSessionFork, options: NativeLiveMacPersistentSessionOptions): Promise<NativeLiveMacPersistentSession>;
     openPersistentSession?(options: NativeLiveMacPersistentSessionOptions): Promise<NativeLiveMacPersistentSession>;
-    abort(): void;
+    abort(reason?: Error): void;
     deleteSession(sessionId: string): Promise<void>;
     listSessions?(input?: {
       allDirectories?: boolean;

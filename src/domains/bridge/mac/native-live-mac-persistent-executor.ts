@@ -1,4 +1,4 @@
-import type { NativeLiveMacActiveTurnController } from "./native-live-mac-claude-transport.js";
+import type { NativeLiveMacActiveTurnController, NativeLiveMacSessionCloseReason } from "./native-live-mac-claude-transport.js";
 import type { NativeLiveNormalizedEvent } from "../../conversation/native-live-conversation-orchestrator.js";
 import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
@@ -38,7 +38,7 @@ export class NativeLiveMacPersistentExecutor {
   }
   async recovered(conversationId:string):Promise<void>{
     const reasons=this.suspended.get(conversationId);if(!reasons?.has("recovery"))return;
-    await this.retire(conversationId);reasons.delete("recovery");if(!reasons.size)this.suspended.delete(conversationId);
+    await this.retire(conversationId,"BACKGROUND_RECOVERED");reasons.delete("recovery");if(!reasons.size)this.suspended.delete(conversationId);
   }
   /** The conversation was attached back to LeileiOS: accept its turns again. Recovery fences stay. */
   resumeHandoff(conversationId: string): void {
@@ -97,29 +97,29 @@ export class NativeLiveMacPersistentExecutor {
   }
 
   /** Close the conversation's writer before a legacy operation touches its session. */
-  async retire(conversationId: string): Promise<void> {
+  async retire(conversationId: string, reason: NativeLiveMacSessionCloseReason = "EXPLICIT_CLOSE"): Promise<void> {
     const router = this.routers.get(conversationId);
     if (!router) return;
     this.retiring.add(conversationId);
-    await router.close();
+    await router.close(reason);
     await router.settle?.();
     if (this.routers.get(conversationId) === router) this.routers.delete(conversationId);
     this.retiring.delete(conversationId);
   }
 
-  async retireSession(providerSessionId: string): Promise<void> {
-    for (const [id, router] of this.routers) if (router.providerSessionId === providerSessionId) await this.retire(id);
+  async retireSession(providerSessionId: string, reason: NativeLiveMacSessionCloseReason = "EXPLICIT_CLOSE"): Promise<void> {
+    for (const [id, router] of this.routers) if (router.providerSessionId === providerSessionId) await this.retire(id, reason);
   }
 
-  async retireAll(): Promise<void> {
-    const outcomes=await Promise.allSettled([...this.routers.keys()].map(id=>this.retire(id)));
+  async retireAll(reason: NativeLiveMacSessionCloseReason = "EXPLICIT_CLOSE"): Promise<void> {
+    const outcomes=await Promise.allSettled([...this.routers.keys()].map(id=>this.retire(id,reason)));
     const errors=outcomes.filter((r):r is PromiseRejectedResult=>r.status==="rejected");
     if(errors.length)throw new AggregateError(errors.map(r=>r.reason),"Persistent writers could not all close.");
   }
 
   async closeAll(): Promise<void> {
     this.shutDown = true;
-    await this.retireAll();
+    await this.retireAll("DAEMON_SHUTDOWN");
   }
 
   async execute(rawCommand: unknown, options: {
@@ -186,7 +186,7 @@ export class NativeLiveMacPersistentExecutor {
       // Only the router can prove a Wake failed before SDK submission while
       // retaining its exact live writer. Every uncertain path still retires.
       if (!safeUnstartedWake || command.operation !== "wake" || delivery !== "pending") {
-        try { await this.retire(command.conversation_id); } catch { /* Keep ownership until a verified close. */ }
+        try { await this.retire(command.conversation_id,"EXECUTOR_FAILED"); } catch { /* Keep ownership until a verified close. */ }
       }
       if (delivery !== "pending") return { result: submitted!, delivery, ...(delivery === "committed" ? { canonicalOutcome } : {}) };
       const code = runtimeFailureCode(error);

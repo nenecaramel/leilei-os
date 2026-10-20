@@ -562,3 +562,20 @@ test('queued foreground arriving during native Cron permission cannot inherit th
  host.submit('queued foreground', { id: 'foreground', source: 'human' }).catch(() => {});
  release(); assert.equal((await verdict).behavior, 'deny');
 });
+
+test('a close during query creation preserves the shutdown cause through the startup claim',async()=>{
+ const diagnostics=[];const f=fixture();const query=f.transport.queryImpl;
+ f.transport.queryImpl=args=>{const value=query(args);queueMicrotask(()=>f.transport.closePersistentSession(Object.assign(new Error('closed'),{sessionCloseReason:'DAEMON_SHUTDOWN'})));return value;};
+ await assert.rejects(f.open({onCloseDiagnostic:value=>diagnostics.push(value)}),/abort/i);
+ assert.deepEqual(diagnostics.map(x=>[x.phase,x.reasonCode]),[['requested','DAEMON_SHUTDOWN'],['completed','DAEMON_SHUTDOWN']]);
+});
+
+test('a reasonless first startup cancellation cannot be relabelled by later cleanup',async()=>{
+ const diagnostics=[];const f=fixture();const query=f.transport.queryImpl;
+ f.transport.queryImpl=args=>{const value=query(args);queueMicrotask(()=>{
+   void f.transport.closePersistentSession();
+   void f.transport.closePersistentSession(Object.assign(new Error('later cleanup'),{sessionCloseReason:'DAEMON_SHUTDOWN'}));
+ });return value;};
+ await assert.rejects(f.open({onCloseDiagnostic:value=>diagnostics.push(value)}),/abort/i);
+ assert.deepEqual(diagnostics.map(x=>[x.phase,x.reasonCode]),[['requested','STARTUP_ABORTED'],['completed','STARTUP_ABORTED']]);
+});

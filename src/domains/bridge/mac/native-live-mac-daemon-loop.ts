@@ -287,7 +287,7 @@ export class NativeLiveMacDaemonLoop {
         // asking the new fork to open; the replaced native schedule must never
         // keep running in parallel with a different presentation branch.
         if (command.operation === "edit" || command.operation === "retry") {
-          await this.persistentExecutor?.retire(command.conversation_id);
+          await this.persistentExecutor?.retire(command.conversation_id, "BRANCH_REPLACED");
           // Only exact-checkpoint replacements can own a persistent child.
           // The executor still leaves legacy checkpoint-less forks one-shot.
           if (this.persistentExecutor?.canRoute(command)) {
@@ -314,7 +314,7 @@ export class NativeLiveMacDaemonLoop {
           persistentRun = await this.persistentExecutor.execute(command, { ...options, commit });
           return persistentRun.result;
         }
-        await this.persistentExecutor?.retire(command.conversation_id);
+        await this.persistentExecutor?.retire(command.conversation_id, "LEGACY_FALLBACK");
         return this.executor.execute(command, options);
       };
       try {
