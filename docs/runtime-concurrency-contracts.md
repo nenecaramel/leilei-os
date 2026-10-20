@@ -32,6 +32,13 @@ failure rejects that turn and late delivery cannot reopen it. Advisory event
 uploads share a two-second elapsed deadline across response parsing, retries and
 batch splitting; terminal result submission keeps its separate budget.
 
+The main dispatcher acquires one fresh listener lease before background receipt
+replay, terminal recovery, and new reservation. It does not reacquire merely
+because empty background recovery preceded dispatch. Recovery that consumes 30s
+of the server's 60s listener lease requires renewal before proceeding; busy or
+failed renewal leaves saved output intact and starts no fresh input. Independent
+periodic recovery still acquires its own listener lease.
+
 Automatic background receipt replay reacquires the listener lease before delivery.
 Shutdown does not begin replay after a pending renewal returns. A handoff drain is
 not ready while that conversation has normal or quarantined background receipts.

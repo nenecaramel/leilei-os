@@ -4,7 +4,6 @@ import vm from "node:vm";
 import ts from "typescript";
 import { NativeLiveMacDaemonLoop, type NativeLiveMacDaemonRelayClient } from "../src/domains/bridge/mac/native-live-mac-daemon-loop.js";
 import { NativeLiveMacWakeBrokerClient } from "../src/domains/bridge/mac/native-live-mac-wake-broker-client.js";
-import { flushNativeLiveBackgroundWithListenerLease } from "../src/domains/bridge/mac/native-live-mac-background-lease.js";
 import type { NativeLiveRuntimeCommand, NativeLiveRuntimeExecutionResult } from "../src/domains/bridge/protocol/native-live-runtime-protocol.js";
 
 const listener = "11111111-1111-4111-8111-111111111111";
@@ -144,7 +143,6 @@ export async function runDaemonScenario(options: {
       async offer() { metrics.companionOffers++; },
     },
     persistentRuntime: { backgroundResults: { async flush() { return 0; } } },
-    flushNativeLiveBackgroundWithListenerLease,
     relay: {
       renewLease: () => relay.renewLease(),
       async waitForWork() { throw new Error("unexpected main relay long-poll"); },
