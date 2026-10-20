@@ -1,4 +1,4 @@
-import { nativeSessionExecutableSql } from "../turn/turn-repository/session-owner.js";
+import { nativeSessionExecutableSql, nativeSessionTurnSql } from "../turn/turn-repository/session-owner.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import { conversationMessages, nativeLiveTurnPreparations } from "../../../database/schema.js";
@@ -32,8 +32,8 @@ export async function checkQueuedNativeLiveInput(db: Pick<Database, "execute">, 
       AND (p.runtime_metadata->'native_live_input_binding'->>'sourceRevision') IS NOT DISTINCT FROM (c.provider_metadata->'nativeSessionSource'->>'revision')
       AND c.origin='native_live' AND c.lifecycle_status='active'
       AND ${nativeSessionExecutableSql("c")}
-      AND c.provider_metadata->'native_live_presentation_owner'->>'prepareId'=p.id::text
-      AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM c.current_head_message_id::text LIMIT 1`);
+      AND ${nativeSessionTurnSql("c").prepareId}=p.id::text
+      AND ${nativeSessionTurnSql("c").anchor} IS NOT DISTINCT FROM c.current_head_message_id::text LIMIT 1`);
   return !!row;
 }
 
@@ -60,8 +60,8 @@ export async function bindNativeLiveInput(db: Database, input: NativeLiveInputBi
       FROM conversations WHERE user_id=${input.userId}::uuid AND id=${p.conversationId}::uuid
         AND origin='native_live' AND lifecycle_status='active'
         AND ${nativeSessionExecutableSql("conversations")}
-        AND provider_metadata->'native_live_presentation_owner'->>'prepareId'=${p.id}::text
-        AND (provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM current_head_message_id::text
+        AND ${nativeSessionTurnSql("conversations").prepareId}=${p.id}::text
+        AND ${nativeSessionTurnSql("conversations").anchor} IS NOT DISTINCT FROM current_head_message_id::text
       FOR UPDATE
     `);
     const [lease] = c ? await tx.execute(sql`SELECT user_id FROM native_live_runtime_listener_leases

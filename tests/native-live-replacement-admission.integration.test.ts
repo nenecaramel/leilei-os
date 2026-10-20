@@ -1,3 +1,4 @@
+import { setTestNativeSessionTurn } from "./helpers/native-session-turn.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq } from "drizzle-orm";
@@ -89,10 +90,11 @@ for (const operation of ["edit", "retry"] as const) for (const source of ["new",
     const [c] = await db.select().from(conversations).where(eq(conversations.id, conversationId));
     await db.update(conversations).set({ currentHeadMessageId: target }).where(eq(conversations.id, conversationId));
     assert.equal(await relay.renewExecutionLease(input), false, "changed visible branch revokes replacement");
-    await db.update(conversations).set({ currentHeadMessageId: head, providerMetadata: { ...c!.providerMetadata,
-      native_live_presentation_owner: { prepareId: crypto.randomUUID(), anchorHeadMessageId: head } } }).where(eq(conversations.id, conversationId));
+    await db.update(conversations).set({ currentHeadMessageId: head }).where(eq(conversations.id, conversationId));
+    await setTestNativeSessionTurn(db,conversationId,{prepareId:crypto.randomUUID(),anchor:head});
     assert.equal(await relay.checkExecutionAdmission(input), false, "superseded owner cannot authorize");
     await db.update(conversations).set({ providerMetadata: c!.providerMetadata }).where(eq(conversations.id, conversationId));
+    await setTestNativeSessionTurn(db,conversationId,{prepareId:p!.id,anchor:head});
     if (parent && source !== "continuation") {
       await db.update(checkpoints).set({ providerCheckpointId: crypto.randomUUID() }).where(eq(checkpoints.canonicalMessageId, parent));
       assert.equal(await relay.checkExecutionAdmission(input), false, "fork must use the exact durable parent checkpoint");

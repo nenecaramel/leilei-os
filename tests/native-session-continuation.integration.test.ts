@@ -1,3 +1,4 @@
+import { setTestNativeSessionTurn } from "./helpers/native-session-turn.js";
 import { syncNativeSessionOwner } from "../src/domains/bridge/turn/turn-repository/session-owner.js";
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -134,7 +135,8 @@ test('a verified quiet tail on the current handoff checkpoint remains the first 
   const [c] = await f.db.select().from(conversations).where(eq(conversations.id, f.input.conversationId));
   const source = { ...c.providerMetadata.nativeSessionSource, headMessageId: a };
   await f.db.update(conversations).set({ currentHeadMessageId: a, providerMetadata: { ...c.providerMetadata,
-    nativeSessionSource: source, native_live_presentation_owner: { prepareId: owner, anchorHeadMessageId: a } } }).where(eq(conversations.id, f.input.conversationId));
+    nativeSessionSource: source } }).where(eq(conversations.id, f.input.conversationId));
+  await setTestNativeSessionTurn(f.db,f.input.conversationId,{prepareId:owner,anchor:a});
   await f.db.insert(conversationProviderSessionCheckpoints).values({ userId: f.input.userId, conversationId: f.input.conversationId,
     canonicalMessageId: a, provider: 'claude_code', providerSessionId: f.input.sessionId, providerCheckpointId: f.input.checkpointId,
     effectiveWorkingDirectory: f.input.effectiveWorkingDirectory, runtimeMetadata: { native_live_resume_tail: {

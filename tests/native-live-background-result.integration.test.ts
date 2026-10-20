@@ -1,3 +1,4 @@
+import { setTestNativeSessionTurn, testNativeSessionTurnSql } from "./helpers/native-session-turn.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq, sql } from "drizzle-orm";
@@ -48,8 +49,8 @@ async function fixture(t: test.TestContext) {
 test("foreground commit advances owner anchor to its canonical assistant in the same transaction", { skip: !enabled }, async t => {
   const f=await fixture(t);
   const [head] = await f.database.db.execute<{ owner: string | null; anchor: string | null; current: string | null }>(sql`
-    SELECT provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner,
-      provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor,
+    SELECT ${testNativeSessionTurnSql("conversations").prepareId} AS owner,
+      ${testNativeSessionTurnSql("conversations").anchor} AS anchor,
       current_head_message_id::text AS current
     FROM conversations WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid
   `);
@@ -61,7 +62,7 @@ test("foreground commit advances owner anchor to its canonical assistant in the 
   await f.repository.prepareBackgroundResult(f.prepare);
   assert.equal((await f.repository.submitBackgroundResult(f.submit)).outcome,"committed");
   const [advanced] = await f.database.db.execute<{ anchor: string | null }>(sql`
-    SELECT provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor
+    SELECT ${testNativeSessionTurnSql("conversations").anchor} AS anchor
     FROM conversations WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid
   `);
   assert.equal(advanced?.anchor,f.prepare.receiptId);
@@ -108,8 +109,8 @@ for (const legacy of [false, true] as const) test(`visible Silence Wake followed
   const [surface] = await f.database.db.execute<{
     owner: string | null; anchor: string | null; head: string | null;
   }>(sql`
-    SELECT provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner,
-      provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor,
+    SELECT ${testNativeSessionTurnSql("conversations").prepareId} AS owner,
+      ${testNativeSessionTurnSql("conversations").anchor} AS anchor,
       current_head_message_id::text AS head
     FROM conversations WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid
   `);
@@ -122,12 +123,7 @@ for (const legacy of [false, true] as const) test(`visible Silence Wake followed
   if (legacy) {
     // Simulate the bad production history from before this fix: visible Wake
     // already moved the canonical head, but the source owner still anchors H.
-    await f.database.db.execute(sql`
-      UPDATE conversations SET provider_metadata = jsonb_set(
-        provider_metadata, '{native_live_presentation_owner,anchorHeadMessageId}',
-        to_jsonb(${f.completed.assistantMessageId}::text))
-      WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid
-    `);
+    await setTestNativeSessionTurn(f.database.db, f.conversation.id, { anchor: f.completed.assistantMessageId });
   }
   const receiptId = crypto.randomUUID();
   const background = {
@@ -147,7 +143,7 @@ for (const legacy of [false, true] as const) test(`visible Silence Wake followed
     "the real regression was prepare HTTP 200 followed by result HTTP 409");
   const [after] = await f.database.db.execute<{ head: string | null; anchor: string | null }>(sql`
     SELECT current_head_message_id::text AS head,
-      provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor
+      ${testNativeSessionTurnSql("conversations").anchor} AS anchor
     FROM conversations WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid
   `);
   assert.equal(after.head, receiptId);
@@ -199,12 +195,7 @@ async function strandedRejectedWake(t: test.TestContext, intermediate = false, o
 
   // Old deployed Wake advanced source -> W but left its inherited
   // anchor at source; source may be an earlier Cron (not original H).
-  await f.database.db.execute(sql`
-    UPDATE conversations SET provider_metadata=jsonb_set(
-      provider_metadata, '{native_live_presentation_owner,anchorHeadMessageId}',
-      to_jsonb(${preWakeHead}::text))
-    WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid
-  `);
+  await setTestNativeSessionTurn(f.database.db, f.conversation.id, { anchor: preWakeHead });
   const receiptId = crypto.randomUUID();
   const prepare = {
     ...f.prepare, sourcePrepareId: wakeId, receiptId,
@@ -228,8 +219,8 @@ async function strandedRejectedWake(t: test.TestContext, intermediate = false, o
     phase: string; resultHash: string | null; checkpoint: string | null;
   }>(sql`
     SELECT c.current_head_message_id::text AS head,
-      c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor,
-      c.provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner,
+      ${testNativeSessionTurnSql("c").anchor} AS anchor,
+      ${testNativeSessionTurnSql("c").prepareId} AS owner,
       e.payload->>'phase' AS phase, e.payload->>'resultHash' AS "resultHash",
       e.payload->>'providerCheckpointId' AS checkpoint
     FROM conversations c JOIN native_live_runtime_events e
@@ -288,8 +279,8 @@ async function strandedRejectedWake(t: test.TestContext, intermediate = false, o
 for (const expire of [true, false]) test(`${expire ? "expired" : "live"} Cron receipt commits after rejected unstarted send without rewriting its slot`, { skip: !enabled }, async t => {
   const f = await strandedRejectedWake(t, false, { expire });
   const [before] = await f.database.db.execute<{ owner: string; anchor: string }>(sql`
-    SELECT provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner,
-      provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor
+    SELECT ${testNativeSessionTurnSql("conversations").prepareId} AS owner,
+      ${testNativeSessionTurnSql("conversations").anchor} AS anchor
     FROM conversations WHERE id=${f.conversation.id}::uuid
   `);
   assert.equal(before.owner, f.rejectedId);
@@ -299,8 +290,8 @@ for (const expire of [true, false]) test(`${expire ? "expired" : "live"} Cron re
   assert.equal(committed.outcome, "committed");
   assert.equal(committed.providerCheckpointId, f.submit.result.provider_checkpoint_id);
   const [after] = await f.database.db.execute<{ owner: string; anchor: string; head: string }>(sql`
-    SELECT provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner,
-      provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor,
+    SELECT ${testNativeSessionTurnSql("conversations").prepareId} AS owner,
+      ${testNativeSessionTurnSql("conversations").anchor} AS anchor,
       current_head_message_id::text AS head
     FROM conversations WHERE id=${f.conversation.id}::uuid
   `);
@@ -333,8 +324,8 @@ test("historical Wake sourced from a prior canonical Cron recovers the stranded 
   assert.equal((await f.repository.submitBackgroundResult(f.submit)).outcome, "committed");
   const [state] = await f.database.db.execute<{ head: string; owner: string; anchor: string }>(sql`
     SELECT current_head_message_id::text AS head,
-      provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner,
-      provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor
+      ${testNativeSessionTurnSql("conversations").prepareId} AS owner,
+      ${testNativeSessionTurnSql("conversations").anchor} AS anchor
     FROM conversations WHERE id=${f.conversation.id}::uuid
   `);
   assert.equal(state.head, f.receiptId);
@@ -363,7 +354,7 @@ for (const tamper of ["canonical head changed", "writer generation changed"] as 
       { code: "BACKGROUND_CONFLICT" });
     const [state] = await f.database.db.execute<{ head: string; owner: string }>(sql`
       SELECT current_head_message_id::text AS head,
-        provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner
+        ${testNativeSessionTurnSql("conversations").prepareId} AS owner
       FROM conversations WHERE id=${f.conversation.id}::uuid
     `);
     assert.equal(state.head, tamper === "canonical head changed" ? f.preWakeHead : f.wakeHead);
@@ -402,7 +393,7 @@ for (const mutated of ["started input", "runtime evidence", "changed revision", 
     await assert.rejects(f.repository.prepareBackgroundResult(f.prepare), { code: "BACKGROUND_CONFLICT" });
     const [after] = await f.database.db.execute<{ head: string; anchor: string }>(sql`
       SELECT current_head_message_id::text AS head,
-        provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor
+        ${testNativeSessionTurnSql("conversations").anchor} AS anchor
       FROM conversations WHERE id=${f.conversation.id}::uuid
     `);
     assert.equal(after.head, f.wakeHead, "unsafe recovery cannot append an old B");
@@ -444,7 +435,7 @@ test("background commit has its own durable receipt and does not rewrite canonic
   const messages = await f.database.db.select().from(conversationMessages).where(eq(conversationMessages.conversationId, f.conversation.id)); assert.equal(messages.length, 3);
   assert.equal((await f.canonical.getConversation({ userId: f.user.id, conversationId: f.conversation.id }))!.currentHeadMessageId, f.prepare.receiptId);
   const [owner] = await f.database.db.execute<{ anchor: string | null }>(sql`
-    SELECT provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor
+    SELECT ${testNativeSessionTurnSql("conversations").anchor} AS anchor
     FROM conversations WHERE user_id=${f.user.id}::uuid AND id=${f.conversation.id}::uuid`);
   assert.equal(owner!.anchor, f.prepare.receiptId,
     "canonical background head and next-turn presentation anchor must advance atomically");
@@ -1024,7 +1015,7 @@ test("legacy background stamps and saved receipt survive a rejected unstarted sl
   await f.repository.prepareBackgroundResult(f.prepare);
   assert.equal((await f.repository.submitBackgroundResult(f.submit)).outcome,"committed");
   const [surface]=await f.database.db.execute<{slot:string;head:string}>(sql`SELECT
-    provider_metadata->'native_live_presentation_owner'->>'prepareId' AS slot,current_head_message_id::text AS head
+    ${testNativeSessionTurnSql("conversations").prepareId} AS slot,current_head_message_id::text AS head
     FROM conversations WHERE id=${f.conversation.id}::uuid`);
   assert.deepEqual(surface,{slot:f.rejectedId,head:f.receiptId});
 });
@@ -1037,7 +1028,7 @@ test("fresh Cron receipt after rejected unstarted send does not need historical 
   const commit=await f.repository.submitBackgroundResult({...f.submit,receiptId});
   assert.equal(commit.outcome,"committed");
   const [surface]=await f.database.db.execute<{slot:string;head:string}>(sql`SELECT
-    provider_metadata->'native_live_presentation_owner'->>'prepareId' AS slot,current_head_message_id::text AS head
+    ${testNativeSessionTurnSql("conversations").prepareId} AS slot,current_head_message_id::text AS head
     FROM conversations WHERE id=${f.conversation.id}::uuid`);
   assert.deepEqual(surface,{slot:f.rejectedId,head:receiptId});
 });

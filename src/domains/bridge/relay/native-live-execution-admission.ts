@@ -1,4 +1,4 @@
-import { nativeSessionExecutableSql } from "../turn/turn-repository/session-owner.js";
+import { nativeSessionExecutableSql, nativeSessionTurnSql } from "../turn/turn-repository/session-owner.js";
 import { nativeResumeCheckpointSql } from "../turn/native-live-resume-checkpoint.js";
 import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
@@ -33,13 +33,11 @@ export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "exec
           (p.operation = 'send' AND u.role = 'user'
             AND (c.current_head_message_id = u.id
               OR c.current_head_message_id IS NOT DISTINCT FROM u.parent_message_id)
-            AND c.provider_metadata->'native_live_presentation_owner'->>'prepareId' = p.id::text
-            AND (c.provider_metadata->'native_live_presentation_owner' ? 'anchorHeadMessageId')
-            AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM c.current_head_message_id::text)
+            AND ${nativeSessionTurnSql("c").prepareId} = p.id::text
+            AND ${nativeSessionTurnSql("c").anchor} IS NOT DISTINCT FROM c.current_head_message_id::text)
           OR (p.operation IN ('edit', 'retry') AND u.role = 'user'
-            AND c.provider_metadata->'native_live_presentation_owner'->>'prepareId' = p.id::text
-            AND (c.provider_metadata->'native_live_presentation_owner' ? 'anchorHeadMessageId')
-            AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM c.current_head_message_id::text
+            AND ${nativeSessionTurnSql("c").prepareId} = p.id::text
+            AND ${nativeSessionTurnSql("c").anchor} IS NOT DISTINCT FROM c.current_head_message_id::text
             AND EXISTS (
               SELECT 1 FROM conversation_messages target
               WHERE target.user_id=p.user_id AND target.conversation_id=p.conversation_id

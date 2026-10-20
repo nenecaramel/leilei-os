@@ -1,3 +1,4 @@
+import { setTestNativeSessionTurn } from "./helpers/native-session-turn.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq, sql } from "drizzle-orm";
@@ -14,9 +15,10 @@ test("execution admission PostgreSQL snapshot fences", { skip: process.env.RUN_N
   const userId = crypto.randomUUID(), conversationId = crypto.randomUUID(), canonicalUserMessageId = crypto.randomUUID(), reservationId = crypto.randomUUID(), requestId = crypto.randomUUID(), listenerInstanceId = crypto.randomUUID();
   t.after(async () => { try { await db.delete(leases).where(eq(leases.userId, userId)); await db.delete(conversations).where(eq(conversations.userId, userId)); await db.delete(users).where(eq(users.id, userId)); } finally { await database.close(); } });
   await db.insert(users).values({ id: userId, email: `admission-${userId}@example.com`, displayName: "Synthetic admission" });
-  await db.insert(conversations).values({ id: conversationId, userId, origin: "native_live", providerMetadata: { native_live_presentation_owner: { prepareId: reservationId, anchorHeadMessageId: canonicalUserMessageId } } });
+  await db.insert(conversations).values({ id: conversationId, userId, origin: "native_live" });
   await db.insert(conversationMessages).values({ id: canonicalUserMessageId, userId, conversationId, role: "user", createdAt: new Date("2026-01-01T00:00:00Z") });
   await db.update(conversations).set({ currentHeadMessageId: canonicalUserMessageId }).where(eq(conversations.id, conversationId));
+  await setTestNativeSessionTurn(db,conversationId,{prepareId:reservationId,anchor:canonicalUserMessageId});
   const later = new Date(Date.now() + 600_000), earlier = new Date(Date.now() - 600_000);
   await db.insert(leases).values({ userId, dispatchTarget: "claude_code", listenerInstanceId, leaseExpiresAt: later });
   await db.insert(preparations).values({ id: reservationId, userId, requestId, conversationId, operation: "send", requestHash: "a".repeat(64), canonicalUserMessageId, runtimeMode: "new", prompt: "synthetic only", dispatchStatus: "executing", reservedBy: listenerInstanceId, reservedAt: new Date(), reservationExpiresAt: later, executionStartedAt: new Date() });
@@ -84,12 +86,14 @@ test("execution admission PostgreSQL snapshot fences", { skip: process.env.RUN_N
   });
   await t.test("Rewind, presentation replacement and archive revoke immediately", async () => {
     await db.update(conversations).set({ currentHeadMessageId: null }).where(eq(conversations.id, conversationId)); assert.equal(await check(), false);
-    await db.update(conversations).set({ currentHeadMessageId: canonicalUserMessageId, providerMetadata: { native_live_presentation_owner: { prepareId: crypto.randomUUID(), anchorHeadMessageId: canonicalUserMessageId } } }).where(eq(conversations.id, conversationId)); assert.equal(await check(), false);
-    await db.update(conversations).set({ providerMetadata: { native_live_presentation_owner: { prepareId: reservationId, anchorHeadMessageId: canonicalUserMessageId } }, lifecycleStatus: "archived" }).where(eq(conversations.id, conversationId)); assert.equal(await check(), false);
+    await db.update(conversations).set({ currentHeadMessageId: canonicalUserMessageId }).where(eq(conversations.id, conversationId));
+    await setTestNativeSessionTurn(db,conversationId,{prepareId:crypto.randomUUID(),anchor:canonicalUserMessageId}); assert.equal(await check(), false);
+    await setTestNativeSessionTurn(db,conversationId,{prepareId:reservationId,anchor:canonicalUserMessageId});
+    await db.update(conversations).set({ lifecycleStatus: "archived" }).where(eq(conversations.id, conversationId)); assert.equal(await check(), false);
     await db.update(conversations).set({ lifecycleStatus: "active" }).where(eq(conversations.id, conversationId)); assert.equal(await check(), true);
   });
   await t.test("Desktop ownership revokes execution even while the old reservation is otherwise valid", async () => {
-    const owner = { native_live_presentation_owner: { prepareId: reservationId, anchorHeadMessageId: canonicalUserMessageId } };
+    const owner = {};
     for (const ownership of ["desktop", "releasing"]) {
       await db.update(conversations).set({ providerMetadata: { ...owner, nativeSessionSource: { owner: ownership } } }).where(eq(conversations.id, conversationId));
       await db.execute(sql`INSERT INTO native_live_session_owners(conversation_id,user_id,owner,writer_generation)
@@ -99,7 +103,6 @@ test("execution admission PostgreSQL snapshot fences", { skip: process.env.RUN_N
     }
     await db.execute(sql`UPDATE native_live_session_owners SET owner='leileios' WHERE conversation_id=${conversationId}::uuid`);
     await db.update(conversations).set({ providerMetadata: { ...owner, nativeSessionSource: { owner: "leileios" } } }).where(eq(conversations.id, conversationId)); assert.equal(await check(), true);
-    await db.execute(sql`DELETE FROM native_live_session_owners WHERE conversation_id=${conversationId}::uuid`);
     await db.update(conversations).set({ providerMetadata: owner }).where(eq(conversations.id, conversationId)); assert.equal(await check(), true, "legacy source without owner remains compatible");
   });
   const parent = crypto.randomUUID(), checkpoint = crypto.randomUUID();
@@ -121,6 +124,7 @@ test("execution admission PostgreSQL snapshot fences", { skip: process.env.RUN_N
     await db.insert(checkpoints).values({ userId, conversationId, canonicalMessageId: head, provider: "claude_code", providerSessionId: "provider-a", providerCheckpointId: checkpoint, effectiveWorkingDirectory: "/synthetic" });
     await db.update(conversations).set({ currentHeadMessageId: head }).where(eq(conversations.id, conversationId));
     await db.insert(preparations).values({ id: reservationId, userId, requestId, conversationId, operation: "wake", requestHash: "a".repeat(64), runtimeMode: "resume", parentProviderSessionId: "provider-a", parentProviderCheckpointId: checkpoint, expectedWorkingDirectory: "/synthetic", wakeContext: { epoch_id: canonicalUserMessageId, source_user_message_id: canonicalUserMessageId, source_head_message_id: head, runtime_generation: { presentation_owner_id: reservationId, source_revision: null } }, prompt: "synthetic wake", dispatchStatus: "executing", reservedBy: listenerInstanceId, reservedAt: new Date(), reservationExpiresAt: later, executionStartedAt: new Date() });
+    await db.execute(sql`DELETE FROM native_live_session_owners WHERE conversation_id=${conversationId}::uuid`);
     // Legacy stamp: 0111 seeded the writer generation from this valid slot.
     await db.execute(sql`INSERT INTO native_live_session_owners(conversation_id,user_id,writer_generation,turn_prepare_id,turn_anchor_message_id)
       VALUES (${conversationId}::uuid,${userId}::uuid,${reservationId}::uuid,${reservationId}::uuid,${head}::uuid)`);

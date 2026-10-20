@@ -1,3 +1,4 @@
+import { setTestNativeSessionTurn } from "./helpers/native-session-turn.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq, sql } from "drizzle-orm";
@@ -105,7 +106,7 @@ for (const operation of ["edit", "retry"] as const) {
   test(`${operation}: missing ownership evidence fails closed`, { skip: !enabled }, async t => {
     const f = await fixture(t);
     const old = await f.prepare(operation);
-    await f.database.db.update(conversations).set({ providerMetadata: sql`${conversations.providerMetadata} - 'native_live_presentation_owner'` }).where(eq(conversations.id, f.conversation.id));
+    await setTestNativeSessionTurn(f.database.db,f.conversation.id,{prepareId:null,anchor:null});
     const before = await f.repository.getConversation(f.scope);
     assert.equal(await f.port.readActiveTurn(f.scope), null);
     assertConflict(await f.finalize(old));

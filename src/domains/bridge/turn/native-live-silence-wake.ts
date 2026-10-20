@@ -1,4 +1,4 @@
-import { nativeSessionExecutableSql } from "./turn-repository/session-owner.js";
+import { nativeSessionExecutableSql, nativeSessionTurnSql } from "./turn-repository/session-owner.js";
 import { nativeResumeCheckpointSql } from "./native-live-resume-checkpoint.js";
 import { createHash } from "node:crypto";
 import { and, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
@@ -638,7 +638,7 @@ export class NativeLiveSilenceWakeService {
         checkpoint.provider_session_id,
         checkpoint.effective_working_directory,
         ${nativeResumeCheckpointSql("checkpoint", "tail_surface")} AS provider_checkpoint_id,
-        tail_surface.provider_metadata->'native_live_presentation_owner'->>'prepareId' AS presentation_owner_id,
+        ${nativeSessionTurnSql("tail_surface").prepareId} AS presentation_owner_id,
         (SELECT o.writer_generation::text FROM native_live_session_owners o
           WHERE o.conversation_id = tail_surface.id AND o.user_id = tail_surface.user_id) AS writer_generation,
         tail_surface.provider_metadata->'nativeSessionSource'->>'revision' AS source_revision,
