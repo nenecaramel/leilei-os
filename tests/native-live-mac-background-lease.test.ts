@@ -46,9 +46,10 @@ test("a relay lease-renewal outage never delivers stale receipts anyway", async 
   assert.equal(calls, 0);
 });
 
-test("the running daemon invokes the lease-first replay before the normal dispatcher", () => {
+test("the running daemon wires background replay into the lease-owning dispatcher", () => {
   const source = readFileSync("scripts/native-live-mac-daemon.ts", "utf8");
+  assert.match(source, /persistentRuntime\.executor,\s*\{ flush: \(\) => stopping \? Promise\.resolve\(0\) : persistentRuntime\.backgroundResults\.flush\(\) \}/);
   const loop = source.slice(source.indexOf("while (!stopping) {"));
-  assert.match(loop, /await flushNativeLiveBackgroundWithListenerLease\(\{[\s\S]*?listenerInstanceId, relay, backgroundResults: persistentRuntime\.backgroundResults,[\s\S]*?\}\);\s*const outcome = await loop\.runOnce\(\);/);
+  assert.doesNotMatch(loop, /flushNativeLiveBackgroundWithListenerLease/);
   assert.doesNotMatch(loop, /await persistentRuntime\.backgroundResults\.flush\(\)/);
 });

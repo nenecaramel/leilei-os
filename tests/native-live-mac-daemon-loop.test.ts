@@ -1480,3 +1480,75 @@ for (const persistentCommit of [false, true]) {
     if (persistentCommit) assert.deepEqual(suspended, [[conversationId, "recovery"], [conversationId, "recovery"]]);
   });
 }
+
+test("one fresh listener lease covers background replay before ordinary dispatch", async () => {
+  const relay = new FakeRelay(), executor = new FakeExecutor();
+  const replay = { async flush() { relay.calls.push({ name: "backgroundReplay", input: null }); return 0; } };
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, null, null, replay);
+  assert.equal((await loop.runOnce()).outcome, "completed");
+  const names = relay.calls.map(c => c.name);
+  assert.deepEqual(names.slice(0, 3), ["renewLease", "backgroundReplay", "reserveNext"]);
+  assert.equal(names.filter(name => name === "renewLease").length, 1);
+  relay.reservation = null;
+  await loop.runOnce();
+  assert.equal(relay.calls.filter(c => c.name === "renewLease").length, 2, "next iteration must reacquire rather than cache the old lease");
+});
+
+test("background replay settles before reservation and no extra lease is acquired after replay", async () => {
+  const relay = new FakeRelay(), executor = new FakeExecutor();
+  let started!: () => void, release!: () => void;
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, null, null,
+    { async flush() { started(); await pending; return 1; } });
+  const run = loop.runOnce();
+  // Fail quickly on the old implementation instead of waiting indefinitely.
+  const reached = await Promise.race([entered.then(() => "replay"), run.then(() => "dispatch")]);
+  assert.equal(reached, "replay");
+  assert.deepEqual(relay.calls.map(c => c.name), ["renewLease"]);
+  release();
+  assert.equal((await run).outcome, "completed");
+  assert.equal(relay.calls.filter(c => c.name === "renewLease").length, 1);
+});
+
+for (const mode of ["busy", "outage", "replay-failure"] as const) test(`${mode} blocks replay or subsequent dispatch without weakening ownership`, async () => {
+  const relay = new FakeRelay(), executor = new FakeExecutor(); let replays = 0;
+  if (mode === "busy") relay.lease = "busy";
+  if (mode === "outage") relay.renewLease = async () => { throw new Error("synthetic offline"); };
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, null, null,
+    { async flush() { replays++; throw new Error("synthetic replay unavailable"); } });
+  if (mode === "busy") assert.equal((await loop.runOnce()).outcome, "busy");
+  else await assert.rejects(loop.runOnce(), /synthetic/);
+  assert.equal(replays, mode === "replay-failure" ? 1 : 0);
+  assert.equal(relay.calls.some(c => c.name === "reserveNext"), false);
+  assert.equal(executor.calls.length, 0);
+});
+
+for (const takeover of [false, true]) test(`slow replay reacquires the listener before dispatch (${takeover ? "takeover" : "still owned"})`, async t => {
+  let now = 0;
+  t.mock.method(performance, "now", () => now);
+  const relay = new FakeRelay(), executor = new FakeExecutor();
+  const renew = relay.renewLease.bind(relay);
+  let renewals = 0;
+  relay.renewLease = async value => { if (++renewals === 2 && takeover) relay.lease = "busy"; return renew(value); };
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, null, null,
+    { async flush() { now = 30_000; return 1; } });
+  assert.equal((await loop.runOnce()).outcome, takeover ? "busy" : "completed");
+  assert.equal(renewals, 2);
+  assert.equal(executor.calls.length, takeover ? 0 : 1);
+  assert.equal(relay.calls.some(c => c.name === "reserveNext"), !takeover);
+});
+
+test("busy listener retains terminal recovery evidence instead of replaying another owner's receipt", async t => {
+  const root = mkdtempSync(join(tmpdir(), "leilei-lease-recovery-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const outbox = new NativeLiveMacResultOutbox(root);
+  await outbox.save({ listenerInstanceId, reservationId: prepareId, result: success() });
+  const relay = new FakeRelay(); relay.lease = "busy";
+  const executor = new FakeExecutor();
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, outbox);
+  assert.equal((await loop.runOnce()).outcome, "busy");
+  assert.equal((await outbox.list()).length, 1);
+  assert.deepEqual(relay.calls.map(c => c.name), ["renewLease"]);
+  assert.equal(executor.calls.length, 0);
+});

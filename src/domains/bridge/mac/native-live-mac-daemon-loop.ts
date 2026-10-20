@@ -59,6 +59,7 @@ export class NativeLiveMacDaemonLoop {
       NativeLiveExternalSessionExecutor | null = null,
     private readonly resultOutbox: NativeLiveMacResultOutbox | null = null,
     private readonly persistentExecutor: (Pick<NativeLiveMacPersistentExecutor, "canRoute" | "execute" | "retire"> & Partial<Pick<NativeLiveMacPersistentExecutor, "assertAccepting" | "retireSession" | "shouldDeferWake" | "suspend">>) | null = null,
+    private readonly backgroundResults: { flush(): Promise<number> } | null = null,
   ) {}
 
   async runOnce(): Promise<NativeLiveDaemonRunOutcome> {
@@ -74,6 +75,24 @@ export class NativeLiveMacDaemonLoop {
       for (const entry of await this.resultOutbox?.listQuarantined() ?? []) {
         this.fenceResultConversation(entry.result.conversation_id);
       }
+      // One fresh listener lease covers recovery and this dispatch iteration.
+      // Replaying old output still precedes selecting any fresh model input.
+      const leaseStartedAt = performance.now();
+      const lease = await this.relay.renewLease({
+        listenerInstanceId: this.listenerInstanceId,
+        dispatchTarget: "claude_code",
+      });
+      if (lease === "busy") return { outcome: "busy" };
+      await this.backgroundResults?.flush();
+      // Listener leases last 60s. Slow recovery or network setup must not
+      // consume the lease before fresh work; the server still fences each call.
+      if (performance.now() - leaseStartedAt >= 30_000) {
+        const renewed = await this.relay.renewLease({
+          listenerInstanceId: this.listenerInstanceId,
+          dispatchTarget: "claude_code",
+        });
+        if (renewed === "busy") return { outcome: "busy" };
+      }
       const pending = (await this.resultOutbox?.list())?.[0];
       if (pending) {
         let receipt: NativeLiveResultSubmissionReceipt | void;
@@ -87,11 +106,6 @@ export class NativeLiveMacDaemonLoop {
         return { outcome: "completed", reservationId: pending.reservationId, result: pending.result,
           ...(receipt?.canonicalOutcome ? { canonicalOutcome: receipt.canonicalOutcome } : {}) };
       }
-      const lease = await this.relay.renewLease({
-        listenerInstanceId: this.listenerInstanceId,
-        dispatchTarget: "claude_code",
-      });
-      if (lease === "busy") return { outcome: "busy" };
 
       let semanticReservationId: string | null = null;
       if (

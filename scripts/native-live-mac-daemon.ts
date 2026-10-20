@@ -1,6 +1,5 @@
 import { NativeLiveMacSilenceWakeSwitch } from "../src/domains/bridge/mac/native-live-mac-silence-wake-switch.js";
 import { NativeLiveMacPersistentRuntime } from "../src/domains/bridge/mac/native-live-mac-persistent-runtime.js";
-import { flushNativeLiveBackgroundWithListenerLease } from "../src/domains/bridge/mac/native-live-mac-background-lease.js";
 import { createNativeSessionDrainServer } from "../tools/claude-bridge/src/native-session-daemon-drain.mjs";
 import { startMindRecallSemanticServer } from "../src/domains/bridge/mac/native-live-mac-mind-recall-server.js";
 import { createHash } from "node:crypto";
@@ -256,6 +255,7 @@ const loop = new NativeLiveMacDaemonLoop(
   new NativeLiveMacResultOutbox(join(homedir(), ".leileios", "terminal-results",
     createHash("sha256").update(JSON.stringify([relayBaseUrl, relayToken])).digest("hex"))),
   persistentRuntime.executor,
+  { flush: () => stopping ? Promise.resolve(0) : persistentRuntime.backgroundResults.flush() },
 );
 
 let stopping = false;
@@ -463,11 +463,7 @@ function isWakeTerminalOutcome(
 
 while (!stopping) {
   try {
-    // Broker idle waits may outlast the listener lease. Never retry an old
-    // persisted background receipt before reacquiring its exact listener.
-    await flushNativeLiveBackgroundWithListenerLease({
-      listenerInstanceId, relay, backgroundResults: persistentRuntime.backgroundResults,
-    });
+    // runOnce owns the lease-first background replay and foreground dispatch.
     const outcome = await loop.runOnce();
     consecutiveWakeErrors = 0;
     const wakeTerminalOutcome =

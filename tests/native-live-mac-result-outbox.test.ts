@@ -20,8 +20,15 @@ for (const status of ["success", "failure"] as const) {
     await outbox.save(entry);
     const commits = new Set<string>();
     let loseResponse = true;
+    let leasedOwner: string | null = null;
     const relay = {
+      async renewLease(input: { listenerInstanceId: string; dispatchTarget: string }) {
+        assert.equal(input.dispatchTarget, "claude_code");
+        leasedOwner = input.listenerInstanceId;
+        return "acquired";
+      },
       async submitResult(input: typeof entry) {
+        assert.ok(leasedOwner === "new-owner" || leasedOwner === "third-owner", "fresh listener lease precedes receipt replay");
         assert.deepEqual(input, entry);
         commits.add(input.reservationId);
         if (loseResponse) throw new Error("response lost after commit");
@@ -31,10 +38,12 @@ for (const status of ["success", "failure"] as const) {
     const executor = { async execute() { throw new Error("must not execute provider again"); } };
     const loop = new NativeLiveMacDaemonLoop("new-owner", relay, executor, null, null, null, null, null, null, outbox);
     assert.equal((await loop.runOnce()).outcome, "delivery_unknown");
+    assert.equal(leasedOwner, "new-owner");
     assert.equal((await new NativeLiveMacResultOutbox(directory).list()).length, 1);
     loseResponse = false;
     const restarted = new NativeLiveMacDaemonLoop("third-owner", relay, executor, null, null, null, null, null, null, new NativeLiveMacResultOutbox(directory));
     assert.equal((await restarted.runOnce()).outcome, "completed");
+    assert.equal(leasedOwner, "third-owner");
     assert.equal(commits.size, 1);
     assert.deepEqual(await outbox.list(), []);
   });
@@ -81,9 +90,14 @@ for (const error of [new Error("network"), { httpStatus: 503, relayCode: "RESERV
     const result = { prepare_id: "pending", conversation_id: "conversation" } as NativeLiveRuntimeExecutionResult;
     const entry = { listenerInstanceId: "owner", reservationId: "pending", result };
     const outbox = new NativeLiveMacResultOutbox(directory); await outbox.save(entry);
-    const relay = { async submitResult() { throw error; } } as unknown as NativeLiveMacDaemonRelayClient;
+    let renewals = 0;
+    const relay = {
+      async renewLease() { renewals++; return "acquired"; },
+      async submitResult() { assert.equal(renewals, 1); throw error; },
+    } as unknown as NativeLiveMacDaemonRelayClient;
     const loop = new NativeLiveMacDaemonLoop("owner", relay, { async execute() { throw new Error("forbidden"); } }, null, null, null, null, null, null, outbox);
     assert.equal((await loop.runOnce()).outcome, "delivery_unknown");
+    assert.equal(renewals, 1);
     assert.deepEqual(await outbox.list(), [entry]);
     assert.deepEqual(await outbox.listQuarantined(), []);
   });
