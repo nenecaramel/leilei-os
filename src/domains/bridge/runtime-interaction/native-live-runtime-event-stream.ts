@@ -11,6 +11,7 @@ import {
   nativeLiveRuntimeEvents,
   nativeLiveTurnPreparations,
 } from "../../../database/schema.js";
+import { rotateNativeWriterGeneration } from "../turn/turn-repository/session-owner.js";
 import type {
   NativeLiveNormalizedEvent,
   NativeLiveNormalizedEventType,
@@ -106,6 +107,9 @@ export class DrizzleNativeLiveRuntimeEventRepository {
         .select({
           dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
           reservedBy: nativeLiveTurnPreparations.reservedBy,
+          conversationId: nativeLiveTurnPreparations.conversationId,
+          operation: nativeLiveTurnPreparations.operation,
+          runtimeMetadata: nativeLiveTurnPreparations.runtimeMetadata,
         })
         .from(nativeLiveTurnPreparations)
         .where(
@@ -189,6 +193,17 @@ export class DrizzleNativeLiveRuntimeEventRepository {
           );
         }
 
+        // The first events of a foreground turn prove its input reached the
+        // native session. A started input binding already rotated the line.
+        const [prior] = await transaction.select({ sequence: nativeLiveRuntimeEvents.sequence })
+          .from(nativeLiveRuntimeEvents).where(and(
+            eq(nativeLiveRuntimeEvents.userId, input.userId),
+            eq(nativeLiveRuntimeEvents.prepareId, input.reservationId),
+          )).limit(1);
+        const binding = (preparation.runtimeMetadata as { native_live_input_binding?: { started?: unknown } } | null)
+          ?.native_live_input_binding;
+        if (!prior && preparation.operation !== "wake" && binding?.started !== true)
+          await rotateNativeWriterGeneration(transaction, { userId: input.userId, conversationId: preparation.conversationId });
         await transaction.insert(nativeLiveRuntimeEvents).values(
           missing.map((item) => ({
             userId: input.userId,

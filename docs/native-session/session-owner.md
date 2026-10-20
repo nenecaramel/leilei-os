@@ -68,37 +68,52 @@ cleanup PR removes the JSON copies.
 `writer_generation` answers one question: does output from the SDK writer still
 belong to the native line at the canonical head?
 
-It **rotates** when a foreground turn commits whose native line is not a
-resume of the head: `operation <> 'wake' AND runtime_mode <> 'resume'`. In
-practice that is edit and retry (always `fork`), and a send that starts `new` or
-forks from a bootstrap. Wake prepares with `runtime_mode = 'fork'`
-(`native-live-silence-wake.ts:445`), but it is pinned to the same session, so it
-is excluded by operation, not by mode.
+It **rotates** at the first moment a foreground turn can have changed the
+native session file, and once more when a turn that starts a new line commits:
+
+1. **Input started.** The persistent writer's input binding moves to `started`
+   (`native-live-input-binding.ts`). From then on the SDK has the user input,
+   whether or not the turn later commits.
+2. **First runtime events** of a non-Wake turn whose binding has not started.
+   This covers the one-shot path, which has no binding
+   (`native-live-runtime-event-stream.ts`).
+3. **Commit of a non-resume foreground turn:**
+   `operation <> 'wake' AND runtime_mode <> 'resume'`. In practice this is edit
+   and retry (always `fork`), and a send that starts `new` or forks from a
+   bootstrap. Wake prepares with `runtime_mode = 'fork'`
+   (`native-live-silence-wake.ts:445`), but it is pinned to the same session, so
+   it is excluded by operation, not by mode.
 
 It **does not rotate** on:
 
 - prepare;
-- rejection, failure or supersede of a prepared turn;
-- an ordinary `send`/`resume` commit;
+- rejection, failure or supersede of a turn **whose input never started**;
 - a visible Wake;
 - a background commit.
 
 Owner changes are already covered by `owner_revision`.
 
-Why the head check is enough for ordinary sends: a background result made against
-head H is stale as soon as the head moves past H. That is the existing `head = cp`
-condition (`bg-repo:233`), plus the covering path for deferred B. The generation
-no longer needs to change for that.
+Rules 1 and 2 are the exact proof that `reconcileRejectedWakePresentationOwner`
+reconstructs today: the rejected send's binding never started, and it left no
+runtime events (`bg-repo:177-183`). Rotating at prepare (today's slot) was too
+early, because it also staled rejected turns that never touched the file
+(F12, F13). Rotating only at commit would be too late, because a started turn
+that failed has already appended its input.
 
-What this removes:
+Background output made while F is pending or running still goes through the
+existing `executionStart`/`deferred` pending-owner exceptions. Those exceptions
+are about the turn slot, and they stay. Once F starts, earlier output is stale
+by rule 1, as it is today.
 
-- F12 / F13: a rejected send no longer changes the generation, so Wake→Cron
-  receipts keep matching. `reconcileRejectedWakePresentationOwner` and its
-  lineage walk are deleted.
-- The pending-owner OR branch in the snapshot generation check
-  (`bg-repo:236`). The generation is unchanged while F is pending. The *busy*
-  exceptions for executionStart/deferred B stay; they are about the turn slot,
-  not the generation.
+What this removes (PR 2b):
+
+- F12 / F13: a rejected send that never started no longer changes the
+  generation, so Wake→Cron receipts keep matching.
+  `reconcileRejectedWakePresentationOwner` and its lineage walk are deleted.
+- The background append's slot-equality requirement
+  (`native-live-background-message.ts:76`). It is replaced by the same
+  generation, plus "no live foreground turn". Today's repair rewrites the slot
+  for exactly this reason.
 
 ### Turn slot
 
@@ -206,7 +221,8 @@ and runs `pnpm agent:verify --run`.
 | PR | Scope | Behavior change | Deploy / refresh |
 | --- | --- | --- | --- |
 | 1 | Migration and backfill. Schema in `src/database/schema`. A `native-live-session-owner.ts` repository: `ensure`, `setTurn`, `advanceAnchor`, `rotateGeneration`, `changeOwner`. Dual write at every presentation-owner and `nativeSessionSource.owner/revision` writer. `writer_generation` stamps added next to `presentation_owner_id`. **No reader changes.** | None (the row is shadow state). The tests assert that the row and the JSON agree after each operation, and that a rejected prepare leaves `writer_generation` unchanged. | Server only. Migration: needs go-ahead. |
-| 2 | Generation readers move to the row: background snapshot and submit, resume tail (`native-live-resume-checkpoint.ts`), Wake admission branch, Wake cursor, silence-Wake source, finalize Wake check. Delete `reconcileRejectedWakePresentationOwner` and the generation half of `pendingOwner`. | F12/F13 class fixed at the root. RED: a rejected send after Wake, then Cron B is accepted *without* the repair path. A send rejected without Wake, then B is accepted. Edit commit, then old-writer B is stale. | Server only. |
+| 2a | Rotate `writer_generation` when input starts (binding `started`) and on a non-Wake turn's first runtime events. | None (nothing reads the generation yet). RED: queued input keeps the generation; started input rotates it once; one-shot first events rotate it once. | Server only. |
+| 2b | Generation readers move to the row: background snapshot and append, resume tail (`native-live-resume-checkpoint.ts`), Wake admission branch, finalize Wake check. Delete `reconcileRejectedWakePresentationOwner`. | F12/F13 class fixed at the root. RED: a rejected unstarted send after Wake, then Cron B is accepted *without* the repair path. A started send stales B. An edit commit stales old-writer B. | Server only. |
 | 3 | `nativeSessionExecutable()` helper replaces the 15 owner predicates. Turn-slot readers (admission, input binding, finalize success/failure, `reads.ts`) move to the row. The presentation-owner JSON is no longer written. | None intended. RED: a conversation with `owner='releasing'` is refused by prepare, admission, renewal, input binding, background and Wake. | Server only. |
 | 4 | `begin/complete/cancel_release` routes and the new switch-out order in `native-session-continuation.mjs`. S9 receipts in the busy check. `NATIVE_SESSION_SWITCHING`. The Mac drain stops setting `handoff`; `resume` becomes a no-op. | Fixes unhandled transitions 1, 2 and 5. | Server, then daemon `:fresh`. Acceptance: Codex steps 1–4, plus a release killed mid-way, plus a send during switching. |
 | 5 | Cleanup: delete the M1 `handoff` reason and the `resume` socket action. Remove the `nativeSessionSource.owner/revision` JSON copies once readers no longer use them. Leave the old JSON keys in place (no data rewrite). | None. | Daemon `:fresh`. |

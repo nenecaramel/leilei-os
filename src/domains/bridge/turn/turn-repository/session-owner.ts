@@ -52,6 +52,19 @@ export async function readNativeWriterGeneration(executor: Executor, input: {
   return row?.writer_generation ?? null;
 }
 
+/**
+ * Foreground input reached the native session: whatever happens to the turn
+ * now, output produced before it no longer continues the canonical head.
+ */
+export async function rotateNativeWriterGeneration(executor: Executor, input: {
+  userId: string; conversationId: string;
+}): Promise<void> {
+  await executor.execute(sql`
+    UPDATE native_live_session_owners SET writer_generation = gen_random_uuid(), updated_at = now()
+    WHERE conversation_id = ${input.conversationId}::uuid AND user_id = ${input.userId}::uuid
+  `);
+}
+
 /** A committed turn starts a new native line unless it resumes the head. Wake never does. */
 export function commitRotatesWriterGeneration(row: { operation: string; runtimeMode: string }): boolean {
   return row.operation !== "wake" && row.runtimeMode !== "resume";

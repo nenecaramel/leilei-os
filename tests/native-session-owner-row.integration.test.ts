@@ -50,8 +50,8 @@ async function mirrored(db: Db, conversationId: string): Promise<Row> {
   return row;
 }
 
-async function execute(db: Db, userId: string, prepareId: string) {
-  const listener = randomUUID(), later = new Date(Date.now() + 600_000);
+async function execute(db: Db, userId: string, prepareId: string, listener = randomUUID()) {
+  const later = new Date(Date.now() + 600_000);
   await db.delete(leases).where(eq(leases.userId, userId));
   await db.insert(leases).values({ userId, dispatchTarget: 'claude_code', listenerInstanceId: listener, leaseExpiresAt: later });
   await db.update(preparations).set({ dispatchStatus: 'executing', executionStartedAt: new Date(), reservedBy: listener,
@@ -165,4 +165,50 @@ test('an edit commit starts a new native line and stamps the new writer generati
   const after = await mirrored(db, conversationId);
   assert.notEqual(after.writer_generation, before.writer_generation, 'an edit forks the native line');
   assert.equal(await stampedGeneration(db, (completed as { assistantMessageId: string }).assistantMessageId), after.writer_generation);
+}));
+
+test('input reaching the native session rotates the generation once; queueing and later events do not', { skip: !enabled }, async () => fixture(async ({ db, userId }) => {
+  const api = await import('../src/domains/conversation/native-session-continuation-repository.js');
+  const { bindNativeLiveInput } = await import('../src/domains/bridge/relay/native-live-input-binding.js');
+  const { DrizzleNativeLiveRuntimeEventRepository } = await import('../src/domains/bridge/runtime-interaction/native-live-runtime-event-stream.js');
+  const events = new DrizzleNativeLiveRuntimeEventRepository(db);
+  const port = new DrizzleNativeLiveBackendTurnPort(db);
+  const generation = async (conversationId: string) => (await ownerRow(db, conversationId))!.writer_generation;
+
+  async function sendOn(conversationId: string, sessionId: string, checkpointId: string) {
+    await api.attachNativeContinuation(db, { userId, conversationId, sessionId, checkpointId, revision: rev(1),
+      effectiveWorkingDirectory: '/synthetic/workspace', expectedHeadMessageId: null, expectedRevision: null,
+      checkpointIds: [checkpointId], completedTurnCheckpointIds: [checkpointId] });
+    const prepareId = randomUUID(), listener = randomUUID();
+    assert.equal((await port.prepareSend({ prepareId, userId, requestId: randomUUID(), conversationId,
+      expectedHeadMessageId: null, text: 'synthetic input', attachmentIds: [], executionSelection: null })).ok, true);
+    const p = await execute(db, userId, prepareId, listener);
+    return { p, listener, admission: { userId, listenerInstanceId: listener, reservationId: p.id, requestId: p.requestId,
+      conversationId, runtimeMode: 'resume' as const, canonicalUserMessageId: p.canonicalUserMessageId,
+      parentProviderSessionId: sessionId, parentProviderCheckpointId: checkpointId } };
+  }
+  const event = (sequence: number) => ({ sequence, event: { type: 'text' as const, payload: { text: `synthetic ${sequence}` } } });
+
+  // Persistent writer: the started input binding is the boundary.
+  const bound = randomUUID();
+  const first = await sendOn(bound, randomUUID(), randomUUID());
+  const g0 = await generation(bound);
+  assert.ok(await bindNativeLiveInput(db, { ...first.admission, phase: 'queued' }));
+  assert.equal(await generation(bound), g0, 'queued input has not reached the native session');
+  assert.ok(await bindNativeLiveInput(db, { ...first.admission, phase: 'started' }));
+  const g1 = await generation(bound);
+  assert.notEqual(g1, g0, 'started input changes the native line');
+  assert.ok(await bindNativeLiveInput(db, { ...first.admission, phase: 'started' }));
+  await events.appendBatch({ userId, listenerInstanceId: first.listener, reservationId: first.p.id, events: [event(1)] });
+  assert.equal(await generation(bound), g1, 'a repeated start and the first events after it rotate nothing');
+
+  // Without a binding (one-shot path) the first runtime events are the boundary.
+  const evented = randomUUID();
+  const second = await sendOn(evented, randomUUID(), randomUUID());
+  const h0 = await generation(evented);
+  await events.appendBatch({ userId, listenerInstanceId: second.listener, reservationId: second.p.id, events: [event(1), event(2)] });
+  const h1 = await generation(evented);
+  assert.notEqual(h1, h0, 'first runtime events prove the input ran');
+  await events.appendBatch({ userId, listenerInstanceId: second.listener, reservationId: second.p.id, events: [event(2), event(3)] });
+  assert.equal(await generation(evented), h1, 'later and replayed events rotate nothing');
 }));
