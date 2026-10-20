@@ -1,3 +1,4 @@
+import { createNativeLiveMacSessionCloseLogger } from "../src/domains/bridge/mac/native-live-mac-session-close-log.js";
 import { NativeLiveMacSilenceWakeSwitch } from "../src/domains/bridge/mac/native-live-mac-silence-wake-switch.js";
 import { NativeLiveMacPersistentRuntime } from "../src/domains/bridge/mac/native-live-mac-persistent-runtime.js";
 import { createNativeSessionDrainServer } from "../tools/claude-bridge/src/native-session-daemon-drain.mjs";
@@ -229,6 +230,7 @@ const persistentRuntime = new NativeLiveMacPersistentRuntime({
   attachmentMaterializer: new NativeLiveMacAttachmentMaterializer(relay), outputAttachmentSender,
   mcpServerConfig: { type: "http", url: relayBaseUrl + "/internal/native-live-mcp", headers: { Authorization: "Bearer " + relayToken } },
   onRuntimeFailure: (diagnostics) => writeRuntimeFailureDiagnostics(diagnostics, "persistent"),
+  onSessionClose: createNativeLiveMacSessionCloseLogger(join(homedir(), ".leileios", "logs")),
 });
 const closeHandoffServer = await createNativeSessionDrainServer({
   recoverStale: true, // Exclusive daemonLock was acquired before this control endpoint.

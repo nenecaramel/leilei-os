@@ -221,3 +221,22 @@ for (const preclaimed of [false,true]) test(`task control pump wakes after delay
  (binding.session.events as EventEmitter).emit("event",{type:"system",subtype:"init",session_id:"delayed-session"});
  await new Promise(setImmediate);assert.equal(waits,1);
 });
+
+test('retiring during an open with a live SDK host preserves the initiating reason through abort',async t=>{
+ const root=await realpath(await mkdtemp(join(tmpdir(),'registry-close-reason-')));t.after(()=>rm(root,{recursive:true,force:true}));
+ const entered=deferred(),release=deferred();t.after(()=>release.resolve());const diagnostics:any[]=[];
+ const {createNativeLiveMacClaudeTransport}=await import('../src/domains/bridge/mac/native-live-mac-claude-transport.js');
+ let stop!:()=>void;
+ const registry=new NativeLiveMacSessionRegistry({},root,async(...args)=>{
+   const configured=await createNativeLiveMacClaudeTransport(...args);
+   (configured.runtime as any).queryImpl=()=>({async *[Symbol.asyncIterator](){yield {type:'system',subtype:'init',session_id:'12345678-1234-4123-8123-123456789012'};await new Promise<void>(resolve=>{stop=resolve;});},close(){stop?.();}});
+   const open=configured.runtime.openPersistentSession!.bind(configured.runtime);
+   configured.runtime.openPersistentSession=async options=>{const host=await open(options);entered.resolve();await release.promise;return host;};
+   return configured;
+ });t.after(()=>registry.closeAll());
+ const opening=registry.openNew({conversationId:'startup',expectedWorkingDirectory:null,options:{...options(),onCloseDiagnostic:frame=>diagnostics.push(frame)}});
+ const rejected=assert.rejects(opening,/retired|abort/);await entered.promise;
+ const closing=registry.close('startup',registry.getGenerationId('startup')!,'HANDOFF_DRAIN');
+ release.resolve();await rejected;await closing;
+ assert.deepEqual(diagnostics.map(x=>[x.phase,x.reasonCode]),[['requested','HANDOFF_DRAIN'],['completed','HANDOFF_DRAIN']]);
+});

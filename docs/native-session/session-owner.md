@@ -328,3 +328,30 @@ in PR 4.
   PR 2 adds the test.
 - **Cron across daemon restart** (unhandled transition 3) is out of scope. It
   belongs to the Mac recovery consolidation.
+
+### Local session-host close diagnostics
+
+The Mac daemon records `session_host_close` metadata to the terminal and to
+`~/.leileios/logs/session-host.jsonl` (private directory/file permissions;
+1 MiB current file plus one rotated `.1` file). This is a close-only log, not a
+copy of conversation, tool output, or the complete daemon log. It includes fixed
+reason codes, a close ID, conversation/session/local generation and active
+prepare/input IDs, counts, and whether an SDK result frame had reached the
+host's finishing stage. `resultReceived` does **not** prove JSONL durability,
+canonical submission, or server commit.
+
+The first initiating reason survives catch cleanup and failed-close retries.
+`requested`, `completed`, and `failed` distinguish requesting retirement from
+successfully closing the SDK query. Reasons distinguish control-receipt timeout,
+turn/session lease revocation, turn/executor failure, branch replacement, legacy
+fallback, handoff drain, background recovery, compact, cleanup, shutdown, startup,
+transport abort, SDK failure, and the interrupt-with-background-tasks fallback.
+A normal interrupt that keeps its query open does not log a close.
+
+Disk/observer failures do not change execution: the terminal gets one fixed
+`session_host_log_unavailable` warning per logger instance. No error text,
+prompt, output, credentials, or raw SDK frame is serialized. A forced kill or
+machine failure can still prevent a final diagnostic from being written. These
+records locate a future close; they do not identify the cause of past incidents.
+The new logger requires a later Mac daemon refresh; this PR does not restart it
+or change close conditions, timeouts, result recovery, or server behavior.

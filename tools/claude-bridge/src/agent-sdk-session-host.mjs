@@ -10,7 +10,7 @@ const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
 // Persistent session host used by the Mac daemon transport.
 // The caller owns SDK launch settings, auth, canonical preparations and UI capabilities.
-export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, expectedSessionId = null, beforeSubmit = null, onBackgroundResult = null, createBackgroundOutput = null, observeOutput = null, allowInitialFork = false } = {}) {
+export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, expectedSessionId = null, beforeSubmit = null, onBackgroundResult = null, createBackgroundOutput = null, observeOutput = null, onCloseDiagnostic = null, allowInitialFork = false } = {}) {
   if (typeof queryImpl !== 'function') throw new Error('Session host requires an injected SDK query.');
   // Only a caller that has already checked a durable fork checkpoint may launch
   // a forked writer. Ordinary live sessions cannot switch their branch.
@@ -20,14 +20,14 @@ export async function createAgentSdkSessionHost({ queryImpl, queryOptions = {}, 
   if (!query || typeof query[Symbol.asyncIterator] !== 'function') {
     input.end(); query?.close?.(); throw new Error('SDK query must be async iterable.');
   }
-  return new SessionHost(query, input, expectedSessionId, queryOptions.perTaskStopAffordance === true, beforeSubmit, onBackgroundResult, createBackgroundOutput, observeOutput);
+  return new SessionHost(query, input, expectedSessionId, queryOptions.perTaskStopAffordance === true, beforeSubmit, onBackgroundResult, createBackgroundOutput, observeOutput, onCloseDiagnostic);
 }
 
 class SessionHost {
-  constructor(query, input, expectedSessionId, perTaskStopAffordance, beforeSubmit, onBackgroundResult, createBackgroundOutput, observeOutput) {
+  constructor(query, input, expectedSessionId, perTaskStopAffordance, beforeSubmit, onBackgroundResult, createBackgroundOutput, observeOutput, onCloseDiagnostic) {
     this.query = query; this.input = input; this.expectedSessionId = expectedSessionId;
     this.perTaskStopAffordance = perTaskStopAffordance;
-    this.observeOutput = observeOutput;
+    this.observeOutput = observeOutput; this.onCloseDiagnostic = onCloseDiagnostic; this.closeDiagnostic = null;
     this.beforeSubmit = beforeSubmit; this.onBackgroundResult = onBackgroundResult;
     this.createBackgroundOutput = createBackgroundOutput; this.backgroundOutputs = new Set();
     this.events = new EventEmitter(); this.ids = new Set(); this.startedCommands = new Set();
@@ -64,12 +64,13 @@ class SessionHost {
       this.backgroundWork.delete(work);
       if (['closed', 'failed'].includes(this.state)) return;
       this.events.emit('background-result', frame); this.events.emit('event', message); void this.pump();
-    }, async error => { this.backgroundWork.delete(work); await this.fail(error); }).catch(error => this.fail(error));
+    }, async error => { this.backgroundWork.delete(work); await this.fail(error, "BACKGROUND_ACK_FAILED"); }).catch(error => this.fail(error, "BACKGROUND_ACK_FAILED"));
   }
-  async fail(error) {
+  async fail(error, reasonCode = "SDK_FAILURE") {
     if (['closed', 'failed'].includes(this.state)) return;
+    this.observeClose('requested', reasonCode);
     this.failure = error; this.state = 'failed'; this.taskState.close(); this.rejectWork(error); this.input.end();
-    try { await this.query.close(); this.queryClosed = true; } catch { /* Failed close remains owned. */ }
+    try { await this.query.close(); this.queryClosed = true; this.observeClose('completed'); } catch { this.observeClose('failed'); /* Failed close remains owned. */ }
   }
   // Live output is routed to a turn only after the SDK stamps that turn's input
   // UUID on a reply frame. Unstamped output stays background, never guessed.
@@ -203,7 +204,7 @@ class SessionHost {
       let timer;
       try { await Promise.race([Promise.allSettled(ids.map(async id => { await this.stopTask(id); })), new Promise(resolve => { timer = setTimeout(resolve, 1_000); })]); }
       finally { clearTimeout(timer); }
-      await this.close(Object.assign(new Error('SDK turn interrupted; session closed.'), {runtimeCode:'INTERRUPTED'}));
+      await this.close(Object.assign(new Error('SDK turn interrupted; session closed.'), {runtimeCode:'INTERRUPTED',sessionCloseReason:'INTERRUPT_WITH_BACKGROUND_TASKS'}));
       const all = [...new Set([...ids, ...this.tasks.keys()])];
       return {still_queued:[],session_closed:true,background_tasks:all.map(id=>({id,status:this.tasks.has(id)?'unknown':'stopped'}))};
     }
@@ -303,11 +304,30 @@ class SessionHost {
       if (['assistant', 'user', 'result', 'stream_event'].includes(message.type)) segment.rawBackground.push(message);
     }
   }
+  // Capture BEFORE rejectWork clears active/finishing. Keep the first cause when
+  // catch cleanup or a failed query.close retries the same owned writer.
+  observeClose(phase, reasonCode = null) {
+    if (!this.closeDiagnostic) this.closeDiagnostic = Object.freeze({
+      closeId: randomUUID(), reasonCode, state: this.state, providerSessionId: this.sessionId,
+      inputId: (this.active ?? this.finishing)?.id ?? null,
+      resultReceived: this.finishing !== null, pendingInputs: this.pending.length,
+      backgroundTasks: this.tasks.size,
+    });
+    else if (phase === 'requested') return;
+    try {
+      const emitted = this.onCloseDiagnostic?.(Object.freeze({ ...this.closeDiagnostic, phase }));
+      emitted?.catch?.(() => {});
+    } catch { /* Diagnostics cannot change session close or its rejection. */ }
+  }
   async close(reason = new Error('Session host was closed.')) {
     if (this.queryClosed) return;
+    const code = typeof reason?.sessionCloseReason === 'string' && /^[A-Z_]{1,64}$/.test(reason.sessionCloseReason)
+      ? reason.sessionCloseReason : 'EXPLICIT_CLOSE';
+    this.observeClose('requested', code);
     this.state = 'closed'; this.taskState.close(); this.rejectWork(reason);
-    this.input.end(); await this.query.close();
-    this.queryClosed = true;
+    this.input.end();
+    try { await this.query.close(); this.queryClosed = true; this.observeClose('completed'); }
+    catch (error) { this.observeClose('failed'); throw error; }
   }
   async consume() {
     try {

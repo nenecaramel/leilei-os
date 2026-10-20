@@ -94,7 +94,7 @@ export async function runDaemonMaintenance(dependencies: {
           if (compact) {
             let result;
             try {
-              await dependencies.persistentExecutor?.retireSession?.(compact.providerSessionId);
+              await dependencies.persistentExecutor?.retireSession?.(compact.providerSessionId,"MANUAL_COMPACT");
               result =
                 await dependencies.manualCompactExecutor.compactSession(
                   compact.providerSessionId,
@@ -176,7 +176,7 @@ export async function runDaemonMaintenance(dependencies: {
             });
           if (cleanup) {
             try {
-              await dependencies.persistentExecutor?.retireSession?.(cleanup.providerSessionId);
+              await dependencies.persistentExecutor?.retireSession?.(cleanup.providerSessionId,"SESSION_CLEANUP");
               await dependencies.providerSessionCleanupExecutor.deleteSession(
                 cleanup.providerSessionId,
                 cleanup.effectiveWorkingDirectory,

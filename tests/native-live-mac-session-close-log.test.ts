@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import type { NativeLiveMacSessionCloseDiagnostic } from '../src/domains/bridge/mac/native-live-mac-claude-transport.js';
+import { createNativeLiveMacSessionCloseLogger } from '../src/domains/bridge/mac/native-live-mac-session-close-log.js';
+const uuid='12345678-1234-4123-8123-123456789012';
+const frame:NativeLiveMacSessionCloseDiagnostic={closeId:uuid,reasonCode:'CONTROL_RECEIPT_TIMEOUT',phase:'requested',state:'running',conversationId:uuid,generationId:uuid,providerSessionId:uuid,prepareId:uuid,inputId:uuid,pendingInputs:0,backgroundTasks:1,resultReceived:false};
+test('private bounded close log survives logger recreation and drops all unapproved data',t=>{
+ const root=mkdtempSync(join(tmpdir(),'session-close-log-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const directory=join(root,'logs'),terminal:string[]=[];
+ const emit=createNativeLiveMacSessionCloseLogger(directory,line=>terminal.push(line));
+ emit({...frame,text:'PRIVATE_PROMPT',token:'PRIVATE_TOKEN',errorMessage:'PRIVATE_ERROR'} as any);
+ createNativeLiveMacSessionCloseLogger(directory,line=>terminal.push(line))({...frame,phase:'completed'});
+ const file=join(directory,'session-host.jsonl'),lines=readFileSync(file,'utf8').trim().split('\n');
+ assert.equal(lines.length,2);assert.deepEqual(lines,terminal.map(x=>x.trim()));
+ assert.equal(statSync(file).mode&0o777,0o600);assert.equal(statSync(directory).mode&0o777,0o700);
+ assert.equal(JSON.parse(lines[0]!).reasonCode,'CONTROL_RECEIPT_TIMEOUT');assert.doesNotMatch(lines.join(''),/PRIVATE/);
+ for(let i=0;i<4000;i++)emit(frame);
+ assert.ok(statSync(file).size<=1024*1024);assert.ok(statSync(file+'.1').size<=1024*1024);
+ assert.deepEqual(readdirSync(directory).sort(),['session-host.jsonl','session-host.jsonl.1']);
+});
+test('symlink or unavailable log file never changes execution and never writes the target',t=>{
+ const root=mkdtempSync(join(tmpdir(),'session-close-log-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const target=join(root,'private');writeFileSync(target,'untouched');
+ const blocked=join(root,'blocked');symlinkSync(target,blocked);const terminal:string[]=[];
+ const emit=createNativeLiveMacSessionCloseLogger(blocked,line=>terminal.push(line));
+ assert.doesNotThrow(()=>emit(frame));assert.equal(readFileSync(target,'utf8'),'untouched');
+ assert.ok(terminal.some(x=>JSON.parse(x).outcome==='session_host_log_unavailable'));
+ assert.doesNotThrow(()=>createNativeLiveMacSessionCloseLogger(blocked,()=>{throw Error('terminal unavailable');})(frame));
+});

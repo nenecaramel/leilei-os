@@ -178,8 +178,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
   // Call after openPersistentSession settles; failed startup may still own a
   // live query whose failed close must be explicitly retried.
-  async closePersistentSession() {
-    await this.activeSessionHost?.close();
+  async closePersistentSession(reason) {
+    await this.activeSessionHost?.close(reason);
   }
 
   sendNew(prompt, execution = null) {
@@ -437,9 +437,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     }
   }
 
-  abort() {
+  abort(reason) {
     this.abortRequested = true;
-    void this.activeSessionHost?.close?.().catch(() => {});
+    void this.activeSessionHost?.close?.(reason ?? Object.assign(new Error("Session host was closed."), {sessionCloseReason:"TRANSPORT_ABORT"})).catch(() => {});
     this.activeTurnHandle?.abort?.();
     this.activeQuery?.close?.();
   }

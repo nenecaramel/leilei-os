@@ -8,6 +8,7 @@ import {
   type NativeLiveMacPersistentSessionOptions,
   type NativeLiveMacSessionRestore,
   type NativeLiveMacSessionFork,
+  type NativeLiveMacSessionCloseReason,
 } from "./native-live-mac-claude-transport.js";
 import { resolveNativeLiveMacWorkingDirectory } from "./native-live-mac-working-directory-runtime.js";
 
@@ -21,6 +22,7 @@ type Entry = {
   conversationId: string;
   generationId: string;
   retired: boolean;
+  closeReason?: NativeLiveMacSessionCloseReason;
   runtime?: NativeLiveMacClaudeTransport;
   attemptedOpen: boolean;
   binding?: NativeLiveMacSessionBinding;
@@ -93,6 +95,7 @@ export class NativeLiveMacSessionRegistry {
     entry.opening = this.launch(entry, { ...input, options: { ...input.options } }, restore, fork);
     try { return await entry.opening; }
     catch (error) {
+      entry.closeReason ??= "STARTUP_FAILED";
       entry.retired = true;
       // Failed close retains the slot/runtime for an explicit close retry.
       try { await this.dispose(entry); } catch { /* Preserve startup error. */ }
@@ -113,9 +116,10 @@ export class NativeLiveMacSessionRegistry {
     return entry.binding;
   }
 
-  async close(conversationId: string, generationId: string): Promise<void> {
+  async close(conversationId: string, generationId: string, reason: NativeLiveMacSessionCloseReason = "EXPLICIT_CLOSE"): Promise<void> {
     const entry = this.entries.get(conversationId);
     if (!entry || entry.generationId !== generationId) return;
+    entry.closeReason ??= reason;
     this.retire(entry);
     await this.dispose(entry);
   }
@@ -124,7 +128,7 @@ export class NativeLiveMacSessionRegistry {
     this.shutDown = true;
     const entries = [...this.entries.values()];
     // Revoke every captured generation before awaiting any one SDK process.
-    for (const entry of entries) this.retire(entry);
+    for (const entry of entries) { entry.closeReason ??= "DAEMON_SHUTDOWN"; this.retire(entry); }
     const outcomes = await Promise.allSettled(entries.map(entry => this.dispose(entry)));
     const failures = outcomes.filter((r): r is PromiseRejectedResult => r.status === "rejected");
     if (failures.length) throw new AggregateError(failures.map(r => r.reason), "Persistent sessions could not all close.");
@@ -136,7 +140,7 @@ export class NativeLiveMacSessionRegistry {
     this.changes.emit("change");
     // Startup may still await the SDK loader. Cancel its transport claim now;
     // waiting only for open() would permit a late process launch after retire.
-    if (!wasRetired && !entry.binding) entry.runtime?.abort();
+    if (!wasRetired && !entry.binding) entry.runtime?.abort(Object.assign(new Error("Session host was closed."), {sessionCloseReason:entry.closeReason ?? "EXPLICIT_CLOSE"}));
   }
   private assertLive(entry: Entry): void {
     if (entry.retired || this.entries.get(entry.conversationId) !== entry) throw new Error("Persistent session generation was retired.");
@@ -207,7 +211,7 @@ export class NativeLiveMacSessionRegistry {
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         await Promise.race([(async () => {
-          if (entry.attemptedOpen) await entry.runtime!.closePersistentSession!();
+          if (entry.attemptedOpen) await entry.runtime!.closePersistentSession!(Object.assign(new Error("Session host was closed."), {sessionCloseReason:entry.closeReason ?? "EXPLICIT_CLOSE"}));
           if (entry.binding) await entry.binding.session.completion.catch(() => {});
         })(), new Promise<never>((_, reject) => {
           timer = setTimeout(() => reject(new Error("Persistent output stream close is unconfirmed.")), 5_000);

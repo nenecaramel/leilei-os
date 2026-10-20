@@ -10,6 +10,8 @@ import {
   type NativeLiveMacPersistentTurnOutput,
   type NativeLiveMacSessionResult,
   type NativeLiveMacActiveTurnController,
+  type NativeLiveMacSessionCloseReason,
+  type NativeLiveMacSessionCloseDiagnostic,
 } from "./native-live-mac-claude-transport.js";
 import type { NativeLiveMacDaemonRelayClient } from "./native-live-mac-daemon-loop.js";
 import { createNativeLiveMacExecutionAdmission } from "./native-live-mac-execution-admission.js";
@@ -79,6 +81,7 @@ export class NativeLiveMacPersistentTurnRouter {
 
   constructor(private readonly input: {
     registry: NativeLiveMacSessionRegistry;
+    onSessionClose?(frame: NativeLiveMacSessionCloseDiagnostic): void;
     listenerInstanceId: string;
     taskControlsAvailable?: () => Promise<boolean>;
     outputAttachmentSender?: NativeLiveMacOutputAttachmentSenderLike | null;
@@ -142,7 +145,7 @@ export class NativeLiveMacPersistentTurnRouter {
       if (this.input.relay.renewExecutionLease) {
         slot.lease = new NativeLiveMacExecutionLease({
           renew: () => this.input.relay.renewExecutionLease!({ listenerInstanceId: this.input.listenerInstanceId, command: slot.effectiveCommand ?? command }),
-          onRevoked: async () => { if (this.active === slot && slot.phase === "executing") await this.close(); },
+          onRevoked: async () => { if (this.active === slot && slot.phase === "executing") await this.close("EXECUTION_LEASE_REVOKED"); },
         });
         await slot.lease.start(); this.assertSlot(slot);
       }
@@ -205,7 +208,7 @@ export class NativeLiveMacPersistentTurnRouter {
           let timer: ReturnType<typeof setTimeout> | undefined;
           try {
             const receipt = await Promise.race([call(), new Promise<never>((_, reject) => {
-              timer = setTimeout(() => { void this.close().catch(() => {}); reject(new Error("Control receipt deadline expired; provider outcome unknown.")); }, 2_000);
+              timer = setTimeout(() => { void this.close("CONTROL_RECEIPT_TIMEOUT").catch(() => {}); reject(new Error("Control receipt deadline expired; provider outcome unknown.")); }, 2_000);
             })]);
             if (allowClosed && receipt && typeof receipt === "object" && "session_closed" in receipt && receipt.session_closed === true && this.active === slot && !this.suspended) return receipt;
             this.assertSlot(slot); if (this.suspended) throw new Error("Persistent session is draining."); return receipt;
@@ -283,7 +286,7 @@ export class NativeLiveMacPersistentTurnRouter {
       if (safeUnstartedWake) {
         input.onSafeUnstartedWakeFailure?.();
       } else {
-        try { await this.close(); } catch { /* Retain failed-close registry owner. */ }
+        try { await this.close("TURN_FAILED"); } catch { /* Retain failed-close registry owner. */ }
       }
       throw error;
     } finally {
@@ -317,7 +320,7 @@ export class NativeLiveMacPersistentTurnRouter {
   suspend(): void { this.suspended = true; this.active?.controlAbort?.abort(); this.abortBackgroundOutputs(); }
   get workingDirectory(): string | null { return this.binding?.workingDirectory ?? null; }
 
-  async close(): Promise<void> {
+  async close(reason: NativeLiveMacSessionCloseReason = "EXPLICIT_CLOSE"): Promise<void> {
     this.retired = true; // Fence all callbacks synchronously before closing.
     this.abortBackgroundOutputs();
     this.active?.lease?.stop();
@@ -325,7 +328,7 @@ export class NativeLiveMacPersistentTurnRouter {
     if (this.closing) return this.closing;
     const conversationId = this.initialCommand?.conversation_id;
     if (!conversationId || !this.generationId) return;
-    const closing = this.input.registry.close(conversationId, this.generationId);
+    const closing = this.input.registry.close(conversationId, this.generationId, reason);
     this.closing = closing;
     try { await closing; }
     finally { if (this.closing === closing) this.closing = null; }
@@ -479,7 +482,16 @@ export class NativeLiveMacPersistentTurnRouter {
     this.providerCheckpointId = command.parent_provider_checkpoint_id ?? null;
     const taskControlsAvailable = await this.input.taskControlsAvailable?.() === true;
     this.assertSlot(slot);
+    let closePrepareId: string | null | undefined;
     const options: NativeLiveMacPersistentSessionOptions = {
+      onCloseDiagnostic: frame => {
+        // The host snapshots input/result state before clearing it. This local
+        // correlation stays metadata-only and never enters normalized output.
+        if (closePrepareId === undefined) closePrepareId = this.active?.command.prepare_id ?? null;
+        try { void Promise.resolve(this.input.onSessionClose?.({ ...frame, conversationId: command.conversation_id,
+          generationId: this.generationId ?? this.input.registry.getGenerationId(command.conversation_id) ?? undefined,
+          prepareId: closePrepareId })).catch(() => {}); } catch { /* Nonfatal observer. */ }
+      },
       execution: command.execution_selection,
       perTaskStopAffordance: taskControlsAvailable,
       authorize: context => this.authorize(context),
