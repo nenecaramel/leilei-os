@@ -69,13 +69,23 @@ export async function appendBackgroundMessage(tx: Transaction, input: {
     },
   });
   await repository.setCurrentHead({ userId: input.userId, conversationId: input.conversationId, messageId: receipt.identity.receiptId });
-  const anchored = await tx.execute(sql`UPDATE conversations
-    SET provider_metadata=jsonb_set(provider_metadata,'{native_live_presentation_owner,anchorHeadMessageId}',to_jsonb(${receipt.identity.receiptId}::text))
-    WHERE id=${input.conversationId}::uuid AND user_id=${input.userId}::uuid
-      AND current_head_message_id=${receipt.identity.receiptId}::uuid
-      AND provider_metadata->'native_live_presentation_owner'->>'prepareId'=${receipt.context.presentationOwnerId}::text
-      AND (provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM ${receipt.context.canonicalMessageId}::text
-    RETURNING id`);
+  const anchored = await tx.execute(sql`UPDATE conversations c
+    SET provider_metadata=jsonb_set(c.provider_metadata,'{native_live_presentation_owner,anchorHeadMessageId}',to_jsonb(${receipt.identity.receiptId}::text))
+    FROM native_live_session_owners o
+    JOIN conversation_provider_session_checkpoints cp ON cp.conversation_id=o.conversation_id AND cp.user_id=o.user_id
+      AND cp.canonical_message_id=${receipt.context.canonicalMessageId}::uuid AND cp.provider='claude_code'
+    WHERE c.id=${input.conversationId}::uuid AND c.user_id=${input.userId}::uuid
+      AND o.conversation_id=c.id AND o.user_id=c.user_id
+      AND c.current_head_message_id=${receipt.identity.receiptId}::uuid
+      AND coalesce(cp.runtime_metadata->'native_live_generation'->>'writer_generation',
+        cp.runtime_metadata->'native_live_generation'->>'presentation_owner_id')=o.writer_generation::text
+      AND (c.provider_metadata->'native_live_presentation_owner'->>'prepareId'=${receipt.context.presentationOwnerId}::text
+        OR NOT EXISTS (SELECT 1 FROM native_live_turn_preparations active
+          WHERE active.user_id=c.user_id AND active.conversation_id=c.id
+            AND active.id::text=c.provider_metadata->'native_live_presentation_owner'->>'prepareId'
+            AND active.status='prepared' AND active.dispatch_status IN ('staged','pending','reserved','executing','delivery_unknown')))
+      AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM ${receipt.context.canonicalMessageId}::text
+    RETURNING c.id`);
   // This update and the message/checkpoint/head append share one SERIALIZABLE
   // transaction. Never commit an unowned head whose presentation owner still
   // points to the previous assistant: the next input would use a stale anchor.

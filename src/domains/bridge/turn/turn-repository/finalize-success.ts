@@ -46,7 +46,7 @@ import type {
 import { discardWakeLocked } from "./discard-wake.js";
 import { commitWakeResumeCursorLocked } from "./wake-resume-cursor.js";
 import { matchesPresentationOwner } from "./presentation-owner.js";
-import { commitRotatesWriterGeneration, syncNativeSessionOwner } from "./session-owner.js";
+import { commitRotatesWriterGeneration, readNativeWriterGeneration, syncNativeSessionOwner } from "./session-owner.js";
 
 export async function finalizeSuccess(
   this: TurnRepositoryContext,
@@ -191,14 +191,16 @@ export async function finalizeSuccess(
               )
               .limit(1);
 
+            const writerGeneration = await readNativeWriterGeneration(transaction as Transaction, {
+              userId: input.userId, conversationId: row.conversationId,
+            });
             const wakeGeneration = row.wakeContext?.runtime_generation;
             const wakeOwner = wakeGeneration && typeof wakeGeneration === "object" && !Array.isArray(wakeGeneration)
               ? wakeGeneration as Record<string, unknown> : null;
-            // The visible Wake still belongs to the previous presentation
-            // owner. A success must advance that owner's anchor from H to
-            // Wake's assistant head; otherwise a later native Cron prepares
-            // against H->Wake but its canonical background append gets 409.
-            // Reject generation/owner changes before writing any visible row.
+            // A Wake belongs to its native writer generation even if an
+            // unstarted/rejected foreground changed the turn slot. Keep the
+            // exact source head, user epoch, revision and anchor checks before
+            // writing; the existing slot-based anchor advance stays below.
             if (
               !surface
               || surface.currentHeadMessageId
@@ -207,7 +209,8 @@ export async function finalizeSuccess(
               || !wakeOwner
               || !Object.hasOwn(wakeOwner, "presentation_owner_id")
               || !Object.hasOwn(wakeOwner, "source_revision")
-              || surface.presentationOwnerId !== (wakeOwner.presentation_owner_id ?? null)
+              || !writerGeneration
+              || writerGeneration !== (wakeOwner.writer_generation ?? wakeOwner.presentation_owner_id ?? null)
               || surface.sourceRevision !== (wakeOwner.source_revision ?? null)
               || surface.presentationAnchorId !== wake.sourceHeadMessageId
             ) {

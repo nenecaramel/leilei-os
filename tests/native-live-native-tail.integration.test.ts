@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq, sql } from "drizzle-orm";
+import { rotateNativeWriterGeneration } from "../src/domains/bridge/turn/turn-repository/session-owner.js";
 import { DrizzleNativeLiveBackendRelayRepository } from "../src/domains/bridge/relay/native-live-backend-relay.js";
 import { createDatabase } from "../src/database/client.js";
 import { users, conversations, conversationMessages, nativeLiveTurnPreparations, nativeLiveRuntimeListenerLeases } from "../src/database/schema.js";
@@ -79,9 +80,8 @@ test("duplicate quiet submission never overwrites a later native tail", { skip: 
 
 for (const changed of ["owner-generation", "native-revision"] as const) test(`changed ${changed} cannot reactivate an old quiet-tail cursor`, { skip: !enabled }, async t => {
   const f = await fixture(t); await f.coordinator.finalize(f.user.id, f.result);
-  await f.database.db.execute(changed === "owner-generation"
-    ? sql`UPDATE conversations SET provider_metadata = jsonb_set(provider_metadata, '{native_live_presentation_owner}', jsonb_build_object('prepareId', ${crypto.randomUUID()}::text)) WHERE id = ${f.conversation.id}::uuid`
-    : sql`UPDATE conversations SET provider_metadata = jsonb_set(provider_metadata, '{nativeSessionSource}', '{"owner":"leileios","revision":"changed"}'::jsonb) WHERE id = ${f.conversation.id}::uuid`);
+  if (changed === "owner-generation") await rotateNativeWriterGeneration(f.database.db, {userId:f.user.id,conversationId:f.conversation.id});
+  else await f.database.db.execute(sql`UPDATE conversations SET provider_metadata = jsonb_set(provider_metadata, '{nativeSessionSource}', '{"owner":"leileios","revision":"changed"}'::jsonb) WHERE id = ${f.conversation.id}::uuid`);
   const next = await f.send(); assert.ok(next.ok); if (!next.ok) throw Error("next failed");
   assert.equal(next.command.parent_provider_checkpoint_id, f.base);
 });
@@ -138,9 +138,52 @@ test("a wake at the old base loses execution admission as soon as another quiet 
 
 for (const changed of ["owner-generation", "native-revision"] as const) test(`quiet result cannot adopt a ${changed} changed after preparation`, { skip: !enabled }, async t => {
   const f = await fixture(t);
-  await f.database.db.execute(changed === "owner-generation"
-    ? sql`UPDATE conversations SET provider_metadata = jsonb_set(provider_metadata, '{native_live_presentation_owner}', jsonb_build_object('prepareId', ${crypto.randomUUID()}::text)) WHERE id = ${f.conversation.id}::uuid`
-    : sql`UPDATE conversations SET provider_metadata = jsonb_set(provider_metadata, '{nativeSessionSource}', '{"owner":"leileios","revision":"changed"}'::jsonb) WHERE id = ${f.conversation.id}::uuid`);
+  if (changed === "owner-generation") await rotateNativeWriterGeneration(f.database.db, {userId:f.user.id,conversationId:f.conversation.id});
+  else await f.database.db.execute(sql`UPDATE conversations SET provider_metadata = jsonb_set(provider_metadata, '{nativeSessionSource}', '{"owner":"leileios","revision":"changed"}'::jsonb) WHERE id = ${f.conversation.id}::uuid`);
   const finalized = await f.coordinator.finalize(f.user.id, f.result);
   assert.ok(finalized.ok && finalized.outcome === "wake_stale");
+});
+
+test("quiet native tail survives superseded unstarted prepares", { skip: !enabled }, async t => {
+  const f=await fixture(t);
+  assert.ok((await f.coordinator.finalize(f.user.id,f.result)).ok);
+  const first=await f.send();assert.ok(first.ok);if(!first.ok)throw Error("first prepare failed");
+  assert.equal(first.command.parent_provider_checkpoint_id,f.next);
+  const second=await f.send();assert.ok(second.ok);if(!second.ok)throw Error("second prepare failed");
+  assert.equal(second.command.parent_provider_checkpoint_id,f.next,"turn slot replacement must not hide the native tail");
+});
+
+test("same-epoch Wake admits and finalizes after an unstarted retry only changed the slot", { skip: !enabled }, async t => {
+  const f=await fixture(t), listener=crypto.randomUUID(), later=new Date(Date.now()+600000);
+  const sourceUser=f.wake.wakeContext!.source_user_message_id as string;
+  const retry=await f.coordinator.prepare(f.user.id,{dispatch_target:"claude_code",request_id:crypto.randomUUID(),
+    conversation_id:f.conversation.id,operation:"retry",target_user_message_id:sourceUser});
+  assert.ok(retry.ok);if(!retry.ok)throw Error("retry failed");
+  await f.database.db.insert(nativeLiveRuntimeListenerLeases).values({userId:f.user.id,dispatchTarget:"claude_code",listenerInstanceId:listener,leaseExpiresAt:later});
+  await f.database.db.update(nativeLiveTurnPreparations).set({dispatchStatus:"executing",reservedBy:listener,reservedAt:new Date(),executionStartedAt:new Date(),reservationExpiresAt:later})
+    .where(eq(nativeLiveTurnPreparations.id,retry.command.prepare_id));
+  const relay=new DrizzleNativeLiveBackendRelayRepository(f.database.db);
+  assert.equal(await relay.rejectReservation({userId:f.user.id,listenerInstanceId:listener,reservationId:retry.command.prepare_id,code:"INVALID_COMMAND"}),"applied");
+  await f.database.db.update(nativeLiveTurnPreparations).set({dispatchStatus:"executing",reservedBy:listener,reservedAt:new Date(),executionStartedAt:new Date(),reservationExpiresAt:later})
+    .where(eq(nativeLiveTurnPreparations.id,f.wake.prepareId));
+  const admission={userId:f.user.id,listenerInstanceId:listener,reservationId:f.wake.prepareId,requestId:f.wake.requestId,
+    conversationId:f.conversation.id,runtimeMode:"resume" as const,canonicalUserMessageId:null,
+    parentProviderSessionId:f.wake.parentProviderSessionId,parentProviderCheckpointId:f.wake.parentProviderCheckpointId!};
+  assert.equal(await relay.checkExecutionAdmission(admission),true,"same line and same user epoch survive a slot-only change");
+  const completed=await f.coordinator.finalize(f.user.id,{...f.result,normalized_events:[{type:"text",payload:{text:"synthetic visible Wake"}}]});
+  assert.ok(completed.ok && completed.outcome==="completed",JSON.stringify(completed));
+});
+
+for (const valid of [true,false]) test(`legacy native tail ${valid ? "retains a backfilled" : "rejects a mismatched"} writer generation`, {skip:!enabled}, async t=>{
+  const f=await fixture(t);await f.coordinator.finalize(f.user.id,f.result);
+  const [stamp]=await f.database.db.execute<{owner:string}>(sql`SELECT
+    runtime_metadata->'native_live_resume_tail'->>'presentation_owner_id' AS owner
+    FROM conversation_provider_session_checkpoints WHERE user_id=${f.user.id}::uuid AND canonical_message_id=${f.source.assistantMessageId}::uuid`);
+  await f.database.db.execute(sql`UPDATE conversation_provider_session_checkpoints
+    SET runtime_metadata=runtime_metadata #- '{native_live_resume_tail,writer_generation}'
+    WHERE user_id=${f.user.id}::uuid AND canonical_message_id=${f.source.assistantMessageId}::uuid`);
+  await f.database.db.execute(sql`UPDATE native_live_session_owners SET writer_generation=${valid?stamp.owner:crypto.randomUUID()}::uuid
+    WHERE user_id=${f.user.id}::uuid AND conversation_id=${f.conversation.id}::uuid`);
+  const next=await f.send();assert.ok(next.ok);if(!next.ok)throw Error("send failed");
+  assert.equal(next.command.parent_provider_checkpoint_id,valid?f.next:f.base);
 });

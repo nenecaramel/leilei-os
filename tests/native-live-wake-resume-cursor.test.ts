@@ -46,14 +46,14 @@ test("cursor test fixture satisfies all native identity and generation guards",(
 });
 
 test("stale Wake whose canonical head changed cannot graft any native cursor onto another branch",async()=>{
-  const f=exercise([[{head:id(22),owner,revision:null}]]);
+  const f=exercise([[{head:id(22),owner,revision:null,writer_generation:owner}]]);
   assert.equal(await commitWakeResumeCursorLocked(f.tx,row,input),"stale");
   assert.equal(f.calls(),1,"no cursor write");
 });
 
 test("stale Wake with a started foreground must not overwrite its native execution cursor",async()=>{
   const f=exercise([
-    [{head:sourceHead,owner,revision:null}],
+    [{head:sourceHead,owner,revision:null,writer_generation:owner}],
     [{active:true,replacing:false,pending:true}],
   ]);
   assert.equal(await commitWakeResumeCursorLocked(f.tx,row,input),"stale");
@@ -62,7 +62,7 @@ test("stale Wake with a started foreground must not overwrite its native executi
 
 test("quiet or visible Wake retains new native cursor when original source is still current",async()=>{
   const f=exercise([
-    [{head:sourceHead,owner,revision:null}],
+    [{head:sourceHead,owner,revision:null,writer_generation:owner}],
     [{active:false,replacing:false,pending:false}],
     [{id:checkpointRow,base}],
     [],
@@ -74,7 +74,7 @@ test("quiet or visible Wake retains new native cursor when original source is st
 
 test("a new queued user input receives Wake's advanced cursor in the same transaction",async()=>{
   const f=exercise([
-    [{head:sourceHead,owner:queuedSend,revision:null}],
+    [{head:sourceHead,owner:queuedSend,revision:null,writer_generation:owner}],
     [{active:false,replacing:false,pending:true}],
     [{id:queuedSend}],
     [{id:checkpointRow,base}],
@@ -88,7 +88,7 @@ test("a new queued user input receives Wake's advanced cursor in the same transa
 
 test("a reserved or already-started successor may not be retargeted",async()=>{
   const f=exercise([
-    [{head:sourceHead,owner:queuedSend,revision:null}],
+    [{head:sourceHead,owner:queuedSend,revision:null,writer_generation:owner}],
     [{active:false,replacing:false,pending:true}],
     [],
   ]);
@@ -107,4 +107,10 @@ test("native SID, checkpoint format and source generation must match before any 
     assert.equal(await commitWakeResumeCursorLocked(f.tx,row,candidate),"stale");
     assert.equal(f.calls(),0);
   }
+});
+
+for (const generation of [null,id(99)]) test(`quiet cursor refuses ${generation ? "a replaced" : "a missing"} writer generation before mutation`,async()=>{
+  const f=exercise([[{head:sourceHead,owner,revision:null,writer_generation:generation}]]);
+  assert.equal(await commitWakeResumeCursorLocked(f.tx,row,input),"stale");
+  assert.equal(f.calls(),1);
 });

@@ -61,6 +61,11 @@ export async function commitWakeResumeCursorLocked(
   // A different source revision is an import or ownership handoff, not an
   // in-session advance. Do not graft discarded native history onto it.
   if (surface.revision !== sourceRevision) return "stale";
+  // Quiet results use this path directly, before visible-Wake finalization.
+  // Keep the queued-send retarget below slot-based, but never carry a native
+  // cursor across an input-start/edit generation change.
+  if (!surface.writer_generation
+    || surface.writer_generation !== (g.writer_generation ?? g.presentation_owner_id)) return "stale";
 
   const [other] = await transaction.execute<{ active: boolean; replacing: boolean; pending: boolean }>(sql`
     SELECT

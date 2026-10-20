@@ -1,6 +1,7 @@
 # Native Session owner row (design, 2026-10-20)
 
-Status: proposed. It implements consolidation candidate 2 from
+Status: PRs 1 and 2a are merged. PR 2b implements the generation-reader
+transition; later owner/slot consolidation remains planned. This implements consolidation candidate 2 from
 [state-audit.md](state-audit.md). It does not change candidate 1 (the route table)
 or candidate 3 (the cursor function). It leaves room for both.
 
@@ -229,6 +230,27 @@ and runs `pnpm agent:verify --run`.
 
 iOS: `NATIVE_SESSION_SWITCHING` needs a user-facing string. Until iOS ships it,
 the generic failure text appears; that is safe and does not lose input.
+
+## PR 2b reader scope
+
+Generation equality reads `native_live_session_owners.writer_generation`, with
+`coalesce(stamp.writer_generation, stamp.presentation_owner_id)` for historical
+stamps. Background receipts retain an optional `context.writerGeneration`;
+renewal and normal submission compare the immutable canonical binding and native
+generation, allowing a rejected/unstarted turn to change only the presentation
+slot. Legacy receipts without that field still require the checkpoint stamp to
+match the row. No slot is rewritten to the old producer.
+
+The independent quiet-Wake cursor entry point also checks this generation before
+writing. Its queued-send retarget and all turn-slot rules remain unchanged.
+Visible Wake admission/finalization still requires the current user epoch: a real
+new user message invalidates the old Wake, even if its send is later rejected.
+The slot-only regression uses an unstarted retry in the same epoch, rather than
+relaxing that isolation rule.
+
+`reconcileRejectedWakePresentationOwner` is removed. The separate historical
+`reconcileLegacyVisibleWakeAnchor` remains. This is server-only, with no migration,
+Mac daemon refresh, ownership transition or production DB operation.
 
 ## Open questions (resolved in the PR that touches them)
 
