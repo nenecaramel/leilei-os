@@ -4,6 +4,7 @@ import { conversationMessages, nativeLiveTurnPreparations } from "../../../datab
 import type { NativeLiveExecutionAdmission } from "../protocol/native-live-execution-admission.js";
 import { hashJson } from "../turn/turn-repository/records.js";
 import { nativeResumeCheckpointSql } from "../turn/native-live-resume-checkpoint.js";
+import { rotateNativeWriterGeneration } from "../turn/turn-repository/session-owner.js";
 import { nativeContinuationBinding } from "../../conversation/native-session-continuation-repository.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
@@ -165,6 +166,7 @@ export async function bindNativeLiveInput(db: Database, input: NativeLiveInputBi
       ...(bound.started ? { parentProviderCheckpointId: bound.parentProviderCheckpointId } : {}),
       runtimeMetadata: { ...p.runtimeMetadata, native_live_input_binding: bound },
     }).where(eq(nativeLiveTurnPreparations.id, p.id));
+    if (bound.started) await rotateNativeWriterGeneration(tx, { userId: input.userId, conversationId: p.conversationId });
     return { userMessageId: u.id, parentProviderCheckpointId: bound.parentProviderCheckpointId };
   }, { isolationLevel: "serializable" });
 }
