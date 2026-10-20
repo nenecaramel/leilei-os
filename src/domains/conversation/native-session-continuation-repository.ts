@@ -7,6 +7,7 @@ import { inFlightConversationTurns } from './native-live-conversation-repository
 import { DrizzleNativeLiveProviderSessionStoreRepository } from '../bridge/provider-session/native-live-provider-session-store.js';
 import { providerSessionOwnershipLock } from '../bridge/provider-session/native-live-provider-session-references.js';
 import { nativeResumeCheckpointSql } from '../bridge/turn/native-live-resume-checkpoint.js';
+import { syncNativeSessionOwner } from '../bridge/turn/turn-repository/session-owner.js';
 
 type Database = ReturnType<typeof createDatabase>['db'];
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -115,6 +116,7 @@ async function changeOwner(db: Database, input: NativeContinuationInput, owner: 
       headMessageId: state.expectedHeadMessageId, owner, lineage };
     if (!existing) await tx.insert(conversations).values({ id: input.conversationId, userId: input.userId, origin: 'native_live', lifecycleStatus: 'active', providerMetadata: { nativeSessionSource: binding } });
     else if (!same) await tx.update(conversations).set({ providerMetadata: { ...existing.providerMetadata, nativeSessionSource: binding }, updatedAt: new Date() }).where(eq(conversations.id, input.conversationId));
+    await syncNativeSessionOwner(tx, input);
     return { outcome: same ? 'already_current' : 'attached', owner, conversationId: input.conversationId,
       headMessageId: state.expectedHeadMessageId, providerSessionId: input.sessionId, providerCheckpointId: input.checkpointId, inserted: 0 };
   });

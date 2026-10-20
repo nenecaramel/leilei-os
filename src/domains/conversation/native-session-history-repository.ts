@@ -13,6 +13,7 @@ import { providerSessionOwnershipLock } from "../bridge/provider-session/native-
 import { inFlightConversationTurns } from "./native-live-conversation-repository.js";
 import { storedContentKind, storedContentPayload } from "./native-live-content-contract.js";
 import type { NativeLiveContentBlockInput } from "./native-live-conversation-types.js";
+import { syncNativeSessionOwner } from "../bridge/turn/turn-repository/session-owner.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 export type NativeHistoryMessage = {
@@ -369,6 +370,7 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       if (source!.owner === "desktop") await tx.update(conversations).set({ providerMetadata: {
         ...existing!.providerMetadata, nativeSessionSource: { ...source, owner: "leileios" },
       }, updatedAt: new Date() }).where(eq(conversations.id, input.conversationId));
+      await syncNativeSessionOwner(tx, input);
       return { outcome: "already_current" as const, conversationId: input.conversationId, headMessageId: source!.headMessageId, inserted: 0,
         pendingAssets: await pendingNativeAssets(tx, input) };
     }
@@ -449,6 +451,7 @@ export async function restoreNativeSessionHistory(db: Database, input: {
           ...(entries && !entries.some(entry => entry.uuid === m.providerCheckpointId) ? { displayOnly: true } : {}) };
       }) };
     await tx.update(conversations).set({ currentHeadMessageId: parent, updatedAt: new Date(), providerMetadata: { ...existing?.providerMetadata, nativeSessionSource: nextSource } }).where(and(eq(conversations.id, input.conversationId), eq(conversations.userId, input.userId)));
+    await syncNativeSessionOwner(tx, input);
     return { outcome: "restored" as const, conversationId: input.conversationId, headMessageId: parent, inserted: total - rows.length, pendingAssets: await pendingNativeAssets(tx, input) };
   });
 }
@@ -493,6 +496,7 @@ export async function releaseNativeSessionToDesktop(db: Database, input: {
     }
     await tx.update(conversations).set({ providerMetadata: { ...conversation.providerMetadata,
       nativeSessionSource: { ...source, owner: "desktop" } }, updatedAt: new Date() }).where(eq(conversations.id, input.conversationId));
+    await syncNativeSessionOwner(tx, input);
     return { owner: "desktop" as const, conversationId: input.conversationId, providerSessionId: input.sessionId,
       providerCheckpointId: input.expectedCheckpointId, headMessageId: input.expectedHeadMessageId };
   });

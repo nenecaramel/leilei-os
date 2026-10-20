@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import { nativeResumeCheckpointSql } from "../turn/native-live-resume-checkpoint.js";
+import { readNativeWriterGeneration, syncNativeSessionOwner } from "../turn/turn-repository/session-owner.js";
 import { hashJson } from "../turn/turn-repository/records.js";
 import { canonicalizeNativeLiveEvents } from "../../conversation/native-live-conversation-orchestrator.js";
 import { backgroundIdentity, backgroundResult, NativeLiveBackgroundResultError, type NativeLiveBackgroundIdentity, type NativeLiveBackgroundPrepare,
@@ -193,6 +194,7 @@ async function reconcileRejectedWakePresentationOwner(
       )
     RETURNING c.id
   `);
+  if (rows.length === 1) await syncNativeSessionOwner(tx, { userId, conversationId: origin.conversationId });
 
   return rows.length === 1;
 }
@@ -374,6 +376,7 @@ async function reconcileLegacyVisibleWakeAnchor(
       AND wake.wake_context->'runtime_generation'->>'source_revision'
         IS NOT DISTINCT FROM ${context.sourceRevision}::text
   `);
+  await syncNativeSessionOwner(tx, { userId, conversationId: origin.conversationId });
 }
 function prepared(identity: NativeLiveBackgroundIdentity, value: Receipt): NativeLiveBackgroundPrepared {
   return { receiptId: identity.receiptId, providerSessionId: value.context.providerSessionId, parentProviderCheckpointId: value.originalParentProviderCheckpointId ?? value.context.parentProviderCheckpointId, expiresAt: value.expiresAt };
@@ -582,7 +585,8 @@ export async function submitNativeLiveBackgroundResult(db: Database, input: Nati
     if (checkpoint && !visible) {
       const c = stored.context;
       const tail = { canonical_message_id: c.canonicalMessageId, provider_session_id: c.providerSessionId, base_checkpoint_id: c.baseCheckpointId,
-        checkpoint_id: checkpoint, cwd: c.cwd, presentation_owner_id: c.presentationOwnerId, source_revision: c.sourceRevision };
+        checkpoint_id: checkpoint, cwd: c.cwd, presentation_owner_id: c.presentationOwnerId, source_revision: c.sourceRevision,
+        writer_generation: await readNativeWriterGeneration(tx, { userId, conversationId: origin.conversationId }) };
       const rows = await tx.execute(sql`UPDATE conversation_provider_session_checkpoints SET runtime_metadata=jsonb_set(coalesce(runtime_metadata,'{}'::jsonb),'{native_live_resume_tail}',${JSON.stringify(tail)}::jsonb)
         WHERE id=${c.id}::uuid AND user_id=${userId}::uuid RETURNING id`);
       if (rows.length !== 1) throw conflict();

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   conversations,
@@ -439,6 +439,11 @@ test("relay rejection constraint upgrades 0105 without changing rows and disting
   cpSync(migrationsFolder, folder, { recursive: true });
   writeFileSync(resolve(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.slice(0, previousIndex + 1) }));
   await migrate(database.db, { migrationsFolder: folder });
+  // Today's prepare also writes the session owner row (0111). Create that table
+  // ahead for the fixture, then drop it so the real 0111 migration recreates it.
+  const ownerTable = readFileSync(resolve(migrationsFolder, "0111_native_live_session_owners.sql"), "utf8")
+    .split("--> statement-breakpoint").slice(0, 2);
+  for (const statement of ownerTable) await database.db.execute(sql.raw(statement));
   const [user] = await database.db.insert(users).values({
     email: `${name}@example.test`, displayName: "Relay rejection constraint",
   }).returning();
@@ -463,6 +468,7 @@ test("relay rejection constraint upgrades 0105 without changing rows and disting
   };
   await update(executing);
   const before = await read();
+  await database.db.execute(sql`DROP TABLE native_live_session_owners`);
   await migrate(database.db, { migrationsFolder });
   await migrate(database.db, { migrationsFolder });
   assert.deepEqual(await read(), before, "upgrading and retrying migrations preserves the original execution row");

@@ -778,6 +778,13 @@
       "when": 1792400000000,
       "tag": "0110_native_live_concerns",
       "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1792494353047,
+      "tag": "0111_native_live_session_owners",
+      "breakpoints": true
     }
   ]
 }
