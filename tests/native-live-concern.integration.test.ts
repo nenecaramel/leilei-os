@@ -1,3 +1,4 @@
+import { syncNativeSessionOwner } from "../src/domains/bridge/turn/turn-repository/session-owner.js";
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { eq, sql } from "drizzle-orm";
@@ -426,15 +427,17 @@ test(
     await h.database.db.execute(sql`
       UPDATE conversations
       SET provider_metadata = jsonb_set(coalesce(provider_metadata, '{}'::jsonb), '{nativeSessionSource}',
-        coalesce(provider_metadata->'nativeSessionSource', '{}'::jsonb) || '{"owner":"official"}'::jsonb)
+        coalesce(provider_metadata->'nativeSessionSource', '{}'::jsonb) || '{"owner":"desktop"}'::jsonb)
       WHERE id = ${conversation.id}::uuid
     `);
+    await syncNativeSessionOwner(h.database.db, { userId: h.user.id, conversationId: conversation.id });
     assert.equal((await h.silence.readSchedule({ userId: h.user.id }))?.concernDueAt, null);
     await h.database.db.execute(sql`
       UPDATE conversations
       SET provider_metadata = provider_metadata #- '{nativeSessionSource,owner}'
       WHERE id = ${conversation.id}::uuid
     `);
+    await syncNativeSessionOwner(h.database.db, { userId: h.user.id, conversationId: conversation.id });
     assert.ok((await h.silence.readSchedule({ userId: h.user.id }))?.concernDueAt);
 
     // Switching sessions leaves the concern dormant in its own conversation.

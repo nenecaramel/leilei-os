@@ -1,3 +1,4 @@
+import { nativeSessionExecutableSql } from "../bridge/turn/turn-repository/session-owner.js";
 import type { Database, Transaction, DbExecutor } from "./native-live-conversation-db.js";
 import { archiveConversation, restoreConversation, deleteConversation } from "./native-live-conversation-lifecycle.js";
 export { inFlightConversationTurns } from "./native-live-conversation-lifecycle.js";
@@ -23,12 +24,12 @@ import type {
   NativeLiveProviderCheckpointInput,
 } from "./native-live-conversation-types.js";
 
-/** Native handoff blocks LeileiOS execution while Desktop owns this conversation. */
+/** Keep the existing conversation lock; every non-LeileiOS owner holds execution. */
 export async function nativeSessionHeldByDesktop(db: Pick<Database, "execute">, input: { userId: string; conversationId: string }) {
-  const [row] = await db.execute(sql`SELECT provider_metadata->'nativeSessionSource'->>'owner' AS owner
-    FROM conversations WHERE user_id = ${input.userId}::uuid AND id = ${input.conversationId}::uuid
+  const [row] = await db.execute(sql`SELECT ${nativeSessionExecutableSql("c")} AS executable
+    FROM conversations c WHERE user_id = ${input.userId}::uuid AND id = ${input.conversationId}::uuid
       AND origin = 'native_live' FOR UPDATE`);
-  return row?.owner === "desktop";
+  return row?.executable === false;
 }
 
 function toIso(value: Date | null): string | null {

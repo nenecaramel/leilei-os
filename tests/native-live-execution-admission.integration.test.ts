@@ -90,11 +90,16 @@ test("execution admission PostgreSQL snapshot fences", { skip: process.env.RUN_N
   });
   await t.test("Desktop ownership revokes execution even while the old reservation is otherwise valid", async () => {
     const owner = { native_live_presentation_owner: { prepareId: reservationId, anchorHeadMessageId: canonicalUserMessageId } };
-    for (const ownership of ["desktop", "unknown"]) {
+    for (const ownership of ["desktop", "releasing"]) {
       await db.update(conversations).set({ providerMetadata: { ...owner, nativeSessionSource: { owner: ownership } } }).where(eq(conversations.id, conversationId));
+      await db.execute(sql`INSERT INTO native_live_session_owners(conversation_id,user_id,owner,writer_generation)
+        VALUES (${conversationId}::uuid,${userId}::uuid,${ownership},gen_random_uuid())
+        ON CONFLICT (conversation_id) DO UPDATE SET owner=EXCLUDED.owner`);
       assert.equal(await check(), false);
     }
+    await db.execute(sql`UPDATE native_live_session_owners SET owner='leileios' WHERE conversation_id=${conversationId}::uuid`);
     await db.update(conversations).set({ providerMetadata: { ...owner, nativeSessionSource: { owner: "leileios" } } }).where(eq(conversations.id, conversationId)); assert.equal(await check(), true);
+    await db.execute(sql`DELETE FROM native_live_session_owners WHERE conversation_id=${conversationId}::uuid`);
     await db.update(conversations).set({ providerMetadata: owner }).where(eq(conversations.id, conversationId)); assert.equal(await check(), true, "legacy source without owner remains compatible");
   });
   const parent = crypto.randomUUID(), checkpoint = crypto.randomUUID();

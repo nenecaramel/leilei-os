@@ -1,3 +1,4 @@
+import { nativeSessionExecutableSql } from "./turn-repository/session-owner.js";
 import { sql, type SQL } from "drizzle-orm";
 import type { Executor } from "./turn-repository/types.js";
 
@@ -17,7 +18,7 @@ export function nativeResumeCheckpointSql(checkpointAlias: string, conversationA
     AND ${tail}->>'checkpoint_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     AND ${tail}->>'checkpoint_id' <> '00000000-0000-0000-0000-000000000000'
     AND (${tail}->>'source_revision') IS NOT DISTINCT FROM (${conversation}.provider_metadata->'nativeSessionSource'->>'revision')
-    AND coalesce(${conversation}.provider_metadata->'nativeSessionSource'->>'owner', 'leileios') = 'leileios'
+    AND ${nativeSessionExecutableSql(conversationAlias)}
     ${enforceGeneration ? sql`AND coalesce(${tail}->>'writer_generation', ${tail}->>'presentation_owner_id') = (
       SELECT o.writer_generation::text FROM native_live_session_owners o
       WHERE o.conversation_id=${conversation}.id AND o.user_id=${conversation}.user_id

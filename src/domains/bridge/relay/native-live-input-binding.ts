@@ -1,3 +1,4 @@
+import { nativeSessionExecutableSql } from "../turn/turn-repository/session-owner.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import { conversationMessages, nativeLiveTurnPreparations } from "../../../database/schema.js";
@@ -30,7 +31,7 @@ export async function checkQueuedNativeLiveInput(db: Pick<Database, "execute">, 
       AND p.runtime_metadata->'native_live_input_binding'->>'started'='false'
       AND (p.runtime_metadata->'native_live_input_binding'->>'sourceRevision') IS NOT DISTINCT FROM (c.provider_metadata->'nativeSessionSource'->>'revision')
       AND c.origin='native_live' AND c.lifecycle_status='active'
-      AND coalesce(c.provider_metadata->'nativeSessionSource'->>'owner','leileios')='leileios'
+      AND ${nativeSessionExecutableSql("c")}
       AND c.provider_metadata->'native_live_presentation_owner'->>'prepareId'=p.id::text
       AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM c.current_head_message_id::text LIMIT 1`);
   return !!row;
@@ -58,7 +59,7 @@ export async function bindNativeLiveInput(db: Database, input: NativeLiveInputBi
         provider_metadata AS metadata
       FROM conversations WHERE user_id=${input.userId}::uuid AND id=${p.conversationId}::uuid
         AND origin='native_live' AND lifecycle_status='active'
-        AND coalesce(provider_metadata->'nativeSessionSource'->>'owner','leileios')='leileios'
+        AND ${nativeSessionExecutableSql("conversations")}
         AND provider_metadata->'native_live_presentation_owner'->>'prepareId'=${p.id}::text
         AND (provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM current_head_message_id::text
       FOR UPDATE
@@ -117,7 +118,7 @@ export async function bindNativeLiveInput(db: Database, input: NativeLiveInputBi
     // that anchor its checkpoint supersedes the older canonical checkpoint;
     // only a native tail based on that same checkpoint may advance it.
     const source = nativeContinuationBinding(c.metadata);
-    const atHandoff = source?.headMessageId === c.head && source.owner === "leileios";
+    const atHandoff = source?.headMessageId === c.head;
     const cursor = atHandoff && (!cp || cp.baseCheckpoint !== source.checkpointId)
       ? { checkpoint: source.checkpointId, session: source.sessionId, cwd: source.effectiveWorkingDirectory }
       : cp;

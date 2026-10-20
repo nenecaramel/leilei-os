@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { createDatabase } from "../../../../database/client.js";
 
 // Any database or transaction handle; only raw SQL is used.
@@ -68,4 +68,23 @@ export async function rotateNativeWriterGeneration(executor: Executor, input: {
 /** A committed turn starts a new native line unless it resumes the head. Wake never does. */
 export function commitRotatesWriterGeneration(row: { operation: string; runtimeMode: string }): boolean {
   return row.operation !== "wake" && row.runtimeMode !== "resume";
+}
+
+export type NativeSessionOwner = "leileios" | "releasing" | "desktop";
+
+/** Unbound/new conversations have no owner row until their first prepare. */
+export function nativeSessionExecutableSql(conversationAlias: string): SQL<boolean> {
+  const c = sql.identifier(conversationAlias);
+  return sql<boolean>`coalesce((SELECT o.owner FROM native_live_session_owners o
+    WHERE o.conversation_id=${c}.id AND o.user_id=${c}.user_id), 'leileios')='leileios'`;
+}
+
+export async function readNativeSessionOwner(executor: Executor, input: {
+  userId: string; conversationId: string;
+}): Promise<NativeSessionOwner> {
+  const [row] = await executor.execute<{ owner: NativeSessionOwner }>(sql`
+    SELECT owner FROM native_live_session_owners
+    WHERE conversation_id=${input.conversationId}::uuid AND user_id=${input.userId}::uuid
+  `);
+  return row?.owner ?? "leileios";
 }

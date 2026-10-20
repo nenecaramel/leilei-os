@@ -1,3 +1,4 @@
+import { nativeSessionExecutableSql } from "../turn/turn-repository/session-owner.js";
 import { appendBackgroundMessage, readDurableBackgroundReceipt } from "./native-live-background-message.js";
 import { isDeepStrictEqual } from "node:util";
 import { sql } from "drizzle-orm";
@@ -81,7 +82,7 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
         OR cp.runtime_metadata->'native_live_background_receipt'->'identity'->>'sourcePrepareId'=${origin.id})
       AND cp.provider='claude_code' AND cp.provider_session_id=${origin.sessionId} AND cp.provider_checkpoint_id IS NOT NULL
       AND c.current_head_message_id=cp.canonical_message_id AND c.origin='native_live' AND c.lifecycle_status='active'
-      AND coalesce(c.provider_metadata->'nativeSessionSource'->>'owner','leileios')='leileios'
+      AND ${nativeSessionExecutableSql("c")}
       AND jsonb_typeof(${gen})='object' AND ${gen} ? 'presentation_owner_id' AND ${gen} ? 'source_revision'
       AND (coalesce(${gen}->>'writer_generation', ${gen}->>'presentation_owner_id') = o.writer_generation::text OR ((${executionStart} OR ${deferred}) AND ${pendingOwner}))
       AND (${gen}->>'source_revision') IS NOT DISTINCT FROM (c.provider_metadata->'nativeSessionSource'->>'revision')
@@ -134,7 +135,7 @@ async function coveringSnapshot(tx: Transaction, userId: string, origin: Source,
       AND cp.canonical_message_id=c.current_head_message_id
     WHERE c.id=${origin.conversationId}::uuid AND c.user_id=${userId}::uuid
       AND c.origin='native_live' AND c.lifecycle_status='active'
-      AND coalesce(c.provider_metadata->'nativeSessionSource'->>'owner','leileios')='leileios'
+      AND ${nativeSessionExecutableSql("c")}
       AND cp.provider='claude_code' AND cp.provider_session_id=${preparedContext.providerSessionId}
       AND cp.provider_checkpoint_id=${coveringCheckpointId}
       AND cp.effective_working_directory IS NOT DISTINCT FROM ${preparedContext.cwd}
