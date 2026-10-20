@@ -27,7 +27,11 @@ export class NativeLiveMacRelayHttp {
         return await this.post(path, body, signal);
       } catch (error) {
         if (
-          signal?.aborted || !isTransientRelayWaitError(error)
+          signal?.aborted || !(isTransientRelayWaitError(error)
+            || (error && typeof error === "object" && "relayCode" in error
+              && error.relayCode === "RELAY_RESPONSE_BODY_UNAVAILABLE"
+              && "httpStatus" in error && typeof error.httpStatus === "number"
+              && error.httpStatus >= 200 && error.httpStatus < 300))
           || attempt >= maxAttempts
         ) {
           throw error;

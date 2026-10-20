@@ -680,9 +680,13 @@ implements NativeLiveMacDaemonRelayClient {
       parent_provider_session_id: c.parent_provider_session_id,
       parent_provider_checkpoint_id: c.parent_provider_checkpoint_id };
     if (!parseNativeLiveExecutionAdmissionBody(body)) return false;
-    const data = readRecord(await this.post(
-      `/reservations/${encodeURIComponent(c.prepare_id)}/execution-admission`, body, AbortSignal.timeout(2_000),
-    ));
+    // This endpoint only checks current ownership; it cannot submit input or
+    // execute a model/tool. A lost response may be rechecked once, never cached.
+    // Share the existing two-second budget across fetch, body and retry delay.
+    const signal = AbortSignal.timeout(2_000);
+    const data = readRecord(await awaitRelayDeadline(this.postRetryableBounded(
+      `/reservations/${encodeURIComponent(c.prepare_id)}/execution-admission`, body, 2, signal,
+    ), signal));
     if (typeof data.admitted !== "boolean") throw new Error("Native live execution admission response is invalid.");
     return data.admitted;
   }

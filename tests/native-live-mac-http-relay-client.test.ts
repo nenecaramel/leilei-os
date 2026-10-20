@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createServer, type ServerResponse } from "node:http";
 import {
   NativeLiveMacHttpRelayClient,
 } from "../src/domains/bridge/mac/native-live-mac-http-relay-client.js";
@@ -1462,4 +1463,128 @@ test("separate task stopping is advertised only by the matching authenticated ba
   });
   assert.equal(await client.supportsTaskControls(),expected);
  }
+});
+
+for (const kind of ["admission", "events"] as const) {
+  test(`${kind} recovers the identical metadata request after response body connection loss`, async () => {
+    const bodies: string[] = [];
+    const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async (_url, init) => {
+      bodies.push(String(init?.body));
+      const response = new Response(JSON.stringify({ success: true, data: { admitted: true } }));
+      if (bodies.length === 1) response.json = async () => { throw new TypeError("terminated", { cause: { code: "ECONNRESET" } }); };
+      return response;
+    });
+    if (kind === "admission") {
+      assert.equal(await client.checkExecutionAdmission({ listenerInstanceId: listenerId,
+        command: { ...command(), parent_provider_checkpoint_id: null } }), true);
+    } else await client.appendRuntimeEvents({ listenerInstanceId: listenerId, reservationId: prepareId,
+      events: [{ sequence: 1, event: { type: "partial_text", payload: { delta: "synthetic", accumulated_length: 9 } } }] });
+    assert.equal(bodies.length, 2);
+    assert.equal(bodies[0], bodies[1]);
+  });
+}
+
+test("admission connection reset retries once and rechecks current denial rather than caching approval", async () => {
+  let calls = 0;
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async () => {
+    if (++calls === 1) throw new TypeError("fetch failed", { cause: { code: "ECONNRESET" } });
+    return new Response(JSON.stringify({ success: true, data: { admitted: false } }));
+  });
+  assert.equal(await client.checkExecutionAdmission({ listenerInstanceId: listenerId,
+    command: { ...command(), parent_provider_checkpoint_id: null } }), false);
+  assert.equal(calls, 2);
+});
+
+for (const failure of ["invalid-json", "403", "409"] as const) {
+  test(`admission does not retry ${failure}`, async () => {
+    let calls = 0;
+    const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async () => {
+      calls++;
+      return failure === "invalid-json" ? new Response("{")
+        : new Response(JSON.stringify({ success: false }), { status: Number(failure) });
+    });
+    await assert.rejects(client.checkExecutionAdmission({ listenerInstanceId: listenerId,
+      command: { ...command(), parent_provider_checkpoint_id: null } }));
+    assert.equal(calls, 1);
+  });
+}
+
+test("admission bounds repeated connection failures to two attempts", async () => {
+  let calls = 0;
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async () => {
+    calls++; throw new TypeError("fetch failed");
+  });
+  await assert.rejects(client.checkExecutionAdmission({ listenerInstanceId: listenerId,
+    command: { ...command(), parent_provider_checkpoint_id: null } }));
+  assert.equal(calls, 2);
+});
+
+
+test("real HTTP event response loss retries the same sequence batch without replaying execution", async () => {
+  const bodies: string[] = [];
+  let firstResponse: ServerResponse | undefined;
+  const server = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    bodies.push(Buffer.concat(chunks).toString());
+    response.setHeader("content-type", "application/json");
+    if (bodies.length === 1) {
+      firstResponse = response;
+      response.writeHead(200);
+      response.flushHeaders();
+      response.write('{"success":');
+    } else response.end(JSON.stringify({ success: true, data: { idempotent: 1 } }));
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  let calls = 0;
+  const client = new NativeLiveMacHttpRelayClient(`http://127.0.0.1:${address.port}`, "synthetic-token", async (url, init) => {
+    const response = await fetch(url, init);
+    // Headers arrived: terminate the real socket specifically during body delivery.
+    if (++calls === 1) firstResponse!.destroy();
+    return response;
+  });
+  try {
+    await client.appendRuntimeEvents({ listenerInstanceId: listenerId, reservationId: prepareId,
+      events: [{ sequence: 1, event: { type: "partial_text", payload: { delta: "synthetic", accumulated_length: 9 } } }] });
+    assert.equal(calls, 2);
+    assert.equal(bodies.length, 2);
+    assert.equal(bodies[0], bodies[1]);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
+});
+
+
+for (const status of [401, 403, 409]) test(`lost HTTP ${status} body cannot turn a durable failure into an admission retry`, async () => {
+  let calls = 0;
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async () => {
+    calls++;
+    const response = new Response("", { status });
+    response.json = async () => { throw new TypeError("terminated"); };
+    return response;
+  });
+  await assert.rejects(client.checkExecutionAdmission({ listenerInstanceId: listenerId,
+    command: { ...command(), parent_provider_checkpoint_id: null } }));
+  assert.equal(calls, 1);
+});
+
+test("admission releases its caller at the existing deadline even if fetch ignores abort", async () => {
+  let release!: (value: Response) => void;
+  const stalled = new Promise<Response>(resolve => { release = resolve; });
+  let calls = 0;
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async () => { calls++; return stalled; });
+  let guard!: ReturnType<typeof setTimeout>;
+  const admission = client.checkExecutionAdmission({ listenerInstanceId: listenerId,
+    command: { ...command(), parent_provider_checkpoint_id: null } }).then(() => "unexpected approval", error => error.name);
+  try {
+    assert.equal(await Promise.race([admission, new Promise(resolve => { guard = setTimeout(() => resolve("blocked"), 2800); })]), "TimeoutError");
+    assert.equal(calls, 1);
+  } finally {
+    clearTimeout(guard);
+    release(new Response(JSON.stringify({ success: true, data: { admitted: true } })));
+    await admission;
+  }
 });
