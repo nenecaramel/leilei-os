@@ -46,7 +46,7 @@ import type {
 import { discardWakeLocked } from "./discard-wake.js";
 import { commitWakeResumeCursorLocked } from "./wake-resume-cursor.js";
 import { matchesPresentationOwner } from "./presentation-owner.js";
-import { commitRotatesWriterGeneration, readNativeWriterGeneration, syncNativeSessionOwner } from "./session-owner.js";
+import { advanceNativeSessionTurnAnchor, nativeSessionTurnSql, commitRotatesWriterGeneration, readNativeWriterGeneration, syncNativeSessionOwner } from "./session-owner.js";
 
 export async function finalizeSuccess(
   this: TurnRepositoryContext,
@@ -141,8 +141,8 @@ export async function finalizeSuccess(
               .select({
                 currentHeadMessageId:
                   conversationTable.currentHeadMessageId,
-                presentationOwnerId: sql<string | null>`provider_metadata->'native_live_presentation_owner'->>'prepareId'`,
-                presentationAnchorId: sql<string | null>`provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId'`,
+                presentationOwnerId: nativeSessionTurnSql("conversations").prepareId,
+                presentationAnchorId: nativeSessionTurnSql("conversations").anchor,
                 sourceRevision: sql<string | null>`provider_metadata->'nativeSessionSource'->>'revision'`,
               })
               .from(conversationTable)
@@ -369,8 +369,9 @@ export async function finalizeSuccess(
             });
             timingEvents.push({ sequence, event: { type: "result" }, createdAt: finalizedAt.toISOString() });
           }
-          const [sessionGeneration] = await transaction.execute(sql`SELECT
-            provider_metadata->'native_live_presentation_owner'->>'prepareId' AS presentation_owner_id,
+          const [sessionGeneration] = await transaction.execute<{ presentation_owner_id: string | null; presentation_anchor_id: string | null; source_revision: string | null }>(sql`SELECT
+            ${nativeSessionTurnSql("conversations").prepareId} AS presentation_owner_id,
+            ${nativeSessionTurnSql("conversations").anchor} AS presentation_anchor_id,
             provider_metadata->'nativeSessionSource'->>'revision' AS source_revision
             FROM conversations WHERE id=${row.conversationId}::uuid AND user_id=${input.userId}::uuid FOR UPDATE`);
           // Shadow owner row: an edit, retry or fresh send starts a new native line.
@@ -412,26 +413,14 @@ export async function finalizeSuccess(
           if (sessionGeneration?.presentation_owner_id === row.id || row.operation === "wake") {
             const expectedOwner = row.operation === "wake"
               ? sessionGeneration?.presentation_owner_id ?? null : row.id;
-            const anchors = await transaction.execute(sql`
-              UPDATE conversations
-              SET provider_metadata=jsonb_set(
-                provider_metadata,
-                '{native_live_presentation_owner,anchorHeadMessageId}',
-                to_jsonb(${assistantMessage.id}::text)
-              )
-              WHERE id=${row.conversationId}::uuid
-                AND user_id=${input.userId}::uuid
-                AND current_head_message_id=${assistantMessage.id}::uuid
-                AND (provider_metadata->'native_live_presentation_owner'->>'prepareId')
-                  IS NOT DISTINCT FROM ${expectedOwner}::text
-                AND (${row.operation === "wake"
-                  ? sql`(provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM ${wakeSourceHeadMessageId}::text`
-                  : sql`true`})
-              RETURNING id
-            `);
-            if (anchors.length !== 1)
+            const anchors = await advanceNativeSessionTurnAnchor(transaction, {
+              userId: input.userId, conversationId: row.conversationId,
+              expectedPrepareId: expectedOwner,
+              expectedAnchor: row.operation === "wake" ? wakeSourceHeadMessageId : sessionGeneration?.presentation_anchor_id ?? null,
+              newAnchor: assistantMessage.id,
+            });
+            if (anchors !== 1)
               throw new Error("Native live presentation anchor changed before canonical finalization.");
-            await syncNativeSessionOwner(transaction, { userId: input.userId, conversationId: row.conversationId });
           } else if (nativeInputBinding) {
             // A started native F must leave behind an unambiguous covering
             // owner for every deferred B that the SDK already generated.

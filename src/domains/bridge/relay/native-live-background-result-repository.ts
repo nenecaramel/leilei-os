@@ -1,10 +1,10 @@
-import { nativeSessionExecutableSql } from "../turn/turn-repository/session-owner.js";
+import { nativeSessionExecutableSql, nativeSessionTurnSql } from "../turn/turn-repository/session-owner.js";
 import { appendBackgroundMessage, readDurableBackgroundReceipt } from "./native-live-background-message.js";
 import { isDeepStrictEqual } from "node:util";
 import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import { nativeResumeCheckpointSql } from "../turn/native-live-resume-checkpoint.js";
-import { readNativeWriterGeneration, syncNativeSessionOwner } from "../turn/turn-repository/session-owner.js";
+import { readNativeWriterGeneration, advanceNativeSessionTurnAnchor } from "../turn/turn-repository/session-owner.js";
 import { hashJson } from "../turn/turn-repository/records.js";
 import { canonicalizeNativeLiveEvents } from "../../conversation/native-live-conversation-orchestrator.js";
 import { backgroundIdentity, backgroundResult, NativeLiveBackgroundResultError, type NativeLiveBackgroundIdentity, type NativeLiveBackgroundPrepare,
@@ -59,7 +59,7 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
   if (!lease) return null;
   const pendingOwner = sql`EXISTS (SELECT 1 FROM native_live_turn_preparations pending
     JOIN conversation_messages u ON u.id=pending.canonical_user_message_id AND u.user_id=pending.user_id AND u.conversation_id=pending.conversation_id
-    WHERE pending.user_id=c.user_id AND pending.conversation_id=c.id AND pending.id::text=c.provider_metadata->'native_live_presentation_owner'->>'prepareId'
+    WHERE pending.user_id=c.user_id AND pending.conversation_id=c.id AND pending.id::text=${nativeSessionTurnSql("c").prepareId}
       AND pending.operation='send' AND pending.runtime_mode='resume' AND pending.status='prepared'
       AND pending.dispatch_status IN ('staged','pending','reserved','executing')
       AND ((${executionStart} AND coalesce(pending.runtime_metadata->'native_live_input_binding'->>'started','false')='false')
@@ -67,7 +67,7 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
       AND pending.parent_provider_session_id=cp.provider_session_id
       AND pending.expected_working_directory IS NOT DISTINCT FROM cp.effective_working_directory
       AND u.parent_message_id=cp.canonical_message_id
-      AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId')=cp.canonical_message_id::text)`;
+      AND ${nativeSessionTurnSql("c").anchor}=cp.canonical_message_id::text)`;
   const gen = sql`cp.runtime_metadata->'native_live_generation'`;
   // Foreground reservation changes the presentation owner before the native
   // input starts. A quiet tail from the same source session still counts, but
@@ -75,7 +75,7 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
   const resume = nativeResumeCheckpointSql("cp", "c", !(executionStart || deferred));
   const [row] = await tx.execute<Snapshot>(sql`SELECT cp.id, cp.canonical_message_id::text AS "canonicalMessageId", cp.provider_session_id AS "providerSessionId",
     cp.provider_checkpoint_id AS "baseCheckpointId", ${resume} AS "parentProviderCheckpointId", cp.effective_working_directory AS cwd,
-    c.provider_metadata->'native_live_presentation_owner'->>'prepareId' AS "presentationOwnerId", c.provider_metadata->'nativeSessionSource'->>'revision' AS "sourceRevision", o.writer_generation::text AS "writerGeneration"
+    ${nativeSessionTurnSql("c").prepareId} AS "presentationOwnerId", c.provider_metadata->'nativeSessionSource'->>'revision' AS "sourceRevision", o.writer_generation::text AS "writerGeneration"
     FROM conversation_provider_session_checkpoints cp JOIN conversations c ON c.id=cp.conversation_id AND c.user_id=cp.user_id
     JOIN native_live_session_owners o ON o.conversation_id=c.id AND o.user_id=c.user_id
     WHERE cp.user_id=${userId}::uuid AND cp.conversation_id=${origin.conversationId}::uuid AND (cp.canonical_message_id=${origin.assistantId}::uuid
@@ -89,7 +89,7 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
       AND NOT EXISTS (SELECT 1 FROM native_live_turn_preparations busy WHERE busy.user_id=${userId}::uuid AND busy.conversation_id=c.id
         AND busy.status='prepared' AND busy.operation<>'wake' AND busy.dispatch_status IN ('staged','pending','reserved','executing','delivery_unknown')
         AND (NOT (${executionStart} OR ${deferred}) OR busy.operation<>'send' OR busy.runtime_mode<>'resume' OR busy.dispatch_status='delivery_unknown'
-          OR busy.id::text IS DISTINCT FROM (c.provider_metadata->'native_live_presentation_owner'->>'prepareId')
+          OR busy.id::text IS DISTINCT FROM (${nativeSessionTurnSql("c").prepareId})
           OR busy.parent_provider_session_id IS DISTINCT FROM cp.provider_session_id
           OR NOT ((${executionStart} AND coalesce(busy.runtime_metadata->'native_live_input_binding'->>'started','false')='false')
             OR (${deferred} AND busy.runtime_metadata->'native_live_input_binding'->>'started'='true'))))
@@ -128,7 +128,7 @@ async function coveringSnapshot(tx: Transaction, userId: string, origin: Source,
     SELECT cp.id,cp.canonical_message_id::text AS "canonicalMessageId",
       cp.provider_session_id AS "providerSessionId",cp.provider_checkpoint_id AS "baseCheckpointId",
       cp.provider_checkpoint_id AS "parentProviderCheckpointId",cp.effective_working_directory AS cwd,
-      c.provider_metadata->'native_live_presentation_owner'->>'prepareId' AS "presentationOwnerId",
+      ${nativeSessionTurnSql("c").prepareId} AS "presentationOwnerId",
       c.provider_metadata->'nativeSessionSource'->>'revision' AS "sourceRevision"
     FROM conversations c JOIN conversation_provider_session_checkpoints cp
       ON cp.user_id=c.user_id AND cp.conversation_id=c.id
@@ -200,31 +200,31 @@ async function reconcileLegacyVisibleWakeAnchor(
   tx: Transaction, userId: string, origin: Source, context: Snapshot,
 ): Promise<void> {
   if (origin.operation !== "wake" || origin.assistantId !== context.canonicalMessageId) return;
-  await tx.execute(sql`
-    UPDATE conversations c
-    SET provider_metadata = jsonb_set(
-      c.provider_metadata, '{native_live_presentation_owner,anchorHeadMessageId}',
-      to_jsonb(${context.canonicalMessageId}::text)
-    )
-    FROM native_live_turn_preparations wake
+  const [legacy] = await tx.execute<{ anchor: string }>(sql`
+    SELECT wake.wake_context->>'source_head_message_id' AS anchor
+    FROM conversations c JOIN native_live_turn_preparations wake ON wake.user_id=c.user_id AND wake.conversation_id=c.id
     WHERE c.user_id=${userId}::uuid AND c.id=${origin.conversationId}::uuid
       AND c.current_head_message_id=${context.canonicalMessageId}::uuid
       AND wake.user_id=c.user_id AND wake.conversation_id=c.id AND wake.id=${origin.id}::uuid
       AND wake.operation='wake' AND wake.status='finalized_success'
       AND wake.dispatch_status='completed'
       AND wake.assistant_message_id=c.current_head_message_id
-      AND (c.provider_metadata->'native_live_presentation_owner'->>'prepareId')
+      AND (${nativeSessionTurnSql("c").prepareId})
         IS NOT DISTINCT FROM ${context.presentationOwnerId}::text
       AND (c.provider_metadata->'nativeSessionSource'->>'revision')
         IS NOT DISTINCT FROM ${context.sourceRevision}::text
-      AND (c.provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId')
+      AND ${nativeSessionTurnSql("c").anchor}
         = wake.wake_context->>'source_head_message_id'
       AND wake.wake_context->'runtime_generation'->>'presentation_owner_id'
         IS NOT DISTINCT FROM ${context.presentationOwnerId}::text
       AND wake.wake_context->'runtime_generation'->>'source_revision'
         IS NOT DISTINCT FROM ${context.sourceRevision}::text
   `);
-  await syncNativeSessionOwner(tx, { userId, conversationId: origin.conversationId });
+  if (legacy) {
+    const advanced=await advanceNativeSessionTurnAnchor(tx, { userId, conversationId: origin.conversationId,
+      expectedPrepareId: context.presentationOwnerId, expectedAnchor: legacy.anchor, newAnchor: context.canonicalMessageId });
+    if (advanced !== 1) throw conflict();
+  }
 }
 // Slot movement alone is not a different native line. Old receipts omit the
 // generation, but snapshot() still requires their canonical checkpoint's legacy

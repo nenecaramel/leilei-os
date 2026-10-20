@@ -267,6 +267,29 @@ CLI still reports the JSON owner. Turn-slot migration belongs to PR 3b.
 
 This is server-only: no migration, daemon refresh or production DB operation.
 
+## PR 3b turn-slot reader/writer scope
+
+`native_live_session_owners.turn_prepare_id` and `turn_anchor_message_id` are
+now the authoritative turn slot. Prepare removes the stale
+`native_live_presentation_owner` JSON key and sets the row turn to its prepare
+ID and the current head. It preserves an existing writer generation and owner.
+Missing rows or a NULL prepare ID mean no slot; failure finalization retains its
+no-slot recovery compatibility path.
+
+`setNativeSessionTurn` performs the prepare upsert. All anchor advances use
+`advanceNativeSessionTurnAnchor` under the existing conversation lock and
+transaction, checking prepare ID, expected anchor and new canonical head.
+Foreground, visible Wake, background append and the narrowly scoped historical
+Wake repair retain their prior eligibility checks. Finalize never clears a slot;
+Wake advances the inherited slot without replacing its prepare ID.
+
+Switch writers still mirror owner/revision from JSON, but that mirroring never
+touches the turn columns. Receipt and checkpoint `presentation_owner_id` stamps
+remain for compatibility, taking their value from the row. There is no JSON-slot
+fallback, migration, daemon refresh or Mac wire change. Existing JSON keys vanish
+only at next prepare; there is no bulk rewrite. Release lifecycle changes remain
+in PR 4.
+
 ## Open questions (resolved in the PR that touches them)
 
 - **Manual compaction.** Should committing a compaction rotate

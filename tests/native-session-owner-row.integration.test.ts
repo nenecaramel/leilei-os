@@ -9,8 +9,8 @@ import { users, conversations, conversationMessages, conversationContentBlocks, 
 import { DrizzleNativeLiveBackendTurnPort } from '../src/domains/bridge/turn/native-live-backend-turn-repository.js';
 import { NativeLiveBackendTurnCoordinator } from '../src/domains/bridge/turn/native-live-backend-turn-coordinator.js';
 
-// Shadow owner row (docs/native-session/session-owner.md, PR 1): it mirrors the
-// JSON owner and turn slot, and keeps a writer generation that prepare never rotates.
+// Owner/revision mirror the switch source; the row independently owns the turn
+// slot and writer generation. Prepare replaces the turn without rotating generation.
 const enabled = process.env.RUN_NATIVE_SESSION_PRESERVATION_DATABASE_TEST === '1';
 const rev = (n: number) => n.toString(16).padStart(64, '0');
 type Db = ReturnType<typeof createDatabase>['db'];
@@ -40,13 +40,12 @@ async function ownerRow(db: Pick<Db, 'execute'>, conversationId: string): Promis
 async function mirrored(db: Db, conversationId: string): Promise<Row> {
   const [c] = await db.select().from(conversations).where(eq(conversations.id, conversationId));
   const source = c!.providerMetadata.nativeSessionSource as { owner?: string; revision?: string } | undefined;
-  const slot = c!.providerMetadata.native_live_presentation_owner as { prepareId?: string; anchorHeadMessageId?: string | null } | undefined;
+  assert.equal(Object.hasOwn(c!.providerMetadata, "native_live_presentation_owner"),false);
   const row = await ownerRow(db, conversationId);
   assert.ok(row, 'owner row exists');
   assert.equal(row.owner, source?.owner === 'desktop' ? 'desktop' : 'leileios');
   assert.equal(row.owner_revision, source?.revision ?? null);
-  assert.equal(row.turn_prepare_id, slot?.prepareId ?? null);
-  assert.equal(row.turn_anchor_message_id, slot?.anchorHeadMessageId ?? null);
+
   return row;
 }
 
@@ -98,7 +97,7 @@ test('migration backfill maps the current JSON owner, revision and slot, seeding
   }), rollback);
 }));
 
-test('switching and sends mirror the JSON; a superseded prepare and a resumed commit keep the writer generation', { skip: !enabled }, async () => fixture(async ({ db, userId }) => {
+test('switching mirrors owner/revision and sends replace the row turn; a superseded prepare and a resumed commit keep the writer generation', { skip: !enabled }, async () => fixture(async ({ db, userId }) => {
   const api = await import('../src/domains/conversation/native-session-continuation-repository.js');
   const input = { userId, conversationId: randomUUID(), sessionId: randomUUID(), checkpointId: randomUUID(), revision: rev(1),
     effectiveWorkingDirectory: '/synthetic/workspace', expectedHeadMessageId: null, expectedRevision: null,
@@ -125,6 +124,8 @@ test('switching and sends mirror the JSON; a superseded prepare and a resumed co
   const completed = await finalize(db, userId, await execute(db, userId, second), input.sessionId);
   assert.equal(completed.outcome, 'completed', JSON.stringify(completed));
   const committed = await mirrored(db, input.conversationId);
+  assert.equal(committed.turn_anchor_message_id,(completed as {assistantMessageId:string}).assistantMessageId);
+  assert.equal(committed.turn_prepare_id,second);
   assert.equal(committed.writer_generation, attached.writer_generation, 'a resumed send continues the same native line');
   assert.equal(await stampedGeneration(db, (completed as { assistantMessageId: string }).assistantMessageId), attached.writer_generation);
 
@@ -137,6 +138,8 @@ test('switching and sends mirror the JSON; a superseded prepare and a resumed co
     checkpointIds: [input.checkpointId, cp!.providerCheckpointId!], completedTurnCheckpointIds: [cp!.providerCheckpointId!] });
   const released = await mirrored(db, input.conversationId);
   assert.equal(released.owner, 'desktop');
+  assert.equal(released.turn_prepare_id,committed.turn_prepare_id);
+  assert.equal(released.turn_anchor_message_id,committed.turn_anchor_message_id);
   assert.notEqual(released.owner_revision, committed.owner_revision);
 }));
 

@@ -1,3 +1,4 @@
+import { setTestNativeSessionTurn } from "./helpers/native-session-turn.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq, sql } from "drizzle-orm";
@@ -116,7 +117,8 @@ test("next foreground reservation admits its captured cursor after presentation 
   await f.database.db.insert(nativeLiveRuntimeListenerLeases).values({ userId: f.user.id, dispatchTarget: "claude_code", listenerInstanceId, leaseExpiresAt: later });
   await f.database.db.update(nativeLiveTurnPreparations).set({ dispatchStatus: "executing", reservedBy: listenerInstanceId, reservedAt: new Date(), reservationExpiresAt: later, executionStartedAt: new Date() }).where(eq(nativeLiveTurnPreparations.id, command.prepare_id));
   // Mirror the existing activation contract; preparation itself creates a detached user.
-  await f.database.db.update(conversations).set({ currentHeadMessageId: command.canonical_user_message_id, providerMetadata: { native_live_presentation_owner: { prepareId: command.prepare_id, anchorHeadMessageId: command.canonical_user_message_id } } }).where(eq(conversations.id, f.conversation.id));
+  await f.database.db.update(conversations).set({ currentHeadMessageId: command.canonical_user_message_id }).where(eq(conversations.id, f.conversation.id));
+  await setTestNativeSessionTurn(f.database.db,f.conversation.id,{ prepareId: command.prepare_id, anchor: command.canonical_user_message_id });
   const admission = { userId: f.user.id, listenerInstanceId, reservationId: command.prepare_id, requestId: command.request_id, conversationId: command.conversation_id, runtimeMode: "resume" as const, canonicalUserMessageId: command.canonical_user_message_id, parentProviderSessionId: command.parent_provider_session_id, parentProviderCheckpointId: command.parent_provider_checkpoint_id! };
   const relay = new DrizzleNativeLiveBackendRelayRepository(f.database.db);
   assert.equal(await relay.checkExecutionAdmission(admission), true);

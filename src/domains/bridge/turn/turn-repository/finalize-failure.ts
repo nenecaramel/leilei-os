@@ -1,3 +1,5 @@
+import { nativeSessionTurnSql } from "./session-owner.js";
+import { matchesPresentationOwner } from "./presentation-owner.js";
 import {
   and,
   eq,
@@ -151,11 +153,8 @@ export async function finalizeFailure(
             eq(conversations.userId,input.userId),
             or(
               // Compatibility for preparations created before presentation ownership existed.
-              sql`${conversations.providerMetadata}->'native_live_presentation_owner' IS NULL`,
-              and(
-                sql`${conversations.providerMetadata}->'native_live_presentation_owner'->>'prepareId' = ${row.id}`,
-                sql`(${conversations.providerMetadata}->'native_live_presentation_owner'->>'anchorHeadMessageId') IS NOT DISTINCT FROM ${conversations.currentHeadMessageId}::text`,
-              ),
+              sql`${nativeSessionTurnSql("conversations").prepareId} IS NULL`,
+              matchesPresentationOwner(row.id),
             ),
           ));
           const updated = await transaction

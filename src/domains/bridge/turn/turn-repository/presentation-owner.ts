@@ -7,11 +7,8 @@ import { conversations } from "../../../../database/schema.js";
  * Writers must evaluate this while holding the conversation row lock.
  */
 export function matchesPresentationOwner(prepareId: string | SQL): SQL<boolean> {
-  const owner = sql`${conversations.providerMetadata}->'native_live_presentation_owner'`;
-  return sql<boolean>`coalesce(
-    (${owner}->>'prepareId' = ${prepareId}::text)
-    AND (${owner} ? 'anchorHeadMessageId')
-    AND ((${owner}->>'anchorHeadMessageId') IS NOT DISTINCT FROM ${conversations.currentHeadMessageId}::text),
-    false
-  )`;
+  return sql<boolean>`EXISTS (SELECT 1 FROM native_live_session_owners o
+    WHERE o.conversation_id=${conversations.id} AND o.user_id=${conversations.userId}
+      AND o.turn_prepare_id::text=${prepareId}::text
+      AND o.turn_anchor_message_id IS NOT DISTINCT FROM ${conversations.currentHeadMessageId})`;
 }
