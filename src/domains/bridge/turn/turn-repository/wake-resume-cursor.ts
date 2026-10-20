@@ -42,8 +42,11 @@ export async function commitWakeResumeCursorLocked(
     head: string | null;
     owner: string | null;
     revision: string | null;
+    writer_generation: string | null;
   }>(sql`
     SELECT c.current_head_message_id::text AS head,
+      (SELECT o.writer_generation::text FROM native_live_session_owners o
+        WHERE o.conversation_id = c.id AND o.user_id = c.user_id) AS writer_generation,
       c.provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner,
       c.provider_metadata->'nativeSessionSource'->>'revision' AS revision
     FROM conversations c
@@ -123,6 +126,7 @@ export async function commitWakeResumeCursorLocked(
     cwd: input.effectiveWorkingDirectory,
     presentation_owner_id: surface.owner,
     source_revision: surface.revision,
+    writer_generation: surface.writer_generation,
   };
   await transaction.execute(sql`
     UPDATE conversation_provider_session_checkpoints

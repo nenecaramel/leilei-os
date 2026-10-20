@@ -46,6 +46,7 @@ import type {
 import { discardWakeLocked } from "./discard-wake.js";
 import { commitWakeResumeCursorLocked } from "./wake-resume-cursor.js";
 import { matchesPresentationOwner } from "./presentation-owner.js";
+import { commitRotatesWriterGeneration, syncNativeSessionOwner } from "./session-owner.js";
 
 export async function finalizeSuccess(
   this: TurnRepositoryContext,
@@ -369,6 +370,11 @@ export async function finalizeSuccess(
             provider_metadata->'native_live_presentation_owner'->>'prepareId' AS presentation_owner_id,
             provider_metadata->'nativeSessionSource'->>'revision' AS source_revision
             FROM conversations WHERE id=${row.conversationId}::uuid AND user_id=${input.userId}::uuid FOR UPDATE`);
+          // Shadow owner row: an edit, retry or fresh send starts a new native line.
+          const writerGeneration = await syncNativeSessionOwner(transaction, {
+            userId: input.userId, conversationId: row.conversationId,
+            rotateGeneration: commitRotatesWriterGeneration(row),
+          });
           canonicalWritePhase = "provider_checkpoint";
           const checkpoint = await conversations.bindProviderCheckpoint({
             userId: input.userId,
@@ -382,7 +388,7 @@ export async function finalizeSuccess(
               runtimeMetadata:
                 { ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}),
                     ...(nativeInputBinding ? { native_live_input_binding: nativeInputBinding } : {}),
-                    native_live_generation: { presentation_owner_id: sessionGeneration?.presentation_owner_id ?? null, source_revision: sessionGeneration?.source_revision ?? null }, ...(input.providerCheckpointId ? { provider_checkpoint_version: 1 } : {}), turn_started_at: row.createdAt.toISOString(), ...(timingEvents.length ? { native_live_turn_timing_events: timingEvents } : {}) },
+                    native_live_generation: { presentation_owner_id: sessionGeneration?.presentation_owner_id ?? null, source_revision: sessionGeneration?.source_revision ?? null, writer_generation: writerGeneration }, ...(input.providerCheckpointId ? { provider_checkpoint_version: 1 } : {}), turn_started_at: row.createdAt.toISOString(), ...(timingEvents.length ? { native_live_turn_timing_events: timingEvents } : {}) },
             },
           });
 
@@ -422,6 +428,7 @@ export async function finalizeSuccess(
             `);
             if (anchors.length !== 1)
               throw new Error("Native live presentation anchor changed before canonical finalization.");
+            await syncNativeSessionOwner(transaction, { userId: input.userId, conversationId: row.conversationId });
           } else if (nativeInputBinding) {
             // A started native F must leave behind an unambiguous covering
             // owner for every deferred B that the SDK already generated.

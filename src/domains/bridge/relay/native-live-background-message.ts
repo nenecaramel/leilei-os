@@ -7,6 +7,7 @@ import { DrizzleNativeLiveConversationRepository } from "../../conversation/nati
 import { NativeLiveBackgroundResultError, type NativeLiveBackgroundIdentity } from "../protocol/native-live-background-result.js";
 import type { NativeLiveRuntimeExecutionResult } from "../protocol/native-live-runtime-protocol.js";
 import type { NativeLiveBackgroundReceipt } from "./native-live-background-result-repository.js";
+import { readNativeWriterGeneration, syncNativeSessionOwner } from "../turn/turn-repository/session-owner.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Database["transaction"]>[0] extends (tx: infer T) => unknown ? T : never;
@@ -49,6 +50,7 @@ export async function appendBackgroundMessage(tx: Transaction, input: {
       startOrdinal: canonical.blocks.length, contentOrigin: "provider_send",
     });
   }
+  const writerGeneration = await readNativeWriterGeneration(tx, { userId: input.userId, conversationId: input.conversationId });
   await repository.bindProviderCheckpoint({
     userId: input.userId, conversationId: input.conversationId, canonicalMessageId: receipt.identity.receiptId,
     checkpoint: {
@@ -56,7 +58,7 @@ export async function appendBackgroundMessage(tx: Transaction, input: {
       providerCheckpointId: receipt.coveringCheckpointId ?? result.provider_checkpoint_id!, effectiveWorkingDirectory: result.effective_working_directory,
       runtimeMetadata: {
         provider_checkpoint_version: 1,
-        native_live_generation: { presentation_owner_id: receipt.context.presentationOwnerId, source_revision: receipt.context.sourceRevision },
+        native_live_generation: { presentation_owner_id: receipt.context.presentationOwnerId, source_revision: receipt.context.sourceRevision, writer_generation: writerGeneration },
         native_live_background_receipt: receipt,
         ...(receipt.coveringCheckpointId ? {
           // Producer B is an earlier SDK record; F's verified descendant is
@@ -78,5 +80,6 @@ export async function appendBackgroundMessage(tx: Transaction, input: {
   // transaction. Never commit an unowned head whose presentation owner still
   // points to the previous assistant: the next input would use a stale anchor.
   if (anchored.length !== 1) throw new NativeLiveBackgroundResultError("BACKGROUND_CONFLICT");
+  await syncNativeSessionOwner(tx, { userId: input.userId, conversationId: input.conversationId });
   return true;
 }

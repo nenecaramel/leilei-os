@@ -31,6 +31,14 @@ import {
 const enabled =
   process.env.RUN_NATIVE_LIVE_TURN_DATABASE_TEST === "1";
 
+// The shadow owner row stamps its writer generation; its value is covered by
+// native-session-owner-row.integration.test.ts.
+function writerGeneration(metadata: unknown): string {
+  const value = (metadata as { native_live_generation?: { writer_generation?: unknown } } | null)?.native_live_generation?.writer_generation;
+  assert.match(String(value), /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  return value as string;
+}
+
 test(
   "persisted backend turn port is idempotent across prepare/finalize and preserves exact branch checkpoints",
   { skip: !enabled },
@@ -294,7 +302,7 @@ test(
     );
     assert.deepEqual(
       firstDurableMetadata.runtimeMetadata,
-      { ...runtimeMetadata, native_live_generation: { presentation_owner_id: firstPrepare.command.prepare_id, source_revision: null }, provider_checkpoint_version: 1, turn_started_at: finalizedRead.startedAt },
+      { ...runtimeMetadata, native_live_generation: { presentation_owner_id: firstPrepare.command.prepare_id, source_revision: null, writer_generation: writerGeneration(firstDurableMetadata.runtimeMetadata) }, provider_checkpoint_version: 1, turn_started_at: finalizedRead.startedAt },
     );
     assert.ok(firstDurableMetadata.observedAt);
 
@@ -405,7 +413,7 @@ test(
     );
     assert.deepEqual(
       secondDurableMetadata.runtimeMetadata,
-      { native_live_generation: { presentation_owner_id: secondPrepare.command.prepare_id, source_revision: null }, provider_checkpoint_version: 1, turn_started_at: (await port.readTurn({ userId:user.id, prepareId:secondPrepare.command.prepare_id }))?.startedAt },
+      { native_live_generation: { presentation_owner_id: secondPrepare.command.prepare_id, source_revision: null, writer_generation: writerGeneration(secondDurableMetadata.runtimeMetadata) }, provider_checkpoint_version: 1, turn_started_at: (await port.readTurn({ userId:user.id, prepareId:secondPrepare.command.prepare_id }))?.startedAt },
       "latest checkpoint carries its own turn start and must not inherit older provider metadata",
     );
 

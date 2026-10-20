@@ -21,6 +21,7 @@ import {
   type NativeLiveRuntimeAttachment,
 } from "../../attachment/native-live-attachment-service.js";
 import { planReplacementMessagePurge } from "../native-live-replacement-purge.js";
+import { syncNativeSessionOwner } from "./session-owner.js";
 import type { TurnRepositoryContext } from "./types.js";
 import {
   hashJson,
@@ -716,5 +717,6 @@ export async function insertPreparation(
           'anchorHeadMessageId', ${conversations.currentHeadMessageId})
       )`,
     }).where(and(eq(conversations.id,input.conversationId),eq(conversations.userId,input.userId)));
+    await syncNativeSessionOwner(executor, { userId: input.userId, conversationId: input.conversationId });
     return mapPreparation(row);
   }

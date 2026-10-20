@@ -446,7 +446,10 @@ test("background commit has its own durable receipt and does not rewrite canonic
   assert.equal(owner!.anchor, f.prepare.receiptId,
     "canonical background head and next-turn presentation anchor must advance atomically");
   const cp = await f.canonical.getProviderCheckpointForHead({ userId: f.user.id, conversationId: f.conversation.id, canonicalMessageId: f.completed.assistantMessageId }); assert.equal(cp!.providerCheckpointId, f.base);
-  assert.deepEqual(cp!.runtimeMetadata?.native_live_generation, { presentation_owner_id: f.prepare.sourcePrepareId, source_revision: null }, "checkpoint must carry the current server generation");
+  const [generation] = await f.database.db.execute<{ writer_generation: string }>(sql`SELECT writer_generation::text
+    FROM native_live_session_owners WHERE conversation_id=${f.conversation.id}::uuid`);
+  assert.deepEqual(cp!.runtimeMetadata?.native_live_generation, { presentation_owner_id: f.prepare.sourcePrepareId, source_revision: null,
+    writer_generation: generation!.writer_generation }, "checkpoint must carry the current server generation");
   const receipt = await f.database.db.select().from(nativeLiveRuntimeEvents).where(eq(nativeLiveRuntimeEvents.id, f.prepare.receiptId)); assert.equal(receipt.length, 1); assert.equal(receipt[0]!.eventType, "runtime");
   assert.equal(await f.parent(), f.next);
 });

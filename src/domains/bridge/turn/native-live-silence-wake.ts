@@ -215,6 +215,7 @@ type SilenceWakeSource = {
   effectiveWorkingDirectory: string | null;
   providerCheckpointId: string | null;
   presentationOwnerId: string | null;
+  writerGeneration: string | null;
   nativeSourceRevision: string | null;
   nativeSourceOwner: string | null;
 };
@@ -439,7 +440,7 @@ export class NativeLiveSilenceWakeService {
             source_user_message_id: input.epochId,
             source_head_message_id:
               source.currentHeadMessageId,
-            runtime_generation: { presentation_owner_id: source.presentationOwnerId, source_revision: source.nativeSourceRevision },
+            runtime_generation: { presentation_owner_id: source.presentationOwnerId, source_revision: source.nativeSourceRevision, writer_generation: source.writerGeneration },
           },
           runtimeMode: "fork",
           parentProviderSessionId: source.providerSessionId,
@@ -555,6 +556,7 @@ export class NativeLiveSilenceWakeService {
       effective_working_directory: string | null;
       provider_checkpoint_id: string | null;
       presentation_owner_id: string | null;
+      writer_generation: string | null;
       source_revision: string | null;
       source_owner: string | null;
     }>(sql`
@@ -636,6 +638,8 @@ export class NativeLiveSilenceWakeService {
         checkpoint.effective_working_directory,
         ${nativeResumeCheckpointSql("checkpoint", "tail_surface")} AS provider_checkpoint_id,
         tail_surface.provider_metadata->'native_live_presentation_owner'->>'prepareId' AS presentation_owner_id,
+        (SELECT o.writer_generation::text FROM native_live_session_owners o
+          WHERE o.conversation_id = tail_surface.id AND o.user_id = tail_surface.user_id) AS writer_generation,
         tail_surface.provider_metadata->'nativeSessionSource'->>'revision' AS source_revision,
         tail_surface.provider_metadata->'nativeSessionSource'->>'owner' AS source_owner
       FROM latest_user AS source
@@ -671,6 +675,7 @@ export class NativeLiveSilenceWakeService {
           effectiveWorkingDirectory: row.effective_working_directory,
           providerCheckpointId: row.provider_checkpoint_id,
           presentationOwnerId: row.presentation_owner_id ?? null,
+          writerGeneration: row.writer_generation ?? null,
           nativeSourceRevision: row.source_revision ?? null,
           nativeSourceOwner: row.source_owner ?? null,
         }
