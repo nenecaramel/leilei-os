@@ -513,6 +513,7 @@ test('continuation attach/release exchanges metadata only, never restores histor
         assert.doesNotMatch(request.body, /PRIVATE_PROMPT|PRIVATE_REPLY|nativeSnapshot|projection|displayAssets/);
         const data = route === 'continuation-state' ? { expectedHeadMessageId: null, expectedRevision: input.expectedRevision,
           providerSessionId: A, providerCheckpointId: CP, effectiveWorkingDirectory: '/fixture', owner: 'desktop' }
+          : route === 'continuation-release-begin' ? { outcome: 'releasing', owner: 'releasing', conversationId: A, headMessageId: null, providerSessionId: A, expectedRevision: '1'.repeat(64) }
           : { outcome: 'attached', owner: route === 'continuation-release' ? 'desktop' : 'leileios', conversationId: A,
             headMessageId: null, providerSessionId: A, providerCheckpointId: CP, inserted: 0 };
         return new Response(JSON.stringify({ success: true, data }));
@@ -522,7 +523,7 @@ test('continuation attach/release exchanges metadata only, never restores histor
     let launched;
     await handoffNativeContinuationToDesktop({ ...options, launchImpl: async selection => { launched = selection.providerSessionId; } });
     assert.equal(launched, A);
-    assert.deepEqual(calls.map(c => c.route), ['continuation-state', 'continuation-attach', 'continuation-state', 'continuation-release']);
+    assert.deepEqual(calls.map(c => c.route), ['continuation-state', 'continuation-attach', 'continuation-state', 'continuation-release-begin', 'continuation-release']);
     assert.deepEqual(await readFile(transcriptFile), before);
   });
 });
@@ -610,6 +611,7 @@ test('Desktop continuation re-pins only native exit metadata the drained daemon 
           routes.push({ route, body });
           const data = route === 'continuation-state' ? { expectedHeadMessageId: null, expectedRevision: null,
             providerSessionId: A, providerCheckpointId: CP, effectiveWorkingDirectory: '/fixture', owner: 'leileios' }
+            : route === 'continuation-release-begin' ? { outcome: 'releasing', owner: 'releasing', conversationId: A, headMessageId: null, providerSessionId: A, expectedRevision: '1'.repeat(64) }
             : { outcome: 'attached', owner: 'desktop', conversationId: A, headMessageId: null, providerSessionId: A, providerCheckpointId: CP, inserted: 0 };
           return Response.json({ success: true, data });
         } });
@@ -624,7 +626,7 @@ test('Desktop continuation re-pins only native exit metadata the drained daemon 
           assert.equal(launched, true);
         } else {
           await assert.rejects(run, e => e.code === 'NATIVE_INSPECTION_CHANGED');
-          assert.deepEqual(routes, []);
+          assert.deepEqual(routes.map(c => c.route), ['continuation-state', 'continuation-release-begin', 'continuation-release-cancel']);
           assert.equal(launched, false);
         }
       } finally { await pending; await close(); }
@@ -650,16 +652,180 @@ test('continuation attach tells a running daemon to lift its handoff fence only 
         if (route === 'continuation-attach' && !attachOk) return Response.json({ success: false, error: { code: 'NATIVE_SESSION_ALREADY_ATTACHED' } }, { status: 409 });
         const data = route === 'continuation-state' ? { expectedHeadMessageId: null, expectedRevision: null,
           providerSessionId: A, providerCheckpointId: CP, effectiveWorkingDirectory: '/fixture', owner: 'desktop' }
+          : route === 'continuation-release-begin' ? { outcome: 'releasing', owner: 'releasing', conversationId: A, headMessageId: null, providerSessionId: A, expectedRevision: '1'.repeat(64) }
           : { outcome: 'attached', owner: route === 'continuation-release' ? 'desktop' : 'leileios', conversationId: A, headMessageId: null, providerSessionId: A, providerCheckpointId: CP, inserted: 0 };
         return Response.json({ success: true, data });
       } };
     await handoffNativeContinuationToDesktop(options);
     await attachDesktopNativeContinuation(options);
-    assert.deepEqual(events.map(e => e[0]), ['drain', 'continuation-state', 'continuation-release', 'continuation-state', 'continuation-attach', 'resume']);
+    assert.deepEqual(events.map(e => e[0]), ['continuation-state', 'continuation-release-begin', 'drain', 'continuation-release', 'continuation-state', 'continuation-attach', 'resume']);
     assert.deepEqual(events.at(-1), ['resume', A, A]);
     events.length = 0; attachOk = false;
     await assert.rejects(attachDesktopNativeContinuation(options));
     assert.equal(events.some(e => e[0] === 'resume'), false);
     await close();
   });
+});
+
+test('Desktop continuation begins before drain and cancels then resumes every failed exit', async t => {
+  const { handoffNativeContinuationToDesktop } = await import('../src/native-session-continuation.mjs');
+  const { createNativeSessionDrainServer } = await import('../src/native-session-daemon-drain.mjs');
+  const R1 = '1'.repeat(64), R2 = '2'.repeat(64);
+  for (const stage of ['success', 'pin', 'drain', 'settle', 'recovery', 'preflight', 'complete', 'launch', 'cancel', 'resume', 'malformed-cancel']) {
+    await t.test(stage, async () => fixture(async ({ input, transcriptFile }) => {
+      const events = [], bodies = {};
+      const expectedCode = { pin: 'ENOENT', drain: 'NATIVE_DAEMON_DRAIN_UNCONFIRMED', settle: 'NATIVE_INSPECTION_CHANGED',
+        recovery: 'NATIVE_SESSION_RECOVERY_REQUIRED', preflight: 'STALE_NATIVE_SELECTION', complete: 'STALE_NATIVE_PROJECTION',
+        launch: 'NATIVE_DESKTOP_LAUNCH_FAILED', cancel: 'NATIVE_DAEMON_DRAIN_UNCONFIRMED', resume: 'NATIVE_DAEMON_DRAIN_UNCONFIRMED',
+        'malformed-cancel': 'NATIVE_DAEMON_DRAIN_UNCONFIRMED' }[stage];
+      const close = await createNativeSessionDrainServer({ recoveryDirectory: input.recoveryDirectory,
+        drain: async () => {
+          events.push('drain');
+          if (['drain', 'cancel', 'resume', 'malformed-cancel'].includes(stage)) throw new Error('fixture drain failure');
+          if (stage === 'settle') await writeFile(transcriptFile, '{}\n');
+          if (stage === 'recovery') {
+            const scope = path.join(input.recoveryDirectory, 'terminal-results', 'a'.repeat(64));
+            await mkdir(scope, { recursive: true }); await writeFile(path.join(scope, 'pending.json'), '{}');
+          }
+          return { ready: true, writer: 'closed', tasks: [] };
+        }, resume: async () => { events.push('resume'); if (stage === 'resume') throw new Error('fixture resume failure'); } });
+      const options = { input: stage === 'preflight' ? { ...input, expectedCheckpointId: D } : input, conversationId: A,
+        relayUrl: 'https://fixture.example', relayToken: 'fixture', retryDelaysMs: [],
+        drainSettle: { pollMs: 1, quietMs: 1, timeoutMs: 100 },
+        launchImpl: async () => { events.push('launch'); if (stage === 'launch') throw Object.assign(new Error('launch'), { code: expectedCode }); },
+        fetchImpl: async (url, request) => {
+          const route = new URL(url).pathname.split('/').at(-1); events.push(route); bodies[route] = JSON.parse(request.body);
+          if (route === 'continuation-state') return Response.json({ success: true, data: { expectedHeadMessageId: null,
+            expectedRevision: input.expectedRevision, providerSessionId: A, providerCheckpointId: CP, effectiveWorkingDirectory: '/fixture', owner: 'leileios' } });
+          if (route === 'continuation-release-begin') {
+            if (stage === 'pin') await rm(transcriptFile);
+            return Response.json({ success: true, data: { outcome: 'releasing', owner: 'releasing', conversationId: A,
+              headMessageId: null, providerSessionId: A, expectedRevision: R1 } });
+          }
+          if (route === 'continuation-release-cancel') {
+            if (['cancel', 'launch'].includes(stage)) return Response.json({ success: false, error: { code: 'STALE_NATIVE_PROJECTION' } }, { status: 409 });
+            return Response.json({ success: true, data: stage === 'malformed-cancel' ? {} : {
+              outcome: 'cancelled', owner: 'leileios', conversationId: A, expectedRevision: R2 } });
+          }
+          if (stage === 'complete') return Response.json({ success: false, error: { code: expectedCode } }, { status: 409 });
+          return Response.json({ success: true, data: { outcome: 'attached', owner: 'desktop', conversationId: A,
+            headMessageId: null, providerSessionId: A, providerCheckpointId: CP, inserted: 0 } });
+        } };
+      try {
+        if (stage === 'success') {
+          await handoffNativeContinuationToDesktop(options);
+          assert.deepEqual(events, ['continuation-state', 'continuation-release-begin', 'drain', 'continuation-release', 'launch']);
+        } else {
+          await assert.rejects(handoffNativeContinuationToDesktop(options), error => {
+            assert.equal(error.code, expectedCode);
+            if (['cancel', 'launch'].includes(stage)) assert.deepEqual(error.cleanupErrors.map(e => e.code), ['STALE_NATIVE_PROJECTION']);
+            if (stage === 'resume') assert.deepEqual(error.cleanupErrors.map(e => e.code), ['NATIVE_DAEMON_RESUME_UNCONFIRMED']);
+            if (stage === 'malformed-cancel') assert.deepEqual(error.cleanupErrors.map(e => e.code), ['NATIVE_RELEASE_CANCEL_UNCONFIRMED']);
+            return true;
+          });
+          assert.deepEqual(events.slice(-2), ['continuation-release-cancel', 'resume']);
+          assert.deepEqual(bodies['continuation-release-cancel'], { conversationId: A, expectedRevision: R1 });
+        }
+        assert.deepEqual(bodies['continuation-release-begin'], { conversationId: A, sessionId: A,
+          expectedHeadMessageId: null, expectedRevision: input.expectedRevision });
+        if (bodies['continuation-release']) assert.equal(bodies['continuation-release'].expectedRevision, R1);
+      } finally { await close(); }
+    }));
+  }
+});
+
+test('fixed CLI prints original and cancel failures after resuming the daemon', async () => {
+  const { createServer } = await import('node:http');
+  const { createNativeSessionDrainServer } = await import('../src/native-session-daemon-drain.mjs');
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  await fixture(async ({ input }) => {
+    const root = path.dirname(input.configDirectory), desktopDirectory = path.join(root, 'desktop');
+    const org = path.join(desktopDirectory, 'account', 'org');
+    await mkdir(org, { recursive: true }); await copyFile(input.indexFile, path.join(org, `local_${D}.json`));
+    const events = [];
+    const close = await createNativeSessionDrainServer({ recoveryDirectory: path.join(root, '.leileios'),
+      drain: async () => { events.push('drain'); throw new Error('PRIVATE_DRAIN'); },
+      resume: async () => { events.push('resume'); } });
+    const server = createServer(async (request, response) => {
+      const chunks = []; for await (const chunk of request) chunks.push(chunk);
+      const route = request.url.split('/').at(-1); events.push(route);
+      response.setHeader('Content-Type', 'application/json');
+      if (route === 'continuation-release-cancel') {
+        response.statusCode = 409;
+        response.end(JSON.stringify({ success: false, error: { code: 'STALE_NATIVE_PROJECTION', message: 'PRIVATE_CANCEL' } }));
+      } else response.end(JSON.stringify({ success: true, data: route === 'continuation-state' ? {
+        expectedHeadMessageId: null, expectedRevision: input.expectedRevision, providerSessionId: A,
+        providerCheckpointId: CP, effectiveWorkingDirectory: '/fixture', owner: 'leileios',
+      } : { outcome: 'releasing', owner: 'releasing', conversationId: A, headMessageId: null,
+        providerSessionId: A, expectedRevision: '1'.repeat(64) } }));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      await assert.rejects(promisify(execFile)(process.execPath, [new URL('../scripts/native-session-switch.mjs', import.meta.url).pathname,
+        '--desktop', '--history-mode', 'continuation', '--session-id', A, '--desktop-dir', desktopDirectory,
+        '--config-dir', input.configDirectory, '--conversation-id', A], { env: { ...process.env, HOME: root,
+          LEILEI_NATIVE_LIVE_RELAY_URL: `http://127.0.0.1:${server.address().port}`, LEILEI_NATIVE_LIVE_RELAY_TOKEN: 'fixture' }, timeout: 10_000 }), error => {
+        assert.equal(error.code, 1);
+        assert.equal(error.stderr, 'NATIVE_DAEMON_DRAIN_UNCONFIRMED\nSTALE_NATIVE_PROJECTION\n');
+        assert.equal(error.stdout, '');
+        return true;
+      });
+      assert.deepEqual(events, ['continuation-state', 'continuation-release-begin', 'drain', 'continuation-release-cancel', 'resume']);
+    } finally { await close(); await new Promise(resolve => server.close(resolve)); }
+  });
+});
+
+test('Desktop continuation retries lost begin and cancel responses with identical CAS payloads', async t => {
+  const { handoffNativeContinuationToDesktop } = await import('../src/native-session-continuation.mjs');
+  const { createNativeSessionDrainServer } = await import('../src/native-session-daemon-drain.mjs');
+  for (const stage of ['begin-unavailable', 'cancel-unavailable', 'begin-timeout', 'cancel-timeout', 'begin-exhausted']) {
+    await t.test(stage, async () => fixture(async ({ input }) => {
+      const calls = [], delays = [], R1 = '1'.repeat(64), counts = {};
+      const close = await createNativeSessionDrainServer({ recoveryDirectory: input.recoveryDirectory,
+        drain: async () => { calls.push({ route: 'drain' }); throw new Error('fixture drain refusal'); },
+        resume: async () => { calls.push({ route: 'resume' }); } });
+      const originalTimeout = AbortSignal.timeout;
+      if (stage.endsWith('timeout')) AbortSignal.timeout = () => originalTimeout(1);
+      try {
+        await assert.rejects(handoffNativeContinuationToDesktop({ input, conversationId: A,
+          relayUrl: 'https://fixture.example', relayToken: 'fixture', retryDelaysMs: [1, 2], sleep: async delay => { delays.push(delay); },
+          fetchImpl: async (url, request) => {
+            const route = new URL(url).pathname.split('/').at(-1), body = JSON.parse(request.body);
+            calls.push({ route, body }); counts[route] = (counts[route] ?? 0) + 1;
+            if (route === 'continuation-state') return Response.json({ success: true, data: { expectedHeadMessageId: null,
+              expectedRevision: input.expectedRevision, providerSessionId: A, providerCheckpointId: CP, effectiveWorkingDirectory: '/fixture', owner: 'leileios' } });
+            const lostRoute = stage.startsWith('begin') ? 'continuation-release-begin' : 'continuation-release-cancel';
+            if (route === lostRoute && (counts[route] === 1 || stage === 'begin-exhausted')) {
+              // The server committed before its response was lost. A replay must
+              // reuse the original CAS and return that committed revision.
+              if (stage.endsWith('timeout')) await new Promise(resolve => setTimeout(resolve, 5));
+              throw new TypeError('fixture response lost');
+            }
+            return Response.json({ success: true, data: route === 'continuation-release-begin' ? {
+              outcome: counts[route] > 1 ? 'already_current' : 'releasing', owner: 'releasing', conversationId: A,
+              headMessageId: null, providerSessionId: A, expectedRevision: R1,
+            } : { outcome: 'already_current', owner: 'leileios', conversationId: A, expectedRevision: '2'.repeat(64) } });
+          } }), error => {
+          assert.equal(error.code, stage === 'begin-exhausted' ? 'NATIVE_RESTORE_UNAVAILABLE' : 'NATIVE_DAEMON_DRAIN_UNCONFIRMED');
+          assert.equal(error.cleanupErrors, undefined);
+          return true;
+        });
+        const begins = calls.filter(call => call.route === 'continuation-release-begin');
+        assert.deepEqual(begins.map(call => call.body), Array.from({ length: stage === 'begin-exhausted' ? 3 : stage.startsWith('begin') ? 2 : 1 }, () => ({
+          conversationId: A, sessionId: A, expectedHeadMessageId: null, expectedRevision: input.expectedRevision,
+        })));
+        const cancels = calls.filter(call => call.route === 'continuation-release-cancel');
+        if (stage === 'begin-exhausted') {
+          assert.equal(cancels.length, 0);
+          assert.equal(calls.some(call => ['drain', 'resume'].includes(call.route)), false);
+          assert.deepEqual(delays, [1, 2]);
+        } else {
+          assert.deepEqual(cancels.map(call => call.body), Array.from({ length: stage.startsWith('cancel') ? 2 : 1 }, () => ({ conversationId: A, expectedRevision: R1 })));
+          assert.equal(calls.at(-1).route, 'resume');
+          assert.deepEqual(delays, [1]);
+        }
+      } finally { AbortSignal.timeout = originalTimeout; await close(); }
+    }));
+  }
 });

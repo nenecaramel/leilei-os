@@ -1,4 +1,4 @@
-import { validateNativeContinuationInput, type attachNativeContinuation, type releaseNativeContinuation, type readNativeContinuationState } from "../domains/conversation/native-session-continuation-repository.js";
+import { beginNativeContinuationRelease, cancelNativeContinuationRelease, validateNativeContinuationReleaseBegin, validateNativeContinuationReleaseCancel, validateNativeContinuationInput, type attachNativeContinuation, type releaseNativeContinuation, type readNativeContinuationState } from "../domains/conversation/native-session-continuation-repository.js";
 import { validateNativeHistoryRestoreInput, type listReferencedNativeSessions, type restoreNativeSessionHistory, type readNativeSessionRestoreState, type releaseNativeSessionToDesktop, type listNativeSessionSwitchChoices } from "../domains/conversation/native-session-history-repository.js";
 import { Router, type RequestHandler, type Response } from "express";
 import type { nativeSessionAsset } from "../domains/conversation/native-session-asset-repository.js";
@@ -11,6 +11,8 @@ import {
 } from "../domains/bridge/provider-session/native-live-provider-session-store.js";
 
 export type NativeLiveProviderSessionStoreInternalDependencies = {
+  beginNativeContinuationRelease?: (input: Parameters<typeof beginNativeContinuationRelease>[1]) => ReturnType<typeof beginNativeContinuationRelease>;
+  cancelNativeContinuationRelease?: (input: Parameters<typeof cancelNativeContinuationRelease>[1]) => ReturnType<typeof cancelNativeContinuationRelease>;
   attachNativeContinuation?: (input: Parameters<typeof attachNativeContinuation>[1]) => ReturnType<typeof attachNativeContinuation>;
   releaseNativeContinuation?: (input: Parameters<typeof releaseNativeContinuation>[1]) => ReturnType<typeof releaseNativeContinuation>;
   readNativeContinuationState?: (input: Parameters<typeof readNativeContinuationState>[1]) => ReturnType<typeof readNativeContinuationState>;
@@ -46,6 +48,8 @@ export function createNativeLiveProviderSessionStoreInternalRouter(
   });
   router.post("/native-history/continuation-state", nativeContinuationHandler(dependencies, "state"));
   router.post("/native-history/continuation-attach", nativeContinuationHandler(dependencies, "attach"));
+  router.post("/native-history/continuation-release-begin", nativeContinuationHandler(dependencies, "begin"));
+  router.post("/native-history/continuation-release-cancel", nativeContinuationHandler(dependencies, "cancel"));
   router.post("/native-history/continuation-release", nativeContinuationHandler(dependencies, "release"));
   // The former full-history writer and reader are retired. Keep the
   // continuation-only ownership endpoints and the metadata-only picker.
@@ -460,7 +464,7 @@ function nativeHistoryAssetStageHandler(dependencies: NativeLiveProviderSessionS
 }
 function sendNativeHistoryError(response: Response, error: unknown) {
   const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
-  const conflicts = new Set(["NATIVE_CONVERSATION_BUSY", "STALE_NATIVE_PROJECTION", "CANONICAL_HEAD_CHANGED", "CANONICAL_HISTORY_CHANGED", "CANONICAL_CHECKPOINT_CHANGED", "NATIVE_SOURCE_BINDING_REQUIRED", "EXPLICIT_BRANCH_SELECTION_REQUIRED", "NATIVE_HISTORY_REWRITTEN", "NATIVE_TRANSCRIPT_DIVERGED", "NATIVE_SESSION_RECOVERY_REQUIRED", "CLEANUP_IN_PROGRESS", "NATIVE_CONVERSATION_NOT_FOUND", "NATIVE_SESSION_ALREADY_ATTACHED", "NATIVE_SYNC_BASE_CHANGED", "LEGACY_ASSET_WRITE_DISABLED"]);
+  const conflicts = new Set(["NATIVE_SESSION_SWITCHING", "NATIVE_CONVERSATION_BUSY", "STALE_NATIVE_PROJECTION", "CANONICAL_HEAD_CHANGED", "CANONICAL_HISTORY_CHANGED", "CANONICAL_CHECKPOINT_CHANGED", "NATIVE_SOURCE_BINDING_REQUIRED", "EXPLICIT_BRANCH_SELECTION_REQUIRED", "NATIVE_HISTORY_REWRITTEN", "NATIVE_TRANSCRIPT_DIVERGED", "NATIVE_SESSION_RECOVERY_REQUIRED", "CLEANUP_IN_PROGRESS", "NATIVE_CONVERSATION_NOT_FOUND", "NATIVE_SESSION_ALREADY_ATTACHED", "NATIVE_SYNC_BASE_CHANGED", "LEGACY_ASSET_WRITE_DISABLED"]);
   const invalid = new Set(["INVALID_NATIVE_PROJECTION", "INVALID_NATIVE_SNAPSHOT", "INVALID_KEY", "INVALID_ENTRY", "BATCH_TOO_LARGE", "INVALID_NATIVE_ASSET", "NATIVE_ASSET_UNAVAILABLE", "NATIVE_ASSET_MISMATCH"]);
   response.status(conflicts.has(code) ? 409 : invalid.has(code) ? 400 : 503).json({ success: false, error: {
     code: conflicts.has(code) || invalid.has(code) ? code : "NATIVE_HISTORY_UNAVAILABLE",
@@ -468,15 +472,29 @@ function sendNativeHistoryError(response: Response, error: unknown) {
   } });
 }
 
-function nativeContinuationHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies, operation: 'state' | 'attach' | 'release'): RequestHandler {
+function nativeContinuationHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies, operation: 'state' | 'attach' | 'release' | 'begin' | 'cancel'): RequestHandler {
   return async (request, response) => {
     const userId = requireInternalUser(response, request.mcpUserId);
     if (!userId) return;
     const body = readRecord(request.body);
-    const keys = operation === 'state' ? ['conversationId', 'sessionId'] : ['conversationId', 'sessionId', 'checkpointId', 'revision',
+    const keys = operation === 'begin' ? ['conversationId','sessionId','expectedHeadMessageId','expectedRevision']
+      : operation === 'cancel' ? ['conversationId','expectedRevision']
+      : operation === 'state' ? ['conversationId', 'sessionId'] : ['conversationId', 'sessionId', 'checkpointId', 'revision',
       'effectiveWorkingDirectory', 'expectedHeadMessageId', 'expectedRevision', 'checkpointIds', 'completedTurnCheckpointIds'];
     if (!body || Object.keys(body).some(key => !keys.includes(key))) { sendInvalid(response); return; }
     try {
+      if (operation === 'begin') {
+        const input={...body,userId} as Parameters<typeof beginNativeContinuationRelease>[1];
+        try {validateNativeContinuationReleaseBegin(input);} catch {sendInvalid(response);return;}
+        if(!dependencies.beginNativeContinuationRelease){sendNativeHistoryError(response,null);return;}
+        response.json({success:true,data:await dependencies.beginNativeContinuationRelease(input)});return;
+      }
+      if (operation === 'cancel') {
+        const input={...body,userId} as Parameters<typeof cancelNativeContinuationRelease>[1];
+        try {validateNativeContinuationReleaseCancel(input);} catch {sendInvalid(response);return;}
+        if(!dependencies.cancelNativeContinuationRelease){sendNativeHistoryError(response,null);return;}
+        response.json({success:true,data:await dependencies.cancelNativeContinuationRelease(input)});return;
+      }
       if (operation === 'state') {
         const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (typeof body.conversationId !== 'string' || !uuid.test(body.conversationId) || typeof body.sessionId !== 'string' || !uuid.test(body.sessionId)) { sendInvalid(response); return; }

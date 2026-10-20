@@ -1,4 +1,4 @@
-import { nativeSessionExecutableSql } from "../bridge/turn/turn-repository/session-owner.js";
+import { nativeSessionExecutableSql, type NativeSessionOwner } from "../bridge/turn/turn-repository/session-owner.js";
 import type { Database, Transaction, DbExecutor } from "./native-live-conversation-db.js";
 import { archiveConversation, restoreConversation, deleteConversation } from "./native-live-conversation-lifecycle.js";
 export { inFlightConversationTurns } from "./native-live-conversation-lifecycle.js";
@@ -30,6 +30,14 @@ export async function nativeSessionHeldByDesktop(db: Pick<Database, "execute">, 
     FROM conversations c WHERE user_id = ${input.userId}::uuid AND id = ${input.conversationId}::uuid
       AND origin = 'native_live' FOR UPDATE`);
   return row?.executable === false;
+}
+
+/** The owner discriminator is read under the same conversation lock as prepare. */
+export async function readNativeSessionOwnerLocked(db: Pick<Database,"execute">, input:{userId:string;conversationId:string}):Promise<NativeSessionOwner> {
+  const [row]=await db.execute<{owner:NativeSessionOwner}>(sql`SELECT coalesce((SELECT o.owner FROM native_live_session_owners o
+    WHERE o.conversation_id=c.id AND o.user_id=c.user_id),'leileios') AS owner FROM conversations c
+    WHERE c.id=${input.conversationId}::uuid AND c.user_id=${input.userId}::uuid AND c.origin='native_live' FOR UPDATE`);
+  return row?.owner??'leileios';
 }
 
 function toIso(value: Date | null): string | null {

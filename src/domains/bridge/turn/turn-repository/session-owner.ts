@@ -14,7 +14,7 @@ export async function syncNativeSessionOwner(executor: Executor, input: {
     INSERT INTO native_live_session_owners AS o
       (conversation_id, user_id, owner, owner_revision, writer_generation, updated_at)
     SELECT c.id, c.user_id,
-      CASE WHEN c.provider_metadata->'nativeSessionSource'->>'owner' = 'desktop' THEN 'desktop' ELSE 'leileios' END,
+      CASE WHEN c.provider_metadata->'nativeSessionSource'->>'owner' IN ('desktop','releasing') THEN c.provider_metadata->'nativeSessionSource'->>'owner' ELSE 'leileios' END,
       c.provider_metadata->'nativeSessionSource'->>'revision',
       gen_random_uuid(),
       now()
@@ -96,7 +96,7 @@ export async function setNativeSessionTurn(executor: Executor, input: {
     INSERT INTO native_live_session_owners AS o
       (conversation_id,user_id,owner,owner_revision,writer_generation,turn_prepare_id,turn_anchor_message_id)
     SELECT c.id,c.user_id,
-      CASE WHEN c.provider_metadata->'nativeSessionSource'->>'owner'='desktop' THEN 'desktop' ELSE 'leileios' END,
+      CASE WHEN c.provider_metadata->'nativeSessionSource'->>'owner' IN ('desktop','releasing') THEN c.provider_metadata->'nativeSessionSource'->>'owner' ELSE 'leileios' END,
       c.provider_metadata->'nativeSessionSource'->>'revision',gen_random_uuid(),${input.prepareId}::uuid,c.current_head_message_id
     FROM conversations c WHERE c.id=${input.conversationId}::uuid AND c.user_id=${input.userId}::uuid AND c.origin='native_live'
     ON CONFLICT (conversation_id) DO UPDATE SET turn_prepare_id=EXCLUDED.turn_prepare_id,

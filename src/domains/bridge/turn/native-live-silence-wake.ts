@@ -1,4 +1,4 @@
-import { nativeSessionExecutableSql, nativeSessionTurnSql } from "./turn-repository/session-owner.js";
+import { nativeSessionExecutableSql, nativeSessionTurnSql, readNativeSessionOwner } from "./turn-repository/session-owner.js";
 import { nativeResumeCheckpointSql } from "./native-live-resume-checkpoint.js";
 import { createHash } from "node:crypto";
 import { and, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
@@ -262,6 +262,16 @@ export class NativeLiveSilenceWakeService {
                 )
               : null,
           };
+        }
+
+        // Begin-release and Wake creation serialize on the same conversation.
+        // Otherwise a newly queued Wake can make complete/attach permanently BUSY
+        // after the daemon was drained. Use the existing ignored vocabulary so
+        // older Mac clients need no protocol/parser change.
+        await transaction.execute(sql`SELECT id FROM conversations
+          WHERE id=${source.conversationId}::uuid AND user_id=${input.userId}::uuid FOR UPDATE`);
+        if (await readNativeSessionOwner(transaction,{userId:input.userId,conversationId:source.conversationId}) === "releasing") {
+          return {outcome:"ignored" as const,reason:"source_changed" as const,schedule:null};
         }
 
         const schedule = await this.scheduleForSource(

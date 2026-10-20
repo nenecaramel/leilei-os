@@ -9,6 +9,7 @@ import { DrizzleNativeLiveBackendTurnPort } from '../../../src/domains/bridge/tu
 import { DrizzleNativeLiveBackendRelayRepository } from '../../../src/domains/bridge/relay/native-live-backend-relay.js';
 import { DrizzleNativeLiveRuntimeEventRepository } from '../../../src/domains/bridge/runtime-interaction/native-live-runtime-event-stream.js';
 import { bindNativeLiveInput } from '../../../src/domains/bridge/relay/native-live-input-binding.js';
+import * as continuationLifecycle from '../../../src/domains/conversation/native-session-continuation-repository.js';
 import { attachNativeContinuation, releaseNativeContinuation, readNativeContinuationState } from '../../../src/domains/conversation/native-session-continuation-repository.js';
 import { NativeLiveSilenceWakeService, silenceWakePreparationId } from '../../../src/domains/bridge/turn/native-live-silence-wake.js';
 import type { NativeLiveRuntimeCommand, NativeLiveRuntimeExecutionResult } from '../../../src/domains/bridge/protocol/native-live-runtime-protocol.js';
@@ -22,7 +23,7 @@ const semantic = (value: unknown): unknown => {
   if(value===null || typeof value!=='object')return ['applied','idempotent'].includes(String(value))?'accepted':value;
   if(Array.isArray(value))return value.map(semantic);
   return Object.fromEntries(Object.entries(value).filter(([key])=>key!=='duplicate').map(([key,val])=>
-    [key, key==='outcome' && ['created','replayed','completed','idempotent','applied','attached','already_current'].includes(String(val))?'accepted':semantic(val)]));
+    [key, key==='outcome' && ['created','replayed','completed','idempotent','applied','attached','already_current','releasing','cancelled'].includes(String(val))?'accepted':semantic(val)]));
 };
 
 export class Scenario {
@@ -45,10 +46,14 @@ export class Scenario {
   busy=new Set<string>();
   expectedParents=new Map<string,string|null>();
   completedAtStep=new Map<string,number>();
+  preparationMessages=new Map<string,{user:string;reply?:string}>();
   preparationStates=new Map<string,{created:number;dispatch:'staged'|'executing'|'delivery_unknown'}>();
   consumedWakeEpochs=new Set<string>();
   prestart=new Set<string>();
   listeners=new Map<string,string>();
+  backgroundPhases=new Map<string,'prepared'|'queued'|'terminal'>();
+  backgroundSources=new Map<string,string>();
+  beginInput?:{userId:string;conversationId:string;sessionId:string;expectedHeadMessageId:string|null;expectedRevision:string|null};
   constructor(readonly db: Database, readonly userId: string, readonly conversationId: string, readonly seed: number) {
     this.port=new DrizzleNativeLiveBackendTurnPort(db);this.coordinator=new NativeLiveBackendTurnCoordinator(this.port);
     this.relay=new DrizzleNativeLiveBackendRelayRepository(db);this.events=new DrizzleNativeLiveRuntimeEventRepository(db);
@@ -79,9 +84,11 @@ export class Scenario {
   async replayable(input: unknown, call: ()=>Promise<unknown>) {
     const result=await call();this.replay={input,call,expected:semantic(result)};return result;
   }
-  async invariant(before: Snapshot, rotate: boolean, operation: Operation) {
+  async invariant(before: Snapshot, rotate: boolean, operation: Operation, revisionRotates=false, returnedRevision?:string) {
     const after=await readState(this.db,this.userId,this.conversationId);
     assert.equal(after.row.owner,this.model.owner,'owner fence: model owner');
+    assert.equal(after.row.ownerRevision!==before.row.ownerRevision,revisionRotates,`owner revision: ${operation} rotates only for an actual ownership/binding change`);
+    if(returnedRevision!==undefined)assert.equal(after.row.ownerRevision,returnedRevision,'lifecycle response revision equals the authoritative row');
     assert.equal(after.row.prepareId,this.model.slot,'turn slot matches the reference model');
     assert.equal(after.row.anchor,this.model.head,'turn anchor matches the expected canonical head');
     assert.equal(after.row.generation!==before.row.generation,rotate,`generation: ${operation} rotates exactly at native-line boundaries`);
@@ -103,11 +110,12 @@ export class Scenario {
     const before=await readState(this.db,this.userId,this.conversationId);
     const pending=this.model.turn!=='idle'&&this.model.turn!=='delivery_unknown'&&this.command?.operation==='send'&&this.command.runtime_mode==='resume';
     this.model.prestartPending=this.prestart.size>0;
+    this.model.releaseBlocked=this.busy.size>0||[...this.backgroundPhases.values()].some(phase=>phase!=='terminal');
     this.model.backgroundAllowed=!!this.source&&this.model.owner==='leileios'&&this.source.listener===this.listener
       &&this.source.revision===before.row.ownerRevision&&this.source.head===this.model.head
       &&(this.source.generation===before.row.generation||pending)
       &&(this.busy.size===0||(this.busy.size===1&&pending))&&!(pending&&!this.model.inputStarted&&this.prestart.size>0);
-    this.model.backgroundOutcome=operation==='background_cover'?'committed':this.background?.prepare.deferred?'queued':
+    this.model.backgroundOutcome=this.background&&!this.backgroundPhases.has(this.background.prepare.receiptId)?'BACKGROUND_NOT_FOUND':operation==='background_cover'?'committed':this.background?.prepare.deferred?'queued':
       this.background&&this.model.owner==='leileios'&&this.background.saved!.generation===before.row.generation
         &&this.background.saved!.ownerRevision===before.row.ownerRevision&&this.background.saved!.head===this.model.head
         &&this.background.prepare.listenerInstanceId===this.listener&&this.busy.size===0?'committed':'stale';
@@ -116,10 +124,10 @@ export class Scenario {
     const latestUser=before.messages.filter(m=>m.role==='user').at(-1);
     const directReply=latestUser?before.messages.find(m=>m.role==='assistant'&&m.status==='completed'&&m.parent===latestUser.id&&path.has(m.id)):undefined;
     const wakeBusy=directReply&&[...this.busy].some(id=>{const p=this.preparationStates.get(id)!;return p.dispatch!=='staged'||p.created>=(this.completedAtStep.get(directReply.id)??-1);});
-    this.model.wakeOutcome=!directReply?'ignored:no_source':this.consumedWakeEpochs.has(latestUser!.id)?'ignored:slot_not_due':wakeBusy?'ignored:foreground_active':
+    this.model.wakeOutcome=!directReply?'ignored:no_source':this.model.owner==='releasing'?'ignored:source_changed':this.consumedWakeEpochs.has(latestUser!.id)?'ignored:slot_not_due':wakeBusy?'ignored:foreground_active':
       this.model.owner==='leileios'?'wake_quiet':'wake_stale';
     const cell=allowed(this.model,operation);
-    let outcome='',input:unknown={},rotate=false;
+    let outcome='',input:unknown={},rotate=false,revisionRotates=false,returnedRevision:string|undefined;
     // Capture the expected cell before any operation changes the model.
     const record:Record<string,unknown>={step:this.log.length,operation,state:structuredClone(this.model),cell:cell.state};
     this.log.push(record);
@@ -141,6 +149,7 @@ export class Scenario {
             this.model.touched=false;this.model.inputStarted=false;this.model.listenerCurrent=true;this.sequence=0;
             this.busy.add(result.command.prepare_id);this.model.busyCount=this.busy.size;
             this.preparationStates.set(result.command.prepare_id,{created:this.log.length,dispatch:'staged'});
+            this.preparationMessages.set(result.command.prepare_id,{user:result.command.canonical_user_message_id!});
             const userParent=operation==='send'||operation==='stale_send'?this.model.head:this.expectedParents.get(this.target!)!;
             this.expectedParents.set(result.command.canonical_user_message_id!,userParent);
           }break;
@@ -177,8 +186,14 @@ export class Scenario {
             if((command.operation==='edit'||command.operation==='retry')&&this.target===this.lateUser)this.model.lateRetained=false;
             rotate=command.runtime_mode!=='resume';this.model.head=result.assistantMessageId;this.target=command.canonical_user_message_id!;this.model.branchAllowed=true;
             const committed=await readState(this.db,this.userId,this.conversationId);
+            if(command.operation==='edit'||command.operation==='retry'){
+              const retained=new Set(committed.messages.map(message=>message.id));
+              for(const [prepareId,messages] of this.preparationMessages)if(!retained.has(messages.user)||(messages.reply!==undefined&&!retained.has(messages.reply))){this.busy.delete(prepareId);this.preparationStates.delete(prepareId);this.preparationMessages.delete(prepareId);}
+              for(const [receiptId,sourceHead] of this.backgroundSources)if(!retained.has(sourceHead)){this.backgroundSources.delete(receiptId);this.backgroundPhases.delete(receiptId);this.prestart.delete(receiptId);}
+            }
             assert.equal(committed.messages.find(m=>m.id===result.assistantMessageId)?.parent,command.canonical_user_message_id,'foreground reply parent is its own accepted user message');
             this.expectedParents.set(result.assistantMessageId,command.canonical_user_message_id);
+            this.preparationMessages.set(command.prepare_id,{user:command.canonical_user_message_id!,reply:result.assistantMessageId});
             this.completedAtStep.set(result.assistantMessageId,this.log.length);
             let root=command.canonical_user_message_id!;while(this.expectedParents.get(root)!==null)root=this.expectedParents.get(root)!;this.model.root=root;
             this.session=result.providerSessionId;this.checkpoint=(resultInput as {provider_checkpoint_id:string}).provider_checkpoint_id;
@@ -196,13 +211,53 @@ export class Scenario {
             operation==='finalize_rejected'?this.relay.markFinalizeRejected({...reservation,code:'FINALIZE_CONFLICT'}):this.relay.markDeliveryUnknown(reservation);
           outcome=String(await this.replayable(input,call));if(operation==='unknown')this.preparationStates.get(this.command!.prepare_id)!.dispatch='delivery_unknown';this.model.turn=operation==='unknown'?'delivery_unknown':'idle';if(operation!=='unknown'){this.busy.delete(this.command!.prepare_id);this.model.busyCount=this.busy.size;}break;
         }
-        case 'attach':case 'release': {
+        case 'begin_release': {
+          if(this.model.owner!=='releasing')this.beginInput={userId:this.userId,conversationId:this.conversationId,sessionId:this.session,expectedHeadMessageId:this.model.head,expectedRevision:before.row.ownerRevision};
+          assert.ok(this.beginInput);const request={...this.beginInput};input=request;
+          const call=()=>continuationLifecycle.beginNativeContinuationRelease(this.db,request);
+          const result=await call();
+          assert.equal(result.owner,'releasing');assert.equal(result.conversationId,this.conversationId);assert.equal(result.headMessageId,this.model.head);assert.equal(result.providerSessionId,request.sessionId);assert.match(result.expectedRevision,/^[0-9a-f]{64}$/);
+          outcome=result.outcome==='already_current'?'releasing':result.outcome;revisionRotates=this.model.owner!=='releasing';this.model.owner='releasing';returnedRevision=result.expectedRevision;
+          this.replay={input,call,expected:semantic(result)};break;
+        }
+        case 'cancel_release':case 'stale_cancel_release': {
+          const request={userId:this.userId,conversationId:this.conversationId,expectedRevision:operation==='stale_cancel_release'?'0'.repeat(64):before.row.ownerRevision!};input=request;
+          const call=()=>continuationLifecycle.cancelNativeContinuationRelease(this.db,request);
+          const result=await call();
+          assert.equal(result.owner,'leileios');assert.equal(result.conversationId,this.conversationId);assert.match(result.expectedRevision,/^[0-9a-f]{64}$/);
+          outcome=result.outcome==='already_current'?'cancelled':result.outcome;revisionRotates=this.model.owner==='releasing';this.model.owner='leileios';returnedRevision=result.expectedRevision;
+          this.replay={input,call,expected:semantic(result)};break;
+        }
+        case 'probe_owner_fence': {
+          // Begin correctly rejects live work. Restore only the reservation of
+          // an already-rejected synthetic turn to isolate the owner predicate
+          // from terminal/status fences, then restore every touched column.
+          const command=this.command!;const savedModelDispatch=this.preparationStates.get(command.prepare_id)?.dispatch;const savedListener=this.listeners.get(command.prepare_id);const [saved]=await this.db.select().from(preparations).where(eq(preparations.id,command.prepare_id));assert.ok(saved);
+          assert.equal(saved.status,'prepared');assert.equal(saved.dispatchStatus,'rejected');
+          const [savedLease]=await this.db.select().from(leases).where(eq(leases.userId,this.userId));assert.ok(savedLease);
+          input=this.admission(command);
+          try {
+            await this.reserve(command);
+            const admitted=await this.relay.checkExecutionAdmission(this.admission(command));
+            const expected=this.model.owner==='leileios';
+            assert.equal(admitted,expected,'owner fence: an otherwise admissible foreground reservation cannot run while releasing/desktop');
+            assert.equal(await this.relay.renewExecutionLease(this.admission(command)),expected,'owner fence: execution lease renewal');
+            if(!expected)for(const phase of ['queued','started'] as const)assert.equal(await bindNativeLiveInput(this.db,{...this.admission(command),phase}),null,`owner fence: input ${phase}`);
+            outcome=admitted?'accepted':'refused';
+          }finally{
+            await this.db.update(preparations).set({dispatchStatus:saved.dispatchStatus,reservedBy:saved.reservedBy,reservedAt:saved.reservedAt,reservationExpiresAt:saved.reservationExpiresAt,executionStartedAt:saved.executionStartedAt,updatedAt:saved.updatedAt}).where(eq(preparations.id,saved.id));
+            const state=this.preparationStates.get(saved.id);if(state&&savedModelDispatch)state.dispatch=savedModelDispatch;
+            await this.db.update(leases).set({leaseExpiresAt:savedLease.leaseExpiresAt,updatedAt:savedLease.updatedAt}).where(eq(leases.userId,this.userId));
+            if(savedListener===undefined)this.listeners.delete(saved.id);else this.listeners.set(saved.id,savedListener);
+          }break;
+        }
+        case 'attach':case 'release':case 'complete_release':case 'stale_complete_release': {
           const current=await readNativeContinuationState(this.db,{userId:this.userId,conversationId:this.conversationId,sessionId:this.session});
           input={userId:this.userId,conversationId:this.conversationId,sessionId:current.providerSessionId!,checkpointId:current.providerCheckpointId!,
             effectiveWorkingDirectory:current.effectiveWorkingDirectory!,revision:'2'.repeat(64),expectedHeadMessageId:this.model.head,
-            expectedRevision:before.row.ownerRevision,checkpointIds:[current.providerCheckpointId!],completedTurnCheckpointIds:[current.providerCheckpointId!]};
+            expectedRevision:operation==='stale_complete_release'?'0'.repeat(64):before.row.ownerRevision,checkpointIds:[current.providerCheckpointId!],completedTurnCheckpointIds:[current.providerCheckpointId!]};
           const call=()=> (operation==='attach'?attachNativeContinuation:releaseNativeContinuation)(this.db,input as Parameters<typeof attachNativeContinuation>[1]);
-          const result=await call();outcome='attached';this.model.owner=operation==='attach'?'leileios':'desktop';this.model.branchAllowed=false;
+          const result=await call();outcome='attached';revisionRotates=result.outcome!=='already_current';this.model.owner=operation==='attach'?'leileios':'desktop';this.model.branchAllowed=false;
           this.replay={input,call,expected:semantic(result)};break;
         }
         case 'crash': {
@@ -227,6 +282,8 @@ export class Scenario {
             parentProviderCheckpointId:source.checkpoint,...(pending?this.model.inputStarted?{deferred:true}:{executionStart:true,deferred:true}:{})};
           const call=()=>this.relay.prepareBackgroundResult(input as NativeLiveBackgroundPrepare & {userId:string});
           const result=await call();outcome='background_prepared';
+          this.backgroundPhases.set((input as NativeLiveBackgroundPrepare).receiptId,'prepared');
+          this.backgroundSources.set((input as NativeLiveBackgroundPrepare).receiptId,source.head);
           if((input as NativeLiveBackgroundPrepare).executionStart)this.prestart.add((input as NativeLiveBackgroundPrepare).receiptId);
           const submit={...(input as NativeLiveBackgroundPrepare & {userId:string}),result:{...this.result(source.command),provider_session_id:source.session}};
           this.background={prepare:input as NativeLiveBackgroundPrepare & {userId:string},submit,
@@ -257,6 +314,7 @@ export class Scenario {
             }
           }
           this.prestart.delete(background.prepare.receiptId);
+          this.backgroundPhases.set(background.prepare.receiptId,outcome==='queued'?'queued':'terminal');
           if(outcome==='queued')background.saved!.queued=true;
           this.replay={input,call:()=>this.relay.submitBackgroundResult(background.submit),expected:semantic(result)};
           if(outcome!=='queued')this.background=undefined;break;
@@ -267,6 +325,12 @@ export class Scenario {
           now=new Date(schedule.postTurnDueAt);input={userId:this.userId,epochId:schedule.epochId,slot:'post_turn_idle'};
           const fired=await wake.fire(input as Parameters<NativeLiveSilenceWakeService['fire']>[0]);
           record.fire=fired;
+          if(this.model.owner==='releasing'){
+            assert.deepEqual(fired,{outcome:'ignored',reason:'source_changed',schedule:null},'releasing Wake is refused before creating transport custody');
+            const afterFire=await readState(this.db,this.userId,this.conversationId);
+            assert.deepEqual(afterFire.counts,before.counts,'releasing Wake creates no preparation, pending work, event, message, checkpoint or receipt');
+            assert.equal(afterFire.counts?.pendingPreparations,0,'releasing Wake cannot strand pending work and block complete/attach');
+          }
           if(fired.outcome!=='queued'){outcome=`ignored:${fired.reason}`;break;}
           this.consumedWakeEpochs.add(schedule.epochId);
           const id=silenceWakePreparationId(schedule.epochId,'post_turn_idle');
@@ -301,7 +365,7 @@ export class Scenario {
     record.input=input;record.outcome=outcome;
     try {
       assert.ok(cell.outcomes.includes(outcome),`refusal vocabulary: ${cell.state} / ${operation} expected ${cell.outcomes.join('|')}, got ${outcome}`);
-      await this.invariant(before,rotate,operation);
+      await this.invariant(before,rotate,operation,revisionRotates,returnedRevision);
     }catch(error){throw this.failure(error);}
   }
   failure(error: unknown) {return new Error(`SCENARIO_SEED=${this.seed} SCENARIO_STEPS=${this.log.length}\n${String(error)}\nStep log:\n${JSON.stringify(this.log,null,2)}`,{cause:error});}
@@ -310,11 +374,12 @@ export class Scenario {
     for(let n=0;n<steps;n++){
       const m=this.model;
       let operations:Operation[];
-      if(m.owner==='desktop')operations=['attach','send','edit','retry','admit','renew','start','wake'];
-      else if(m.turn==='idle')operations=['send','send','edit','retry','release','attach','wake'];
-      else if(m.turn==='prepared')operations=['reserve','reserve','send','stale_send','release','attach','admit'];
+      if(m.owner==='releasing')operations=['begin_release','complete_release','cancel_release','attach','send','edit','retry','admit','renew','queue','start','wake','stale_complete_release','stale_cancel_release'];
+      else if(m.owner==='desktop')operations=['attach','send','edit','retry','admit','renew','start','wake','begin_release','cancel_release'];
+      else if(m.turn==='idle')operations=['send','send','edit','retry','release','begin_release','cancel_release','attach','wake'];
+      else if(m.turn==='prepared')operations=['reserve','reserve','send','stale_send','release','begin_release','attach','admit'];
       else if(m.turn==='delivery_unknown')operations=['send','admit','renew','finalize_rejected','stale_send'];
-      else operations=['admit','renew','events','success','success','failure','reject','finalize_rejected','unknown','send','crash','release'];
+      else operations=['admit','renew','events','success','success','failure','reject','finalize_rejected','unknown','send','crash','release','begin_release'];
       if(m.owner==='leileios'&&m.listenerCurrent&&(m.turn==='executing'||m.turn==='started')&&this.command?.operation==='send')operations.push('queue','start','start');
       if(this.source)operations.push('background_prepare');
       if(this.background)operations.push('background_submit','background_submit');

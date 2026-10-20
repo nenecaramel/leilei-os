@@ -3,7 +3,7 @@ import { restoreDesktopNativeSession, handoffNativeSessionToDesktop } from '../s
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { inspectDesktopNativeSession, listDesktopNativeSessions, resolveDesktopNativeSelection } from '../src/native-session-inspection.mjs';
-import { nativeSwitchErrorCode } from '../src/native-session-switch-codes.mjs';
+import { nativeSwitchErrorCodes } from '../src/native-session-switch-codes.mjs';
 import { preflightNativeSessionSwitch } from '../src/native-session-switch-preflight.mjs';
 
 // Restore is explicit/authenticated. Only --desktop invokes the official
@@ -60,7 +60,7 @@ if (!valid || (['--desktop', '--desktop-manual'].includes(args[0]) && !flags.has
       console.log(JSON.stringify(manual ? { ...result, desktopLaunchRequested: false } : result, null, 2));
     }
   } catch (error) {
-    console.error(nativeSwitchErrorCode(error));
+    console.error(nativeSwitchErrorCodes(error).join('\n'));
     process.exitCode = 1;
   }
 }
