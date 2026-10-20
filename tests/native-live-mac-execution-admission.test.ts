@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { spawnSync } from "node:child_process";
 import { createNativeLiveMacExecutionAdmission } from "../src/domains/bridge/mac/native-live-mac-execution-admission.js";
 import type { NativeLiveRuntimeCommand } from "../src/domains/bridge/protocol/native-live-runtime-protocol.js";
 const command: NativeLiveRuntimeCommand = { protocol_version: 4, dispatch_target: "claude_code", prepare_id: "prepare", request_id: "request", conversation_id: "conversation", operation: "send", runtime_mode: "new", canonical_user_message_id: "user-input", parent_provider_session_id: null, parent_provider_checkpoint_id: null, expected_working_directory: null, prompt: "synthetic" };
@@ -30,6 +31,65 @@ test("unavailable relay never authorizes and caller mutation cannot retarget cap
   original.conversation_id = "changed";
   assert.equal(await gate({ phase: "input", inputId: "user-input", source: "human", providerSessionId: null }), false); assert.equal(captured, "conversation");
 });
+
+for (const [failure, reasonCode] of [
+  [new DOMException("private token", "TimeoutError"), "RELAY_TIMEOUT"],
+  [new DOMException("private token", "AbortError"), "RELAY_ABORTED"],
+  [Object.assign(new TypeError("private token"), { cause: { code: "ECONNRESET" } }), "RELAY_CONNECTION_RESET"],
+  [Object.assign(new Error("private token"), { relayCode: "RELAY_RESPONSE_BODY_UNAVAILABLE", httpStatus: 200 }), "RELAY_RESPONSE_BODY_UNAVAILABLE"],
+  [Object.assign(new Error("private token"), { relayCode: "RELAY_RESPONSE_INVALID_JSON", httpStatus: 200 }), "RELAY_RESPONSE_INVALID_JSON"],
+  [Object.assign(new Error("private token"), { httpStatus: 503 }), "RELAY_HTTP_ERROR"],
+  [new Error("private token"), "RELAY_UNAVAILABLE"],
+] as const) {
+  test(`failed admission reports ${reasonCode} without exposing relay exception content`, async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const gate = createNativeLiveMacExecutionAdmission({ listenerInstanceId: "listener", command,
+      relay: { async checkExecutionAdmission() { throw failure; } },
+      onDenied: event => events.push(event),
+    });
+    assert.equal(await gate({phase:"input",inputId:"user-input",source:"human",providerSessionId:null}),false);
+    assert.equal(events.length,1);
+    assert.equal(events[0]!.reasonCode,reasonCode);
+    assert.equal(JSON.stringify(events).includes("private token"),false);
+    assert.equal(JSON.stringify(events).includes("synthetic"),false,"do not log prompt text");
+  });
+}
+
+test("relay false and local identity denial have distinct reason codes; diagnostics cannot authorize or throw",async()=>{
+  const reasons: string[]=[];
+  const gate=createNativeLiveMacExecutionAdmission({listenerInstanceId:"listener",command,
+    relay:{async checkExecutionAdmission(){return false;}},onDenied:event=>{reasons.push(event.reasonCode);throw Error("logging unavailable");}});
+  assert.equal(await gate({phase:"input",inputId:"other",source:"human",providerSessionId:null}),false);
+  assert.equal(await gate({phase:"input",inputId:"user-input",source:"human",providerSessionId:null}),false);
+  assert.deepEqual(reasons,["INPUT_ID_MISMATCH","ADMISSION_NOT_GRANTED"]);
+});
+
+for (const closeStderr of [false, true]) {
+  test(`default diagnostic sink ${closeStderr ? "survives asynchronous fd failure" : "logs only bounded metadata"}`, () => {
+    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
+      import { closeSync } from "node:fs";
+      import { createNativeLiveMacExecutionAdmission } from "./src/domains/bridge/mac/native-live-mac-execution-admission.ts";
+      if (${closeStderr}) closeSync(2);
+      const gate = createNativeLiveMacExecutionAdmission({ listenerInstanceId: "private token",
+        command: ${JSON.stringify({ ...command, prepare_id: "private token" })},
+        relay: { async checkExecutionAdmission() { return false; } } });
+      const admitted = await gate({ phase: "private token", inputId: "user-input", source: null, providerSessionId: null });
+      // Let asynchronous write failures surface before reporting survival.
+      setTimeout(() => console.log(JSON.stringify({ admitted })), 30);
+    `], { encoding: "utf8", timeout: 10_000 });
+    assert.equal(child.error, undefined);
+    assert.equal(child.status, 0, child.stderr);
+    assert.deepEqual(JSON.parse(child.stdout), { admitted: false });
+    if (closeStderr) return;
+    const event = JSON.parse(child.stderr.trim());
+    assert.equal(event.outcome, "execution_admission_denied");
+    assert.equal(event.prepareId, null);
+    assert.equal(event.phase, "unknown");
+    assert.equal(event.reasonCode, "ADMISSION_NOT_GRANTED");
+    assert.equal(child.stderr.includes("private token"), false);
+    assert.ok(Number.isFinite(event.elapsedMs) && event.elapsedMs >= 0);
+  });
+}
 
 for (const operation of ["edit", "retry"] as const) for (const runtime_mode of ["new", "fork"] as const) {
   test(`${operation}/${runtime_mode} pins the admitted child session and rejects parent/foreign callbacks`, async () => {
