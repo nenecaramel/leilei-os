@@ -49,8 +49,10 @@ export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "exec
           OR (p.operation = 'wake' AND p.canonical_user_message_id IS NULL
             AND jsonb_typeof(p.wake_context->'runtime_generation') = 'object'
             AND (p.wake_context->'runtime_generation') ? 'source_revision'
-            AND p.wake_context->'runtime_generation'->>'presentation_owner_id'
-              = c.provider_metadata->'native_live_presentation_owner'->>'prepareId'
+            AND coalesce(p.wake_context->'runtime_generation'->>'writer_generation',
+              p.wake_context->'runtime_generation'->>'presentation_owner_id') = (
+                SELECT o.writer_generation::text FROM native_live_session_owners o
+                WHERE o.conversation_id=c.id AND o.user_id=c.user_id)
             AND (p.wake_context->'runtime_generation'->>'source_revision') IS NOT DISTINCT FROM
               (c.provider_metadata->'nativeSessionSource'->>'revision')
             AND p.wake_context->>'epoch_id' = p.wake_context->>'source_user_message_id'

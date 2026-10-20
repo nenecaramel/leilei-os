@@ -121,6 +121,10 @@ test('empty continuation release and reacquire are idempotent, CAS fenced, and p
 test('a verified quiet tail on the current handoff checkpoint remains the first send cursor', { skip: !enabled }, async () => fixture(async f => {
   await f.attach();
   const u = randomUUID(), a = randomUUID(), tail = randomUUID(), owner = randomUUID();
+  const { readNativeWriterGeneration } = await import('../src/domains/bridge/turn/turn-repository/session-owner.js');
+  const writerGeneration = await readNativeWriterGeneration(f.db, { userId:f.input.userId,conversationId:f.input.conversationId });
+  assert.ok(writerGeneration);
+
   await f.db.insert(conversationMessages).values([
     { id: u, userId: f.input.userId, conversationId: f.input.conversationId, role: 'user', status: 'completed' },
     { id: a, userId: f.input.userId, conversationId: f.input.conversationId, parentMessageId: u, role: 'assistant', status: 'completed' },
@@ -133,7 +137,7 @@ test('a verified quiet tail on the current handoff checkpoint remains the first 
     canonicalMessageId: a, provider: 'claude_code', providerSessionId: f.input.sessionId, providerCheckpointId: f.input.checkpointId,
     effectiveWorkingDirectory: f.input.effectiveWorkingDirectory, runtimeMetadata: { native_live_resume_tail: {
       canonical_message_id: a, provider_session_id: f.input.sessionId, base_checkpoint_id: f.input.checkpointId,
-      checkpoint_id: tail, cwd: f.input.effectiveWorkingDirectory, source_revision: source.revision, presentation_owner_id: owner,
+      checkpoint_id: tail, cwd: f.input.effectiveWorkingDirectory, source_revision: source.revision, presentation_owner_id: owner, writer_generation: writerGeneration,
     } } });
   const prepared = await new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.db)).prepare(f.input.userId,
     { request_id: randomUUID(), conversation_id: f.input.conversationId, operation: 'send', dispatch_target: 'claude_code',

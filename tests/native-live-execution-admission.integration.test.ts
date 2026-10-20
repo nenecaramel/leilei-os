@@ -116,17 +116,23 @@ test("execution admission PostgreSQL snapshot fences", { skip: process.env.RUN_N
     await db.insert(checkpoints).values({ userId, conversationId, canonicalMessageId: head, provider: "claude_code", providerSessionId: "provider-a", providerCheckpointId: checkpoint, effectiveWorkingDirectory: "/synthetic" });
     await db.update(conversations).set({ currentHeadMessageId: head }).where(eq(conversations.id, conversationId));
     await db.insert(preparations).values({ id: reservationId, userId, requestId, conversationId, operation: "wake", requestHash: "a".repeat(64), runtimeMode: "resume", parentProviderSessionId: "provider-a", parentProviderCheckpointId: checkpoint, expectedWorkingDirectory: "/synthetic", wakeContext: { epoch_id: canonicalUserMessageId, source_user_message_id: canonicalUserMessageId, source_head_message_id: head, runtime_generation: { presentation_owner_id: reservationId, source_revision: null } }, prompt: "synthetic wake", dispatchStatus: "executing", reservedBy: listenerInstanceId, reservedAt: new Date(), reservationExpiresAt: later, executionStartedAt: new Date() });
+    // Legacy stamp: 0111 seeded the writer generation from this valid slot.
+    await db.execute(sql`INSERT INTO native_live_session_owners(conversation_id,user_id,writer_generation,turn_prepare_id,turn_anchor_message_id)
+      VALUES (${conversationId}::uuid,${userId}::uuid,${reservationId}::uuid,${reservationId}::uuid,${head}::uuid)`);
     input = { ...input, canonicalUserMessageId: null }; assert.equal(await check(), true);
     const wakeContext = { epoch_id: canonicalUserMessageId, source_user_message_id: canonicalUserMessageId, source_head_message_id: head, runtime_generation: { presentation_owner_id: reservationId, source_revision: null } };
-    await wakeTest.test("same-head owner or source revision rotation denies wake admission and renewal", async () => {
+    await wakeTest.test("same-head writer generation or source revision rotation denies wake admission and renewal", async () => {
       const [before] = await db.select().from(conversations).where(eq(conversations.id,conversationId));
-      for (const metadata of [
-        { ...before!.providerMetadata, native_live_presentation_owner: { prepareId:crypto.randomUUID(),anchorHeadMessageId:canonicalUserMessageId } },
-        { ...before!.providerMetadata, nativeSessionSource: { owner:"leileios",revision:"b".repeat(64) } },
-      ]) {
-        await db.update(conversations).set({ providerMetadata:metadata }).where(eq(conversations.id,conversationId));
+      for (const changed of ["writer-generation", "source-revision"]) {
+        if (changed === "writer-generation") await db.execute(sql`UPDATE native_live_session_owners
+          SET writer_generation=${crypto.randomUUID()}::uuid WHERE conversation_id=${conversationId}::uuid`);
+        else await db.update(conversations).set({providerMetadata:{...before!.providerMetadata,nativeSessionSource:{owner:"leileios",revision:"b".repeat(64)}}})
+          .where(eq(conversations.id,conversationId));
         try { assert.equal(await check(),false); assert.equal(await repository.renewExecutionLease(input),false); }
-        finally { await db.update(conversations).set({providerMetadata:before!.providerMetadata}).where(eq(conversations.id,conversationId)); }
+        finally {
+          await db.update(conversations).set({providerMetadata:before!.providerMetadata}).where(eq(conversations.id,conversationId));
+          await db.execute(sql`UPDATE native_live_session_owners SET writer_generation=${reservationId}::uuid WHERE conversation_id=${conversationId}::uuid`);
+        }
       }
     });
     await wakeTest.test("wake epoch must equal its actual source user", async () => {

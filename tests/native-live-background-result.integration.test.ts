@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
-import { users, conversations, conversationMessages, nativeLiveTurnPreparations, nativeLiveRuntimeEvents, nativeLiveRuntimeListenerLeases, conversationProviderSessionCheckpoints, nativeLiveChatAttachments, conversationAttachments, conversationContentBlocks } from "../src/database/schema.js";
+import { users, conversations, conversationMessages, nativeLiveTurnPreparations, nativeLiveRuntimeEvents, nativeLiveRuntimeListenerLeases, nativeLiveProviderSessionCleanups, conversationProviderSessionCheckpoints, nativeLiveChatAttachments, conversationAttachments, conversationContentBlocks } from "../src/database/schema.js";
 import { NativeLiveBackendTurnCoordinator } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 import { DrizzleNativeLiveBackendRelayRepository } from "../src/domains/bridge/relay/native-live-backend-relay.js";
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
 import { DrizzleNativeLiveCurrentPathReader } from "../src/domains/conversation/native-live-current-path-read-repository.js";
+import { rotateNativeWriterGeneration } from "../src/domains/bridge/turn/turn-repository/session-owner.js";
+import { bindNativeLiveInput } from "../src/domains/bridge/relay/native-live-input-binding.js";
+import { DrizzleNativeLiveRuntimeEventRepository } from "../src/domains/bridge/runtime-interaction/native-live-runtime-event-stream.js";
 import { NativeLiveSilenceWakeService, silenceWakePreparationId } from "../src/domains/bridge/turn/native-live-silence-wake.js";
 
 const enabled = process.env.RUN_NATIVE_LIVE_RELAY_DATABASE_TEST === "1";
@@ -17,7 +20,7 @@ async function fixture(t: test.TestContext) {
   await verifyIsolatedPostgresTarget(isolatedPostgresTarget(url));
   const database = createDatabase(url, { ssl: false });
   const [user] = await database.db.insert(users).values({ email: `background-receipt-${crypto.randomUUID()}@example.com`, displayName: "Synthetic background" }).returning();
-  t.after(async () => { try { await database.db.delete(nativeLiveRuntimeListenerLeases).where(eq(nativeLiveRuntimeListenerLeases.userId, user.id)); await database.db.delete(conversations).where(eq(conversations.userId, user.id)); await database.db.delete(users).where(eq(users.id, user.id)); } finally { await database.close(); } });
+  t.after(async () => { try { await database.db.delete(nativeLiveRuntimeListenerLeases).where(eq(nativeLiveRuntimeListenerLeases.userId, user.id)); await database.db.delete(conversations).where(eq(conversations.userId, user.id)); await database.db.delete(nativeLiveProviderSessionCleanups).where(eq(nativeLiveProviderSessionCleanups.userId, user.id)); await database.db.delete(users).where(eq(users.id, user.id)); } finally { await database.close(); } });
   const canonical = new DrizzleNativeLiveConversationRepository(database.db), conversation = await canonical.createConversation({ userId: user.id });
   const coordinator = new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(database.db));
   const source = await coordinator.prepare(user.id, { dispatch_target: "claude_code", request_id: crypto.randomUUID(), conversation_id: conversation.id, operation: "send", expected_head_message_id: null, text: "synthetic" });
@@ -152,7 +155,7 @@ for (const legacy of [false, true] as const) test(`visible Silence Wake followed
 });
 
 
-async function strandedRejectedWake(t: test.TestContext, intermediate = false) {
+async function strandedRejectedWake(t: test.TestContext, intermediate = false, options: { mutation?: "started input" | "runtime evidence"; expire?: boolean } = {}) {
   const f = await fixture(t);
   let preWakeHead = f.completed.assistantMessageId;
   if (intermediate) {
@@ -252,6 +255,20 @@ async function strandedRejectedWake(t: test.TestContext, intermediate = false) {
     reservedBy: f.prepare.listenerInstanceId, dispatchStatus: "executing",
     reservedAt: new Date(), reservationExpiresAt: deadline, executionStartedAt: new Date(),
   }).where(eq(nativeLiveTurnPreparations.id, rejected.command.prepare_id));
+  if (options.mutation === "started input") {
+    const c = rejected.command;
+    const binding = { userId: f.user.id, listenerInstanceId: f.prepare.listenerInstanceId, reservationId: c.prepare_id,
+      requestId: c.request_id, conversationId: c.conversation_id, runtimeMode: c.runtime_mode,
+      canonicalUserMessageId: c.canonical_user_message_id, parentProviderSessionId: c.parent_provider_session_id,
+      parentProviderCheckpointId: c.parent_provider_checkpoint_id! };
+    assert.ok(await bindNativeLiveInput(f.database.db, { ...binding, phase: "queued" }));
+    assert.ok(await bindNativeLiveInput(f.database.db, { ...binding, phase: "started" }));
+  } else if (options.mutation === "runtime evidence") {
+    assert.deepEqual(await new DrizzleNativeLiveRuntimeEventRepository(f.database.db).appendBatch({
+      userId: f.user.id, listenerInstanceId: f.prepare.listenerInstanceId, reservationId: rejected.command.prepare_id,
+      events: [{ sequence: 1, event: { type: "text", payload: { text: "synthetic one-shot output" } } }],
+    }), { created: 1, idempotent: 0 });
+  }
   assert.equal(await f.repository.rejectReservation({
     userId: f.user.id, listenerInstanceId: f.prepare.listenerInstanceId,
     reservationId: rejected.command.prepare_id, code: "INVALID_COMMAND",
@@ -259,7 +276,7 @@ async function strandedRejectedWake(t: test.TestContext, intermediate = false) {
 
   // Same receipt is now beyond its old transport lease: this reproduces
   // Mac restart's background-results/prepare HTTP 409 after the Failed alert.
-  await f.database.db.execute(sql`
+  if (options.expire !== false) await f.database.db.execute(sql`
     UPDATE native_live_runtime_events SET payload=jsonb_set(
       payload, '{expiresAt}', to_jsonb('2000-01-01T00:00:00.000Z'::text))
     WHERE user_id=${f.user.id}::uuid AND id=${receiptId}::uuid
@@ -268,8 +285,8 @@ async function strandedRejectedWake(t: test.TestContext, intermediate = false) {
     prepare, submit, rejectedId: rejected.command.prepare_id, receiptId };
 }
 
-test("expired Cron receipt reclaims only a rejected unstarted send owner after legacy Wake 409", { skip: !enabled }, async t => {
-  const f = await strandedRejectedWake(t);
+for (const expire of [true, false]) test(`${expire ? "expired" : "live"} Cron receipt commits after rejected unstarted send without rewriting its slot`, { skip: !enabled }, async t => {
+  const f = await strandedRejectedWake(t, false, { expire });
   const [before] = await f.database.db.execute<{ owner: string; anchor: string }>(sql`
     SELECT provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner,
       provider_metadata->'native_live_presentation_owner'->>'anchorHeadMessageId' AS anchor
@@ -287,8 +304,8 @@ test("expired Cron receipt reclaims only a rejected unstarted send owner after l
       current_head_message_id::text AS head
     FROM conversations WHERE id=${f.conversation.id}::uuid
   `);
-  assert.equal(after.owner, f.source.command.prepare_id,
-    "rejected foreground may not steal the recovered persistent SDK owner");
+  assert.equal(after.owner, f.rejectedId,
+    "writer generation, not a slot rewrite, authorizes the old native line");
   assert.equal(after.anchor, f.receiptId);
   assert.equal(after.head, f.receiptId);
   assert.deepEqual(await f.repository.submitBackgroundResult(f.submit),
@@ -322,28 +339,24 @@ test("historical Wake sourced from a prior canonical Cron recovers the stranded 
   `);
   assert.equal(state.head, f.receiptId);
   assert.equal(state.anchor, f.receiptId);
-  assert.equal(state.owner, f.source.command.prepare_id);
+  assert.equal(state.owner, f.rejectedId, "generation readers never restore the previous slot");
 });
 
-for (const tamper of ["not actual Wake parent", "previous Cron changed generation"] as const)
+for (const tamper of ["canonical head changed", "writer generation changed"] as const)
   test(`multi-hop Wake recovery refuses ${tamper}`, { skip: !enabled }, async t => {
     const f = await strandedRejectedWake(t, true);
-    if (tamper === "not actual Wake parent") {
-      await f.database.db.execute(sql`
-        UPDATE native_live_turn_preparations
-        SET wake_context=jsonb_set(wake_context,'{source_head_message_id}',
-          to_jsonb(${f.completed.assistantMessageId}::text))
-        WHERE id=${f.wakeId}::uuid
-      `);
+    if (tamper === "canonical head changed") {
+      await f.canonical.setCurrentHead({ userId: f.user.id, conversationId: f.conversation.id,
+        messageId: f.preWakeHead });
     } else {
       await f.database.db.execute(sql`
         UPDATE conversation_provider_session_checkpoints
         SET runtime_metadata=jsonb_set(runtime_metadata,
-          '{native_live_generation,presentation_owner_id}',
+          '{native_live_generation,writer_generation}',
           to_jsonb(${crypto.randomUUID()}::text))
         WHERE user_id=${f.user.id}::uuid
           AND conversation_id=${f.conversation.id}::uuid
-          AND canonical_message_id=${f.preWakeHead}::uuid
+          AND canonical_message_id=${f.wakeHead}::uuid
       `);
     }
     await assert.rejects(f.repository.prepareBackgroundResult(f.prepare),
@@ -353,27 +366,17 @@ for (const tamper of ["not actual Wake parent", "previous Cron changed generatio
         provider_metadata->'native_live_presentation_owner'->>'prepareId' AS owner
       FROM conversations WHERE id=${f.conversation.id}::uuid
     `);
-    assert.equal(state.head, f.wakeHead);
-    assert.equal(state.owner, f.rejectedId, "failed lineage proof cannot seize ownership");
+    assert.equal(state.head, tamper === "canonical head changed" ? f.preWakeHead : f.wakeHead);
+    assert.equal(state.owner, f.rejectedId, "a changed native line cannot seize ownership");
   });
 
 for (const mutated of ["started input", "runtime evidence", "changed revision", "competing foreground"] as const)
   test(`recovery refuses ${mutated} after rejected foreground`, { skip: !enabled }, async t => {
-    const f = await strandedRejectedWake(t);
-    if (mutated === "started input") {
-      await f.database.db.execute(sql`
-        UPDATE native_live_turn_preparations
-        SET runtime_metadata=jsonb_set(coalesce(runtime_metadata,'{}'::jsonb),
-          '{native_live_input_binding}', '{"started":true}'::jsonb)
-        WHERE id=${f.rejectedId}::uuid
-      `);
-    } else if (mutated === "runtime evidence") {
-      await f.database.db.execute(sql`
-        INSERT INTO native_live_runtime_events
-          (id,user_id,prepare_id,sequence,event_type,provider_session_id,payload)
-        VALUES (${crypto.randomUUID()}::uuid,${f.user.id}::uuid,
-          ${f.rejectedId}::uuid,1,'runtime',NULL,'{}'::jsonb)
-      `);
+    const f = await strandedRejectedWake(t, false, {
+      mutation: mutated === "started input" || mutated === "runtime evidence" ? mutated : undefined,
+    });
+    if (mutated === "started input" || mutated === "runtime evidence") {
+      // Real binding/event APIs above rotate the generation before rejection.
     } else if (mutated === "changed revision") {
       const revision = crypto.randomUUID();
       await f.database.db.execute(sql`
@@ -468,9 +471,8 @@ for (const mutation of ["foreground", "desktop", "head", "generation", "revision
   if (mutation === "foreground") assert.equal(await f.parent(), f.base);
   else if (mutation === "expired-listener") await f.database.db.update(nativeLiveRuntimeListenerLeases).set({ leaseExpiresAt: new Date(0) }).where(eq(nativeLiveRuntimeListenerLeases.userId, f.user.id));
   else if (mutation === "head") await f.database.db.update(conversations).set({ currentHeadMessageId: null }).where(eq(conversations.id, f.conversation.id));
-  else await f.database.db.execute(mutation === "generation"
-    ? sql`UPDATE conversations SET provider_metadata=jsonb_set(provider_metadata, '{native_live_presentation_owner}', jsonb_build_object('prepareId', ${crypto.randomUUID()}::text)) WHERE id=${f.conversation.id}::uuid`
-    : mutation === "revision" ? sql`UPDATE conversations SET provider_metadata=jsonb_set(provider_metadata, '{nativeSessionSource}', '{"owner":"leileios","revision":"changed"}'::jsonb) WHERE id=${f.conversation.id}::uuid`
+  else if (mutation === "generation") await rotateNativeWriterGeneration(f.database.db, { userId: f.user.id, conversationId: f.conversation.id });
+  else await f.database.db.execute(mutation === "revision" ? sql`UPDATE conversations SET provider_metadata=jsonb_set(provider_metadata, '{nativeSessionSource}', '{"owner":"leileios","revision":"changed"}'::jsonb) WHERE id=${f.conversation.id}::uuid`
       : sql`UPDATE conversations SET provider_metadata=jsonb_set(provider_metadata, '{nativeSessionSource}', '{"owner":"desktop"}'::jsonb) WHERE id=${f.conversation.id}::uuid`);
   assert.deepEqual(await f.repository.submitBackgroundResult(f.submit), { outcome: "stale", duplicate: false, providerCheckpointId: null });
   const [receipt] = await f.database.db.select().from(nativeLiveRuntimeEvents).where(eq(nativeLiveRuntimeEvents.id, f.prepare.receiptId));
@@ -987,4 +989,61 @@ for (const state of ["foreign", "pending", "already-bound", "expired"] as const)
   assert.equal(ready.status,"ready"); assert.equal(ready.boundMessageId,null);
   const [receipt] = await f.database.db.select().from(nativeLiveRuntimeEvents).where(eq(nativeLiveRuntimeEvents.id,f.prepare.receiptId));
   assert.equal(receipt.payload.phase,"prepared");
+});
+
+test("edit commit refuses a prepared old-writer Cron receipt", { skip: !enabled }, async t => {
+  const f = await fixture(t);
+  await f.repository.prepareBackgroundResult(f.prepare);
+  const edited = await f.coordinator.prepare(f.user.id, { dispatch_target: "claude_code", request_id: crypto.randomUUID(),
+    conversation_id: f.conversation.id, operation: "edit", target_user_message_id: f.source.command.canonical_user_message_id!,
+    text: "synthetic edited input" });
+  assert.ok(edited.ok); if (!edited.ok) throw Error("edit prepare failed");
+  const finalized = await f.coordinator.finalize(f.user.id, { ...f.submit.result,
+    prepare_id: edited.command.prepare_id, request_id: edited.command.request_id, provider_session_id: "synthetic-edited-session",
+    provider_checkpoint_id: crypto.randomUUID(), normalized_events: [{type:"text",payload:{text:"synthetic edited reply"}}] });
+  assert.ok(finalized.ok && finalized.outcome === "completed");
+  // Replacement may purge the source preparation; either missing or stale is
+  // terminal refusal. Never recreate or attach its old writer output.
+  await assert.rejects(f.repository.prepareBackgroundResult(f.prepare), error =>
+    ["BACKGROUND_NOT_FOUND", "BACKGROUND_CONFLICT"].includes((error as {code:string}).code));
+  assert.equal((await f.canonical.getConversation({userId:f.user.id,conversationId:f.conversation.id}))!.currentHeadMessageId,
+    (finalized as {assistantMessageId:string}).assistantMessageId);
+});
+
+test("legacy background stamps and saved receipt survive a rejected unstarted slot", { skip: !enabled }, async t => {
+  const f=await strandedRejectedWake(t);
+  // Simulate 0111's backfill for an already-valid pre-writer-generation stamp.
+  await f.database.db.execute(sql`UPDATE native_live_session_owners SET writer_generation=${f.source.command.prepare_id}::uuid
+    WHERE user_id=${f.user.id}::uuid AND conversation_id=${f.conversation.id}::uuid`);
+  await f.database.db.execute(sql`UPDATE conversation_provider_session_checkpoints
+    SET runtime_metadata=runtime_metadata #- '{native_live_generation,writer_generation}'
+    WHERE user_id=${f.user.id}::uuid AND canonical_message_id=${f.wakeHead}::uuid`);
+  await f.database.db.execute(sql`UPDATE native_live_runtime_events SET payload=payload #- '{context,writerGeneration}'
+    WHERE user_id=${f.user.id}::uuid AND id=${f.receiptId}::uuid`);
+  await f.repository.prepareBackgroundResult(f.prepare);
+  assert.equal((await f.repository.submitBackgroundResult(f.submit)).outcome,"committed");
+  const [surface]=await f.database.db.execute<{slot:string;head:string}>(sql`SELECT
+    provider_metadata->'native_live_presentation_owner'->>'prepareId' AS slot,current_head_message_id::text AS head
+    FROM conversations WHERE id=${f.conversation.id}::uuid`);
+  assert.deepEqual(surface,{slot:f.rejectedId,head:f.receiptId});
+});
+
+test("fresh Cron receipt after rejected unstarted send does not need historical repair state", {skip:!enabled},async t=>{
+  const f=await strandedRejectedWake(t,false,{expire:false});
+  const receiptId=crypto.randomUUID();
+  const prepared=await f.repository.prepareBackgroundResult({...f.prepare,receiptId});
+  assert.equal(prepared.receiptId,receiptId);
+  const commit=await f.repository.submitBackgroundResult({...f.submit,receiptId});
+  assert.equal(commit.outcome,"committed");
+  const [surface]=await f.database.db.execute<{slot:string;head:string}>(sql`SELECT
+    provider_metadata->'native_live_presentation_owner'->>'prepareId' AS slot,current_head_message_id::text AS head
+    FROM conversations WHERE id=${f.conversation.id}::uuid`);
+  assert.deepEqual(surface,{slot:f.rejectedId,head:receiptId});
+});
+
+test("missing native owner row cannot authorize a background receipt",{skip:!enabled},async t=>{
+  const f=await fixture(t);
+  await f.database.db.execute(sql`DELETE FROM native_live_session_owners WHERE user_id=${f.user.id}::uuid AND conversation_id=${f.conversation.id}::uuid`);
+  await assert.rejects(f.repository.prepareBackgroundResult(f.prepare),{code:"BACKGROUND_CONFLICT"});
+  assert.equal((await f.canonical.getConversation({userId:f.user.id,conversationId:f.conversation.id}))!.currentHeadMessageId,f.completed.assistantMessageId);
 });

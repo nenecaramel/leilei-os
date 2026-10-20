@@ -18,7 +18,10 @@ export function nativeResumeCheckpointSql(checkpointAlias: string, conversationA
     AND ${tail}->>'checkpoint_id' <> '00000000-0000-0000-0000-000000000000'
     AND (${tail}->>'source_revision') IS NOT DISTINCT FROM (${conversation}.provider_metadata->'nativeSessionSource'->>'revision')
     AND coalesce(${conversation}.provider_metadata->'nativeSessionSource'->>'owner', 'leileios') = 'leileios'
-    ${enforceGeneration ? sql`AND (${tail}->>'presentation_owner_id') IS NOT DISTINCT FROM (${conversation}.provider_metadata->'native_live_presentation_owner'->>'prepareId')` : sql``}
+    ${enforceGeneration ? sql`AND coalesce(${tail}->>'writer_generation', ${tail}->>'presentation_owner_id') = (
+      SELECT o.writer_generation::text FROM native_live_session_owners o
+      WHERE o.conversation_id=${conversation}.id AND o.user_id=${conversation}.user_id
+    )` : sql``}
     THEN ${tail}->>'checkpoint_id' ELSE ${cp}.provider_checkpoint_id END`;
 }
 
