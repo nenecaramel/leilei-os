@@ -35,3 +35,13 @@ test('switch command still hides unknown and non-sanitized errors', async () => 
   assert.equal(nativeSwitchErrorCode(Object.assign(new Error('PRIVATE /Users/x'), { code: 'ENOENT' })), 'NATIVE_INSPECTION_UNAVAILABLE');
   assert.equal(nativeSwitchErrorCode(new Error('PRIVATE')), 'NATIVE_INSPECTION_UNAVAILABLE');
 });
+
+test('switch command reports original and cleanup codes without leaking messages', async () => {
+  const { nativeSwitchErrorCodes, nativeSwitchErrorCode } = await import('../src/native-session-switch-codes.mjs');
+  for (const code of ['NATIVE_RELEASE_BEGIN_UNCONFIRMED', 'NATIVE_RELEASE_CANCEL_UNCONFIRMED', 'NATIVE_SESSION_SWITCHING']) {
+    assert.equal(nativeSwitchErrorCode({ code }), code);
+  }
+  assert.deepEqual(nativeSwitchErrorCodes({ code: 'NATIVE_DESKTOP_LAUNCH_FAILED', cleanupErrors: [
+    { code: 'STALE_NATIVE_PROJECTION', message: 'PRIVATE' }, { code: 'ENOENT', message: 'PRIVATE' },
+  ] }), ['NATIVE_DESKTOP_LAUNCH_FAILED', 'STALE_NATIVE_PROJECTION', 'NATIVE_INSPECTION_UNAVAILABLE']);
+});

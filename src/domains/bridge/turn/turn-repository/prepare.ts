@@ -10,7 +10,7 @@ import {
   nativeLiveTurnPreparations,
   conversations,
 } from "../../../../database/schema.js";
-import { DrizzleNativeLiveConversationRepository, nativeSessionHeldByDesktop } from "../../../conversation/native-live-conversation-repository.js";
+import { DrizzleNativeLiveConversationRepository, readNativeSessionOwnerLocked } from "../../../conversation/native-live-conversation-repository.js";
 import type {
   NativeLivePreparedTurn,
   NativeLivePreparePortResult,
@@ -77,7 +77,8 @@ export async function prepareSend(
         );
         if (existing) return requestConflictOrReplay(existing, requestHash);
 
-        if (await nativeSessionHeldByDesktop(transaction as Transaction, input)) return { ok: false as const, code: "SESSION_OWNED_BY_DESKTOP" as const };
+        const owner = await readNativeSessionOwnerLocked(transaction as Transaction, input);
+        if (owner !== "leileios") return { ok: false as const, code: owner === "releasing" ? "NATIVE_SESSION_SWITCHING" as const : "SESSION_OWNED_BY_DESKTOP" as const };
 
         const conversations =
           new DrizzleNativeLiveConversationRepository(
@@ -210,7 +211,8 @@ export async function prepareRetry(
         );
         if (existing) return requestConflictOrReplay(existing, requestHash);
 
-        if (await nativeSessionHeldByDesktop(transaction as Transaction, input)) return { ok: false as const, code: "SESSION_OWNED_BY_DESKTOP" as const };
+        const owner = await readNativeSessionOwnerLocked(transaction as Transaction, input);
+        if (owner !== "leileios") return { ok: false as const, code: owner === "releasing" ? "NATIVE_SESSION_SWITCHING" as const : "SESSION_OWNED_BY_DESKTOP" as const };
 
         const conversations =
           new DrizzleNativeLiveConversationRepository(
@@ -336,7 +338,8 @@ export async function prepareEdit(
         );
         if (existing) return requestConflictOrReplay(existing, requestHash);
 
-        if (await nativeSessionHeldByDesktop(transaction as Transaction, input)) return { ok: false as const, code: "SESSION_OWNED_BY_DESKTOP" as const };
+        const owner = await readNativeSessionOwnerLocked(transaction as Transaction, input);
+        if (owner !== "leileios") return { ok: false as const, code: owner === "releasing" ? "NATIVE_SESSION_SWITCHING" as const : "SESSION_OWNED_BY_DESKTOP" as const };
 
         const conversations =
           new DrizzleNativeLiveConversationRepository(
@@ -585,7 +588,8 @@ export async function resolveRuntimeParent(
         if (!floor?.allowed) return { ok: false, result: { ok: false, code: "BRANCH_POINT_INVALID" } };
       }
       if (binding.headMessageId === parentMessageId) {
-        if (await readNativeSessionOwner(executor, { userId, conversationId }) !== "leileios") return { ok: false, result: { ok: false, code: "SESSION_OWNED_BY_DESKTOP" } };
+        const owner = await readNativeSessionOwner(executor, { userId, conversationId });
+        if (owner !== "leileios") return { ok: false, result: { ok: false, code: owner === "releasing" ? "NATIVE_SESSION_SWITCHING" : "SESSION_OWNED_BY_DESKTOP" } };
         // A session imported from Claude Desktop has an immutable handoff
         // checkpoint, but a later LeileiOS quiet Wake may have advanced the
         // native JSONL invisibly while leaving the canonical head unchanged.

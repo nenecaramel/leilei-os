@@ -23,11 +23,11 @@ export const NATIVE_DISPLAY_ASSET_BATCH_BYTES = 2 * 1024 * 1024;
 // The free-plan database restarts about every 10 minutes and the app follows it
 // for ~40 s. Requests whose replay is idempotent wait that out; the rest fail.
 export const NATIVE_RELAY_RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
-const retryOnUnavailable = new Set(['state', 'asset-stage', 'restore', 'release', 'asset', 'choices', 'continuation-state', 'continuation-attach', 'continuation-release']);
+const retryOnUnavailable = new Set(['state', 'asset-stage', 'restore', 'release', 'asset', 'choices', 'continuation-state', 'continuation-attach', 'continuation-release', 'continuation-release-begin', 'continuation-release-cancel']);
 // A restore that timed out may still be committing; replaying it only queues
 // behind the same lock, so only short read/bind calls retry after a timeout.
-const retryOnTimeout = new Set(['state', 'asset-stage', 'release', 'asset', 'choices', 'continuation-state', 'continuation-attach', 'continuation-release']);
-const publicCodes = new Set(['NATIVE_CONVERSATION_BUSY', 'STALE_NATIVE_PROJECTION', 'CANONICAL_HEAD_CHANGED', 'CANONICAL_HISTORY_CHANGED', 'CANONICAL_CHECKPOINT_CHANGED', 'NATIVE_SOURCE_BINDING_REQUIRED', 'EXPLICIT_BRANCH_SELECTION_REQUIRED', 'NATIVE_HISTORY_REWRITTEN', 'NATIVE_TRANSCRIPT_DIVERGED', 'NATIVE_SESSION_RECOVERY_REQUIRED', 'CLEANUP_IN_PROGRESS', 'NATIVE_CONVERSATION_NOT_FOUND', 'INVALID_NATIVE_PROJECTION', 'INVALID_NATIVE_SNAPSHOT', 'BATCH_TOO_LARGE', 'NATIVE_SESSION_ALREADY_ATTACHED', 'INVALID_NATIVE_ASSET', 'NATIVE_ASSET_UNAVAILABLE', 'NATIVE_ASSET_MISMATCH', 'NATIVE_SYNC_BASE_CHANGED']);
+const retryOnTimeout = new Set(['state', 'asset-stage', 'release', 'asset', 'choices', 'continuation-state', 'continuation-attach', 'continuation-release', 'continuation-release-begin', 'continuation-release-cancel']);
+const publicCodes = new Set(['NATIVE_SESSION_SWITCHING', 'NATIVE_CONVERSATION_BUSY', 'STALE_NATIVE_PROJECTION', 'CANONICAL_HEAD_CHANGED', 'CANONICAL_HISTORY_CHANGED', 'CANONICAL_CHECKPOINT_CHANGED', 'NATIVE_SOURCE_BINDING_REQUIRED', 'EXPLICIT_BRANCH_SELECTION_REQUIRED', 'NATIVE_HISTORY_REWRITTEN', 'NATIVE_TRANSCRIPT_DIVERGED', 'NATIVE_SESSION_RECOVERY_REQUIRED', 'CLEANUP_IN_PROGRESS', 'NATIVE_CONVERSATION_NOT_FOUND', 'INVALID_NATIVE_PROJECTION', 'INVALID_NATIVE_SNAPSHOT', 'BATCH_TOO_LARGE', 'NATIVE_SESSION_ALREADY_ATTACHED', 'INVALID_NATIVE_ASSET', 'NATIVE_ASSET_UNAVAILABLE', 'NATIVE_ASSET_MISMATCH', 'NATIVE_SYNC_BASE_CHANGED']);
 
 // Explicit history restore only: no SDK query, native file writes, Desktop
 // launching or execution lease. The server binds ownership to internal auth.

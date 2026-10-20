@@ -20,14 +20,18 @@ export async function readState(db: Database, userId: string, conversationId: st
   assert.ok(row, 'owner row exists');
   const messages = await db.execute<Message>(sql`SELECT id::text,parent_message_id::text AS parent,role,status
     FROM conversation_messages WHERE user_id=${userId}::uuid AND conversation_id=${conversationId}::uuid ORDER BY created_at,id`);
-  const [counts] = await db.execute<{ messages: number; checkpoints: number; events: number; receipts: number }>(sql`
+  const [counts] = await db.execute<{ messages: number; checkpoints: number; events: number; receipts: number; preparations: number; pendingPreparations: number; wakeReceipts: number }>(sql`
     SELECT (SELECT count(*)::int FROM conversation_messages WHERE user_id=${userId}::uuid AND conversation_id=${conversationId}::uuid) AS messages,
       (SELECT count(*)::int FROM conversation_provider_session_checkpoints WHERE user_id=${userId}::uuid AND conversation_id=${conversationId}::uuid) AS checkpoints,
       (SELECT count(*)::int FROM native_live_runtime_events e JOIN native_live_turn_preparations p ON p.id=e.prepare_id
         WHERE p.user_id=${userId}::uuid AND p.conversation_id=${conversationId}::uuid) AS events,
       (SELECT count(*)::int FROM native_live_runtime_events e JOIN native_live_turn_preparations p ON p.id=e.prepare_id
         WHERE p.user_id=${userId}::uuid AND p.conversation_id=${conversationId}::uuid
-          AND e.payload->>'kind'='persistent_background_receipt_v1') AS receipts`);
+          AND e.payload->>'kind'='persistent_background_receipt_v1') AS receipts,
+      (SELECT count(*)::int FROM native_live_turn_preparations WHERE user_id=${userId}::uuid AND conversation_id=${conversationId}::uuid) AS preparations,
+      (SELECT count(*)::int FROM native_live_turn_preparations WHERE user_id=${userId}::uuid AND conversation_id=${conversationId}::uuid
+        AND status='prepared' AND dispatch_status IN ('staged','pending','reserved','executing','delivery_unknown')) AS "pendingPreparations",
+      (SELECT count(*)::int FROM native_live_silence_wake_receipts WHERE user_id=${userId}::uuid) AS "wakeReceipts"`);
   return { row, messages, counts };
 }
 export type Snapshot = Awaited<ReturnType<typeof readState>>;

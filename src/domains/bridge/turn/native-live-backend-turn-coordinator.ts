@@ -62,6 +62,7 @@ export type NativeLivePrepareFailureCode =
   | "CHECKPOINT_NOT_FOUND"
   | "REQUEST_CONFLICT"
   | "SESSION_OWNED_BY_DESKTOP"
+  | "NATIVE_SESSION_SWITCHING"
   | "INTERNAL_ERROR";
 
 export type NativeLivePreparePortResult =

@@ -1,10 +1,10 @@
 export type Turn = 'idle' | 'prepared' | 'executing' | 'started' | 'delivery_unknown';
 export type Operation = 'send' | 'edit' | 'retry' | 'stale_send' | 'reserve' | 'admit' | 'renew' |
   'queue' | 'start' | 'events' | 'success' | 'failure' | 'reject' | 'finalize_rejected' | 'unknown' |
-  'attach' | 'release' | 'crash' | 'background_prepare' | 'background_submit' | 'background_cover' | 'wake' | 'repeat' | 'late_admit' | 'late_retry';
+  'attach' | 'release' | 'begin_release' | 'complete_release' | 'cancel_release' | 'stale_complete_release' | 'stale_cancel_release' | 'probe_owner_fence' | 'crash' | 'background_prepare' | 'background_submit' | 'background_cover' | 'wake' | 'repeat' | 'late_admit' | 'late_retry';
 export type Model = {
-  owner: 'leileios' | 'desktop'; turn: Turn; root: string|null; head: string | null; slot: string | null;
-  wakeOutcome?:string; lateRetained?: boolean; branchAllowed?: boolean; backgroundAllowed?: boolean; backgroundOutcome?: string; prestartPending?: boolean; busyCount?: number; touched: boolean; inputStarted: boolean; listenerCurrent: boolean;
+  owner: 'leileios' | 'releasing' | 'desktop'; turn: Turn; root: string|null; head: string | null; slot: string | null;
+  releaseBlocked?:boolean; wakeOutcome?:string; lateRetained?: boolean; branchAllowed?: boolean; backgroundAllowed?: boolean; backgroundOutcome?: string; prestartPending?: boolean; busyCount?: number; touched: boolean; inputStarted: boolean; listenerCurrent: boolean;
   background?: { generation: string; head: string; ownerRevision: string | null; queued: boolean };
 };
 type Cell = { state: string; operation: readonly Operation[]; when: (m: Model) => boolean; outcomes: readonly string[] };
@@ -13,6 +13,18 @@ const executable = (m: Model) => m.owner === 'leileios' && m.listenerCurrent && 
 // Ordered cells are the executable audit §3 table. Refusals are explicit;
 // there is no catch-all "any failure is fine" branch.
 export const transitions: readonly Cell[] = [
+  { state: 'release completion / live turn or undelivered background receipt', operation:['release','complete_release'], when:m=>m.releaseBlocked===true, outcomes:['NATIVE_CONVERSATION_BUSY'] },
+  { state: 'desktop / lifecycle CAS is not current', operation:['begin_release','cancel_release'], when:m=>m.owner==='desktop', outcomes:['STALE_NATIVE_PROJECTION'] },
+  { state: 'leileios / cancel requires the prior releasing revision', operation:['cancel_release'], when:m=>m.owner==='leileios', outcomes:['STALE_NATIVE_PROJECTION'] },
+  { state: 'releasing / new foreground work', operation:['send','edit','retry','stale_send'], when:m=>m.owner==='releasing', outcomes:['NATIVE_SESSION_SWITCHING'] },
+  { state: 'leileios / live turn or undelivered background receipt', operation:['begin_release'], when:m=>m.owner==='leileios'&&m.releaseBlocked===true, outcomes:['NATIVE_CONVERSATION_BUSY'] },
+  { state: 'leileios / drained', operation:['begin_release'], when:m=>m.owner==='leileios', outcomes:['releasing'] },
+  { state: 'releasing / duplicate begin CAS', operation:['begin_release'], when:m=>m.owner==='releasing', outcomes:['releasing'] },
+  { state: 'releasing / matching revision', operation:['complete_release'], when:m=>m.owner==='releasing', outcomes:['attached'] },
+  { state: 'releasing / cancel matching revision', operation:['cancel_release'], when:m=>m.owner==='releasing', outcomes:['cancelled'] },
+  { state: 'releasing / stale revision', operation:['stale_complete_release','stale_cancel_release'], when:m=>m.owner==='releasing', outcomes:['STALE_NATIVE_PROJECTION'] },
+  { state: 'leileios / restored reservation control', operation:['probe_owner_fence'], when:m=>m.owner==='leileios', outcomes:['accepted'] },
+  { state: 'non-executable owner / otherwise admissible reservation', operation:['probe_owner_fence'], when:()=>true, outcomes:['refused'] },
   { state: 'desktop', operation: ['send','edit','retry','stale_send'], when: m=>m.owner==='desktop', outcomes:['SESSION_OWNED_BY_DESKTOP'] },
   { state: 'before continuation floor', operation:['edit','retry'], when:m=>m.branchAllowed===false, outcomes:['BRANCH_POINT_INVALID'] },
   { state: 'leileios / stale head', operation:['stale_send'], when:()=>true, outcomes:['STALE_HEAD'] },
@@ -33,9 +45,10 @@ export const transitions: readonly Cell[] = [
   { state: 'listener expired', operation:['crash'], when:()=>true, outcomes:['acquired'] },
   { state: 'background producer usable', operation:['background_prepare'], when:m=>m.backgroundAllowed===true, outcomes:['background_prepared'] },
   { state: 'background producer fenced', operation:['background_prepare'], when:()=>true, outcomes:['BACKGROUND_CONFLICT'] },
-  ...(['committed','queued','stale'] as const).map(outcome=>({ state:`background ${outcome}`, operation:['background_submit','background_cover'] as const, when:(m:Model)=>m.backgroundOutcome===outcome, outcomes:[outcome] })),
-  ...(['ignored:no_source','ignored:slot_not_due','ignored:foreground_active','wake_quiet','wake_stale'] as const).map(outcome=>({ state:`silence ${outcome}`,operation:['wake'] as const,when:(m:Model)=>m.wakeOutcome===outcome,outcomes:[outcome] })),
+  ...(['committed','queued','stale','BACKGROUND_NOT_FOUND'] as const).map(outcome=>({ state:`background ${outcome}`, operation:['background_submit','background_cover'] as const, when:(m:Model)=>m.backgroundOutcome===outcome, outcomes:[outcome] })),
+  ...(['ignored:no_source','ignored:source_changed','ignored:slot_not_due','ignored:foreground_active','wake_quiet','wake_stale'] as const).map(outcome=>({ state:`silence ${outcome}`,operation:['wake'] as const,when:(m:Model)=>m.wakeOutcome===outcome,outcomes:[outcome] })),
   { state: 'purged request / desktop', operation:['late_retry'], when:m=>m.lateRetained===false&&m.owner==='desktop', outcomes:['SESSION_OWNED_BY_DESKTOP'] },
+  { state: 'purged request / releasing', operation:['late_retry'], when:m=>m.lateRetained===false&&m.owner==='releasing', outcomes:['NATIVE_SESSION_SWITCHING'] },
   { state: 'purged request / stale head', operation:['late_retry'], when:m=>m.lateRetained===false, outcomes:['STALE_HEAD'] },
   { state: 'previous successful operation', operation:['repeat','late_retry'], when:()=>true, outcomes:['same'] },
 ];

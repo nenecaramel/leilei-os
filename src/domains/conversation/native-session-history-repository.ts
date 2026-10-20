@@ -13,7 +13,7 @@ import { providerSessionOwnershipLock } from "../bridge/provider-session/native-
 import { inFlightConversationTurns } from "./native-live-conversation-repository.js";
 import { storedContentKind, storedContentPayload } from "./native-live-content-contract.js";
 import type { NativeLiveContentBlockInput } from "./native-live-conversation-types.js";
-import { syncNativeSessionOwner } from "../bridge/turn/turn-repository/session-owner.js";
+import { syncNativeSessionOwner, readNativeSessionOwner } from "../bridge/turn/turn-repository/session-owner.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 export type NativeHistoryMessage = {
@@ -240,6 +240,7 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('leileios-native-history:' || ${input.conversationId}, 0))`);
     const [existing] = await tx.select().from(conversations).where(eq(conversations.id, input.conversationId)).for("update");
     if (existing && (existing.userId !== input.userId || existing.origin !== "native_live" || existing.lifecycleStatus !== "active")) throw fail("NATIVE_CONVERSATION_NOT_FOUND");
+    if (existing && await readNativeSessionOwner(tx,input) === "releasing") throw fail("NATIVE_SESSION_SWITCHING");
     if (existing && nativeContinuationBinding(existing.providerMetadata)) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
     const source = existing?.providerMetadata.nativeSessionSource as SourceIndex | undefined;
     if (existing && !source) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
@@ -467,6 +468,7 @@ export async function releaseNativeSessionToDesktop(db: Database, input: {
     const [conversation] = await tx.select().from(conversations).where(and(
       eq(conversations.id, input.conversationId), eq(conversations.userId, input.userId),
     )).for("update");
+    if (conversation && await readNativeSessionOwner(tx,input) === "releasing") throw fail("NATIVE_SESSION_SWITCHING");
     if (conversation && nativeContinuationBinding(conversation.providerMetadata)) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
     const source = conversation?.providerMetadata.nativeSessionSource as SourceIndex | undefined;
     if (!conversation || conversation.origin !== "native_live" || conversation.lifecycleStatus !== "active" || !source

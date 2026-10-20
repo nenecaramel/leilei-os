@@ -144,18 +144,19 @@ depends on the slot never being empty.
 
 | Transition | Guard (inside one transaction, conversation row locked) |
 | --- | --- |
-| `begin_release` leileios→releasing | Same head and revision CAS as `changeOwner` today. No in-flight turn and no pending compaction (`cont-repo:89-94`). **New:** no `prepared`/`queued` background receipt (S9, unhandled transition 5). |
+| `begin_release` leileios→releasing | Same head and revision CAS as `changeOwner` today. No in-flight turn and no pending compaction (`cont-repo:89-94`). No queued receipt, or prepared receipt whose `expiresAt` is still in the future (S9, unhandled transition 5). |
 | `complete_release` releasing→desktop | `owner_revision` equals the value written by `begin_release`. Head unchanged. Completed checkpoint check as today (`cont-repo:107`). |
 | `cancel_release` releasing→leileios | `owner_revision` equals the `begin_release` value. Idempotent. |
 | `attach` desktop\|releasing\|leileios→leileios | As today (`changeOwner(...,'leileios')`). |
 
-The legacy complete-history path (`history-repo:369-370,494-495`) writes the row
-through the same helper, so it rotates the revision too (unhandled transition 7).
+The legacy full-history restore/release writers refuse while the row owner is
+`releasing`; they cannot bypass a switch in progress. Owner/revision mirroring
+preserves `releasing` and never changes the turn slot or writer generation.
 
 **Execution guard.** Only `owner = 'leileios'` may prepare, admit, renew, bind
 input, commit background output or run Wake. One SQL helper reads the row and
 replaces the 15 `coalesce` copies:
-`nativeSessionExecutable(conversationAlias)`. A missing row means the
+`nativeSessionExecutableSql(conversationAlias)`. A missing row means the
 conversation was never bound. Prepare and attach create the row (upsert under
 the conversation lock), so every other reader can join it strictly.
 
@@ -164,33 +165,59 @@ the conversation lock), so every other reader can join it strictly.
 - `desktop`: `SESSION_OWNED_BY_DESKTOP` (already exists).
 - `releasing`: `NATIVE_SESSION_SWITCHING` (new).
 
-iOS shows both as "this conversation is on Desktop / switching" and does not
-start a turn.
+Both codes map to HTTP 409 for new preparations and create no turn. A retained,
+exactly matching request may replay its original idempotent result; begin has
+already excluded every live/staged dispatch, enqueue cannot revive a non-staged
+record, and admission still refuses execution. This does not authorize a new
+turn while releasing. iOS currently shows its generic
+failure text; a dedicated switching string is a separate follow-up.
 
 ### New switch-out order
 
-Today the order is drain → settle → release. The Mac drain sets the fence, and
-the server learns about it only at release.
+The server's `releasing` owner is the primary fence. The Mac `handoff` suspend
+remains a second line of defence: it prevents a fresh SDK child opening the native
+file before admission. This PR changes the CLI's management of that fence, not
+the daemon.
 
-New order:
+1. Read `continuation-state`, call `continuation-release-begin` with the current
+   session/head/revision, and retain the returned revision R1. Begin needs no
+   native evidence. Existing in-flight turns/compaction and unsettled background
+   receipts return BUSY before ownership changes.
+2. Pin the source, drain the daemon (keeping `handoff`), settle, run the recovery
+   gate, and perform existing preflight/native evidence validation.
+3. Call the existing `continuation-release` with `expectedRevision: R1`, then
+   launch Desktop. Full checkpoint/cwd/ancestry validation is unchanged. A direct
+   `leileios → desktop` release remains supported for one legacy CLI release.
+4. On any error after a confirmed begin, call `continuation-release-cancel` and
+   then `requestNativeSessionResume`, in that order. Preserve the original code;
+   print any cancel/resume failure as a separate sanitized code. Cancel rotates
+   R1 back to a new LeileiOS revision and is idempotent for that R1.
+5. Begin/cancel use the existing bounded short-request retries. If begin's
+   successful response is lost and all retries fail, the CLI cannot guess R1.
+   A crashed CLI or failed cancel can leave durable `releasing`. Recover with
+   `leileios-switch.command leileios` (attach). There is no new `--cancel` CLI
+   flag. If Desktop launch fails **after complete succeeded**, cancel cannot
+   undo Desktop ownership; manual attach is the recovery path in that case too.
 
-1. `begin_release`. From this moment the server refuses new prepares, admissions
-   and lease renewals for this conversation. A running turn keeps
-   `NATIVE_CONVERSATION_BUSY` as today, and nothing is fenced.
-2. Mac drain. It stops the writer and native Cron and waits for the outbox. It
-   **no longer sets a `handoff` fence**: admission already refuses everything,
-   because the owner is not `leileios`.
-3. Settle and preflight of the native file (#1112, unchanged).
-4. `complete_release`, then launch Desktop.
-5. Any failure after step 1: the switch script calls `cancel_release` before it
-   exits. If the script itself dies, the owner stays `releasing`. That state is
-   durable and visible: iOS shows "switching". Running
-   `leileios-switch.command leileios` (attach) recovers it, and so does a new
-   `--cancel` flag. A daemon restart no longer silently changes ownership.
+Success keeps the local handoff fence while Desktop owns the session. A successful
+attach still calls resume; failure cleanup calls cancel before resume. No daemon
+restart is required. While releasing, a due silence Wake returns the existing
+`ignored/source_changed` shape without inserting a preparation or receipt, so it
+cannot strand complete/retry/attach behind newly pending work. Its conversation
+lock serializes this decision with begin-release; no new Mac wire code is needed.
 
-Switch-in (attach) no longer needs the `resume` socket call (#1114): there is
-no Mac fence left to lift. The socket keeps answering `resume` as a no-op for one
-release, so an older switch script still works.
+Valid current-head quiet cursors survive begin/cancel owner-revision changes.
+The transaction rebinds only a tail that already passes all session/base/cwd/head,
+revision and writer-generation checks. Administrative continuation reads may read
+such a verified tail while releasing; execution readers retain the strict owner
+fence. Old checkpoint generation stamps and background receipts are never
+rebound. An at-anchor continuation adopts a resolved tail only when its canonical
+session/base checkpoint/cwd match the binding, preserving the replacement floor.
+
+Deployment: server endpoints first, then the owner fast-forwards the canonical
+checkout used by the switch command. No migration or daemon refresh. The owner
+performs Desktop ⇄ LeileiOS, Edit/Retry, fork/compact, a forced post-begin failure,
+and a phone send during switching acceptance after review/merge authorization.
 
 ## Compatibility and migration
 
@@ -211,8 +238,8 @@ release, so an older switch script still works.
 - **Merging any PR with a migration runs it in production**: Railway runs
   `preDeployCommand: node dist/database/migrate.js`. That needs the owner's
   explicit go-ahead at merge time.
-- No Mac change until PR 4. PRs 1–3 are server-only, and the daemon does not
-  need a restart.
+- PRs 1–3 are server-only. PR 4 changes the switch CLI but not the daemon;
+  the daemon does not need a restart.
 
 ## PR plan
 
@@ -225,8 +252,8 @@ and runs `pnpm agent:verify --run`.
 | 2a | Rotate `writer_generation` when input starts (binding `started`) and on a non-Wake turn's first runtime events. | None (nothing reads the generation yet). RED: queued input keeps the generation; started input rotates it once; one-shot first events rotate it once. | Server only. |
 | 2b | Generation readers move to the row: background snapshot and append, resume tail (`native-live-resume-checkpoint.ts`), Wake admission branch, finalize Wake check. Delete `reconcileRejectedWakePresentationOwner`. | F12/F13 class fixed at the root. RED: a rejected unstarted send after Wake, then Cron B is accepted *without* the repair path. A started send stales B. An edit commit stales old-writer B. | Server only. |
 | 3 | `nativeSessionExecutable()` helper replaces the 15 owner predicates. Turn-slot readers (admission, input binding, finalize success/failure, `reads.ts`) move to the row. The presentation-owner JSON is no longer written. | None intended. RED: a conversation with `owner='releasing'` is refused by prepare, admission, renewal, input binding, background and Wake. | Server only. |
-| 4 | `begin/complete/cancel_release` routes and the new switch-out order in `native-session-continuation.mjs`. S9 receipts in the busy check. `NATIVE_SESSION_SWITCHING`. The Mac drain stops setting `handoff`; `resume` becomes a no-op. | Fixes unhandled transitions 1, 2 and 5. | Server, then daemon `:fresh`. Acceptance: Codex steps 1–4, plus a release killed mid-way, plus a send during switching. |
-| 5 | Cleanup: delete the M1 `handoff` reason and the `resume` socket action. Remove the `nativeSessionSource.owner/revision` JSON copies once readers no longer use them. Leave the old JSON keys in place (no data rewrite). | None. | Daemon `:fresh`. |
+| 4 | `begin/complete/cancel_release` routes and the new switch-out order in `native-session-continuation.mjs`. S9 receipts in the busy check. `NATIVE_SESSION_SWITCHING`. The Mac handoff fence and resume remain; CLI failure cleanup cancels then resumes. | Fixes unhandled transitions 1, 2 and 5. | Server first, then owner fast-forward for the CLI; no daemon restart. Acceptance: Codex steps 1–4, plus a release killed mid-way, plus a send during switching. |
+| 5 | Cleanup: retire the legacy direct release and remove `nativeSessionSource.owner/revision` JSON copies once readers no longer use them. Leave historical keys in place (no bulk rewrite). Removing the Mac handoff/resume belt requires a separate approved design; it is not implied by PR 4. | None. | Daemon `:fresh`. |
 
 iOS: `NATIVE_SESSION_SWITCHING` needs a user-facing string. Until iOS ships it,
 the generic failure text appears; that is safe and does not lose input.
@@ -256,8 +283,9 @@ Mac daemon refresh, ownership transition or production DB operation.
 
 Execution readers use `nativeSessionExecutableSql` or `readNativeSessionOwner`
 from `turn-repository/session-owner.ts`. The owner row is authoritative even if
-`nativeSessionSource.owner` disagrees. Both `desktop` and `releasing` take the
-existing desktop/busy refusal paths; this PR adds no switching error code.
+`nativeSessionSource.owner` disagrees. In PR 3a, both `desktop` and `releasing` took the
+existing desktop/busy refusal paths. PR 4 adds `NATIVE_SESSION_SWITCHING` for
+releasing prepare requests.
 
 A missing row remains executable as `leileios`: a newly created conversation
 gets its row at first prepare. The conversation locks, user/session fences,

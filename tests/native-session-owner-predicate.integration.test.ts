@@ -77,7 +77,7 @@ const cases:Record<string,(f:F,owner:'desktop'|'releasing')=>Promise<void>>={
     const result=await f.coordinator.prepare(f.user.id,{dispatch_target:'claude_code',request_id:randomUUID(),conversation_id:f.conversation.id,
       operation,...(operation==='send'?{expected_head_message_id:f.completed.assistantMessageId,text:'synthetic'}:
       {target_user_message_id:f.initial.command.canonical_user_message_id!,...(operation==='edit'?{text:'synthetic edit'}:{})})});
-    assert.equal(result.ok,false);if(result.ok)throw Error('owner admitted');assert.equal(result.code,'SESSION_OWNED_BY_DESKTOP');
+    assert.equal(result.ok,false);if(result.ok)throw Error('owner admitted');assert.equal(result.code,owner==='releasing'?'NATIVE_SESSION_SWITCHING':'SESSION_OWNED_BY_DESKTOP');
   }])) as Record<string,(f:F,owner:'desktop'|'releasing')=>Promise<void>>,
   async 'execution admission and renewal'(f,owner){const next=await f.send();assert.ok(next.ok);if(!next.ok)throw Error('prepare');
     await f.execute(next.command.prepare_id);const input=f.admission(next.command);assert.equal(await f.relay.checkExecutionAdmission(input),true);
