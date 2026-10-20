@@ -68,10 +68,12 @@ cleanup PR removes the JSON copies.
 `writer_generation` answers one question: does output from the SDK writer still
 belong to the native line at the canonical head?
 
-It **rotates** when a turn commits whose native line is not a resume of the head:
-
-- `operation IN ('edit', 'retry')`, or
-- `runtime_mode IN ('new', 'fork')`.
+It **rotates** when a foreground turn commits whose native line is not a
+resume of the head: `operation <> 'wake' AND runtime_mode <> 'resume'`. In
+practice that is edit and retry (always `fork`), and a send that starts `new` or
+forks from a bootstrap. Wake prepares with `runtime_mode = 'fork'`
+(`native-live-silence-wake.ts:445`), but it is pinned to the same session, so it
+is excluded by operation, not by mode.
 
 It **does not rotate** on:
 
