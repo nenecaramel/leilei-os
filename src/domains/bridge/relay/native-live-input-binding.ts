@@ -1,4 +1,4 @@
-import { nativeSessionExecutableSql, nativeSessionTurnSql } from "../turn/turn-repository/session-owner.js";
+import { nativeSessionOwnershipSql, nativeSessionExecutableSql, nativeSessionTurnSql } from "../turn/turn-repository/session-owner.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import { conversationMessages, nativeLiveTurnPreparations } from "../../../database/schema.js";
@@ -29,7 +29,7 @@ export async function checkQueuedNativeLiveInput(db: Pick<Database, "execute">, 
       AND l.listener_instance_id=p.reserved_by AND l.lease_expires_at>clock_timestamp()
       AND p.runtime_metadata->'native_live_input_binding'->>'identity'=${digest}
       AND p.runtime_metadata->'native_live_input_binding'->>'started'='false'
-      AND (p.runtime_metadata->'native_live_input_binding'->>'sourceRevision') IS NOT DISTINCT FROM (c.provider_metadata->'nativeSessionSource'->>'revision')
+      AND (p.runtime_metadata->'native_live_input_binding'->>'sourceRevision') IS NOT DISTINCT FROM (${nativeSessionOwnershipSql("c").revision})
       AND c.origin='native_live' AND c.lifecycle_status='active'
       AND ${nativeSessionExecutableSql("c")}
       AND ${nativeSessionTurnSql("c").prepareId}=p.id::text
@@ -55,7 +55,7 @@ export async function bindNativeLiveInput(db: Database, input: NativeLiveInputBi
       || p.parentProviderSessionId !== input.parentProviderSessionId || !p.reservationExpiresAt
       || p.reservationExpiresAt.getTime() <= Date.now()) return null;
     const [c] = await tx.execute<{ head: string | null; revision: string | null; metadata: Record<string, unknown> }>(sql`
-      SELECT current_head_message_id::text AS head, provider_metadata->'nativeSessionSource'->>'revision' AS revision,
+      SELECT current_head_message_id::text AS head, ${nativeSessionOwnershipSql("conversations").revision} AS revision,
         provider_metadata AS metadata
       FROM conversations WHERE user_id=${input.userId}::uuid AND id=${p.conversationId}::uuid
         AND origin='native_live' AND lifecycle_status='active'

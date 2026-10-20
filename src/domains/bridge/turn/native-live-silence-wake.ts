@@ -1,4 +1,4 @@
-import { nativeSessionExecutableSql, nativeSessionTurnSql, readNativeSessionOwner } from "./turn-repository/session-owner.js";
+import { nativeSessionOwnershipSql, nativeSessionExecutableSql, nativeSessionTurnSql, readNativeSessionOwner } from "./turn-repository/session-owner.js";
 import { nativeResumeCheckpointSql } from "./native-live-resume-checkpoint.js";
 import { createHash } from "node:crypto";
 import { and, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
@@ -651,7 +651,7 @@ export class NativeLiveSilenceWakeService {
         ${nativeSessionTurnSql("tail_surface").prepareId} AS presentation_owner_id,
         (SELECT o.writer_generation::text FROM native_live_session_owners o
           WHERE o.conversation_id = tail_surface.id AND o.user_id = tail_surface.user_id) AS writer_generation,
-        tail_surface.provider_metadata->'nativeSessionSource'->>'revision' AS source_revision,
+        ${nativeSessionOwnershipSql("tail_surface").revision} AS source_revision,
         -- This internal value classifies executability; releasing uses today's
         -- existing non-LeileiOS refusal path, without a new wire error code.
         CASE WHEN ${nativeSessionExecutableSql("tail_surface")} THEN 'leileios' ELSE 'desktop' END AS source_owner

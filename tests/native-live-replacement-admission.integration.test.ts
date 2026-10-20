@@ -1,3 +1,4 @@
+import { syncTestNativeSessionOwner } from "./helpers/native-session-turn.js";
 import { setTestNativeSessionTurn } from "./helpers/native-session-turn.js";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -43,6 +44,7 @@ for (const operation of ["edit", "retry"] as const) for (const source of ["new",
       revision, nativeRevision: revision, previousRevision: null, effectiveWorkingDirectory: "/synthetic",
       headMessageId: parent, lineage: [],
     } } }).where(eq(conversations.id, conversationId));
+    if(source==="continuation")await syncTestNativeSessionOwner(db,{userId,conversationId});
     const port = new DrizzleNativeLiveBackendTurnPort(db);
     const identity = { prepareId: crypto.randomUUID(), userId, requestId: crypto.randomUUID(), conversationId,
       targetUserMessageId: target, executionSelection: null };
@@ -133,11 +135,13 @@ for (const operation of ["edit", "retry"] as const) for (const source of ["new",
       await db.update(conversations).set({ providerMetadata: {...current!.providerMetadata,nativeSessionSource: {
         ...(current!.providerMetadata.nativeSessionSource as object), revision: "b".repeat(64),
       }} }).where(eq(conversations.id,conversationId));
+      await syncTestNativeSessionOwner(db,{userId,conversationId});
       assert.equal(await tasks.checkTaskAdmission(taskInput),false,"handoff generation rotation revokes child tasks");
       for (const revision of [null, "", "malformed"]) {
         await db.update(conversations).set({ providerMetadata: {...current!.providerMetadata,nativeSessionSource: {
           ...(current!.providerMetadata.nativeSessionSource as object), revision,
         }} }).where(eq(conversations.id,conversationId));
+        await syncTestNativeSessionOwner(db,{userId,conversationId});
         assert.equal(await tasks.checkTaskAdmission(taskInput),false,"missing or malformed revision never proves child lineage");
       }
     }

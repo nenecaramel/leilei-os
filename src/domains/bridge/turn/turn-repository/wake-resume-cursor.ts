@@ -1,4 +1,4 @@
-import { nativeSessionExecutableSql, nativeSessionTurnSql } from "./session-owner.js";
+import { nativeSessionOwnershipSql, nativeSessionExecutableSql, nativeSessionTurnSql } from "./session-owner.js";
 import { sql } from "drizzle-orm";
 import { nativeResumeCheckpointSql } from "../native-live-resume-checkpoint.js";
 import type { PreparationRow, Transaction } from "./types.js";
@@ -49,7 +49,7 @@ export async function commitWakeResumeCursorLocked(
       (SELECT o.writer_generation::text FROM native_live_session_owners o
         WHERE o.conversation_id = c.id AND o.user_id = c.user_id) AS writer_generation,
       ${nativeSessionTurnSql("c").prepareId} AS owner,
-      c.provider_metadata->'nativeSessionSource'->>'revision' AS revision
+      ${nativeSessionOwnershipSql("c").revision} AS revision
     FROM conversations c
     WHERE c.user_id = ${row.userId}::uuid AND c.id = ${row.conversationId}::uuid
       AND c.origin = 'native_live' AND c.lifecycle_status = 'active'

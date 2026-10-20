@@ -13,7 +13,7 @@ import { providerSessionOwnershipLock } from "../bridge/provider-session/native-
 import { inFlightConversationTurns } from "./native-live-conversation-repository.js";
 import { storedContentKind, storedContentPayload } from "./native-live-content-contract.js";
 import type { NativeLiveContentBlockInput } from "./native-live-conversation-types.js";
-import { syncNativeSessionOwner, readNativeSessionOwner } from "../bridge/turn/turn-repository/session-owner.js";
+import { setNativeSessionOwnership, readNativeSessionOwner } from "../bridge/turn/turn-repository/session-owner.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 export type NativeHistoryMessage = {
@@ -368,10 +368,7 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     if (movable.length) await tx.update(conversationProviderSessionCheckpoints).set({ providerSessionId: p.sessionId })
       .where(inArray(conversationProviderSessionCheckpoints.id, movable));
     if (unchanged) {
-      if (source!.owner === "desktop") await tx.update(conversations).set({ providerMetadata: {
-        ...existing!.providerMetadata, nativeSessionSource: { ...source, owner: "leileios" },
-      }, updatedAt: new Date() }).where(eq(conversations.id, input.conversationId));
-      await syncNativeSessionOwner(tx, input);
+      await setNativeSessionOwnership(tx, {...input,owner:"leileios",revision:source!.revision});
       return { outcome: "already_current" as const, conversationId: input.conversationId, headMessageId: source!.headMessageId, inserted: 0,
         pendingAssets: await pendingNativeAssets(tx, input) };
     }
@@ -440,7 +437,6 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     for (const chunk of chunks(checkpointRows, 500)) await tx.insert(conversationProviderSessionCheckpoints).values(chunk);
     if (!parent) throw fail("INVALID_NATIVE_PROJECTION");
     const nextSource: SourceIndex = { schemaVersion: 1, sessionId: p.sessionId, revision: p.revision, checkpointId: p.checkpointId,
-      owner: "leileios",
       effectiveWorkingDirectory: input.effectiveWorkingDirectory, headMessageId: parent,
       ...(snapshot?.displayAssets ? { displayAssetsRevision: snapshot.displayAssets.revision } : {}),
       ...(continuation ? { lineage: [...(source.lineage ?? []), source.sessionId].slice(-1000) } : source?.lineage ? { lineage: source.lineage } : {}),
@@ -452,7 +448,7 @@ export async function restoreNativeSessionHistory(db: Database, input: {
           ...(entries && !entries.some(entry => entry.uuid === m.providerCheckpointId) ? { displayOnly: true } : {}) };
       }) };
     await tx.update(conversations).set({ currentHeadMessageId: parent, updatedAt: new Date(), providerMetadata: { ...existing?.providerMetadata, nativeSessionSource: nextSource } }).where(and(eq(conversations.id, input.conversationId), eq(conversations.userId, input.userId)));
-    await syncNativeSessionOwner(tx, input);
+    await setNativeSessionOwnership(tx, {...input,owner:"leileios",revision:p.revision});
     return { outcome: "restored" as const, conversationId: input.conversationId, headMessageId: parent, inserted: total - rows.length, pendingAssets: await pendingNativeAssets(tx, input) };
   });
 }
@@ -497,8 +493,8 @@ export async function releaseNativeSessionToDesktop(db: Database, input: {
       throw fail("NATIVE_SESSION_RECOVERY_REQUIRED");
     }
     await tx.update(conversations).set({ providerMetadata: { ...conversation.providerMetadata,
-      nativeSessionSource: { ...source, owner: "desktop" } }, updatedAt: new Date() }).where(eq(conversations.id, input.conversationId));
-    await syncNativeSessionOwner(tx, input);
+      nativeSessionSource: { ...source } }, updatedAt: new Date() }).where(eq(conversations.id, input.conversationId));
+    await setNativeSessionOwnership(tx, {...input,owner:"desktop",revision:source.revision});
     return { owner: "desktop" as const, conversationId: input.conversationId, providerSessionId: input.sessionId,
       providerCheckpointId: input.expectedCheckpointId, headMessageId: input.expectedHeadMessageId };
   });

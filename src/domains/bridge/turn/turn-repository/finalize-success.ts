@@ -46,7 +46,7 @@ import type {
 import { discardWakeLocked } from "./discard-wake.js";
 import { commitWakeResumeCursorLocked } from "./wake-resume-cursor.js";
 import { matchesPresentationOwner } from "./presentation-owner.js";
-import { advanceNativeSessionTurnAnchor, nativeSessionTurnSql, commitRotatesWriterGeneration, readNativeWriterGeneration, syncNativeSessionOwner } from "./session-owner.js";
+import { nativeSessionOwnershipSql, advanceNativeSessionTurnAnchor, nativeSessionTurnSql, commitRotatesWriterGeneration, readNativeWriterGeneration, ensureNativeSessionOwner } from "./session-owner.js";
 
 export async function finalizeSuccess(
   this: TurnRepositoryContext,
@@ -143,7 +143,7 @@ export async function finalizeSuccess(
                   conversationTable.currentHeadMessageId,
                 presentationOwnerId: nativeSessionTurnSql("conversations").prepareId,
                 presentationAnchorId: nativeSessionTurnSql("conversations").anchor,
-                sourceRevision: sql<string | null>`provider_metadata->'nativeSessionSource'->>'revision'`,
+                sourceRevision: sql<string | null>`${nativeSessionOwnershipSql("conversations").revision}`,
               })
               .from(conversationTable)
               .where(
@@ -372,10 +372,10 @@ export async function finalizeSuccess(
           const [sessionGeneration] = await transaction.execute<{ presentation_owner_id: string | null; presentation_anchor_id: string | null; source_revision: string | null }>(sql`SELECT
             ${nativeSessionTurnSql("conversations").prepareId} AS presentation_owner_id,
             ${nativeSessionTurnSql("conversations").anchor} AS presentation_anchor_id,
-            provider_metadata->'nativeSessionSource'->>'revision' AS source_revision
+            ${nativeSessionOwnershipSql("conversations").revision} AS source_revision
             FROM conversations WHERE id=${row.conversationId}::uuid AND user_id=${input.userId}::uuid FOR UPDATE`);
           // Shadow owner row: an edit, retry or fresh send starts a new native line.
-          const writerGeneration = await syncNativeSessionOwner(transaction, {
+          const writerGeneration = await ensureNativeSessionOwner(transaction, {
             userId: input.userId, conversationId: row.conversationId,
             rotateGeneration: commitRotatesWriterGeneration(row),
           });

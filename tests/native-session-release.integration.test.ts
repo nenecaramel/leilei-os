@@ -1,3 +1,4 @@
+import { syncTestNativeSessionOwner } from "./helpers/native-session-turn.js";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
@@ -16,7 +17,6 @@ import { NativeLiveSilenceWakeService, silenceWakePreparationId } from '../src/d
 import { attachNativeContinuation, releaseNativeContinuation, readNativeContinuationState } from '../src/domains/conversation/native-session-continuation-repository.js';
 
 import * as continuation from '../src/domains/conversation/native-session-continuation-repository.js';
-import { syncNativeSessionOwner } from '../src/domains/bridge/turn/turn-repository/session-owner.js';
 import { nativeLiveRuntimeEvents } from '../src/database/schema.js';
 
 const enabled=process.env.RUN_NATIVE_SESSION_PRESERVATION_DATABASE_TEST==='1';
@@ -120,7 +120,7 @@ test('in-flight turn blocks begin before changing owner',{skip:!enabled},async t
 test('releasing is mirrored as releasing without overwriting slot or generation',{skip:!enabled},async t=>{
  const f=await releaseFixture(t);const read=()=>f.db.execute(sql`SELECT turn_prepare_id,turn_anchor_message_id,writer_generation FROM native_live_session_owners WHERE conversation_id=${f.conversation.id}::uuid`);
  const before=await read();await f.db.execute(sql`UPDATE conversations SET provider_metadata=jsonb_set(provider_metadata,'{nativeSessionSource,owner}','"releasing"'::jsonb) WHERE id=${f.conversation.id}::uuid`);
- await syncNativeSessionOwner(f.db,f.scope);const [owner]=await f.db.execute(sql`SELECT owner FROM native_live_session_owners WHERE conversation_id=${f.conversation.id}::uuid`);
+ await syncTestNativeSessionOwner(f.db,f.scope);const [owner]=await f.db.execute(sql`SELECT owner FROM native_live_session_owners WHERE conversation_id=${f.conversation.id}::uuid`);
  assert.equal(owner.owner,'releasing');assert.deepEqual(await read(),before);
 });
 test('begin validates session/head/revision and isolates user before mutations',{skip:!enabled},async t=>{
@@ -129,8 +129,8 @@ test('begin validates session/head/revision and isolates user before mutations',
   await assert.rejects(continuation.beginNativeContinuationRelease(f.db,{...f.beginInput,...patch}),{code});
  assert.equal((await readNativeContinuationState(f.db,{...f.scope,sessionId:f.session})).owner,'leileios');
 });
-test('legacy release stays usable for one release',{skip:!enabled},async t=>{
- const f=await releaseFixture(t);await releaseNativeContinuation(f.db,f.full);assert.equal((await readNativeContinuationState(f.db,{...f.scope,sessionId:f.session})).owner,'desktop');
+test('legacy direct release is retired and requires begin',{skip:!enabled},async t=>{
+ const f=await releaseFixture(t);await assert.rejects(releaseNativeContinuation(f.db,f.full),{code:'NATIVE_RELEASE_BEGIN_REQUIRED'});assert.equal((await readNativeContinuationState(f.db,{...f.scope,sessionId:f.session})).owner,'leileios');
 });
 // These represent late old callbacks after begin. Begin itself correctly refuses
 // live work; restoring only the old transport lease tests each independent fence.
@@ -207,7 +207,7 @@ for(const action of ['asset','restore']as const)test(`releasing refuses the lega
  const input={userId:f.user.id,conversationId,expectedHeadMessageId:null,expectedRevision:null,effectiveWorkingDirectory:'/synthetic',projection:projectNativeHistory({sessionId,revision,entries},a),nativeSnapshot:{sessionId,revision,entries}};
  const restored=await restoreNativeSessionHistory(f.db,input);const state=await readNativeContinuationState(f.db,{userId:f.user.id,conversationId,sessionId});
  const release=await continuation.beginNativeContinuationRelease(f.db,{userId:f.user.id,conversationId,sessionId,expectedHeadMessageId:restored.headMessageId,expectedRevision:state.expectedRevision});
- if(action==='asset')await assert.rejects(nativeSessionAsset(f.db,{userId:f.user.id,conversationId,sessionId,expectedRevision:release.expectedRevision,sourceEntryUuid:u,sourceBlockOrdinal:0}),{code:'NATIVE_CONVERSATION_BUSY'});
+ if(action==='asset')await assert.rejects(nativeSessionAsset(f.db,{userId:f.user.id,conversationId,sessionId,expectedRevision:revision,sourceEntryUuid:u,sourceBlockOrdinal:0}),{code:'NATIVE_CONVERSATION_BUSY'});
  else await assert.rejects(restoreNativeSessionHistory(f.db,{...input,expectedHeadMessageId:restored.headMessageId,expectedRevision:state.expectedRevision}),{code:'NATIVE_SESSION_SWITCHING'});
 });
 

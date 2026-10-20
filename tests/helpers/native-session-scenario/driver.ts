@@ -256,6 +256,13 @@ export class Scenario {
           input={userId:this.userId,conversationId:this.conversationId,sessionId:current.providerSessionId!,checkpointId:current.providerCheckpointId!,
             effectiveWorkingDirectory:current.effectiveWorkingDirectory!,revision:'2'.repeat(64),expectedHeadMessageId:this.model.head,
             expectedRevision:operation==='stale_complete_release'?'0'.repeat(64):before.row.ownerRevision,checkpointIds:[current.providerCheckpointId!],completedTurnCheckpointIds:[current.providerCheckpointId!]};
+          // 'release' models the supported CLI handoff, now begin -> complete.
+          // Raw direct-release refusal is covered by the cleanup DB/API tests.
+          if(operation==='release' && before.row.owner==='leileios') {
+            const begin=await continuationLifecycle.beginNativeContinuationRelease(this.db,{userId:this.userId,conversationId:this.conversationId,
+              sessionId:current.providerSessionId!,expectedHeadMessageId:this.model.head,expectedRevision:before.row.ownerRevision});
+            (input as {expectedRevision:string|null}).expectedRevision=begin.expectedRevision;
+          }
           const call=()=> (operation==='attach'?attachNativeContinuation:releaseNativeContinuation)(this.db,input as Parameters<typeof attachNativeContinuation>[1]);
           const result=await call();outcome='attached';revisionRotates=result.outcome!=='already_current';this.model.owner=operation==='attach'?'leileios':'desktop';this.model.branchAllowed=false;
           this.replay={input,call,expected:semantic(result)};break;

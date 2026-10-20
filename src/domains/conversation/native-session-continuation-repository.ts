@@ -7,7 +7,7 @@ import { inFlightConversationTurns } from './native-live-conversation-repository
 import { DrizzleNativeLiveProviderSessionStoreRepository } from '../bridge/provider-session/native-live-provider-session-store.js';
 import { providerSessionOwnershipLock } from '../bridge/provider-session/native-live-provider-session-references.js';
 import { nativeResumeCheckpointSql, nativeResumeTailValidSql } from '../bridge/turn/native-live-resume-checkpoint.js';
-import { syncNativeSessionOwner, readNativeSessionOwner } from '../bridge/turn/turn-repository/session-owner.js';
+import { setNativeSessionOwnership, readNativeSessionOwnership, nativeSessionOwnershipSql } from '../bridge/turn/turn-repository/session-owner.js';
 
 type Database = ReturnType<typeof createDatabase>['db'];
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -15,18 +15,18 @@ const hash = /^[0-9a-f]{64}$/;
 const fail = (code: string) => Object.assign(new Error(code), { code });
 export type NativeContinuationBinding = {
   schemaVersion: 1; mode: 'continuation'; sessionId: string; checkpointId: string;
-  /** Ownership generation rotates even when native bytes have not changed. */
-  revision: string; nativeRevision: string; previousRevision: string | null;
-  effectiveWorkingDirectory: string; headMessageId: string | null; owner: 'leileios' | 'releasing' | 'desktop';
+  /** Native-byte fingerprint; ownership generation lives in the owner row. */
+  nativeRevision: string; previousRevision: string | null;
+  effectiveWorkingDirectory: string; headMessageId: string | null;
   lineage: string[];
 };
 export function nativeContinuationBinding(metadata: Record<string, unknown>): NativeContinuationBinding | null {
   const s = metadata.nativeSessionSource as NativeContinuationBinding | undefined;
   if (s?.mode !== 'continuation') return null;
-  if (s.schemaVersion !== 1 || !uuid.test(s.sessionId) || !uuid.test(s.checkpointId) || !hash.test(s.revision)
+  if (s.schemaVersion !== 1 || !uuid.test(s.sessionId) || !uuid.test(s.checkpointId)
     || !hash.test(s.nativeRevision) || !(s.previousRevision === null || hash.test(s.previousRevision))
     || !(s.headMessageId === null || uuid.test(s.headMessageId)) || !isAbsolute(s.effectiveWorkingDirectory)
-    || !['leileios', 'releasing', 'desktop'].includes(s.owner) || !Array.isArray(s.lineage) || s.lineage.length > 1000 || !s.lineage.every(id => uuid.test(id))) throw fail('NATIVE_SOURCE_BINDING_REQUIRED');
+    || !Array.isArray(s.lineage) || s.lineage.length > 1000 || !s.lineage.every(id => uuid.test(id))) throw fail('NATIVE_SOURCE_BINDING_REQUIRED');
   return s;
 }
 export type NativeContinuationInput = {
@@ -54,23 +54,23 @@ export async function readNativeContinuationState(db: Pick<Database, 'execute'>,
   if (![input.userId, input.conversationId, input.sessionId].every(id => uuid.test(id))) throw fail('INVALID_NATIVE_PROJECTION');
   const [row] = await db.execute<{
     user_id: string; origin: string; lifecycle_status: string; head: string | null; metadata: Record<string, unknown>;
+    owner: 'leileios'|'releasing'|'desktop'; owner_revision:string|null;
     session: string | null; base_checkpoint: string | null; checkpoint: string | null; cwd: string | null;
   }>(sql`SELECT c.user_id, c.origin, c.lifecycle_status, c.current_head_message_id AS head, c.provider_metadata AS metadata,
-      cp.provider_session_id AS session, cp.provider_checkpoint_id AS base_checkpoint, ${nativeResumeCheckpointSql('cp', 'c', true, {allowReleasingOwner:true})} AS checkpoint, cp.effective_working_directory AS cwd
+      cp.provider_session_id AS session, cp.provider_checkpoint_id AS base_checkpoint, ${nativeResumeCheckpointSql('cp', 'c', true, {allowReleasingOwner:true})} AS checkpoint, cp.effective_working_directory AS cwd, ${nativeSessionOwnershipSql("c").owner} AS owner, ${nativeSessionOwnershipSql("c").revision} AS owner_revision
     FROM conversations c LEFT JOIN conversation_provider_session_checkpoints cp
       ON cp.user_id = c.user_id AND cp.conversation_id = c.id AND cp.canonical_message_id = c.current_head_message_id AND cp.provider = 'claude_code'
     WHERE c.id = ${input.conversationId}::uuid`);
   if (!row) return { expectedHeadMessageId: null, expectedRevision: null, providerSessionId: null, providerCheckpointId: null, effectiveWorkingDirectory: null, owner: null };
   if (row.user_id !== input.userId || row.origin !== 'native_live' || row.lifecycle_status !== 'active') throw fail('NATIVE_CONVERSATION_NOT_FOUND');
-  const source = row.metadata.nativeSessionSource as Partial<NativeContinuationBinding> | undefined;
   const binding = nativeContinuationBinding(row.metadata);
   const atAnchor = binding && row.head === binding.headMessageId;
-  return { expectedHeadMessageId: row.head, expectedRevision: source?.revision ?? null,
+  return { expectedHeadMessageId: row.head, expectedRevision: row.owner_revision,
     providerSessionId: atAnchor ? binding.sessionId : row.session,
     providerCheckpointId: atAnchor ? (row.session === binding.sessionId && row.base_checkpoint === binding.checkpointId
       && row.cwd === binding.effectiveWorkingDirectory ? row.checkpoint : binding.checkpointId) : row.checkpoint,
     effectiveWorkingDirectory: atAnchor ? binding.effectiveWorkingDirectory : row.cwd,
-    owner: source?.owner ?? 'leileios' };
+    owner: row.owner };
 }
 
 export const attachNativeContinuation = (db: Database, input: NativeContinuationInput) => changeOwner(db, input, 'leileios');
@@ -91,11 +91,12 @@ async function changeOwner(db: Database, input: NativeContinuationInput, owner: 
     await assertContinuationIdle(tx, input, owner === 'desktop');
     const state = await readNativeContinuationState(tx, input);
     const source = existing?.providerMetadata.nativeSessionSource as Partial<NativeContinuationBinding> | undefined;
-    const same = source?.mode === 'continuation' && source.owner === owner && source.sessionId === input.sessionId
+    const same = source?.mode === 'continuation' && state.owner === owner && source.sessionId === input.sessionId
       && source.checkpointId === input.checkpointId && source.nativeRevision === input.revision
       && source.headMessageId === state.expectedHeadMessageId && source.effectiveWorkingDirectory === input.effectiveWorkingDirectory
-      && (input.expectedRevision === source.previousRevision || input.expectedRevision === source.revision);
+      && (input.expectedRevision === source.previousRevision || input.expectedRevision === state.expectedRevision);
     if (state.expectedHeadMessageId !== input.expectedHeadMessageId || (!same && state.expectedRevision !== input.expectedRevision)) throw fail('STALE_NATIVE_PROJECTION');
+    if (owner === 'desktop' && !same && state.owner !== 'releasing') throw fail('NATIVE_RELEASE_BEGIN_REQUIRED');
     if (existing) {
       if (state.providerSessionId !== input.sessionId || state.effectiveWorkingDirectory !== input.effectiveWorkingDirectory) throw fail('EXPLICIT_BRANCH_SELECTION_REQUIRED');
       if (!state.providerCheckpointId || !input.checkpointIds.includes(state.providerCheckpointId)) throw fail('EXPLICIT_BRANCH_SELECTION_REQUIRED');
@@ -106,13 +107,14 @@ async function changeOwner(db: Database, input: NativeContinuationInput, owner: 
     await new DrizzleNativeLiveProviderSessionStoreRepository(tx).preserveExternalSession({ userId: input.userId, sessionId: input.sessionId });
     const lineage = [...new Set([...(source?.lineage ?? []), ...(source?.sessionId && source.sessionId !== input.sessionId ? [source.sessionId] : [])])];
     if (lineage.length > 1000) throw fail('EXPLICIT_BRANCH_SELECTION_REQUIRED');
+    const revision = same ? state.expectedRevision! : createHash('sha256').update(randomUUID()).digest('hex');
     const binding: NativeContinuationBinding = { schemaVersion: 1, mode: 'continuation', sessionId: input.sessionId,
-      checkpointId: input.checkpointId, revision: createHash('sha256').update(randomUUID()).digest('hex'),
+      checkpointId: input.checkpointId,
       nativeRevision: input.revision, previousRevision: state.expectedRevision, effectiveWorkingDirectory: input.effectiveWorkingDirectory,
-      headMessageId: state.expectedHeadMessageId, owner, lineage };
+      headMessageId: state.expectedHeadMessageId, lineage };
     if (!existing) await tx.insert(conversations).values({ id: input.conversationId, userId: input.userId, origin: 'native_live', lifecycleStatus: 'active', providerMetadata: { nativeSessionSource: binding } });
     else if (!same) await tx.update(conversations).set({ providerMetadata: { ...existing.providerMetadata, nativeSessionSource: binding }, updatedAt: new Date() }).where(eq(conversations.id, input.conversationId));
-    await syncNativeSessionOwner(tx, input);
+    await setNativeSessionOwnership(tx, {...input, owner, revision});
     return { outcome: same ? 'already_current' : 'attached', owner, conversationId: input.conversationId,
       headMessageId: state.expectedHeadMessageId, providerSessionId: input.sessionId, providerCheckpointId: input.checkpointId, inserted: 0 };
   });
@@ -146,18 +148,17 @@ export async function beginNativeContinuationRelease(db: Database, input: Native
     await tx.execute(sql`SELECT ${providerSessionOwnershipLock({providerSessionId:input.sessionId,wait:true})}`);
     const state=await readNativeContinuationState(tx,input);
     const source=c.providerMetadata.nativeSessionSource as Partial<NativeContinuationBinding>|undefined;
-    const owner=await readNativeSessionOwner(tx,input);
+    const {owner}=await readNativeSessionOwnership(tx,input);
     if(state.expectedHeadMessageId!==input.expectedHeadMessageId)throw fail('STALE_NATIVE_PROJECTION');
     if(state.providerSessionId!==input.sessionId)throw fail('EXPLICIT_BRANCH_SELECTION_REQUIRED');
-    const same=owner==='releasing' && (input.expectedRevision===source?.previousRevision||input.expectedRevision===source?.revision);
+    const same=owner==='releasing' && (input.expectedRevision===source?.previousRevision||input.expectedRevision===state.expectedRevision);
     if(!same&&(owner!=='leileios'||state.expectedRevision!==input.expectedRevision))throw fail('STALE_NATIVE_PROJECTION');
     await assertContinuationIdle(tx,input,true);
-    const revision=same?source!.revision!:createHash('sha256').update(randomUUID()).digest('hex');
+    const revision=same?state.expectedRevision!:createHash('sha256').update(randomUUID()).digest('hex');
     if(!same){
       await rebindVerifiedContinuationTail(tx,input,state.expectedRevision,revision);
-      await tx.update(conversations).set({providerMetadata:{...c.providerMetadata,nativeSessionSource:{...source,
-        owner:'releasing',revision,previousRevision:state.expectedRevision}},updatedAt:new Date()}).where(eq(conversations.id,input.conversationId));
-      await syncNativeSessionOwner(tx,input);
+      await tx.update(conversations).set({providerMetadata:{...c.providerMetadata,nativeSessionSource:{...withoutOwnerCopies(source as Record<string,unknown>|undefined),previousRevision:state.expectedRevision}},updatedAt:new Date()}).where(eq(conversations.id,input.conversationId));
+      await setNativeSessionOwnership(tx,{...input,owner:'releasing',revision});
     }
     return {outcome:same?'already_current' as const:'releasing' as const,owner:'releasing' as const,
       conversationId:input.conversationId,headMessageId:state.expectedHeadMessageId,providerSessionId:input.sessionId,expectedRevision:revision};
@@ -172,15 +173,14 @@ export async function cancelNativeContinuationRelease(db: Database, input: Nativ
     const [c]=await tx.select().from(conversations).where(eq(conversations.id,input.conversationId)).for('update');
     if(!c||c.userId!==input.userId||c.origin!=='native_live'||c.lifecycleStatus!=='active')throw fail('NATIVE_CONVERSATION_NOT_FOUND');
     const source=c.providerMetadata.nativeSessionSource as Partial<NativeContinuationBinding>|undefined;
-    const owner=await readNativeSessionOwner(tx,input);
+    const {owner,revision:currentRevision}=await readNativeSessionOwnership(tx,input);
     const same=owner==='leileios'&&source?.previousRevision===input.expectedRevision;
-    if(!same&&(owner!=='releasing'||source?.revision!==input.expectedRevision))throw fail('STALE_NATIVE_PROJECTION');
-    const revision=same?source!.revision!:createHash('sha256').update(randomUUID()).digest('hex');
+    if(!same&&(owner!=='releasing'||currentRevision!==input.expectedRevision))throw fail('STALE_NATIVE_PROJECTION');
+    const revision=same?currentRevision!:createHash('sha256').update(randomUUID()).digest('hex');
     if(!same){
-      await rebindVerifiedContinuationTail(tx,input,source!.revision!,revision);
-      await tx.update(conversations).set({providerMetadata:{...c.providerMetadata,nativeSessionSource:{...source,
-        owner:'leileios',revision,previousRevision:input.expectedRevision}},updatedAt:new Date()}).where(eq(conversations.id,input.conversationId));
-      await syncNativeSessionOwner(tx,input);
+      await rebindVerifiedContinuationTail(tx,input,currentRevision,revision);
+      await tx.update(conversations).set({providerMetadata:{...c.providerMetadata,nativeSessionSource:{...withoutOwnerCopies(source as Record<string,unknown>|undefined),previousRevision:input.expectedRevision}},updatedAt:new Date()}).where(eq(conversations.id,input.conversationId));
+      await setNativeSessionOwnership(tx,{...input,owner:'leileios',revision});
     }
     return {outcome:same?'already_current' as const:'cancelled' as const,owner:'leileios' as const,conversationId:input.conversationId,expectedRevision:revision};
   });
@@ -212,6 +212,14 @@ async function rebindVerifiedContinuationTail(tx: Executor,input:{userId:string;
     FROM conversations c WHERE cp.conversation_id=c.id AND cp.user_id=c.user_id
       AND c.id=${input.conversationId}::uuid AND c.user_id=${input.userId}::uuid
       AND cp.canonical_message_id=c.current_head_message_id AND cp.provider='claude_code'
-      AND (c.provider_metadata->'nativeSessionSource'->>'revision') IS NOT DISTINCT FROM ${previousRevision}::text
+      AND (${nativeSessionOwnershipSql("c").revision}) IS NOT DISTINCT FROM ${previousRevision}::text
       AND ${nativeResumeTailValidSql('cp','c',true,{allowReleasingOwner:true})}`);
+}
+
+/** The old full-history revision is a content fingerprint, not an owner copy. */
+function withoutOwnerCopies(source: Record<string,unknown>|undefined): Record<string,unknown> {
+  const {owner:discardedOwner,...binding}=source??{};
+  if(binding.mode!=='continuation')return binding;
+  const {revision:discardedRevision,...nativeBinding}=binding;
+  return nativeBinding;
 }
