@@ -132,11 +132,18 @@ async function discoverDesktopNativeSessions({ desktopSessionsDirectory, project
         if (!file.isFile() || !file.name.endsWith(".json") || !desktopSessionId.startsWith("local_") || !sessionPattern.test(desktopSessionId.slice(6))) continue;
         if (sessions.length >= 1000) throw fail("DESKTOP_INDEX_SCAN_LIMIT");
         let providerSessionId = null;
+        let display = {};
         try {
           const indexFile = path.join(orgPath, file.name);
           const { metadata } = await readIndex(indexFile);
           providerSessionId = sessionPattern.test(metadata.cliSessionId ?? '') ? metadata.cliSessionId : null;
           if (metadata.sessionId !== desktopSessionId) throw fail("DESKTOP_INDEX_IDENTITY_MISMATCH");
+          const activityTime = new Date(metadata.lastActivityAt ?? NaN);
+          // Display-only identity survives inspection failure; error still blocks
+          // selection and no checkpoint, path or private index data is exposed.
+          display = { providerSessionId,
+            title: typeof metadata.title === "string" ? metadata.title.slice(0, 160) : null,
+            updatedAt: Number.isFinite(activityTime.getTime()) ? activityTime.toISOString() : null };
           const candidates = locations.get(metadata.cliSessionId) ?? [];
           if (candidates.length === 0) throw fail("DESKTOP_NATIVE_SESSION_UNAVAILABLE");
           if (candidates.length !== 1) throw fail("AMBIGUOUS_NATIVE_SESSION_LOCATION");
@@ -144,7 +151,7 @@ async function discoverDesktopNativeSessions({ desktopSessionsDirectory, project
           if (result.desktopSessionId !== desktopSessionId) throw fail("DESKTOP_INDEX_IDENTITY_MISMATCH");
           sessions.push({ inspection: result, indexFile, projectDirectory: candidates[0], providerSessionId });
         } catch (error) {
-          sessions.push({ providerSessionId, inspection: { desktopSessionId, error: nativeInspectionErrorCode(error), handoffAllowed: false } });
+          sessions.push({ providerSessionId, inspection: { desktopSessionId, ...display, error: nativeInspectionErrorCode(error), handoffAllowed: false } });
         }
       }
     }
@@ -185,7 +192,7 @@ export async function resolveDesktopNativeSelection({ sessionId, ...input }) {
 }
 
 const endOfTurnRecord = e => (e.type === "system" && e.subtype === "stop_hook_summary") || (e.type === "attachment" &&
-  (e.attachment?.type === "prompt_snapshot" || (e.attachment?.type === "hook_success" && e.attachment.hookEvent === "Stop")));
+  (e.attachment?.type === "prompt_snapshot" || (["hook_success", "hook_non_blocking_error"].includes(e.attachment?.type) && e.attachment.hookEvent === "Stop")));
 
 // Execution ancestry stops at the native compact root. It deliberately never
 // expands logicalParentUuid or reads other session files for display history.

@@ -383,3 +383,55 @@ test('continuation accepts native end-of-turn records between the final reply an
     await assert.rejects(inspectDesktopNativeSession(input), e => e.code === 'NATIVE_TURN_UNFINISHED');
   });
 });
+
+for (const [type, hookEvent, allowed] of [
+  ['hook_non_blocking_error', 'Stop', true],
+  ['hook_non_blocking_error', 'UserPromptSubmit', false],
+  ['hook_blocking_error', 'Stop', false],
+]) test(`continuation ${allowed ? 'accepts' : 'rejects'} ${type}/${hookEvent} after a completed reply`, async () => {
+  const { inspectDesktopNativeSession } = await import(moduleUrl);
+  await fixture(async ({ root, indexFile, transcriptFile }) => {
+    const hook = '00000000-0000-4000-8000-000000000011', stop = '00000000-0000-4000-8000-000000000012';
+    await writeFile(transcriptFile, [...entries,
+      { type: 'attachment', uuid: hook, parentUuid: CP, attachment: { type, hookEvent } },
+      { type: 'system', subtype: 'stop_hook_summary', uuid: stop, parentUuid: hook },
+    ].map(JSON.stringify).join('\n'));
+    const before = await readFile(transcriptFile);
+    const input = { indexFile, projectDirectory: root, peerDirectory: root, historyMode: 'continuation', followNativeContinuation: true };
+    if (allowed) {
+      assert.equal((await inspectDesktopNativeSession(input)).providerCheckpointId, CP);
+      // Non-blocking hook metadata cannot make an unfinished tool call complete.
+      await writeFile(transcriptFile, [...entries.slice(0, 1), { ...entries[1], message: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'synthetic', name: 'Bash', input: {} }] } },
+        { type: 'attachment', uuid: hook, parentUuid: CP, attachment: { type, hookEvent } },
+      ].map(JSON.stringify).join('\n'));
+      await assert.rejects(inspectDesktopNativeSession(input), { code: 'NATIVE_TURN_UNFINISHED' });
+    } else {
+      await assert.rejects(inspectDesktopNativeSession(input), { code: 'NATIVE_TURN_UNFINISHED' });
+      assert.deepEqual(await readFile(transcriptFile), before);
+    }
+  });
+});
+
+test('unavailable catalog entries retain safe identity and title but stay unselectable', async () => {
+  const { listDesktopNativeSessions } = await import(moduleUrl);
+  const { buildSwitchChoices, pickSwitchChoice } = await import('../src/native-session-picker.mjs');
+  await fixture(async ({ root, indexFile }) => {
+    const desktopSessionsDirectory = path.join(root, 'indices'), projectsDirectory = path.join(root, 'projects');
+    const org = path.join(desktopSessionsDirectory, 'account', 'org'), project = path.join(projectsDirectory, '-fixture');
+    await mkdir(org, { recursive: true }); await mkdir(project, { recursive: true });
+    await writeFile(path.join(org, `local_${D}.json`), JSON.stringify({ ...metadata, title: 'Claude', lastActivityAt: 1791676800000 }));
+    await writeFile(path.join(project, `${A}.jsonl`), [...entries,
+      { type: 'user', uuid: C, parentUuid: CP, message: { content: 'PRIVATE_PENDING' } },
+    ].map(JSON.stringify).join('\n'));
+    const { sessions } = await listDesktopNativeSessions({ desktopSessionsDirectory, projectsDirectory, peerDirectory: root, historyMode: 'continuation' });
+    const [entry] = sessions;
+    assert.equal(entry.error, 'NATIVE_TURN_UNFINISHED');
+    assert.equal(entry.providerSessionId, A); assert.equal(entry.title, 'Claude');
+    assert.equal(entry.updatedAt, '2026-10-11T00:00:00.000Z');
+    assert.equal(entry.handoffAllowed, false);
+    assert.doesNotMatch(JSON.stringify(entry), /PRIVATE_|\/fixture|lastAssistantUuid/);
+    const choices = buildSwitchChoices('leileios', [], sessions, { historyMode: 'continuation' });
+    assert.equal(choices[0].sessionId, A);
+    assert.throws(() => pickSwitchChoice(choices, '1'), { code: 'NATIVE_TURN_UNFINISHED' });
+  });
+});
