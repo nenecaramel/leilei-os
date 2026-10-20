@@ -1,3 +1,4 @@
+import { syncNativeSessionOwner } from "../src/domains/bridge/turn/turn-repository/session-owner.js";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
@@ -97,6 +98,7 @@ test('continuation input binding keeps exact identity, source and lease fences b
           const changed = { ...c.providerMetadata.nativeSessionSource, [field]: value,
             ...(invalid === 'revision' && phase === 'queued' ? { checkpointId: randomUUID() } : {}) };
           await f.db.update(conversations).set({ providerMetadata: { ...c.providerMetadata, nativeSessionSource: changed } }).where(eq(conversations.id, f.input.conversationId));
+          if (invalid === 'owner') await syncNativeSessionOwner(f.db, { userId: f.input.userId, conversationId: f.input.conversationId });
         }
         assert.equal(await bindNativeLiveInput(f.db, { ...admission, phase }), null);
       }));

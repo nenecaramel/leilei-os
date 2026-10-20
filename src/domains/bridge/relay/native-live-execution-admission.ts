@@ -1,3 +1,4 @@
+import { nativeSessionExecutableSql } from "../turn/turn-repository/session-owner.js";
 import { nativeResumeCheckpointSql } from "../turn/native-live-resume-checkpoint.js";
 import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
@@ -25,7 +26,7 @@ export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "exec
         AND p.status = 'prepared' AND p.dispatch_status = 'executing' AND p.execution_started_at IS NOT NULL
         AND p.reservation_expires_at > now() AND l.lease_expires_at > now()
         AND c.origin = 'native_live' AND c.lifecycle_status = 'active'
-        AND coalesce(c.provider_metadata->'nativeSessionSource'->>'owner', 'leileios') = 'leileios'
+        AND ${nativeSessionExecutableSql("c")}
         AND (
           -- Preparation leaves the head at the user message's parent until the
           -- turn commits; the presentation owner below pins that anchor.

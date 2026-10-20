@@ -1,3 +1,4 @@
+import { nativeSessionExecutableSql } from "../turn/turn-repository/session-owner.js";
 import { isDeepStrictEqual } from "node:util";
 import { and, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
@@ -43,7 +44,7 @@ export async function taskSource(tx: Transaction, input: { userId: string; prepa
       WHERE m.user_id=${input.userId}::uuid AND m.conversation_id=${source.conversationId}::uuid AND p.depth<4095 AND NOT m.id=ANY(p.visited)
   ) SELECT c.id FROM conversations c JOIN path origin ON origin.id=${source.anchorId}::uuid
     WHERE c.id=${source.conversationId}::uuid AND c.user_id=${input.userId}::uuid AND c.origin='native_live' AND c.lifecycle_status='active'
-      AND coalesce(c.provider_metadata->'nativeSessionSource'->>'owner','leileios')='leileios'
+      AND ${nativeSessionExecutableSql("c")}
       AND (${source.active}=false OR c.current_head_message_id=${source.anchorId}::uuid)
       AND ((${source.active}=true AND ${source.fresh}=true AND EXISTS (SELECT 1 FROM conversation_messages u WHERE u.id=${source.anchorId}::uuid AND u.parent_message_id IS NULL))
         OR (SELECT cp.provider_session_id FROM path p JOIN conversation_provider_session_checkpoints cp ON cp.canonical_message_id=p.id

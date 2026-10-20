@@ -1,3 +1,4 @@
+import { readNativeSessionOwner } from "./session-owner.js";
 import { nativeContinuationBinding } from "../../../conversation/native-session-continuation-repository.js";
 import { readNativeResumeCheckpoint } from "../native-live-resume-checkpoint.js";
 import {
@@ -584,7 +585,7 @@ export async function resolveRuntimeParent(
         if (!floor?.allowed) return { ok: false, result: { ok: false, code: "BRANCH_POINT_INVALID" } };
       }
       if (binding.headMessageId === parentMessageId) {
-        if (binding.owner !== "leileios") return { ok: false, result: { ok: false, code: "SESSION_OWNED_BY_DESKTOP" } };
+        if (await readNativeSessionOwner(executor, { userId, conversationId }) !== "leileios") return { ok: false, result: { ok: false, code: "SESSION_OWNED_BY_DESKTOP" } };
         // A session imported from Claude Desktop has an immutable handoff
         // checkpoint, but a later LeileiOS quiet Wake may have advanced the
         // native JSONL invisibly while leaving the canonical head unchanged.

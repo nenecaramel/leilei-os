@@ -252,6 +252,21 @@ relaxing that isolation rule.
 `reconcileLegacyVisibleWakeAnchor` remains. This is server-only, with no migration,
 Mac daemon refresh, ownership transition or production DB operation.
 
+## PR 3a execution-owner reader scope
+
+Execution readers use `nativeSessionExecutableSql` or `readNativeSessionOwner`
+from `turn-repository/session-owner.ts`. The owner row is authoritative even if
+`nativeSessionSource.owner` disagrees. Both `desktop` and `releasing` take the
+existing desktop/busy refusal paths; this PR adds no switching error code.
+
+A missing row remains executable as `leileios`: a newly created conversation
+gets its row at first prepare. The conversation locks, user/session fences,
+writer-generation checks and turn-slot readers are unchanged. The continuation
+and history writers still write JSON and mirror it into the row, and the switch
+CLI still reports the JSON owner. Turn-slot migration belongs to PR 3b.
+
+This is server-only: no migration, daemon refresh or production DB operation.
+
 ## Open questions (resolved in the PR that touches them)
 
 - **Manual compaction.** Should committing a compaction rotate

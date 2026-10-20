@@ -1,3 +1,4 @@
+import { readNativeSessionOwner } from "../bridge/turn/turn-repository/session-owner.js";
 import { nativeDisplayAssetRevision, nativeSourceSessions } from "./native-session-history-repository.js";
 import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -25,7 +26,7 @@ export async function nativeSessionAsset(db: Database, input: NativeSessionAsset
     const source = record(conversation?.providerMetadata.nativeSessionSource);
     if (!conversation || conversation.lifecycleStatus !== "active" || conversation.origin !== "native_live" || source?.sessionId !== input.sessionId) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
     if (source.revision !== input.expectedRevision) throw fail("STALE_NATIVE_PROJECTION");
-    if (source.owner === "desktop") throw fail("NATIVE_CONVERSATION_BUSY");
+    if (await readNativeSessionOwner(tx, input) !== "leileios") throw fail("NATIVE_CONVERSATION_BUSY");
     const turns = await tx.select({ id: nativeLiveTurnPreparations.id }).from(nativeLiveTurnPreparations).where(inFlightConversationTurns(input)).limit(1);
     const compacts = await tx.select({ id: nativeLiveManualCompactions.id }).from(nativeLiveManualCompactions).where(and(eq(nativeLiveManualCompactions.userId, input.userId), eq(nativeLiveManualCompactions.conversationId, input.conversationId), inArray(nativeLiveManualCompactions.status, ["pending", "reserved"]))).limit(1);
     if (turns.length || compacts.length) throw fail("NATIVE_CONVERSATION_BUSY");
