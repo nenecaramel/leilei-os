@@ -16,15 +16,29 @@ test('picker does not default to first or newest conversation and rejects invali
   assert.equal(module.pickSwitchChoice(choices, '2'), choices[1]);
 });
 
-test('Desktop-bound choices preserve conversation identity, not title, and block unbound or file-less sessions', () => {
+test('Desktop-bound choices preserve conversation identity, not title, and block session-less or file-less conversations', () => {
   assert.equal(typeof module.buildSwitchChoices, 'function');
-  const choices = module.buildSwitchChoices('desktop', [row(C), { ...row(B), providerSessionId: B, sourceSessionId: null }, { ...row(D), providerSessionId: B }], [desktop()]);
+  const choices = module.buildSwitchChoices('desktop', [row(C), { ...row(B), providerSessionId: null, sourceSessionId: null }, { ...row(D), providerSessionId: B }], [desktop()]);
   assert.equal(choices[0].conversationId, C);
   assert.equal(choices[0].sessionId, A);
   assert.equal(choices[0].reason, null);
-  assert.equal(choices[1].reason, 'NATIVE_SOURCE_BINDING_REQUIRED');
+  assert.equal(choices[1].reason, 'NATIVE_SOURCE_BINDING_REQUIRED', 'a conversation that never ran a turn has no native session');
   assert.equal(choices[2].reason, 'NATIVE_SESSION_FILE_REQUIRED', 'no Desktop window and no local transcript');
   assert.throws(() => module.pickSwitchChoice(choices, '2'), /NATIVE_SOURCE_BINDING_REQUIRED/);
+});
+
+test('a conversation started in LeileiOS can be handed to Desktop without an earlier Desktop binding', () => {
+  // Continuation-only switching releases the head checkpoint's own session;
+  // the server creates the binding on release. A local transcript opens a new window.
+  const born = { ...row(B), providerSessionId: B, sourceSessionId: null };
+  const [local] = module.buildSwitchChoices('desktop', [born], [desktop()], { localSessionIds: new Set([B]), historyMode: 'continuation' });
+  assert.equal(local.reason, null);
+  assert.equal(local.opensNewWindow, true);
+  assert.equal(local.sessionId, B);
+  const [missing] = module.buildSwitchChoices('desktop', [born], [desktop()], { historyMode: 'continuation' });
+  assert.equal(missing.reason, 'NATIVE_SESSION_FILE_REQUIRED');
+  const [complete] = module.buildSwitchChoices('desktop', [born], [desktop()], { localSessionIds: new Set([B]) });
+  assert.equal(complete.reason, 'NATIVE_SOURCE_BINDING_REQUIRED', 'explicit full-history release keeps its source binding rule');
 });
 
 test('reverse switch reuses exact restored conversation; first restore alone uses native identity', () => {
