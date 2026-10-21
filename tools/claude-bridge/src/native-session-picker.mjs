@@ -24,7 +24,10 @@ export function buildSwitchChoices(mode, conversations, sessions, { localSession
     const s = matches[0];
     const localOnly = matches.length === 0 && localSessionIds.has(c.providerSessionId);
     const reason = c.busy ? 'NATIVE_CONVERSATION_BUSY'
-      : !c.providerSessionId || !c.sourceSessionId ? 'NATIVE_SOURCE_BINDING_REQUIRED'
+      // Continuation release hands over the head checkpoint's own session; the
+      // server creates the binding then, so a LeileiOS-born conversation is eligible.
+      // Explicit full-history release still requires its source binding.
+      : !c.providerSessionId || (historyMode !== 'continuation' && !c.sourceSessionId) ? 'NATIVE_SOURCE_BINDING_REQUIRED'
       : matches.length > 1 ? 'AMBIGUOUS_NATIVE_SELECTION'
       : localOnly ? null
       : matches.length === 0 ? 'NATIVE_SESSION_FILE_REQUIRED'
