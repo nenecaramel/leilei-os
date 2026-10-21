@@ -24,7 +24,7 @@ test("user-visible thinking is explicitly projected without exposing raw tool ou
   assert.match(surface, /\.presentationDetents\(\[\.medium, \.large\]\)/);
   assert.match(assembler, /turn\.visibleThinking = NativeLiveVisibleThinkingProjector\.project/);
   assert.match(turn, /var visibleThinking: \[NativeLiveVisibleThinkingItem\] = \[\]/);
-  assert.match(row, /NativeLiveVisibleThinkingSurface\(items: turn\.visibleThinking\)/);
+  assert.match(row, /NativeLiveVisibleThinkingSurface\(items: turn\.visibleThinking, murmurText: turn\.murmurText\)/);
   assert.doesNotMatch(parser + surface, /tool\.output|isReasoning|raw_metadata/);
 });
 

@@ -2,37 +2,41 @@ import SwiftUI
 
 struct NativeLiveVisibleThinkingSurface: View {
     let items: [NativeLiveVisibleThinkingItem]
+    var murmurText: String? = nil
 
     @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     @State private var isShowingThoughtProcess = false
 
     var body: some View {
         if !items.isEmpty {
-            Button { isShowingThoughtProcess = true } label: {
-                HStack(spacing: 8) {
-                    NativeLiveThoughtProcessIcon()
-                        .frame(width: 14, height: 14)
-                        .scaleEffect(1.1)
-                        .padding(.trailing, 1)
-                        .accessibilityHidden(true)
-                    Text("Thought process")
-                        .font(.system(size: 14))
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .light))
-                        .frame(height: 22)
-                    Spacer(minLength: 8)
+            HStack(spacing: 8) {
+                Button { isShowingThoughtProcess = true } label: {
+                    HStack(spacing: 8) {
+                        NativeLiveThoughtProcessIcon()
+                            .frame(width: 14, height: 14)
+                            .scaleEffect(1.1)
+                            .padding(.trailing, 1)
+                            .accessibilityHidden(true)
+                        Text("Thought process")
+                            .font(.system(size: 14))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .light))
+                            .frame(height: 22)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .foregroundStyle(iMessageWallpaperVisible ? Color.white : Color.secondary)
-                .shadow(
-                    color: iMessageWallpaperVisible ? Color.black.opacity(0.75) : .clear,
-                    radius: iMessageWallpaperVisible ? 2 : 0,
-                    y: iMessageWallpaperVisible ? 1 : 0
-                )
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityLabel("Thought process")
+                NativeLiveMurmurButton(text: murmurText)
+                Spacer(minLength: 8)
             }
+            .foregroundStyle(iMessageWallpaperVisible ? Color.white : Color.secondary)
+            .shadow(
+                color: iMessageWallpaperVisible ? Color.black.opacity(0.75) : .clear,
+                radius: iMessageWallpaperVisible ? 2 : 0,
+                y: iMessageWallpaperVisible ? 1 : 0
+            )
             .padding(.leading, 2)
-            .buttonStyle(.plain)
-            .accessibilityLabel("Thought process")
             .sheet(isPresented: $isShowingThoughtProcess) {
                 NativeLiveThoughtProcessSheet(items: items)
             }

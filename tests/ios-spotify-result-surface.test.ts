@@ -18,7 +18,7 @@ test('ToolActivity is provider-neutral and AssistantTurn owns results between Ac
   assert.match(tool, /NativeLiveToolCallCard\(/);
   assert.match(tool, /ForEach\(permissionInteractions\)/);
   const assistant = readFileSync(surface+'NativeLiveAssistantTurnRow.swift','utf8');
-  assert.match(assistant, /NativeLiveVisibleThinkingSurface\(items: turn\.visibleThinking\)\s*\.padding\([^\n]*\)\s+activityArea\s*\.padding\([^\n]*\)\s+spotifyResultArea\s+elevenLabsResultArea\s+if chatTheme == \.iMessage \{\s*NativeLiveIMessageTextBubbleList\(/);
+  assert.match(assistant, /NativeLiveVisibleThinkingSurface\(items: turn\.visibleThinking, murmurText: turn\.murmurText\)\s*\.padding\([^\n]*\)\s+activityArea\s*\.padding\([^\n]*\)\s+spotifyResultArea\s+elevenLabsResultArea\s+if chatTheme == \.iMessage \{\s*NativeLiveIMessageTextBubbleList\(/);
   assert.match(assistant, /else \{\s*NativeLiveMessagePresentationView\(presentation:turn\.bodyPresentation\)/);
   assert.match(assistant, /NativeLiveSpotifyResultSurface\(items: items\)/);
   const view = readFileSync(surface+'NativeLiveSpotifyResultSurface.swift','utf8');

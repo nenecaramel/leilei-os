@@ -19,8 +19,8 @@ test("murmur is a separate activity-row bubble that opens a sheet", () => {
   const activity = fs.readFileSync(activityPath, "utf8") + fs.readFileSync(activityPath.replace("NativeLiveRuntimeActivity.swift", "NativeLiveActivitySheets.swift"), "utf8");
   const row = fs.readFileSync(rowPath, "utf8");
 
-  assert.match(row, /processSections\.showsActivity \|\| turn\.murmurText != nil/u);
-  assert.match(row, /murmurText:turn\.murmurText/u);
+  assert.match(row, /processSections\.showsActivity \|\| activityMurmurText != nil/u);
+  assert.match(row, /murmurText:activityMurmurText/u);
 
   assert.match(activity, /let murmurText: String\?/u);
   assert.match(activity, /@State private var isShowingMurmur = false/u);
@@ -48,6 +48,26 @@ test("murmur is a separate activity-row bubble that opens a sheet", () => {
   assert.ok(header.indexOf('Image(systemName: "bubble.left")') > header.indexOf('"chevron.right"'));
   assert.match(header, /if normalizedMurmurText != nil/);
   assert.match(header, /\.accessibilityLabel\("Murmur"\)/);
+});
+
+// The bubble always trails the first process row: Thought process when it is
+// shown, otherwise Worked for, otherwise a row of its own before the body.
+test("murmur trails the first process row", () => {
+  const row = fs.readFileSync(rowPath, "utf8");
+  const thinking = fs.readFileSync(rowPath.replace("NativeLiveAssistantTurnRow.swift", "NativeLiveVisibleThinkingSurface.swift"), "utf8");
+  const button = fs.readFileSync(activityPath.replace("NativeLiveRuntimeActivity.swift", "NativeLiveMurmurButton.swift"), "utf8");
+
+  assert.match(row, /NativeLiveVisibleThinkingSurface\(items: turn\.visibleThinking, murmurText: turn\.murmurText\)/u);
+  assert.match(row, /var activityMurmurText: String\? \{ turn\.visibleThinking\.isEmpty \? turn\.murmurText : nil \}/u);
+
+  assert.match(thinking, /var murmurText: String\? = nil/u);
+  assert.ok(thinking.indexOf("NativeLiveMurmurButton(text: murmurText)") > thinking.indexOf('"chevron.right"'),
+    "Thought process disclosure precedes the murmur bubble");
+  assert.ok(thinking.indexOf("NativeLiveMurmurButton(text: murmurText)") < thinking.indexOf("Spacer(minLength: 8)"));
+
+  assert.match(button, /struct NativeLiveMurmurButton: View/u);
+  assert.match(button, /Image\(systemName: "bubble\.left"\)/u);
+  assert.match(button, /\.sheet\(isPresented: \$isShowingMurmur\)[\s\S]*NativeLiveMurmurSheet\(text: text\)/u);
 });
 
 test("murmur never becomes assistant body or generic display text", () => {

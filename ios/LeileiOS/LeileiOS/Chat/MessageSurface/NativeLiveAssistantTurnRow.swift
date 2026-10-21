@@ -31,7 +31,7 @@ struct NativeLiveAssistantTurnRow: View {
                     Text("Thinking...").font(.system(size: 14)).foregroundStyle(.secondary)
                 }
             }
-            NativeLiveVisibleThinkingSurface(items: turn.visibleThinking)
+            NativeLiveVisibleThinkingSurface(items: turn.visibleThinking, murmurText: turn.murmurText)
                 .padding(.bottom, processSections.showsThinking && (processSections.showsActivity || !turn.bodyPresentation.nodes.isEmpty) ? processSectionExtraSpacing : 0)
             activityArea
                 .padding(.bottom, processSections.showsActivity && !turn.bodyPresentation.nodes.isEmpty ? processSectionExtraSpacing : 0)
@@ -76,13 +76,16 @@ struct NativeLiveAssistantTurnRow: View {
             hasBackgroundTask: turn.activityProjection.hasActiveBackgroundTask)
     }
     @ViewBuilder private var activityArea: some View {
-        if processSections.showsActivity || turn.murmurText != nil {
+        if processSections.showsActivity || activityMurmurText != nil {
             NativeLiveTurnActivityView(projection:turn.activityProjection,
-                header:activityHeader, murmurText:turn.murmurText,
+                header:activityHeader, murmurText:activityMurmurText,
                 expansion:Binding(get:{ appModel.nativeLiveMessageUIState[turn.id] },set:{ appModel.nativeLiveMessageUIState[turn.id] = $0 }),
                 onResolveInteraction:onResolveInteraction)
         }
     }
+    // The murmur bubble trails the first process row: Thought process when
+    // shown, otherwise Worked for, otherwise a row of its own before the body.
+    private var activityMurmurText: String? { turn.visibleThinking.isEmpty ? turn.murmurText : nil }
     private var activityHeader: String {
         // Preserve existing timing/count and pending-input/background labels.
         if turn.stepCount > 0 || turn.hasPendingInput || turn.backgroundState { return turn.header }

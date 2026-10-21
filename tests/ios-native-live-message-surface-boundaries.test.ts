@@ -308,7 +308,7 @@ test("message rows and canonical block rendering are extracted while root compos
   );
   assert.match(actions, /if let timestamp = turn\.visibleTimestamp/);
   assert.match(actions, /Text\(MessageTimestampFormatter\.string\(from:timestamp\)\)/);
-  assert.match(assistant, /murmurText:turn\.murmurText/);
+  assert.match(assistant, /murmurText:activityMurmurText/);
 
   assert.match(user, /struct NativeLiveUserMessagePresentationView: View/);
   assert.match(history, /struct NativeLiveHistorySnapshotRow: View/);
