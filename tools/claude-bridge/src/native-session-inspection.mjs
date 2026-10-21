@@ -195,8 +195,11 @@ export async function resolveDesktopNativeSelection({ sessionId, ...input }) {
 const endOfTurnRecord = e => (e.type === "system" && e.subtype === "stop_hook_summary") || (e.type === "attachment" &&
   (e.attachment?.type === "prompt_snapshot" || (["hook_success", "hook_non_blocking_error"].includes(e.attachment?.type) && e.attachment.hookEvent === "Stop")));
 
-// Execution ancestry stops at the native compact root. It deliberately never
-// expands logicalParentUuid or reads other session files for display history.
+// Execution resumes from the physical chain, which stops at the native compact
+// root. Ancestry evidence (UUIDs only) also follows a compact boundary's
+// logicalParentUuid within this same file, so a checkpoint LeileiOS released
+// before a Desktop /compact is still provably an ancestor. Other session files
+// and display history are never read.
 function nativeExecutionContinuation(snapshot, desktopCheckpointId) {
   const carriers = snapshot.entries.filter(e => e && !e.isSidechain &&
     ["user", "assistant", "system", "attachment"].includes(e.type) && typeof e.uuid === "string" && Object.hasOwn(e, "parentUuid"));
@@ -213,6 +216,14 @@ function nativeExecutionContinuation(snapshot, desktopCheckpointId) {
   try { ancestry = durableCheckpointPrefix(snapshot.entries, tail.uuid).ancestry; }
   catch { throw fail("NATIVE_HISTORY_GAP"); }
   if (!ancestry.has(desktopCheckpointId)) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
+  const logical = new Set();
+  for (let prefix = ancestry; ;) {
+    const root = carriers.find(e => prefix.has(e.uuid) && e.parentUuid === null);
+    const parent = root?.type === "system" && root.subtype === "compact_boundary" ? root.logicalParentUuid : null;
+    if (typeof parent !== "string" || !byId.has(parent) || logical.has(parent) || ancestry.has(parent)) break;
+    try { prefix = durableCheckpointPrefix(snapshot.entries, parent).ancestry; } catch { break; }
+    for (const ancestor of prefix) logical.add(ancestor);
+  }
   const chain = carriers.filter(e => ancestry.has(e.uuid));
   const last = chain.findLast(e => !e.isMeta && !e.isCompactSummary && ["user", "assistant"].includes(e.type));
   if (last?.type !== "assistant" || last.message?.stop_reason === "tool_use" ||
@@ -223,7 +234,7 @@ function nativeExecutionContinuation(snapshot, desktopCheckpointId) {
   // is not equivalent to the completed checkpoint.
   const trailing = chain.slice(chain.findLastIndex(e => e.uuid === last.uuid) + 1);
   if (!trailing.every(endOfTurnRecord)) throw fail("NATIVE_TURN_UNFINISHED");
-  return { checkpointId: last.uuid, checkpointIds: [...ancestry], completedTurnCheckpointIds: [last.uuid, ...trailing.map(e => e.uuid)] };
+  return { checkpointId: last.uuid, checkpointIds: [...new Set([...ancestry, ...logical])], completedTurnCheckpointIds: [last.uuid, ...trailing.map(e => e.uuid)] };
 }
 
 export async function readNativeContinuationEvidence(input, recovery = null) {
