@@ -28,7 +28,14 @@ consume the main session's pending receipt.
 ## Deterministic verification boundaries
 
 SDK turn completion retains a finishing turn until delivery settles; close or
-failure rejects that turn and late delivery cannot reopen it. Advisory event
+failure rejects that turn and late delivery cannot reopen it. Foreground execution
+renewal uses the last successful request's conservative 60-second validity:
+transport uncertainty retries every five seconds only inside that deadline.
+Initial uncertainty, explicit denial, authentication/protocol failure and expiry
+still retire the writer. Slow advisory delivery does not itself revoke a valid
+lease. Read-only completed-turn recovery accepts native `prompt_snapshot`
+ancestry metadata around an otherwise proved completion; the snapshot itself
+never proves completion or bypasses branch, session or Stop checks. Advisory event
 uploads share a two-second elapsed deadline across response parsing, retries and
 batch splitting; terminal result submission keeps its separate budget.
 

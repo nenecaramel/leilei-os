@@ -8,7 +8,10 @@ export function verifyCompletedNativeTurn({entries,sessionId,inputId,parentCheck
  try {
   if(Buffer.byteLength(JSON.stringify(entries))>64*1024*1024)return null;
   const cleanStop=e=>e.type==='system'&&e.subtype==='stop_hook_summary'&&e.preventedContinuation===false&&(!e.hookErrors||Array.isArray(e.hookErrors)&&e.hookErrors.length===0);
-  const trailer=e=>cleanStop(e)||(e.type==='attachment'&&e.attachment?.type==='hook_success'&&e.attachment.hookEvent==='Stop'&&e.attachment.exitCode===0);
+  // The CLI can append a prompt_snapshot after a completed reply (and before
+  // its Stop summary). It is metadata, never evidence of completion itself.
+  const trailer=e=>cleanStop(e)||(e.type==='attachment'&&(e.attachment?.type==='prompt_snapshot'
+    ||e.attachment?.type==='hook_success'&&e.attachment.hookEvent==='Stop'&&e.attachment.exitCode===0));
   const carriers=entries.filter(e=>e&&!e.isSidechain&&['user','assistant','system','attachment'].includes(e.type)&&typeof e.uuid==='string'&&Object.hasOwn(e,'parentUuid'));
   const ids=new Set();for(const e of carriers){if(ids.has(e.uuid)||!uuid.test(e.uuid)||(e.sessionId&&e.sessionId!==sessionId))return null;ids.add(e.uuid);}
   const last=carriers.at(-1);

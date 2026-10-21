@@ -969,3 +969,60 @@ test('changed native snapshots are never joined into a recovered reply',async t=
  f.setReadGate(async()=>{if(++reads===2)f.setTranscript([{...records[0]},{...records[1],message:{content:[{type:'text',text:'changed'}],stop_reason:'end_turn'}}]);});
  const observed=assert.rejects(pending);await f.router.close('CONTROL_RECEIPT_TIMEOUT');await observed;assert.equal(reads,2);assert.deepEqual(f.results,[]);assert.equal(f.launches,1);
 });
+
+for (const renewal of ['transient', 'timeout', 'lost-body', 'gateway', 'denied', 'forbidden', 'invalid-receipt', 'expired'] as const) test(`foreground delivery pending: execution renewal ${renewal} respects the known lease`, async t => {
+  const f = await fixture(t), entered = deferred<void>(), delivery = deferred<void>();
+  let renewals = 0;
+  const recoverable = ['transient', 'timeout', 'lost-body', 'gateway'].includes(renewal);
+  f.relay.renewExecutionLease = async () => {
+    renewals++;
+    if (renewals === 1 || recoverable && renewals >= 3) return true;
+    if (renewal === 'denied') return false;
+    if (renewal === 'timeout') throw new DOMException('synthetic timeout', 'TimeoutError');
+    if (renewal === 'lost-body') throw Object.assign(Error('synthetic lost success body'), { relayCode: 'RELAY_RESPONSE_BODY_UNAVAILABLE', httpStatus: 200 });
+    if (renewal === 'gateway') throw Object.assign(Error('synthetic gateway unavailable'), { httpStatus: 503 });
+    if (renewal === 'forbidden') throw Object.assign(Error('synthetic authorization failure'), { httpStatus: 403 });
+    if (renewal === 'invalid-receipt') throw Error('invalid renewal receipt');
+    throw new TypeError('synthetic renewal connection reset');
+  };
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+  const pending = f.run(command(1), { async onNormalizedEvent() { entered.resolve(); await delivery.promise; } });
+  const outcome = pending.then(() => true, () => false);
+  const input = (await f.inputs.next()).value!;
+  const nativeResult = deferred<void>();
+  f.registry.snapshot()[0]!.session.events.once('turn-result', () => nativeResult.resolve());
+  f.output.push({ type: 'assistant', session_id: sid, user_message_uuid: input.uuid,
+    message: { role: 'assistant', content: [{ type: 'text', text: 'synthetic' }] } });
+  f.finish(input.uuid); await entered.promise; await nativeResult.promise;
+  const flush = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); };
+  t.mock.timers.tick(20_000); await flush();
+  if (recoverable) {
+    assert.equal(f.closes, 0, 'one uncertain renewal must not discard a completed reply within its granted lease');
+    assert.deepEqual(f.results, [], 'slow event delivery cannot prematurely commit');
+    t.mock.timers.tick(5_000); await flush();
+    assert.equal(renewals, 3);
+    delivery.resolve(); assert.equal(await outcome, true);
+    assert.deepEqual(f.results, [id(1)]); assert.equal(f.launches, 1); assert.equal(f.closes, 0);
+    t.mock.timers.tick(60_000); await flush();
+    assert.equal(renewals, 3, 'settled foreground stops its heartbeat');
+  } else {
+    if (renewal === 'expired') {
+      assert.equal(f.closes, 0, 'transport uncertainty is not an explicit denial');
+      // Advance to the last successful request's exact expiry, not a renewed deadline.
+      t.mock.timers.tick(40_000); await flush();
+    }
+    assert.equal(f.closes, 1, 'explicit denial, invalid receipt or expiry must close promptly');
+    assert.equal(await outcome, false);
+    delivery.resolve(); await flush(); assert.deepEqual(f.results, []);
+    const calls = renewals; t.mock.timers.tick(60_000); await flush();
+    assert.equal(renewals, calls, 'expired or denied writer cannot reacquire');
+  }
+});
+
+for (const initial of ['transport', 'timeout'] as const) test(`initial execution renewal ${initial} failure never admits input`, async t => {
+  const f = await fixture(t);
+  f.relay.renewExecutionLease = async () => { throw initial === 'transport'
+    ? new TypeError('synthetic connection reset') : new DOMException('synthetic timeout', 'TimeoutError'); };
+  await assert.rejects(f.run(command(1)), /lease was not renewed/);
+  assert.deepEqual(f.submitted, []); assert.deepEqual(f.results, []); assert.equal(f.closes, 1);
+});

@@ -1,5 +1,6 @@
 import { NativeLiveMacTaskStatePublisher, type NativeLiveTaskStateUpdate } from "./native-live-mac-task-state-publisher.js";
 import { createNativeLiveMacOutputAttachmentCollector, type NativeLiveMacOutputAttachmentCollector, type NativeLiveMacOutputAttachmentSenderLike } from "./native-live-mac-output-attachment-collector.js";
+import { isTransientRelayWaitError } from "./native-live-mac-relay-http.js";
 import { NativeLiveMacExecutionLease } from "./native-live-mac-execution-lease.js";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -154,7 +155,22 @@ export class NativeLiveMacPersistentTurnRouter {
       this.assertSlot(slot);
       if (this.input.relay.renewExecutionLease) {
         slot.lease = new NativeLiveMacExecutionLease({
-          renew: () => this.input.relay.renewExecutionLease!({ listenerInstanceId: this.input.listenerInstanceId, command: slot.effectiveCommand ?? command }),
+          // A lost renewal response is not a revocation of an already granted
+          // 60s lease. Retry only within that conservative deadline; explicit
+          // denial and initial uncertainty still close the writer immediately.
+          transientRetry: { validForMs: 60_000, retryMs: 5_000 },
+          renew: async () => {
+            try { return await this.input.relay.renewExecutionLease!({ listenerInstanceId: this.input.listenerInstanceId, command: slot.effectiveCommand ?? command }); }
+            catch (error) {
+              const failure = error as { name?: string; relayCode?: string; httpStatus?: number } | null;
+              const lostSuccessBody = failure?.relayCode === "RELAY_RESPONSE_BODY_UNAVAILABLE"
+                && typeof failure.httpStatus === "number" && failure.httpStatus >= 200 && failure.httpStatus < 300;
+              if (isTransientRelayWaitError(error) || failure?.name === "TimeoutError" || lostSuccessBody) throw error;
+              // Authentication, protocol and other non-transport failures do
+              // not receive the retry window of an uncertain network response.
+              return false;
+            }
+          },
           onRevoked: async () => { if (this.active === slot && slot.phase === "executing") await this.close("EXECUTION_LEASE_REVOKED"); },
         });
         await slot.lease.start(); this.assertSlot(slot);
