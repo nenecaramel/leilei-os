@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AgentSdkClaudeTransport } from '../src/agent-sdk-claude-transport.mjs';
-import { LEILEIOS_INTERACTIVE_SYSTEM_PROMPT } from '../src/agent-sdk-transport-support.mjs';
 function queue(){let waiter,ended=false;const values=[];return {push(v){if(waiter){const w=waiter;waiter=null;w({value:v,done:false});}else values.push(v);},end(){ended=true;waiter?.({done:true});},[Symbol.asyncIterator](){return {next(){return values.length?Promise.resolve({value:values.shift(),done:false}):ended?Promise.resolve({done:true}):new Promise(r=>{waiter=r;});}};}};}
 function fixture({loadQuery=null,omitEcho=false,failClose=false,manualResults=false,onInput=()=>{}}={}){
  const output=queue(),inputs=[],background=[];let calls=0,closed=0,options;
@@ -14,8 +13,8 @@ test('configured transport uses one SDK query for two turns and retains default 
  const a=await host.submit('first',{id:'a'}),b=await host.submit('second',{id:'b'});
  assert.equal(a.providerSessionId,'s');assert.equal(b.providerSessionId,'s');assert.equal(f.calls,1);assert.equal(f.closed,0);
  assert.deepEqual(f.options.settingSources,['user','project','local']);assert.equal(f.options.permissionMode,'default');
- // A resumed Desktop-born session must still receive the LeileiOS guidance.
- assert.deepEqual(f.options.systemPrompt,{type:'custom',prompt:LEILEIOS_INTERACTIVE_SYSTEM_PROMPT,snapshot:false});assert.equal(f.options.env.ANTHROPIC_API_KEY,undefined);
+ // LeileiOS sends no system prompt of its own and keeps the Claude Code preset off.
+ assert.equal(f.options.systemPrompt,undefined);assert.equal(f.options.env.ANTHROPIC_API_KEY,undefined);
  assert.deepEqual(await f.options.canUseTool('Write',{synthetic:true},{}),{behavior:'allow'});
  assert.equal(f.options.perTaskStopAffordance,false);
  assert.deepEqual(f.options.thinking,{type:'adaptive',display:'summarized'});

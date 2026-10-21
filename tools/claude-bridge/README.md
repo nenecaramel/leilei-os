@@ -21,7 +21,6 @@ lockfile versions remain unchanged (`@anthropic-ai/claude-agent-sdk@0.3.286`).
 | `agent-sdk-execution-selection.mjs` | Explicit model/thinking/effort validation | Requested options differ from provider readback |
 | `agent-sdk-execution-readback.mjs` | Applied settings/capability observability | Does not override execution state |
 | `agent-sdk-context-observability.mjs` | Context usage projection | Not canonical conversation state |
-| `leileios-wake-system-prompt.mjs`, `leileios-murmur-system-prompt.mjs` | Wake/murmur-only custom prompt | No Claude Code preset or Mind memory-write prompt |
 
 The checkpoint extractor is still re-exported from the transport for existing
 consumers. All moved validation/read-view bodies are unchanged. Missing ancestry,

@@ -14,7 +14,6 @@ import {
   sessionStoreHealthSnapshot,
   attachSessionStoreHealth,
   leileiosMcpQueryOptions,
-  LEILEIOS_INTERACTIVE_SYSTEM_PROMPT_OPTION,
 } from "./agent-sdk-transport-support.mjs";
 
 // State stays on the transport owner; private checkpoint operations are bound by its entry point.
@@ -195,7 +194,6 @@ export async function executeAgentSdkTurn(owner, checkpoints,
         ...(owner.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
         ...(owner.chromeEnabled ? { extraArgs: { chrome: null } } : {}),
         verbatimPrompts: !nativeScheduleCommand,
-        systemPrompt: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT_OPTION,
         ...executionOptions,
         // Newer Claude models default to omitted thinking (empty text + signature).
         // Request the provider's displayable summary only for interactive turns;
