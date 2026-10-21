@@ -89,6 +89,17 @@ export class NativeLiveMacPersistentExecutor {
     return router ? router.matches(command) : this.input.hasCapacity?.() !== false;
   }
 
+  /** An exact send refused only because earlier inputs failed at its checkpoint,
+   * with no writer of this conversation to preserve. The one-shot executor's
+   * tail validation tolerates those inputs; a persistent writer cannot. */
+  canFallBackForFailedInputs(rawCommand: unknown): boolean {
+    let command: NativeLiveRuntimeCommand;
+    try { command = parseNativeLiveRuntimeCommand(rawCommand); } catch { return false; }
+    if (!command.failed_user_message_uuids?.length || this.routers.has(command.conversation_id)) return false;
+    const { failed_user_message_uuids: _failed, ...rest } = command;
+    return this.canRoute(rest);
+  }
+
   /** A Wake blocked only by ongoing work or finite session capacity is
    * deferred durably by the relay; neither branch nor native Cron is touched. */
   shouldDeferWake(rawCommand: unknown): boolean {
