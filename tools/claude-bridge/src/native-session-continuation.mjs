@@ -38,12 +38,13 @@ async function switchContinuation({ input, conversationId, relayUrl, relayToken,
       begin.conversationId !== conversationId || begin.headMessageId !== state.expectedHeadMessageId ||
       begin.providerSessionId !== input.expectedSessionId || !hash.test(begin.expectedRevision ?? '')) throw fail('NATIVE_RELEASE_BEGIN_UNCONFIRMED');
   }
+  const recoveryScope = { conversationId, providerSessionId: input.expectedSessionId };
   try {
     const pinned = owner === 'desktop' ? await pinDrainedNativeSource(input) : null;
     const drain = owner === 'desktop' ? await requestNativeSessionDrain({ recoveryDirectory, conversationId, providerSessionId: input.expectedSessionId }) : null;
     if (drain && !drain.ready) throw fail('NATIVE_DAEMON_DRAIN_UNCONFIRMED');
     if (drain) input = await settleDrainedNativeSource(input, pinned, drainSettle);
-    await assertNativeHandoffRecoveryClear(recoveryDirectory);
+    await assertNativeHandoffRecoveryClear(recoveryDirectory, recoveryScope);
     const selection = await preflightNativeSessionSwitch(input);
     let evidence = await readNativeContinuationEvidence(input);
     let recoveredFailedTurnId = null;
@@ -63,7 +64,7 @@ async function switchContinuation({ input, conversationId, relayUrl, relayToken,
     // Fence the local source again after the network round trip. Server locks and
     // CAS protect the canonical state; this guard protects the native file/index.
     await preflightNativeSessionSwitch(input);
-    await assertNativeHandoffRecoveryClear(recoveryDirectory);
+    await assertNativeHandoffRecoveryClear(recoveryDirectory, recoveryScope);
     const result = await request(owner === 'desktop' ? 'continuation-release' : 'continuation-attach', {
       conversationId, sessionId: selection.providerSessionId, checkpointId: selection.providerCheckpointId,
       revision: selection.nativeRevision, effectiveWorkingDirectory: selection.workingDirectory,
@@ -75,7 +76,7 @@ async function switchContinuation({ input, conversationId, relayUrl, relayToken,
       result.conversationId !== conversationId || result.headMessageId !== state.expectedHeadMessageId ||
       result.providerSessionId !== selection.providerSessionId || result.providerCheckpointId !== selection.providerCheckpointId) throw fail('NATIVE_RESTORE_INVALID_RESPONSE');
     await preflightNativeSessionSwitch(input);
-    await assertNativeHandoffRecoveryClear(recoveryDirectory);
+    await assertNativeHandoffRecoveryClear(recoveryDirectory, recoveryScope);
     if (owner === 'desktop') await launchImpl({ ...selection, configDirectory: input.configDirectory });
     // A running daemon still fences this conversation from the earlier Desktop
     // handoff drain. Only after the server attach may it accept turns again.

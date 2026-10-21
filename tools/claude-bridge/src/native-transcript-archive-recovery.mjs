@@ -8,12 +8,12 @@ const digest = /^[a-f0-9]{64}$/;
 const receipt = /^[a-f0-9]{64}\.json$/;
 const MAX_RECORD_BYTES = 64 * 1024 * 1024;
 
-// Archive-only gate. Never relax the switch/restore gate: those operations
-// still need every pending and quarantined result to be fully recovered.
+// Identity-verified recovery scope, shared by archive and continuation switching.
 // A quarantined background result cannot always be re-delivered (the canonical
-// branch can have moved), but its original native provider session must remain
-// resident while unrelated, verified session files may be archived.
-export async function archiveRecoveryProtectedSessions(root) {
+// branch can have moved), but its own native session and conversation must stay
+// protected while unrelated, verified sessions may be archived or switched.
+// Terminal and append journals, and any unverifiable file, stay globally fail-closed.
+export async function nativeRecoveryProtectedSessions(root) {
   const directory = async folder => {
     try {
       if (!(await lstat(folder)).isDirectory()) throw fail('NATIVE_RECOVERY_UNCONFIRMED');
@@ -39,7 +39,7 @@ export async function archiveRecoveryProtectedSessions(root) {
     }
   }
 
-  const sessions = new Set();
+  const sessions = new Set(), conversations = new Set();
   let backgroundReceipts = 0;
   const inspectReceipt = async file => {
     try {
@@ -63,6 +63,7 @@ export async function archiveRecoveryProtectedSessions(root) {
       if (path.basename(file) !== expectedName)
         throw new Error('Background receipt does not match its journal identity');
       sessions.add(result.provider_session_id.toLowerCase());
+      conversations.add(result.conversation_id.toLowerCase());
       backgroundReceipts++;
     } catch {
       throw fail('NATIVE_RECOVERY_UNCONFIRMED');
@@ -87,5 +88,6 @@ export async function archiveRecoveryProtectedSessions(root) {
       }
     }
   }
-  return { sessions, backgroundReceipts };
+  return { sessions, conversations, backgroundReceipts };
 }
+export const archiveRecoveryProtectedSessions = nativeRecoveryProtectedSessions;
