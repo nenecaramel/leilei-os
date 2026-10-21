@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { eq, sql } from "drizzle-orm";
 import { rotateNativeWriterGeneration } from "../src/domains/bridge/turn/turn-repository/session-owner.js";
-import { DrizzleNativeLiveBackendRelayRepository } from "../src/domains/bridge/relay/native-live-backend-relay.js";
+import { DrizzleNativeLiveBackendRelayRepository, NativeLiveBackendRelayService } from "../src/domains/bridge/relay/native-live-backend-relay.js";
 import { createDatabase } from "../src/database/client.js";
 import { users, conversations, conversationMessages, nativeLiveTurnPreparations, nativeLiveRuntimeListenerLeases } from "../src/database/schema.js";
 import { NativeLiveBackendTurnCoordinator } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
@@ -60,17 +60,47 @@ test("quiet same-session wake advances resume parent without rewriting canonical
   assert.equal(next.command.runtime_mode, "resume"); assert.equal(next.command.parent_provider_checkpoint_id, f.next);
 });
 
-for (const stale of ["foreground", "desktop", "checkpoint"] as const) test(`stale ${stale} quiet result cannot advance native resume parent`, { skip: !enabled }, async t => {
+for (const stale of ["started foreground", "desktop", "checkpoint"] as const) test(`stale ${stale} quiet result cannot advance native resume parent`, { skip: !enabled }, async t => {
   const f = await fixture(t);
-  if (stale === "foreground") assert.ok((await f.send()).ok);
+  if (stale === "started foreground") {
+    const send = await f.send(); assert.ok(send.ok); if (!send.ok) throw Error("send failed");
+    const relay = new NativeLiveBackendRelayService(new DrizzleNativeLiveBackendRelayRepository(f.database.db), f.coordinator);
+    const listenerInstanceId = crypto.randomUUID();
+    await relay.renewLease({ userId: f.user.id, listenerInstanceId, dispatchTarget: "claude_code" });
+    await relay.enqueuePreparation({ userId: f.user.id, prepareId: send.command.prepare_id });
+    const reservation = await relay.reserveNext({ userId: f.user.id, listenerInstanceId, dispatchTarget: "claude_code" });
+    assert.ok(reservation); assert.equal(reservation.reservationId, send.command.prepare_id);
+    await relay.markExecutionStarted({ userId: f.user.id, listenerInstanceId, reservationId: reservation.reservationId });
+  }
   if (stale === "desktop") await f.database.db.execute(sql`UPDATE conversations SET provider_metadata = jsonb_set(provider_metadata, '{nativeSessionSource}', '{"owner":"desktop"}'::jsonb) WHERE id = ${f.conversation.id}::uuid`);
   if (stale === "desktop") await syncTestNativeSessionOwner(f.database.db, { userId: f.user.id, conversationId: f.conversation.id });
   if (stale === "checkpoint") await f.database.db.update(nativeLiveTurnPreparations).set({ parentProviderCheckpointId: crypto.randomUUID() }).where(eq(nativeLiveTurnPreparations.id, f.wake.prepareId));
   const finalized = await f.coordinator.finalize(f.user.id, f.result);
-  assert.ok(finalized.ok); if (!finalized.ok) throw Error("finalize failed");
-  assert.equal(finalized.outcome, "wake_stale"); assert.equal((finalized as { nativeResumeCheckpointId?: string }).nativeResumeCheckpointId, undefined);
+  if (stale === "started foreground") {
+    // Activation retires the queued Wake before the provider starts the send.
+    assert.equal(finalized.ok, false);
+    if (finalized.ok) throw Error("retired Wake must not finalize");
+    assert.equal(finalized.code, "PREPARATION_NOT_FOUND");
+  } else {
+    assert.ok(finalized.ok, JSON.stringify(finalized)); if (!finalized.ok) throw Error("finalize failed");
+    assert.equal(finalized.outcome, "wake_stale");
+  }
+  assert.equal((finalized as { nativeResumeCheckpointId?: string }).nativeResumeCheckpointId, undefined);
   const cp = await f.repository.getProviderCheckpointForHead({ userId: f.user.id, conversationId: f.conversation.id, canonicalMessageId: f.source.assistantMessageId });
   assert.equal(cp!.runtimeMetadata?.native_live_resume_tail, undefined);
+});
+
+test("unstarted foreground retains the quiet native cursor without publishing stale Wake output", { skip: !enabled }, async t => {
+  const f = await fixture(t), count = await f.visibleCount();
+  const send = await f.send(); assert.ok(send.ok); if (!send.ok) throw Error("send failed");
+  const finalized = await f.coordinator.finalize(f.user.id, f.result);
+  assert.ok(finalized.ok && finalized.outcome === "wake_stale");
+  assert.equal(finalized.nativeResumeCheckpointId, f.next);
+  assert.equal(await f.visibleCount(), count + 1, "only the new user message is added");
+  const pending = await f.port.getPreparation({ userId: f.user.id, prepareId: send.command.prepare_id });
+  assert.equal(pending?.parentProviderCheckpointId, f.next, "queued send resumes after the actual native output");
+  const cp = await f.repository.getProviderCheckpointForHead({ userId: f.user.id, conversationId: f.conversation.id, canonicalMessageId: f.source.assistantMessageId });
+  assert.equal(cp!.providerCheckpointId, f.base, "canonical checkpoint remains unchanged");
 });
 
 test("duplicate quiet submission never overwrites a later native tail", { skip: !enabled }, async t => {
