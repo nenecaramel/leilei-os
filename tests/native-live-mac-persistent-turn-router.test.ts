@@ -39,6 +39,7 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
   const restored = [{ type: "user", uuid: id(500), parentUuid: null, sessionId: sid }, { type: "assistant", uuid: id(102), parentUuid: id(500), sessionId: sid }];
   let transcript: Array<Record<string, unknown>> | null = null;
   let writeTranscript = true;
+  let readGate: (() => Promise<void>) | null = null;
   const resumes: unknown[] = [], submitted: string[] = [];
   let sdk!: { canUseTool: (name: string, input: unknown, context: unknown) => Promise<unknown>;
     hooks: { UserPromptSubmit: Array<{ hooks: Array<(input: Record<string, unknown>) => Promise<{ decision?: string }>> }>;
@@ -63,7 +64,7 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
         return { sessionId: activeSid, async cleanup() {} };
       },
       sessionMessagesImpl: async () => [{}],
-      importSessionToStoreImpl: async (_id: string, store: { append(key: unknown, entries: unknown[]): Promise<void> }) => store.append({ sessionId: sid }, (transcript ?? restored).map(entry => ({ ...entry, sessionId: _id }))),
+      importSessionToStoreImpl: async (_id: string, store: { append(key: unknown, entries: unknown[]): Promise<void> }) => { await readGate?.(); return store.append({ sessionId: sid }, (transcript ?? restored).map(entry => ({ ...entry, sessionId: _id }))); },
       queryImpl: ({ prompt, options }: { prompt: AsyncIterable<{ uuid: string; origin: { kind: string } }>; options: typeof sdk }) => {
       launches++; sdk = options; resumes.push((options as { resume?: string }).resume ?? null); if ((options as { resume?: string }).resume) nextCheckpoint = 103;
       transcript = (options as { resume?: string }).resume ? restored.map(entry => ({ ...entry, sessionId: activeSid })) : [];
@@ -88,7 +89,7 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
     output.push({ type: "result", subtype: "success", session_id: activeSid, user_message_uuid: uuid });
   };
   t.after(async () => { await router.close(); await registry.closeAll(); await rm(root, { recursive: true, force: true }); });
-  return { relay, workingDirectory: root, get sessionOptions(){return sessionOptions;}, router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, backgroundFrames, results, backgroundObserved, resumes, submitted, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
+  return { relay, workingDirectory: root, get sessionOptions(){return sessionOptions;}, router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, backgroundFrames, results, backgroundObserved, resumes, submitted, setTranscript(value: Array<Record<string, unknown>>) { transcript = value; }, setReadGate(value: () => Promise<void>) { readGate = value; }, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
 }
 
 test("failed post-F background publication synchronously fences the next foreground send", async t => {
@@ -920,4 +921,51 @@ test("failed autonomous results reach the failure sink without requiring a new a
  assert.equal(f.backgroundFrames.length,1,"failure must be journaled by the sink, not lost in checkpoint verification");
  assert.equal(f.backgroundFrames[0].providerCheckpointId,undefined);
  assert.equal(f.backgroundFrames[0].result.is_error,true);
+});
+
+for (const complete of [true, false]) test(`closed foreground writer salvages only exact durable end_turn (${complete})`, async t => {
+ const f=await fixture(t);const c=command(1);let submitted=0;
+ const run=f.run(c,{async onResult(frame:any){submitted++;assert.equal(frame.result.result.recovered_from_native,true);return acknowledged(checkpoint);}});
+ const input=(await f.inputs.next()).value!;
+ f.setTranscript([{type:'user',uuid:input.uuid,parentUuid:null,sessionId:sid,message:{role:'user',content:'synthetic'}},
+ {type:'assistant',uuid:checkpoint,parentUuid:input.uuid,sessionId:sid,message:{role:'assistant',content:[{type:'text',text:'durable reply'}],stop_reason:complete?'end_turn':null}}]);
+ const observed=run.then(()=>true,()=>false);
+ await f.router.close('CONTROL_RECEIPT_TIMEOUT');
+ assert.equal(await observed,complete);assert.equal(submitted,complete?1:0);assert.equal(f.launches,1);assert.equal(f.closes,1);
+});
+
+for(const reason of ['HANDOFF_DRAIN','BRANCH_REPLACED','DAEMON_SHUTDOWN'] as const)test(`durable reply cannot salvage through ${reason}`,async t=>{
+ const f=await fixture(t),c=command(1);const run=f.run(c);const input=(await f.inputs.next()).value!;
+ f.setTranscript([{type:'user',uuid:input.uuid,parentUuid:null,sessionId:sid,message:{content:'synthetic'}},
+ {type:'assistant',uuid:checkpoint,parentUuid:input.uuid,sessionId:sid,message:{content:[{type:'text',text:'synthetic'}],stop_reason:'end_turn'}}]);
+ const observed=assert.rejects(run);await f.router.close(reason);await observed;assert.deepEqual(f.results,[]);assert.equal(f.launches,1);
+});
+
+test('rejected salvage submission is not retried as another result or model input',async t=>{
+ const f=await fixture(t),c=command(1);let commits=0;const run=f.run(c,{async onResult(){commits++;throw Error('delivery lost');}});
+ const input=(await f.inputs.next()).value!;f.setTranscript([{type:'user',uuid:input.uuid,parentUuid:null,sessionId:sid,message:{content:'synthetic'}},
+ {type:'assistant',uuid:checkpoint,parentUuid:input.uuid,sessionId:sid,message:{content:[{type:'text',text:'synthetic'}],stop_reason:'end_turn'}}]);
+ const observed=assert.rejects(run,/delivery lost/);await f.router.close('CONTROL_RECEIPT_TIMEOUT');await observed;assert.equal(commits,1);assert.equal(f.launches,1);
+});
+
+test('a handoff fence arriving during native read prevents late salvage submission',{timeout:5000},async t=>{
+ const f=await fixture(t),reading=deferred<void>(),release=deferred<void>();
+ const pending=f.run(command(1)),input=(await f.inputs.next()).value!;
+ f.setTranscript([{type:'user',uuid:input.uuid,parentUuid:null,sessionId:sid,message:{content:'synthetic'}},{type:'assistant',uuid:checkpoint,parentUuid:input.uuid,sessionId:sid,message:{content:[{type:'text',text:'synthetic'}],stop_reason:'end_turn'}}]);
+ f.setReadGate(async()=>{reading.resolve();await release.promise;});
+ const observed=assert.rejects(pending);await f.router.close('CONTROL_RECEIPT_TIMEOUT');await reading.promise;f.router.suspend();release.resolve();await observed;assert.deepEqual(f.results,[]);
+});
+
+test('timed out native recovery remains read-only and cannot submit when a late read returns',{timeout:6000},async t=>{
+ const f=await fixture(t),reading=deferred<void>(),release=deferred<void>();const pending=f.run(command(1)),input=(await f.inputs.next()).value!;
+ f.setTranscript([{type:'user',uuid:input.uuid,parentUuid:null,sessionId:sid,message:{content:'synthetic'}},{type:'assistant',uuid:checkpoint,parentUuid:input.uuid,sessionId:sid,message:{content:[{type:'text',text:'synthetic'}],stop_reason:'end_turn'}}]);
+ f.setReadGate(async()=>{reading.resolve();await release.promise;});const observed=assert.rejects(pending);await f.router.close('CONTROL_RECEIPT_TIMEOUT');await reading.promise;await observed;
+ assert.deepEqual(f.results,[]);release.resolve();await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(f.results,[]);assert.equal(f.launches,1);
+});
+
+test('changed native snapshots are never joined into a recovered reply',async t=>{
+ const f=await fixture(t),pending=f.run(command(1)),input=(await f.inputs.next()).value!;let reads=0;
+ const records=[{type:'user',uuid:input.uuid,parentUuid:null,sessionId:sid,message:{content:'synthetic'}},{type:'assistant',uuid:checkpoint,parentUuid:input.uuid,sessionId:sid,message:{content:[{type:'text',text:'synthetic'}],stop_reason:'end_turn'}}];f.setTranscript(records);
+ f.setReadGate(async()=>{if(++reads===2)f.setTranscript([{...records[0]},{...records[1],message:{content:[{type:'text',text:'changed'}],stop_reason:'end_turn'}}]);});
+ const observed=assert.rejects(pending);await f.router.close('CONTROL_RECEIPT_TIMEOUT');await observed;assert.equal(reads,2);assert.deepEqual(f.results,[]);assert.equal(f.launches,1);
 });

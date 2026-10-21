@@ -1599,3 +1599,23 @@ for (const reason of ["model changed", "effort changed", "capacity exhausted"] a
   assert.equal(outcome.outcome, "completed");
   if (outcome.outcome === "completed") assert.deepEqual([outcome.result.status, "error_code" in outcome.result && outcome.result.error_code], ["failure", "RUNTIME_UNAVAILABLE"]);
 });
+
+test('terminal replay releases only its own fence after acknowledged delivery and verified writer retirement',async t=>{
+ const root=mkdtempSync(join(tmpdir(),'terminal-recovery-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const outbox=new NativeLiveMacResultOutbox(root),entry={listenerInstanceId,reservationId:prepareId,result:success()};await outbox.save(entry);
+ const events:string[]=[];let releasable=false;
+ const relay=new FakeRelay();relay.submitResult=async()=>{events.push('ack');return {canonicalOutcome:'completed'};};
+ const persistent={canRoute:()=>false,async execute(){throw Error('no model work');},async retire(){},suspend(_id:string,reason:string){events.push(reason);},async recoverTerminal(id:string){assert.equal(id,conversationId);assert.ok(events.includes('ack'));events.push('retired');releasable=true;}};
+ const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,new FakeExecutor(),null,null,null,null,null,null,outbox,persistent as never);
+ assert.equal((await loop.runOnce()).outcome,'completed');assert.equal(releasable,true);assert.ok(events.includes('terminal_recovery'));assert.deepEqual(await outbox.list(),[]);
+});
+
+test('failed writer retirement keeps successful terminal evidence for another idempotent replay',async t=>{
+ const root=mkdtempSync(join(tmpdir(),'terminal-close-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const outbox=new NativeLiveMacResultOutbox(root);await outbox.save({listenerInstanceId,reservationId:prepareId,result:success()});let replayed=0,model=0;
+ const relay=new FakeRelay();relay.submitResult=async()=>{replayed++;return {canonicalOutcome:'idempotent'};};
+ const persistent={canRoute:()=>false,async execute(){model++;throw Error('forbidden');},async retire(){},suspend(){},async recoverTerminal(){throw Error('process close unverified');}};
+ const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,new FakeExecutor(),null,null,null,null,null,null,outbox,persistent as never);
+ await assert.rejects(loop.runOnce(),/close unverified/);assert.equal((await outbox.list()).length,1);
+ persistent.recoverTerminal=async()=>{};assert.equal((await loop.runOnce()).outcome,'completed');assert.equal(replayed,2);assert.equal(model,0);assert.equal((await outbox.list()).length,0);
+});

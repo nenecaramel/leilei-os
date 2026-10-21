@@ -68,6 +68,8 @@ export class NativeLiveMacPersistentTurnRouter {
   private initialCommand: NativeLiveRuntimeCommand | null = null;
   private active: Slot | null = null;
   private retired = false;
+  private closeReason: NativeLiveMacSessionCloseReason | null = null;
+  private recoveryFenced = false;
   private suspended = false;
   private closing: Promise<void> | null = null;
   private acknowledgement = Promise.resolve();
@@ -141,6 +143,7 @@ export class NativeLiveMacPersistentTurnRouter {
     let coveredBackgroundOutstanding = false;
     const hadLiveWriter = this.binding !== null;
     let sdkSubmissionAttempted = false;
+    let terminalSubmissionStarted = false;
     try {
       if (this.binding && command.expected_working_directory !== null) {
         const cwd = await resolveNativeLiveMacWorkingDirectory(command.expected_working_directory);
@@ -251,6 +254,7 @@ export class NativeLiveMacPersistentTurnRouter {
           coveredBackgroundOutstanding = (covered ?? 0) > 0;
           this.assertSlot(slot, "acknowledging");
         }
+        terminalSubmissionStarted = true;
         const outcome = await slot.onResult({ command, result, providerCheckpointId });
         this.assertSlot(slot, "acknowledging");
         const continuationOnly = outcome.status !== "rejected" && outcome.continuationOnly === true;
@@ -271,6 +275,36 @@ export class NativeLiveMacPersistentTurnRouter {
       this.assertSlot(slot, "acknowledging");
       return result;
     } catch (error) {
+      // Salvage only before any terminal submission, after physically closing
+      // this exact writer. Server finalization still owns all branch/owner fences.
+      // Never reinterpret a real SDK failure/interruption, handoff or replacement.
+      const code = (error as {runtimeCode?: string})?.runtimeCode;
+      if (!terminalSubmissionStarted && sdkSubmissionAttempted && this.binding
+        && !["INTERRUPTED", "CLAUDE_PROCESS_FAILED"].includes(code ?? "")
+        && (!this.closeReason || ["CONTROL_RECEIPT_TIMEOUT", "EXECUTION_LEASE_REVOKED", "SESSION_LEASE_REVOKED", "TURN_FAILED"].includes(this.closeReason))
+        && !this.recoveryFenced && !this.suspended && !this.input.hasUnpublishedDeferred?.(command.conversation_id, this.generationId!)) {
+        const session = this.binding.session;
+        let recovered: Awaited<ReturnType<NonNullable<typeof session.recoverCompletedTurn>>> = null;
+        try {
+          await this.close("TURN_FAILED");
+          if (!(command.operation === "send" && command.runtime_mode === "resume" && this.input.relay.bindInput) || (slot.nativeStarted && slot.startedBinding)) {
+            await slot.startedBinding;
+            recovered = await session.recoverCompletedTurn?.({inputId:slot.inputId,parentCheckpointId:this.providerCheckpointId}) ?? null;
+          }
+        } catch { /* Unverified close/ancestry keeps the original failure. */ }
+        const canRecover = () => !this.suspended && !this.recoveryFenced && this.active === slot
+          && !this.input.hasUnpublishedDeferred?.(command.conversation_id, this.generationId!);
+        if (recovered && canRecover() && recovered.result.inputId === slot.inputId && recovered.result.providerSessionId === session.sessionId) {
+          slot.phase = "acknowledging";
+          await this.acknowledge(async () => {
+            if (!canRecover()) throw error;
+            terminalSubmissionStarted = true;
+            const outcome = await slot.onResult({command,result:recovered!.result,providerCheckpointId:recovered!.providerCheckpointId});
+            this.applyAcknowledgement(outcome,"turn",recovered!.providerCheckpointId);
+          });
+          return recovered.result;
+        }
+      }
       // F may have failed after B\'s covering evidence was fsynced, or B\'s
       // post-F publication may have failed. Fence synchronously BEFORE another
       // foreground send can be dispatched against a potentially stale head.
@@ -322,6 +356,7 @@ export class NativeLiveMacPersistentTurnRouter {
     return (command.operation === "wake" && command.execution_selection == null)
       || isDeepStrictEqual(command.execution_selection, this.initialCommand?.execution_selection);
   }
+  get isRetired(): boolean { return this.retired; }
   hasActiveTurn(): boolean { return this.active !== null; }
   get providerSessionId(): string | null { return this.binding?.session.sessionId ?? null; }
   async settle(): Promise<void> { await this.acknowledgement; }
@@ -329,6 +364,8 @@ export class NativeLiveMacPersistentTurnRouter {
   get workingDirectory(): string | null { return this.binding?.workingDirectory ?? null; }
 
   async close(reason: NativeLiveMacSessionCloseReason = "EXPLICIT_CLOSE"): Promise<void> {
+    if (!["CONTROL_RECEIPT_TIMEOUT", "EXECUTION_LEASE_REVOKED", "SESSION_LEASE_REVOKED", "TURN_FAILED"].includes(reason)) this.recoveryFenced = true;
+    this.closeReason ??= reason;
     this.retired = true; // Fence all callbacks synchronously before closing.
     this.taskStates?.close();
     this.abortBackgroundOutputs();

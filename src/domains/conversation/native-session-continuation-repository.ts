@@ -34,9 +34,11 @@ export type NativeContinuationInput = {
   effectiveWorkingDirectory: string; expectedHeadMessageId: string | null; expectedRevision: string | null;
   /** UUID-only execution ancestry attested by the authenticated Mac reader, never message bodies. */
   checkpointIds: string[]; completedTurnCheckpointIds: string[];
+  /** Explicit manual recovery of the current failed native input, never historical replay. */
+  recoveredFailedTurnId?: string;
 };
 export function validateNativeContinuationInput(input: NativeContinuationInput) {
-  if (![input.userId, input.conversationId, input.sessionId, input.checkpointId].every(id => typeof id === 'string' && uuid.test(id))
+  if ((input.recoveredFailedTurnId !== undefined && !uuid.test(input.recoveredFailedTurnId)) || ![input.userId, input.conversationId, input.sessionId, input.checkpointId].every(id => typeof id === 'string' && uuid.test(id))
     || !(input.expectedHeadMessageId === null || typeof input.expectedHeadMessageId === 'string' && uuid.test(input.expectedHeadMessageId))
     || !(input.expectedRevision === null || typeof input.expectedRevision === 'string' && hash.test(input.expectedRevision))
     || typeof input.revision !== 'string' || !hash.test(input.revision) || typeof input.effectiveWorkingDirectory !== 'string'
@@ -65,12 +67,33 @@ export async function readNativeContinuationState(db: Pick<Database, 'execute'>,
   if (row.user_id !== input.userId || row.origin !== 'native_live' || row.lifecycle_status !== 'active') throw fail('NATIVE_CONVERSATION_NOT_FOUND');
   const binding = nativeContinuationBinding(row.metadata);
   const atAnchor = binding && row.head === binding.headMessageId;
-  return { expectedHeadMessageId: row.head, expectedRevision: row.owner_revision,
+  const state = { expectedHeadMessageId: row.head, expectedRevision: row.owner_revision,
     providerSessionId: atAnchor ? binding.sessionId : row.session,
     providerCheckpointId: atAnchor ? (row.session === binding.sessionId && row.base_checkpoint === binding.checkpointId
       && row.cwd === binding.effectiveWorkingDirectory ? row.checkpoint : binding.checkpointId) : row.checkpoint,
     effectiveWorkingDirectory: atAnchor ? binding.effectiveWorkingDirectory : row.cwd,
     owner: row.owner };
+  const recovery = await readRecoverableFailedTurn(db, input, state);
+  return {...state, ...(recovery ? {recoverableFailedTurn:recovery} : {})};
+}
+
+/** UUID-only recovery offer. Current turn/head/session fences are checked again
+ * inside attach's existing conversation transaction; this read grants no work. */
+async function readRecoverableFailedTurn(db: Pick<Database,'execute'>,input:{userId:string;conversationId:string;sessionId:string},state:{owner:string|null;providerSessionId:string|null;providerCheckpointId:string|null;effectiveWorkingDirectory:string|null}) {
+  if(state.owner!=='leileios'||state.providerSessionId!==input.sessionId||!state.providerCheckpointId)return null;
+  const [row]=await db.execute<{prepareId:string;userMessageId:string}>(sql`
+    SELECT p.id::text AS "prepareId", p.canonical_user_message_id::text AS "userMessageId"
+    FROM native_live_turn_preparations p JOIN native_live_session_owners o ON o.conversation_id=p.conversation_id AND o.user_id=p.user_id
+    JOIN conversations c ON c.id=p.conversation_id AND c.user_id=p.user_id
+    WHERE p.user_id=${input.userId}::uuid AND p.conversation_id=${input.conversationId}::uuid
+      AND o.owner='leileios' AND o.turn_prepare_id=p.id
+      AND o.turn_anchor_message_id IS NOT DISTINCT FROM c.current_head_message_id
+      AND p.operation='send' AND p.runtime_mode='resume' AND p.status='finalized_failure' AND p.dispatch_status='completed'
+      AND p.failure_code IN ('RUNTIME_UNAVAILABLE','CLAUDE_PROCESS_FAILED') AND p.result_hash IS NOT NULL AND p.finalized_at IS NOT NULL
+      AND p.assistant_message_id IS NULL AND p.canonical_user_message_id IS NOT NULL
+      AND p.parent_provider_session_id=${input.sessionId} AND p.parent_provider_checkpoint_id=${state.providerCheckpointId}
+      AND p.expected_working_directory IS NOT DISTINCT FROM ${state.effectiveWorkingDirectory}::text LIMIT 1`);
+  return row??null;
 }
 
 export const attachNativeContinuation = (db: Database, input: NativeContinuationInput) => changeOwner(db, input, 'leileios');
@@ -88,7 +111,7 @@ async function changeOwner(db: Database, input: NativeContinuationInput, owner: 
       WHERE c.id <> ${input.conversationId}::uuid AND c.origin = 'native_live' AND c.lifecycle_status = 'active'
         AND (cp.provider_session_id = ${input.sessionId} OR c.provider_metadata->'nativeSessionSource'->>'sessionId' = ${input.sessionId}) LIMIT 1`);
     if (other.length) throw fail('NATIVE_SESSION_ALREADY_ATTACHED');
-    await assertContinuationIdle(tx, input, owner === 'desktop');
+    await assertContinuationIdle(tx, input, owner === 'desktop' || input.recoveredFailedTurnId !== undefined);
     const state = await readNativeContinuationState(tx, input);
     const source = existing?.providerMetadata.nativeSessionSource as Partial<NativeContinuationBinding> | undefined;
     const same = source?.mode === 'continuation' && state.owner === owner && source.sessionId === input.sessionId
@@ -102,7 +125,10 @@ async function changeOwner(db: Database, input: NativeContinuationInput, owner: 
       if (!state.providerCheckpointId || !input.checkpointIds.includes(state.providerCheckpointId)) throw fail('EXPLICIT_BRANCH_SELECTION_REQUIRED');
       // While LeileiOS owns execution (and on release), only this exact completed
       // turn is allowed. Desktop can add/rewind new turns after its handoff anchor.
-      if ((owner === 'desktop' || state.owner !== 'desktop') && !input.completedTurnCheckpointIds.includes(state.providerCheckpointId)) throw fail('CANONICAL_CHECKPOINT_CHANGED');
+      if ((owner === 'desktop' || state.owner !== 'desktop') && !input.completedTurnCheckpointIds.includes(state.providerCheckpointId)) {
+        const recovery=owner==='leileios'&&state.owner==='leileios'?state.recoverableFailedTurn:null;
+        if(!recovery||recovery.prepareId!==input.recoveredFailedTurnId||!input.checkpointIds.includes(recovery.userMessageId))throw fail('CANONICAL_CHECKPOINT_CHANGED');
+      }
     }
     await new DrizzleNativeLiveProviderSessionStoreRepository(tx).preserveExternalSession({ userId: input.userId, sessionId: input.sessionId });
     const lineage = [...new Set([...(source?.lineage ?? []), ...(source?.sessionId && source.sessionId !== input.sessionId ? [source.sessionId] : [])])];

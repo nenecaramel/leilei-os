@@ -68,6 +68,8 @@ export type NativeLiveMacPersistentSession = {
   readTaskOutput?(id: string, expected: { handle: string; signal?: AbortSignal }): Promise<{ output: string; totalBytes: number; truncated: boolean }>;
   /** The frame's last top-level assistant record, once durable and descended from the parent. */
   verifyCheckpoint(input: { events: Record<string, unknown>[]; parentCheckpointId: string | null; timeoutMs?: number }): Promise<string>;
+  /** Read-only recovery; available only after confirmed native writer closure. */
+  recoverCompletedTurn?(input: { inputId: string; parentCheckpointId: string | null }): Promise<{result: NativeLiveMacSessionResult; providerCheckpointId: string} | null>;
   close(reason?: Error): Promise<void>;
 };
 export type NativeLiveMacSessionFork = Readonly<{ sessionId: string; checkpointId: string }>;

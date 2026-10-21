@@ -1,3 +1,4 @@
+import { verifyCompletedNativeTurn } from "./completed-turn-proof.mjs";
 import { durableCheckpointPrefix } from "./provider-checkpoint-prefix.mjs";
 import { createHash } from "node:crypto";
 import { readNativeHistorySources, verifyNativeHistorySources } from "./native-session-source-files.mjs";
@@ -225,12 +226,16 @@ function nativeExecutionContinuation(snapshot, desktopCheckpointId) {
   return { checkpointId: last.uuid, checkpointIds: [...ancestry], completedTurnCheckpointIds: [last.uuid, ...trailing.map(e => e.uuid)] };
 }
 
-export async function readNativeContinuationEvidence(input) {
+export async function readNativeContinuationEvidence(input, recovery = null) {
   if (!sessionPattern.test(input.expectedSessionId ?? "") || !sessionPattern.test(input.expectedCheckpointId ?? "") ||
     !/^[0-9a-f]{64}$/.test(input.expectedRevision ?? "")) throw fail("STALE_NATIVE_SELECTION");
   const result = await loadDesktopNativeSession({ ...input, historyMode: "continuation", followNativeContinuation: true });
   const { inspection, nativeSnapshot } = result;
   if (inspection.providerSessionId !== input.expectedSessionId || inspection.providerCheckpointId !== input.expectedCheckpointId ||
     inspection.nativeRevision !== input.expectedRevision) throw fail("STALE_NATIVE_SELECTION");
-  return { inspection, ...nativeExecutionContinuation(nativeSnapshot, input.expectedCheckpointId) };
+  const recovered = recovery ? verifyCompletedNativeTurn({entries:nativeSnapshot.entries,sessionId:input.expectedSessionId,
+    inputId:recovery.userMessageId,parentCheckpointId:recovery.parentCheckpointId}) : null;
+  return { inspection, ...nativeExecutionContinuation(nativeSnapshot, input.expectedCheckpointId),
+    ...(recovered?.providerCheckpointId === input.expectedCheckpointId ? {recoveredInputId:recovery.userMessageId} : {}) };
+
 }

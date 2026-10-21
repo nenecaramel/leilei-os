@@ -444,16 +444,22 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.activeQuery?.close?.();
   }
 
-  async #checkpointEntries(sessionId, required) {
+  async #checkpointEntries(sessionId, required, bounds = null) {
+    let size=0;
+    const check=batch=>{
+      if(!bounds)return;
+      size+=Buffer.byteLength(JSON.stringify(batch));
+      if(size>bounds.maxBytes||batch.length>bounds.maxEntries)throw new Error("Native recovery snapshot exceeds its bound.");
+    };
     if (this.sessionStore && typeof this.sessionStore.load === "function") {
       const entries = await this.sessionStore.load({ projectKey: this.cwd, sessionId });
-      if (Array.isArray(entries) && entries.length) return entries;
+      if (Array.isArray(entries) && entries.length) { check(entries); return entries; }
       return [];
     } else if (!required) return [];
     const entries = [];
     const importer = this.importSessionToStoreImpl ?? await this.loadImportSessionToStore();
     try { await importer(sessionId, {
-      append: async (key, batch) => { if (!key.subpath) entries.push(...batch); },
+      append: async (key, batch) => { if (!key.subpath) { check(batch); if(bounds&&entries.length+batch.length>bounds.maxEntries)throw new Error("Native recovery snapshot exceeds its bound.");entries.push(...batch); } },
       load: async () => null,
     }, { dir: this.cwd, includeSubagents: false, batchSize: 500 });
     } catch (cause) {

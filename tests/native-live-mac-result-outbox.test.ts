@@ -67,7 +67,7 @@ test("permanent result conflict quarantines exact evidence and allows another co
     async markExecutionStarted() {}, async rejectReservation() {},
   } as unknown as NativeLiveMacDaemonRelayClient;
   const executor = { async execute() { executions++; return { ...result, prepare_id: "new", conversation_id: conversation }; } };
-  const persistent = { canRoute: () => false, async retire() {}, suspend(id: string, reason: string) { suspended.push([id, reason]); } };
+  const persistent = { canRoute: () => false, async retire() {}, async recoverTerminal() { throw new Error("quarantine cannot release its recovery fence"); }, suspend(id: string, reason: string) { suspended.push([id, reason]); } };
   const makeLoop = (withPersistent = true) => new NativeLiveMacDaemonLoop("owner", relay, executor, null, null, null, null, null, null, new NativeLiveMacResultOutbox(directory), withPersistent ? persistent as never : null);
   const stale = await makeLoop().runOnce();
   assert.equal(stale.outcome, "result_recovery_required");
@@ -76,7 +76,7 @@ test("permanent result conflict quarantines exact evidence and allows another co
   assert.deepEqual(await outbox.listQuarantined(), [entry]);
   assert.equal((await makeLoop().runOnce()).outcome, "completed");
   assert.equal(executions, 1);
-  assert.deepEqual(suspended, [["blocked", "recovery"], ["blocked", "recovery"]]);
+  assert.deepEqual(suspended, [["blocked", "terminal_recovery"], ["blocked", "recovery"], ["blocked", "recovery"]]);
   conversation = "blocked";
   assert.equal((await makeLoop(false).runOnce()).outcome, "result_recovery_required");
   assert.equal(executions, 1, "restart without persistent executor cannot fall through to SDK");

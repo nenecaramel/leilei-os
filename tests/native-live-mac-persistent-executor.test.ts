@@ -254,3 +254,20 @@ test("persistent foreground waits for its pending output collector before commit
   assert.deepEqual(body.output_attachment_ids,[id(50)]);
   assert.deepEqual(body.output_attachment_metadata,[{attachment_id:id(50),duration_seconds:3.25}]);
 });
+
+test('successful salvage retires its closed router before the next exact send', async () => {
+ let opened=0;
+ const executor=new NativeLiveMacPersistentExecutor({attachmentMaterializer:null,outputAttachmentSender:null,createRouter(){
+  opened++;let closed=false;return {workingDirectory:'/work',get isRetired(){return closed;},matches:()=>!closed,async close(){closed=true;},async execute(input:any){closed=true;return frame(input);}} as never;
+ }});
+ assert.equal((await executor.execute(command(),{async commit(){return {canonicalOutcome:'completed'};}})).delivery,'committed');
+ assert.equal(executor.canRoute(command({prepare_id:id(10)})),true,'a retired writer must not permanently reject the recovered conversation');
+ await executor.execute(command({prepare_id:id(10)}),{async commit(){return {canonicalOutcome:'completed'};}});assert.equal(opened,2);
+});
+
+test('terminal acknowledgement never removes a separate handoff or background recovery fence',async()=>{
+ for(const reason of ['handoff','recovery'] as const){
+  const f=fixture(async input=>frame(input));f.executor.suspend(id(3),reason);f.executor.suspend(id(3),'terminal_recovery');
+  await f.executor.recoverTerminal(id(3));assert.equal(f.executor.canRoute(command()),false);assert.throws(()=>f.executor.assertAccepting(id(3)),/fenced/);
+ }
+});

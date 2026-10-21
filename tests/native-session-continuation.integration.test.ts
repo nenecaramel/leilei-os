@@ -5,7 +5,7 @@ import test from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { createDatabase } from '../src/database/client.js';
-import { users, conversations, conversationMessages, conversationProviderSessionCheckpoints, nativeLiveRuntimeListenerLeases, nativeLiveTurnPreparations } from '../src/database/schema.js';
+import { users, conversations, conversationMessages, conversationProviderSessionCheckpoints, nativeLiveRuntimeListenerLeases, nativeLiveTurnPreparations, nativeLiveRuntimeEvents } from '../src/database/schema.js';
 import { DrizzleNativeLiveBackendTurnPort } from '../src/domains/bridge/turn/native-live-backend-turn-repository.js';
 import { NativeLiveBackendTurnCoordinator } from '../src/domains/bridge/turn/native-live-backend-turn-coordinator.js';
 const enabled = process.env.RUN_NATIVE_SESSION_PRESERVATION_DATABASE_TEST === '1';
@@ -288,4 +288,42 @@ test('an ordinary new conversation admits and renews its first send while the he
   assert.equal(await renewNativeLiveExecutionLease(f.db, admission), true);
   // Another conversation's message is never this turn's canonical input.
   assert.equal(await checkNativeLiveExecutionAdmission(f.db, { ...admission, canonicalUserMessageId: randomUUID() }), false);
+}));
+
+test('explicit continuation can recover only the current closed failed native input without importing or rewriting messages', {skip:!enabled},async()=>fixture(async f=>{
+ await f.attach();const coordinator=new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.db));
+ const prepared=await coordinator.prepare(f.input.userId,{dispatch_target:'claude_code',request_id:randomUUID(),operation:'send',conversation_id:f.input.conversationId,expected_head_message_id:null,text:'synthetic failed input'});
+ assert.ok(prepared.ok);const cmd=prepared.command;
+ await f.db.update(nativeLiveTurnPreparations).set({dispatchStatus:'executing',executionStartedAt:new Date(),reservedBy:randomUUID(),reservedAt:new Date(),reservationExpiresAt:new Date(Date.now()+60000)}).where(eq(nativeLiveTurnPreparations.id,cmd.prepare_id));
+ const failed=await coordinator.finalize(f.input.userId,{protocol_version:4,prepare_id:cmd.prepare_id,request_id:cmd.request_id,conversation_id:cmd.conversation_id,status:'failure',error_code:'RUNTIME_UNAVAILABLE'});assert.equal(failed.ok,false);assert.equal(failed.code,'RUNTIME_UNAVAILABLE');
+ await f.db.update(nativeLiveTurnPreparations).set({dispatchStatus:'completed'}).where(eq(nativeLiveTurnPreparations.id,cmd.prepare_id));
+ const state=await f.state();assert.deepEqual(state.recoverableFailedTurn,{prepareId:cmd.prepare_id,userMessageId:cmd.canonical_user_message_id});
+ const cp=randomUUID(),request={checkpointId:cp,revision:rev(52),expectedRevision:state.expectedRevision,checkpointIds:[cp,cmd.canonical_user_message_id,f.input.checkpointId],completedTurnCheckpointIds:[cp],recoveredFailedTurnId:cmd.prepare_id};
+ await assert.rejects(f.attach({...request,recoveredFailedTurnId:randomUUID()}),{code:'CANONICAL_CHECKPOINT_CHANGED'});
+ await assert.rejects(f.attach({...request,checkpointIds:[cp,f.input.checkpointId]}),{code:'CANONICAL_CHECKPOINT_CHANGED'});
+ const before=await f.count();assert.equal((await f.attach(request)).outcome,'attached');assert.equal(await f.count(),before,'recovery changes continuation only; failure and old history remain intact');assert.equal((await f.state()).providerCheckpointId,cp);
+ const [row]=await f.db.select().from(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.id,cmd.prepare_id));assert.equal(row.status,'finalized_failure');
+ const next=await coordinator.prepare(f.input.userId,{dispatch_target:'claude_code',request_id:randomUUID(),operation:'send',conversation_id:cmd.conversation_id,expected_head_message_id:null,text:'synthetic subsequent input'});assert.ok(next.ok);if(next.ok)assert.equal(next.command.parent_provider_checkpoint_id,cp);
+}));
+
+for(const mode of ['later-turn','interrupted','stale-revision','foreign-user','conflicting-recovery','background-pending'] as const)test(`manual failed continuation recovery fences ${mode}`,{skip:!enabled},async()=>fixture(async f=>{
+ await f.attach();const coordinator=new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.db));
+ const prepared=await coordinator.prepare(f.input.userId,{dispatch_target:'claude_code',request_id:randomUUID(),operation:'send',conversation_id:f.input.conversationId,expected_head_message_id:null,text:'synthetic input'});assert.ok(prepared.ok);const cmd=prepared.command;
+ await f.db.update(nativeLiveTurnPreparations).set({dispatchStatus:'executing',executionStartedAt:new Date(),reservedBy:randomUUID(),reservedAt:new Date(),reservationExpiresAt:new Date(Date.now()+60000)}).where(eq(nativeLiveTurnPreparations.id,cmd.prepare_id));
+ const failure=await coordinator.finalize(f.input.userId,{protocol_version:4,prepare_id:cmd.prepare_id,request_id:cmd.request_id,conversation_id:cmd.conversation_id,status:'failure',error_code:mode==='interrupted'?'INTERRUPTED':'RUNTIME_UNAVAILABLE'});assert.equal(failure.ok,false);
+ await f.db.update(nativeLiveTurnPreparations).set({dispatchStatus:'completed'}).where(eq(nativeLiveTurnPreparations.id,cmd.prepare_id));
+ const state=await f.state(),cp=randomUUID(),request={checkpointId:cp,revision:rev(87),expectedRevision:state.expectedRevision,checkpointIds:[cp,cmd.canonical_user_message_id,f.input.checkpointId],completedTurnCheckpointIds:[cp],recoveredFailedTurnId:cmd.prepare_id};
+ if(mode==='background-pending'){
+  await f.db.insert(nativeLiveRuntimeEvents).values({userId:f.input.userId,prepareId:cmd.prepare_id,sequence:1000,eventType:'runtime',payload:{kind:'persistent_background_receipt_v1',phase:'queued'}});
+  await assert.rejects(f.attach(request),{code:'NATIVE_CONVERSATION_BUSY'});
+ }else if(mode==='later-turn'){
+  assert.ok((await coordinator.prepare(f.input.userId,{dispatch_target:'claude_code',request_id:randomUUID(),operation:'send',conversation_id:cmd.conversation_id,expected_head_message_id:null,text:'synthetic newer input'})).ok);
+  assert.equal((await f.state()).recoverableFailedTurn,undefined);await assert.rejects(f.attach(request),{code:'NATIVE_CONVERSATION_BUSY'});
+ }else if(mode==='interrupted'){assert.equal(state.recoverableFailedTurn,undefined);await assert.rejects(f.attach(request),{code:'CANONICAL_CHECKPOINT_CHANGED'});
+ }else if(mode==='stale-revision'){await assert.rejects(f.attach({...request,expectedRevision:rev(99)}),{code:'STALE_NATIVE_PROJECTION'});
+ }else if(mode==='foreign-user'){await assert.rejects(f.api.attachNativeContinuation(f.db,{...f.input,...request,userId:randomUUID()}),{code:'NATIVE_CONVERSATION_NOT_FOUND'});
+ }else{
+  const other=randomUUID();const outcomes=await Promise.allSettled([f.attach(request),f.attach({...request,checkpointId:other,checkpointIds:[other,cmd.canonical_user_message_id,f.input.checkpointId],completedTurnCheckpointIds:[other]})]);
+  assert.equal(outcomes.filter(o=>o.status==='fulfilled').length,1);assert.equal(outcomes.filter(o=>o.status==='rejected').length,1);
+ }
 }));
