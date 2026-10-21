@@ -8,6 +8,7 @@ import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { materializeNativeSessionHistoryAssets } from './native-session-assets.mjs';
 import { nativeDisplayAssetRevision, nativeSyncDigest, neutralMessageFingerprint } from './native-session-history.mjs';
+import { nativeRecoveryProtectedSessions } from './native-transcript-archive-recovery.mjs';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = code => Object.assign(new Error(code), { code });
 // Time bounds, inner to outer. A large restore upload must give up before the
@@ -190,7 +191,15 @@ export async function stageNativeDisplayAssets({ request, sessionId, assets, bat
 
 // Conservative local gate: outstanding recovery on this Mac must be replayed by
 // the existing daemon, not discarded or marked complete by the switch command.
-export async function assertNativeHandoffRecoveryClear(recoveryDirectory) {
+export async function assertNativeHandoffRecoveryClear(recoveryDirectory, scope = null) {
+  // Continuation switching names its conversation and session: only their own
+  // pending or quarantined background receipts block it. Legacy restore stays global.
+  if (scope) {
+    const { sessions, conversations } = await nativeRecoveryProtectedSessions(recoveryDirectory);
+    if (sessions.has(String(scope.providerSessionId).toLowerCase()) || conversations.has(String(scope.conversationId).toLowerCase()))
+      throw fail('NATIVE_SESSION_RECOVERY_REQUIRED');
+    return;
+  }
   const directoryEntries = async (directory, includeHidden = false) => {
     try {
       if (!(await lstat(directory)).isDirectory()) throw fail('NATIVE_RECOVERY_UNCONFIRMED');

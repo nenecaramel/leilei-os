@@ -847,3 +847,41 @@ test('manual continuation recovers an exact completed failed input using UUID ev
   assert.equal((await attachDesktopNativeContinuation(options)).nativeProgressRecovered,true);assert.equal(await readFile(transcriptFile,'utf8'),text);
  });
 });
+
+test('continuation recovery gate is scoped: another session\'s quarantined receipt does not block, this session\'s does', async () => {
+  const { handoffNativeContinuationToDesktop } = await import('../src/native-session-continuation.mjs');
+  const quarantine = async (recoveryDirectory, { sessionId, conversationId, name }) => {
+    const listenerInstanceId = '00000000-0000-4000-8000-0000000000a1', generationId = '00000000-0000-4000-8000-0000000000a2';
+    const receiptId = '00000000-0000-4000-8000-0000000000a3', sourcePrepareId = '00000000-0000-4000-8000-0000000000a4';
+    const blocked = path.join(recoveryDirectory, 'background-results', 'e'.repeat(64), 'blocked');
+    await mkdir(blocked, { recursive: true });
+    const file = name ?? createHash('sha256').update(JSON.stringify([listenerInstanceId, generationId, receiptId])).digest('hex') + '.json';
+    await writeFile(path.join(blocked, file), JSON.stringify({ sourcePrepareId, receiptId, listenerInstanceId, generationId,
+      parentProviderCheckpointId: CP, result: { prepare_id: sourcePrepareId, conversation_id: conversationId, provider_session_id: sessionId } }));
+    return blocked;
+  };
+  const OTHER_SESSION = '00000000-0000-4000-8000-0000000000b1', OTHER_CONVERSATION = '00000000-0000-4000-8000-0000000000b2';
+  const run = async (setup, expected) => fixture(async ({ input }) => {
+    await setup(input.recoveryDirectory);
+    const routes = [];
+    const options = { input: { ...input, historyMode: 'continuation' }, conversationId: D, relayUrl: 'https://fixture.example', relayToken: 'PRIVATE', retryDelaysMs: [],
+      launchImpl: async () => {},
+      fetchImpl: async (url, request) => {
+        const route = new URL(url).pathname.split('/').at(-1); routes.push(route);
+        const data = route === 'continuation-state' ? { expectedHeadMessageId: null, expectedRevision: '0'.repeat(64),
+          providerSessionId: A, providerCheckpointId: CP, effectiveWorkingDirectory: '/fixture', owner: 'leileios' }
+          : route === 'continuation-release-begin' ? { outcome: 'releasing', owner: 'releasing', conversationId: D, headMessageId: null, providerSessionId: A, expectedRevision: '1'.repeat(64) }
+          : route === 'continuation-release-cancel' ? { outcome: 'cancelled', owner: 'leileios', conversationId: D, expectedRevision: '2'.repeat(64) }
+          : { outcome: 'attached', owner: 'desktop', conversationId: D, headMessageId: null, providerSessionId: A, providerCheckpointId: CP, inserted: 0 };
+        return new Response(JSON.stringify({ success: true, data }));
+      } };
+    if (expected) { await assert.rejects(handoffNativeContinuationToDesktop(options), e => e.code === expected); assert.ok(routes.includes('continuation-release-cancel')); }
+    else { assert.equal((await handoffNativeContinuationToDesktop(options)).owner, 'desktop'); assert.ok(!routes.includes('continuation-release-cancel')); }
+  });
+  await run(dir => quarantine(dir, { sessionId: OTHER_SESSION, conversationId: OTHER_CONVERSATION }), null);
+  await run(dir => quarantine(dir, { sessionId: A, conversationId: OTHER_CONVERSATION }), 'NATIVE_SESSION_RECOVERY_REQUIRED');
+  await run(dir => quarantine(dir, { sessionId: OTHER_SESSION, conversationId: D }), 'NATIVE_SESSION_RECOVERY_REQUIRED');
+  await run(dir => quarantine(dir, { sessionId: OTHER_SESSION, conversationId: OTHER_CONVERSATION, name: 'f'.repeat(64) + '.json' }), 'NATIVE_RECOVERY_UNCONFIRMED');
+  await run(async dir => { const scope = path.join(dir, 'terminal-results', 'a'.repeat(64)); await mkdir(scope, { recursive: true }); await writeFile(path.join(scope, 'pending.json'), '{}'); },
+    'NATIVE_SESSION_RECOVERY_REQUIRED');
+});
