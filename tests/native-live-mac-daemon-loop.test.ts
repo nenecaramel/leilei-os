@@ -1619,3 +1619,68 @@ test('failed writer retirement keeps successful terminal evidence for another id
  await assert.rejects(loop.runOnce(),/close unverified/);assert.equal((await outbox.list()).length,1);
  persistent.recoverTerminal=async()=>{};assert.equal((await loop.runOnce()).outcome,'completed');assert.equal(replayed,2);assert.equal(model,0);assert.equal((await outbox.list()).length,0);
 });
+
+// An earlier send that failed at this checkpoint (e.g. an admission timeout)
+// makes every later send carry failed_user_message_uuids. Only the one-shot
+// executor tolerates those inputs in its tail validation, so without a live
+// writer to preserve the send must fall back instead of failing forever.
+async function failedInputsFixture(t: { after(fn: () => Promise<void>): void }) {
+  const { EventEmitter } = await import("node:events");
+  const { NativeLiveMacPersistentExecutor } = await import("../src/domains/bridge/mac/native-live-mac-persistent-executor.js");
+  const { NativeLiveMacPersistentTurnRouter } = await import("../src/domains/bridge/mac/native-live-mac-persistent-turn-router.js");
+  const { NativeLiveMacSessionRegistry } = await import("../src/domains/bridge/mac/native-live-mac-session-registry.js");
+  const root = mkdtempSync(join(tmpdir(), "daemon-failed-inputs-"));
+  const counts = { launches: 0, closes: 0, submits: 0 };
+  let finished!: () => void;
+  const completion = new Promise<void>(resolve => { finished = resolve; });
+  const host = { state: "idle", sessionId: "healthy-writer", tasks: new Map(), events: new EventEmitter(), completion,
+    async submit(_text: string, options: { id: string }) { counts.submits++; return { providerSessionId: "healthy-writer", inputId: options.id, result: {}, events: [], normalizedEvents: [] }; },
+    async verifyCheckpoint() { return userMessageId; },
+    async close() { counts.closes++; this.state = "closed"; finished(); },
+  };
+  const registry = new NativeLiveMacSessionRegistry({}, root, async () => ({ kind: "agent_sdk", runtime: {
+    abort() {}, async openPersistentSession() { counts.launches++; return host; }, async closePersistentSession() { await host.close(); },
+  } }) as never, () => null, null, 1);
+  const persistent = new NativeLiveMacPersistentExecutor({ attachmentMaterializer: null, outputAttachmentSender: null,
+    hasCapacity: () => registry.size < 1,
+    createRouter: () => new NativeLiveMacPersistentTurnRouter({ registry, listenerInstanceId,
+      relay: { async checkExecutionAdmission() { return true; } }, async onBackgroundResult() { throw Error("unexpected background result"); } }),
+  });
+  t.after(async () => { await persistent.closeAll(); await registry.closeAll(); rmSync(root, { recursive: true, force: true }); });
+  const failedSend = { ...command(), runtime_mode: "resume", parent_provider_session_id: "healthy-writer",
+    parent_provider_checkpoint_id: userMessageId, canonical_user_message_id: prepareId,
+    failed_user_message_uuids: ["77777777-7777-4777-8777-777777777777"] } as NativeLiveRuntimeCommand;
+  return { persistent, counts, failedSend };
+}
+
+test("exact send with only earlier failed inputs and no live writer falls back to one-shot", async t => {
+  const { persistent, counts, failedSend } = await failedInputsFixture(t);
+  assert.equal(persistent.canRoute(failedSend), false);
+  const relay = new FakeRelay();
+  relay.reservation = { reservationId, command: failedSend };
+  let legacy = 0;
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, { async execute() { legacy++; return success(); } },
+    null, null, null, null, null, null, null, persistent);
+  const outcome = await loop.runOnce();
+  assert.equal(legacy, 1, "the one-shot executor tolerates the failed inputs");
+  assert.equal(counts.launches, 0);
+  assert.equal(outcome.outcome, "completed");
+  if (outcome.outcome === "completed") assert.equal(outcome.result.status, "success");
+});
+
+test("exact send with earlier failed inputs still refuses one-shot while a live writer exists", async t => {
+  const { persistent, counts, failedSend } = await failedInputsFixture(t);
+  const first = await persistent.execute({ ...command(), parent_provider_checkpoint_id: null },
+    { async commit() { return { canonicalOutcome: "completed" }; } });
+  assert.equal(first.result.status, "success");
+  const relay = new FakeRelay();
+  relay.reservation = { reservationId, command: failedSend };
+  let legacy = 0;
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, { async execute() { legacy++; return success(); } },
+    null, null, null, null, null, null, null, persistent);
+  const outcome = await loop.runOnce();
+  assert.equal(legacy, 0, "a live writer is never replaced by one-shot");
+  assert.equal(counts.closes, 0);
+  assert.equal(outcome.outcome, "completed");
+  if (outcome.outcome === "completed") assert.deepEqual([outcome.result.status, "error_code" in outcome.result && outcome.result.error_code], ["failure", "RUNTIME_UNAVAILABLE"]);
+});

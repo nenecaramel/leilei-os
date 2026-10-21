@@ -58,7 +58,7 @@ export class NativeLiveMacDaemonLoop {
     private readonly externalSessionExecutor:
       NativeLiveExternalSessionExecutor | null = null,
     private readonly resultOutbox: NativeLiveMacResultOutbox | null = null,
-    private readonly persistentExecutor: (Pick<NativeLiveMacPersistentExecutor, "canRoute" | "execute" | "retire"> & Partial<Pick<NativeLiveMacPersistentExecutor, "assertAccepting" | "retireSession" | "shouldDeferWake" | "suspend" | "recoverTerminal">>) | null = null,
+    private readonly persistentExecutor: (Pick<NativeLiveMacPersistentExecutor, "canRoute" | "execute" | "retire"> & Partial<Pick<NativeLiveMacPersistentExecutor, "assertAccepting" | "canFallBackForFailedInputs" | "retireSession" | "shouldDeferWake" | "suspend" | "recoverTerminal">>) | null = null,
     private readonly backgroundResults: { flush(): Promise<number> } | null = null,
   ) {}
 
@@ -325,7 +325,11 @@ export class NativeLiveMacDaemonLoop {
         // Exact sends promise an owned persistent continuation. Selection,
         // capacity or admission refusal must preserve the existing writer and
         // its native tasks rather than silently replacing it with one-shot SDK.
-        if (this.persistentExecutor && command.parent_provider_checkpoint_id !== undefined) {
+        // Earlier failed inputs with no writer to preserve still fall back: only
+        // the one-shot tail validation tolerates them, so refusing would fail
+        // every later send at this checkpoint.
+        if (this.persistentExecutor && command.parent_provider_checkpoint_id !== undefined
+          && !this.persistentExecutor.canFallBackForFailedInputs?.(command)) {
           return runtimeFailure(command, "RUNTIME_UNAVAILABLE");
         }
         await this.persistentExecutor?.retire(command.conversation_id, "LEGACY_FALLBACK");
