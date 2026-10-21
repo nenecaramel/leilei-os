@@ -70,6 +70,17 @@ test("murmur trails the first process row", () => {
   assert.match(button, /\.sheet\(isPresented: \$isShowingMurmur\)[\s\S]*NativeLiveMurmurSheet\(text: text\)/u);
 });
 
+// A sheet inherits the foreground style of the view it is attached to. The
+// wallpaper white must stay on the row label, or the murmur and Thought
+// process sheets render their .primary text in white.
+test("process row colour stays off the sheets it presents", () => {
+  const thinking = fs.readFileSync(rowPath.replace("NativeLiveAssistantTurnRow.swift", "NativeLiveVisibleThinkingSurface.swift"), "utf8");
+  const surface = thinking.slice(thinking.indexOf("struct NativeLiveVisibleThinkingSurface"), thinking.indexOf("struct NativeLiveProcessStatusHeadline"));
+  const label = surface.slice(surface.indexOf("label: {"), surface.indexOf(".buttonStyle(.plain)"));
+  assert.match(label, /\.foregroundStyle\(iMessageWallpaperVisible \? Color\.white : Color\.secondary\)/u);
+  assert.equal(surface.split(".foregroundStyle(").length - 1, 1, "only the label is coloured");
+});
+
 test("murmur never becomes assistant body or generic display text", () => {
   const projection = fs.readFileSync(projectionPath, "utf8");
   const models = fs.readFileSync(modelsPath, "utf8");

@@ -23,6 +23,9 @@ struct NativeLiveVisibleThinkingSurface: View {
                             .font(.system(size: 14, weight: .light))
                             .frame(height: 22)
                     }
+                    // Colour only the label: sheets presented from this row
+                    // inherit any foreground style set around them.
+                    .foregroundStyle(iMessageWallpaperVisible ? Color.white : Color.secondary)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -30,7 +33,6 @@ struct NativeLiveVisibleThinkingSurface: View {
                 NativeLiveMurmurButton(text: murmurText)
                 Spacer(minLength: 8)
             }
-            .foregroundStyle(iMessageWallpaperVisible ? Color.white : Color.secondary)
             .shadow(
                 color: iMessageWallpaperVisible ? Color.black.opacity(0.75) : .clear,
                 radius: iMessageWallpaperVisible ? 2 : 0,
