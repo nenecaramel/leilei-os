@@ -12,7 +12,7 @@ import { normalizeAgentSdkExecutionReadback } from "./agent-sdk-execution-readba
 import {
   runtimeError,
   leileiosMcpQueryOptions,
-  LEILEIOS_INTERACTIVE_SYSTEM_PROMPT,
+  LEILEIOS_INTERACTIVE_SYSTEM_PROMPT_OPTION,
 } from "./agent-sdk-transport-support.mjs";
 
 // State stays on the transport owner; private checkpoint operations are bound by its entry point.
@@ -132,7 +132,7 @@ export async function openAgentSdkPersistentSession(owner, checkpoints, options 
           // Only a human /loop opts into native dispatch on its own message.
           // Composed prompts retain literal delivery via client_composed.
           verbatimPrompts: false,
-          systemPrompt: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT,
+          systemPrompt: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT_OPTION,
           ...executionOptions,
           // Request the same provider displayable summary as the interactive
           // one-shot path, without changing explicit disabled/between_tools.
