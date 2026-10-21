@@ -126,7 +126,7 @@ test('Message router and assistant preserve routing and presentation order acros
   'onCopyMessage:onCopyMessage,onEditMessage:onEditMessage)',
  ],'Row routing and callbacks');
  ordered(assistant,[
-  'NativeLiveVisibleThinkingSurface(items: turn.visibleThinking)',
+  'NativeLiveVisibleThinkingSurface(items: turn.visibleThinking, murmurText: turn.murmurText)',
   'activityArea',
   'spotifyResultArea',
   'elevenLabsResultArea',
