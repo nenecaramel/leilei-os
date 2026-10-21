@@ -21,7 +21,7 @@ function queue<T>(){const values:T[]=[];let ended=false,wait:((r:IteratorResult<
  push(v:T){if(wait){const w=wait;wait=undefined;w({value:v,done:false});}else values.push(v);},end(){ended=true;wait?.({value:undefined,done:true});},
  [Symbol.asyncIterator](){return this;},next():Promise<IteratorResult<T>>{if(values.length)return Promise.resolve({value:values.shift()!,done:false});if(ended)return Promise.resolve({value:undefined,done:true});return new Promise(r=>{wait=r;});}};}
 const enabled=process.env.RUN_NATIVE_LIVE_RELAY_DATABASE_TEST==='1';
-test('closed SDK complete native reply survives lost canonical ACK and admits next turn without duplicate execution', {skip:!enabled},async t=>{
+for (const withSnapshot of [false, true]) test(`closed SDK complete native reply survives lost canonical ACK and admits next turn without duplicate execution (prompt snapshot: ${withSnapshot})`, {skip:!enabled},async t=>{
  const url=new URL(process.env.DATABASE_URL!);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.pathname,'/leileios_native_session_test');assert.notEqual(process.env.NODE_ENV,'production');
  const root=await realpath(await mkdtemp(join(tmpdir(),'native-complete-delivery-'))),database=createDatabase(url.href,{ssl:false});
  const [user]=await database.db.insert(users).values({email:`complete-${randomUUID()}@example.com`,displayName:'Synthetic completed delivery'}).returning();
@@ -52,7 +52,9 @@ test('closed SDK complete native reply survives lost canonical ACK and admits ne
  t.after(async()=>{await executor.closeAll();await registry.closeAll();try{await database.db.delete(nativeLiveRuntimeListenerLeases).where(eq(nativeLiveRuntimeListenerLeases.userId,user!.id));await database.db.delete(conversations).where(eq(conversations.userId,user!.id));await database.db.delete(users).where(eq(users.id,user!.id));}finally{await database.close();await rm(root,{recursive:true,force:true});}});
  const loop=new NativeLiveMacDaemonLoop(listener,client,{async execute(){throw Error('no one-shot/model replay');}},null,null,null,null,null,null,outbox,executor);
  const pending=loop.runOnce(),input=(await inputs.next()).value!;
- const native=[{type:'user',uuid:input.uuid,parentUuid:null,sessionId:sid,message:{role:'user',content:'synthetic input'}},{type:'assistant',uuid:checkpoint,parentUuid:input.uuid,sessionId:sid,message:{role:'assistant',content:[{type:'text',text:'synthetic complete reply'}],stop_reason:'end_turn'}}];
+ const native:Array<Record<string,unknown>>=[{type:'user',uuid:input.uuid,parentUuid:null,sessionId:sid,message:{role:'user',content:'synthetic input'}},{type:'assistant',uuid:checkpoint,parentUuid:input.uuid,sessionId:sid,message:{role:'assistant',content:[{type:'text',text:'synthetic complete reply'}],stop_reason:'end_turn'}}];
+ const snapshot=randomUUID();
+ if(withSnapshot)native.push({type:'attachment',uuid:snapshot,parentUuid:checkpoint,sessionId:sid,attachment:{type:'prompt_snapshot',systemPrompt:'synthetic metadata'}},{type:'system',subtype:'stop_hook_summary',uuid:randomUUID(),parentUuid:snapshot,sessionId:sid,preventedContinuation:false,hookErrors:[]});
  await writeFile(filename,native.map(e=>JSON.stringify(e)).join('\n')+'\n');const original=await readFile(filename,'utf8');
  await router.close('CONTROL_RECEIPT_TIMEOUT');assert.equal((await pending).outcome,'delivery_unknown');assert.equal((await outbox.list()).length,1);assert.equal(launches,1);
  lose=false;assert.equal((await loop.runOnce()).outcome,'completed');assert.equal(launches,1);assert.deepEqual(events,['completed','idempotent']);assert.deepEqual(await outbox.list(),[]);assert.equal(await readFile(filename,'utf8'),original);

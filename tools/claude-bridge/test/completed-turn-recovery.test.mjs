@@ -68,3 +68,24 @@ test('parallel tool results retain the uniquely verified sibling response within
 test('bounded recovery does not reject a short current reply because older history exceeds two MiB',()=>{
  const e=entries();e[0].message.content[0].text='x'.repeat(3*1024*1024);assert.ok(read(e));
 });
+
+for (const where of ['before-input', 'after-reply']) test(`completed recovery accepts native prompt_snapshot metadata ${where}`, () => {
+ const e=entries(),snapshot={type:'attachment',uuid:id(9),parentUuid:where==='before-input'?parent:checkpoint,sessionId:session,
+  attachment:{type:'prompt_snapshot',systemPrompt:'synthetic metadata'}};
+ if(where==='before-input'){e.splice(1,0,snapshot);e[2].parentUuid=snapshot.uuid;}
+ else e.push(snapshot,{type:'system',subtype:'stop_hook_summary',uuid:id(10),parentUuid:snapshot.uuid,sessionId:session,preventedContinuation:false,hookErrors:[]});
+ const r=read(e);assert.ok(r);assert.equal(r.providerCheckpointId,checkpoint);
+ assert.deepEqual(r.result.normalizedEvents.filter(e=>e.type==='text').map(e=>e.payload.text),['synthetic complete reply']);
+});
+
+for(const mode of ['partial','blocked','foreign','duplicate','unknown','new-user']) test(`prompt_snapshot cannot bypass ${mode} recovery fencing`,()=>{
+ const e=entries(),snapshot={type:'attachment',uuid:id(9),parentUuid:checkpoint,sessionId:session,attachment:{type:'prompt_snapshot'}};
+ e.push(snapshot);
+ if(mode==='partial')e[2].message.stop_reason=null;
+ if(mode==='blocked')e.push({type:'system',subtype:'stop_hook_summary',uuid:id(10),parentUuid:snapshot.uuid,sessionId:session,preventedContinuation:true});
+ if(mode==='foreign')snapshot.sessionId=id(11);
+ if(mode==='duplicate')e.push({...snapshot});
+ if(mode==='unknown')snapshot.attachment.type='unknown';
+ if(mode==='new-user')e.push({type:'user',uuid:id(10),parentUuid:snapshot.uuid,sessionId:session,message:{content:'synthetic next input'}});
+ assert.equal(read(e),null);
+});
