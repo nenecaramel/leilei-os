@@ -426,10 +426,8 @@ export async function createAgentSdkTurnHandle({
     cwd,
     env: environment,
     settingSources: ["user", "project", "local"],
-    systemPrompt: {
-      type: "preset",
-      preset: "claude_code",
-    },
+    // No systemPrompt: LeileiOS keeps the Claude Code preset off and sends no
+    // prompt of its own; the owner's CLAUDE.md files carry her guidance.
     ...queryOptions,
     ...(startupReceipt ? { settings: {
       ...queryOptions.settings,

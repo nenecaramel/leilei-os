@@ -1,16 +1,4 @@
 import { join } from "node:path";
-import { LEILEIOS_WAKE_SYSTEM_PROMPT } from "./leileios-wake-system-prompt.mjs";
-import { LEILEIOS_MURMUR_SYSTEM_PROMPT } from "./leileios-murmur-system-prompt.mjs";
-
-// A custom string replaces the Claude Code preset; only LeileiOS guidance is sent.
-export const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = [LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT].join("\n\n");
-// The SDK records a session's system prompt on its first request and replays
-// that record on every resume, so a session born in Desktop would never see
-// this guidance. Render it fresh on every LeileiOS request instead; nothing is
-// recorded, so Desktop keeps its own prompt when the session goes back.
-export const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT_OPTION = Object.freeze({
-  type: "custom", prompt: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT, snapshot: false,
-});
 
 export function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);

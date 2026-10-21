@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createMindState } from "../src/domains/runtime/mind/mind-writer.js";
@@ -66,14 +67,10 @@ test("persisted pre-deployment context renders former feelings once as memories 
 });
 
 
-test("active bridge instructions do not reintroduce retired Mind output tags", async () => {
-  // The current SDK bridge intentionally composes Wake and Murmur only.
-  // The older leileios-mind-system-prompt module was removed; exercising a
-  // nonexistent import did not verify active runtime memory behavior.
-  const { LEILEIOS_WAKE_SYSTEM_PROMPT } = await import("../tools/claude-bridge/src/leileios-wake-system-prompt.mjs");
-  const { LEILEIOS_MURMUR_SYSTEM_PROMPT } = await import("../tools/claude-bridge/src/leileios-murmur-system-prompt.mjs");
-  const prompt = [LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT].join("\n\n");
-  assert.match(prompt, /<leileios_wake>/);
-  assert.match(prompt, /It is not Mind and is not for recall/);
-  assert.doesNotMatch(prompt, /<memory>|<leileios_mind_write>|<thought>|<feel>/);
+test("the bridge ships no LeileiOS system prompt of its own", () => {
+  // Wake/murmur guidance and the older Mind prompt were removed; the owner keeps
+  // that guidance in her own CLAUDE.md files instead.
+  for (const name of ["leileios-wake-system-prompt.mjs", "leileios-murmur-system-prompt.mjs", "leileios-mind-system-prompt.mjs"]) {
+    assert.equal(existsSync(`tools/claude-bridge/src/${name}`), false, name);
+  }
 });

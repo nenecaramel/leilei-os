@@ -118,56 +118,12 @@ test("Mac daemon transport carries MCP config outside the Claude environment", a
   });
 });
 
-test("Agent SDK appends the exact silence-wake prompt with real paragraph breaks", () => {
-  const wakePrompt = readFileSync(
-    "tools/claude-bridge/src/leileios-wake-system-prompt.mjs",
-    "utf8",
-  );
-  assert.match(
-    wakePrompt,
-    /A \[wake · \.\.\. · no reply\] marker is an opportunity to continue the current conversation after silence\./u,
-  );
-  assert.match(
-    wakePrompt,
-    /If you genuinely want to say something or do something, continue normally\./u,
-  );
-  assert.match(
-    wakePrompt,
-    /To pass this wake without sending anything to the user, output exactly <quiet \/> and nothing else\./u,
-  );
-  assert.match(
-    wakePrompt,
-    /Do not try to pass by returning an empty response; use the <quiet \/> marker explicitly\./u,
-  );
-
-  const transport = readFileSync(
-    "tools/claude-bridge/src/agent-sdk-transport-support.mjs",
-    "utf8",
-  );
-  // The transport support module composes Wake + Murmur; the removed Mind prompt is
-  // neither shipped nor loaded. Require physical source newlines and a
-  // two-paragraph composition rather than the old obsolete import sequence.
-  assert.match(
-    transport,
-    /leileios-wake-system-prompt\.mjs";\nimport \{ LEILEIOS_MURMUR_SYSTEM_PROMPT \}/u,
-  );
-  assert.doesNotMatch(transport, /leileios-mind-system-prompt\.mjs/u);
-  assert.match(
-    transport,
-    /\[LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT\]\.join\("\\n\\n"\)/u,
-  );
-  assert.doesNotMatch(
-    transport,
-    /\.join\("\\\\n\\\\n"\)/u,
-  );
-
-  const murmurPrompt = readFileSync(
-    "tools/claude-bridge/src/leileios-murmur-system-prompt.mjs",
-    "utf8",
-  );
-  assert.match(murmurPrompt, /Optional and rare\. At most one per reply\./u);
-  assert.match(murmurPrompt, /<murmur>\.\.\.<\/murmur>/u);
-  assert.match(murmurPrompt, /It is not Mind and is not for recall\./u);
+test("Agent SDK turns send no custom prompt and no Claude Code preset", () => {
+  // Declaration contract only; transport tests exercise the actual query options.
+  const transport = readFileSync("tools/claude-bridge/src/agent-sdk-transport-support.mjs", "utf8");
+  assert.doesNotMatch(transport, /SYSTEM_PROMPT/u);
+  const turnHandle = readFileSync("tools/claude-bridge/src/agent-sdk-turn-handle.mjs", "utf8");
+  assert.doesNotMatch(turnHandle, /preset: "claude_code"/u);
 });
 
 test("the real Mac transport factory auto-approves tools but still routes user questions", async () => {
