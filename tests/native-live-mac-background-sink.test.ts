@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NativeLiveMacBackgroundResultSink, NativeLiveMacBackgroundResultOutbox } from "../src/domains/bridge/mac/native-live-mac-background-result-sink.js";
+import { NativeLiveMacHttpRelayClient } from "../src/domains/bridge/mac/native-live-mac-http-relay-client.js";
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,"0")}`;
 const owner={conversationId:id(1),generationId:id(2),source:{prepareId:id(3),requestId:id(4)},providerSessionId:"synthetic",parentProviderCheckpointId:id(5),workingDirectory:"/synthetic"};
 const frame={result:{session_id:"synthetic"},events:[],normalizedEvents:[{type:"text" as const,payload:{text:"synthetic"}}],providerCheckpointId:id(6)};
@@ -492,4 +493,91 @@ test("background sink journals sealed segment attachments and duration before tr
     outputAttachmentMetadata:[{attachment_id:id(50),duration_seconds:2.5}]} as any);
   assert.deepEqual(f.calls[0][1].result.output_attachment_ids,[id(50)]);
   assert.deepEqual(f.calls[1][1].result.output_attachment_metadata,[{attachment_id:id(50),duration_seconds:2.5}]);
+});
+
+for (const result of [
+  { session_id: "synthetic", is_error: true, subtype: "success" },
+  { session_id: "synthetic", is_error: false, subtype: "error_max_turns" },
+]) for (const checkpoint of [id(6), undefined]) test(`SDK failure ${JSON.stringify(result)} checkpoint=${Boolean(checkpoint)} never publishes partial output`, async t => {
+  const f = await fixture(t), bodies: any[] = [], fenced: string[] = [], blocked: string[] = [], recovered: string[] = [];
+  const relay = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async (_url, init) => {
+    const body = JSON.parse(String(init!.body));
+    bodies.push(body);
+    const saved = await f.outbox.list();
+    assert.equal(saved.length, 1, "failure evidence is durable before HTTP");
+    return new Response(JSON.stringify({ success: true, data: body.receipt_id
+      ? { receiptId: body.receipt_id, providerSessionId: "synthetic", parentProviderCheckpointId: id(5), expiresAt: new Date(Date.now() + 600000).toISOString() }
+      : { outcome: body.result.status === "failure" ? "failed" : "committed", duplicate: false, providerCheckpointId: body.result.status === "failure" ? null : id(6) } }), { status: 200 });
+  });
+  const sink = new NativeLiveMacBackgroundResultSink({ listenerInstanceId: id(7), relay, outbox: f.outbox,
+    onImmediateFence: value => fenced.push(value), onRecoveryBlocked: async value => { blocked.push(value); },
+    onRecovered: async value => { recovered.push(value); } });
+  assert.deepEqual(await sink.commit({ ...owner, deferred: true }, { ...frame, result, providerCheckpointId: checkpoint } as any), { status: "rejected" });
+  assert.deepEqual(fenced, [id(1)], "failed native progress fences new foreground input synchronously");
+  assert.equal(bodies[1].result.status, "failure");
+  assert.equal(bodies[1].result.error_code, "CLAUDE_PROCESS_FAILED");
+  assert.equal(bodies[1].result.normalized_events, undefined, "partial text cannot become canonical completed output");
+  assert.deepEqual(await f.outbox.list(), []);
+  const evidence = await f.outbox.listQuarantined();
+  assert.equal(evidence.length, 1, "server failure acknowledgement cannot discard uncertain native progress");
+  assert.deepEqual((evidence[0] as any).failureEvidence.result, result);
+  assert.deepEqual((evidence[0] as any).failureEvidence.normalizedEvents, frame.normalizedEvents);
+  assert.equal((evidence[0] as any).failureEvidence.providerCheckpointId, checkpoint);
+  const restarted = new NativeLiveMacBackgroundResultSink({ listenerInstanceId: id(99), relay, outbox: f.outbox,
+    onRecoveryBlocked: async value => { blocked.push(value); }, onRecovered: async value => { recovered.push(value); } });
+  assert.equal(await restarted.flush(), 0);
+  assert.deepEqual(blocked, [id(1)]);
+  assert.deepEqual(recovered, []);
+  assert.equal(bodies.length, 2, "a known failed result must not be replayed or reexecuted automatically");
+});
+
+test("lost failure acknowledgement replays only its immutable failure receipt and retains the native-progress fence", async t => {
+  const f = await fixture(t), submitted: any[] = [], blocked: string[] = [], recovered: string[] = [];
+  let available = false;
+  const relay = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async (_url, init) => {
+    const body = JSON.parse(String(init!.body));
+    if (!body.receipt_id) {
+      submitted.push(body);
+      if (!available) throw new TypeError("failure acknowledgement response lost");
+    }
+    return new Response(JSON.stringify({ success: true, data: body.receipt_id
+      ? { receiptId: body.receipt_id, providerSessionId: "synthetic", parentProviderCheckpointId: id(5), expiresAt: new Date(Date.now() + 600000).toISOString() }
+      : { outcome: "failed", duplicate: true, providerCheckpointId: null } }), { status: 200 });
+  });
+  const sink = new NativeLiveMacBackgroundResultSink({ listenerInstanceId: id(7), relay, outbox: f.outbox });
+  await assert.rejects(sink.commit(owner, { ...frame, result: { is_error: true, subtype: "error_during_execution" } }), /response lost/);
+  const original = await f.outbox.list();
+  assert.equal(original.length, 1);
+  available = true;
+  const restarted = new NativeLiveMacBackgroundResultSink({ listenerInstanceId: id(99), relay, outbox: f.outbox,
+    onRecoveryBlocked: async value => { blocked.push(value); }, onRecovered: async value => { recovered.push(value); } });
+  assert.equal(await restarted.flush(), 0, "recording provider failure never counts as a completed background response");
+  assert.deepEqual(await f.outbox.list(), []);
+  assert.deepEqual(await f.outbox.listQuarantined(), original, "known failure retains the exact preexisting native evidence");
+  assert.deepEqual(blocked, [id(1)]);
+  assert.deepEqual(recovered, []);
+  assert.ok(submitted.length >= 2);
+  for (const body of submitted) {
+    assert.equal(body.result.status, "failure");
+    assert.equal(body.listener_instance_id, id(7));
+    assert.deepEqual(body, submitted[0]);
+  }
+});
+
+test("later saved output cannot advance a conversation behind quarantined native failure", async t => {
+  const f = await fixture(t);
+  const relay = { ...f.relay, async submitBackgroundResult(value: any) {
+    if (value.result.status === "failure") return { outcome: "failed" as const, duplicate: false, providerCheckpointId: null };
+    return f.relay.submitBackgroundResult(value);
+  } };
+  const sink = new NativeLiveMacBackgroundResultSink({ listenerInstanceId: id(7), relay, outbox: f.outbox });
+  await sink.commit(owner, { ...frame, result: { is_error: true } });
+  await f.outbox.save({ sourcePrepareId: id(3), receiptId: id(80), listenerInstanceId: id(7), generationId: id(2), parentProviderCheckpointId: id(6),
+    result: { protocol_version: 4, prepare_id: id(3), request_id: id(4), conversation_id: id(1), status: "success",
+      provider_session_id: "synthetic", effective_working_directory: "/synthetic", provider_checkpoint_id: id(8), normalized_events: frame.normalizedEvents } });
+  const calls = f.calls.length;
+  assert.equal(await sink.flush(), 0);
+  assert.equal(f.calls.length, calls, "uncertain failed predecessor prevents any later receipt HTTP");
+  assert.equal((await f.outbox.list()).length, 1);
+  assert.equal((await f.outbox.listQuarantined()).length, 1);
 });

@@ -6,12 +6,24 @@ import { requireUuid } from "../protocol/runtime-protocol/parsing.js";
 import type { NativeLiveMacPersistentAcknowledgement, NativeLiveMacPersistentBackgroundOwner } from "./native-live-mac-persistent-turn-router.js";
 import type { NativeLiveMacPersistentSessionOptions } from "./native-live-mac-claude-transport.js";
 
-type Entry = NativeLiveBackgroundSubmit & { parentProviderCheckpointId: string; executionStart?: boolean; deferred?: boolean };
+type FailureEvidence = Frame & { providerSessionId: string; workingDirectory: string };
+type Entry = NativeLiveBackgroundSubmit & { parentProviderCheckpointId: string; executionStart?: boolean; deferred?: boolean; failureEvidence?: FailureEvidence };
 type Relay = {
   prepareBackgroundResult(input: NativeLiveBackgroundPrepare): Promise<NativeLiveBackgroundPrepared>;
   submitBackgroundResult(input: NativeLiveBackgroundSubmit): Promise<NativeLiveBackgroundAck>;
 };
-type Frame = Parameters<NativeLiveMacPersistentSessionOptions["onBackgroundResult"]>[0] & { providerCheckpointId: string };
+type Frame = Parameters<NativeLiveMacPersistentSessionOptions["onBackgroundResult"]>[0] & { providerCheckpointId?: string };
+
+function failureEvidence(value: FailureEvidence): FailureEvidence {
+  // Keep provider output locally for manual recovery; the failure wire format
+  // deliberately cannot publish partial text/attachments or advance a cursor.
+  const serialized = JSON.stringify(value);
+  if (Buffer.byteLength(serialized, "utf8") > 2 * 1024 * 1024
+    || typeof value.providerSessionId !== "string" || !value.providerSessionId.trim()
+    || !isAbsolute(value.workingDirectory)) throw new Error("Invalid background failure evidence.");
+  if (value.providerCheckpointId) requireUuid(value.providerCheckpointId, "providerCheckpointId");
+  return JSON.parse(serialized) as FailureEvidence;
+}
 class NativeBackgroundStaleReceipt extends Error {
   readonly relayCode = "BACKGROUND_STALE";
   constructor() { super("Background result was rejected as stale; retained for manual recovery."); }
@@ -23,6 +35,7 @@ function entry(value: Entry): Entry {
   return { ...identity, parentProviderCheckpointId: requireUuid(value.parentProviderCheckpointId, "parentProviderCheckpointId"),
     ...(value.executionStart === true ? { executionStart: true } : {}),
     ...(value.deferred === true ? { deferred: true } : {}),
+    ...(value.failureEvidence ? { failureEvidence: failureEvidence(value.failureEvidence) } : {}),
     ...(value.coveringCheckpointId ? { coveringCheckpointId: requireUuid(value.coveringCheckpointId, "coveringCheckpointId") } : {}), result };
 }
 
@@ -96,7 +109,7 @@ export class NativeLiveMacBackgroundResultOutbox {
     const covering = requireUuid(coveringCheckpointId, "coveringCheckpointId");
     let updated = 0;
     for (const original of await this.list()) {
-      if (original.result.conversation_id !== conversationId || original.generationId !== generationId || original.deferred !== true) continue;
+      if (original.result.status !== "success" || original.result.conversation_id !== conversationId || original.generationId !== generationId || original.deferred !== true) continue;
       if (original.coveringCheckpointId) {
         if (original.coveringCheckpointId !== covering) throw new Error("Conflicting background covering checkpoint.");
         continue;
@@ -188,21 +201,27 @@ export class NativeLiveMacBackgroundResultSink {
   }) {}
   async commit(owner: NativeLiveMacPersistentBackgroundOwner, frame: Frame): Promise<NativeLiveMacPersistentAcknowledgement> {
     if (!owner.source || !owner.parentProviderCheckpointId || !owner.providerSessionId || !isAbsolute(owner.workingDirectory)) throw new Error("No committed background source is available.");
+    const failed = frame.result.is_error === true
+      || (typeof frame.result.subtype === "string" && frame.result.subtype.startsWith("error_"));
     const pending = entry({ sourcePrepareId: owner.source.prepareId, receiptId: randomUUID(), listenerInstanceId: this.input.listenerInstanceId,
       generationId: owner.generationId, parentProviderCheckpointId: owner.parentProviderCheckpointId,
       ...(owner.executionStart === true ? { executionStart: true } : {}),
       ...(owner.deferred === true ? { deferred: true } : {}),
-      result: { protocol_version: 4, prepare_id: owner.source.prepareId, request_id: owner.source.requestId, conversation_id: owner.conversationId,
+      ...(failed ? { failureEvidence: { ...frame, providerSessionId: owner.providerSessionId, workingDirectory: owner.workingDirectory } } : {}),
+      result: failed ? { protocol_version: 4, prepare_id: owner.source.prepareId, request_id: owner.source.requestId,
+        conversation_id: owner.conversationId, status: "failure", error_code: "CLAUDE_PROCESS_FAILED" }
+      : { protocol_version: 4, prepare_id: owner.source.prepareId, request_id: owner.source.requestId, conversation_id: owner.conversationId,
         status: "success", provider_session_id: owner.providerSessionId, effective_working_directory: owner.workingDirectory,
         provider_checkpoint_id: frame.providerCheckpointId, normalized_events: frame.normalizedEvents,
         ...(frame.outputAttachmentIds?.length ? {output_attachment_ids:[...frame.outputAttachmentIds]} : {}),
         ...(frame.outputAttachmentMetadata?.length ? {output_attachment_metadata:frame.outputAttachmentMetadata.map(value => ({...value}))} : {}) } });
     return this.serial(async () => {
       await this.input.outbox.save(pending); // Preserve identity before either HTTP response can be lost.
+      if (failed) this.fenceForRecovery(owner.conversationId);
       try {
         const ack = await this.deliver(pending);
         return ack.outcome === "queued"
-          ? { status: "queued", providerCheckpointId: frame.providerCheckpointId }
+          ? { status: "queued", providerCheckpointId: frame.providerCheckpointId! }
           : ack.outcome === "committed"
             ? { status: ack.duplicate ? "idempotent" : "applied", providerCheckpointId: ack.providerCheckpointId! }
             : { status: "rejected" };
@@ -309,6 +328,7 @@ export class NativeLiveMacBackgroundResultSink {
       // The normal outbox must also be empty for that conversation.
       for (const saved of quarantined) {
         const conversationId = saved.result.conversation_id;
+        if (saved.result.status === "failure") continue; // Manual recovery only: failed native progress is not a verified cursor.
         if (quarantinedCounts.get(conversationId) !== 1
           || currentNormal.some(value => value.result.conversation_id === conversationId)
           || this.input.isForegroundActive?.(conversationId)
@@ -330,12 +350,14 @@ export class NativeLiveMacBackgroundResultSink {
         // Files are journaled in SDK generation order. Never skip an earlier
         // receipt in one conversation merely because it is uncovered, active,
         // or in backoff; doing so could replay B2 before its native parent B1.
+        if (quarantined.some(saved => saved.result.status === "failure"
+          && saved.result.conversation_id === v.result.conversation_id)) return false;
         if (seenConversations.has(v.result.conversation_id)) return false;
         seenConversations.add(v.result.conversation_id);
-        return (!v.deferred || Boolean(v.coveringCheckpointId))
+        return (v.result.status === "failure" || !v.deferred || Boolean(v.coveringCheckpointId))
           // F may have fsynced its covering proof but not yet committed. Only
           // its post-commit drain may publish B while that writer is active.
-          && !(v.deferred && this.input.isForegroundActive?.(v.result.conversation_id))
+          && !(v.result.status === "success" && v.deferred && this.input.isForegroundActive?.(v.result.conversation_id))
           && (this.retryAfter.get(v.receiptId) ?? 0) <= now;
       });
       if (!value) return completed;
@@ -345,6 +367,11 @@ export class NativeLiveMacBackgroundResultSink {
         // as an acknowledged/visible message.
         if (ack.outcome !== "committed" && ack.outcome !== "failed")
           throw new Error("Background recovery did not finalize its receipt.");
+        if (ack.outcome === "failed") {
+          this.fenceForRecovery(value.result.conversation_id);
+          blocked.add(value.result.conversation_id);
+          return completed;
+        }
         completed++;
         this.retryAfter.delete(value.receiptId);
         if (![...quarantined, ...await this.input.outbox.list()].some(
@@ -398,12 +425,16 @@ export class NativeLiveMacBackgroundResultSink {
   }
   private async deliver(value: Entry, quarantined = false): Promise<NativeLiveBackgroundAck> {
     const prepared = await this.input.relay.prepareBackgroundResult(value);
-    if (value.result.status !== "success" || prepared.receiptId !== value.receiptId || prepared.providerSessionId !== value.result.provider_session_id
+    const providerSessionId = value.result.status === "success" ? value.result.provider_session_id : value.failureEvidence?.providerSessionId;
+    if (prepared.receiptId !== value.receiptId || prepared.providerSessionId !== providerSessionId
       || prepared.parentProviderCheckpointId !== value.parentProviderCheckpointId) throw new Error("Background preparation binding changed.");
     const ack = await this.input.relay.submitBackgroundResult(value);
-    if (!["committed", "queued", "stale", "failed"].includes(ack.outcome) || (ack.outcome === "committed"
-      ? ack.providerCheckpointId !== (value.coveringCheckpointId ?? value.result.provider_checkpoint_id)
-      : ack.providerCheckpointId !== null)) throw new Error("Background acknowledgement binding changed.");
+    if (!["committed", "queued", "stale", "failed"].includes(ack.outcome)
+      || (ack.outcome === "failed" && value.result.status !== "failure")
+      || (ack.outcome === "queued" && value.result.status !== "success")
+      || (ack.outcome === "committed"
+        ? value.result.status !== "success" || ack.providerCheckpointId !== (value.coveringCheckpointId ?? value.result.provider_checkpoint_id)
+        : ack.providerCheckpointId !== null)) throw new Error("Background acknowledgement binding changed.");
     if (ack.outcome === "stale") {
       // An HTTP 200 with outcome=stale did not deliver the reply. Deleting its
       // outbox record here permanently loses the only recoverable output.
@@ -413,6 +444,12 @@ export class NativeLiveMacBackgroundResultSink {
       if (!value.deferred || value.coveringCheckpointId)
         throw new Error("Unexpected queued reply outside a pre-coverage native foreground; retain outbox.");
       return ack; // Uncovered native producer is durable, not canonically published.
+    }
+    if (ack.outcome === "failed") {
+      // The server recorded failure, but cannot establish where the native
+      // writer progressed. Preserve all evidence and retain the input fence.
+      if (!quarantined) await this.input.outbox.quarantine(value);
+      return ack;
     }
     if (quarantined) await this.input.outbox.acknowledgeQuarantined(value);
     else await this.input.outbox.acknowledge(value);

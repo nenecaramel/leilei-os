@@ -62,7 +62,7 @@ export class NativeLiveMacSessionRegistry {
   }
   get size(): number { return this.entries.size; }
   snapshot(): ReadonlyArray<NativeLiveMacSessionBinding> {
-    return [...this.entries.values()].flatMap(entry=>entry.binding&&!entry.retired?[entry.binding]:[]);
+    return [...this.entries.values()].flatMap(entry => entry.binding && this.get(entry.conversationId, entry.generationId) ? [entry.binding] : []);
   }
 
   async openNew(input: OpenInput): Promise<NativeLiveMacSessionBinding> {
@@ -201,6 +201,16 @@ export class NativeLiveMacSessionRegistry {
     session.events.on("event", entry.observeEvent);
     const binding = Object.freeze({ conversationId: entry.conversationId, generationId: entry.generationId, workingDirectory, session });
     entry.binding = binding;
+    // Completion means the output consumer stopped, not that query.close
+    // succeeded. Revoke live admission and verify close before releasing the
+    // capacity slot; a failed close remains owned for an explicit retry.
+    const ended = () => {
+      if (entry.retired || this.entries.get(entry.conversationId) !== entry) return;
+      entry.closeReason ??= "SDK_FAILURE";
+      this.retire(entry);
+      void this.dispose(entry).catch(() => {});
+    };
+    void session.completion.then(ended, ended);
     this.changes.emit("change");
     return binding;
   }
@@ -218,7 +228,10 @@ export class NativeLiveMacSessionRegistry {
         })]);
       } finally { clearTimeout(timer); }
       if (entry.binding && entry.observeEvent) entry.binding.session.events.off("event", entry.observeEvent);
-      if (this.entries.get(entry.conversationId) === entry) this.entries.delete(entry.conversationId);
+      if (this.entries.get(entry.conversationId) === entry) {
+        this.entries.delete(entry.conversationId);
+        this.changes.emit("change");
+      }
     })();
     entry.closing = closing;
     try { await closing; }

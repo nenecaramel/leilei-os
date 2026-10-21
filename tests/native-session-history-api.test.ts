@@ -1,5 +1,6 @@
 import { projectNativeHistory } from "../tools/claude-bridge/src/native-session-history.mjs";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createNativeLiveProviderSessionStoreInternalRouter } from "../src/web-api/native-live-provider-session-store-internal-router.js";
 import { withServer, userId, conversationId } from "./helpers/native-live-http-relay-fixtures.js";
@@ -14,7 +15,6 @@ async function server(restore: any, run: (url: string) => Promise<void>, authent
     app.use("/store", createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any, restoreNativeHistory: restore } as any));
   }, run);
 }
-const post = (url: string, value: any) => fetch(url + "/store/native-history/restore", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(value) });
 test("legacy full-history endpoints are retired and cannot reach old writers", async () => {
   let called = 0;
   const forbidden = async () => { called++; throw new Error("OLD_WRITER_CALLED"); };
@@ -42,7 +42,12 @@ test("legacy full-history endpoints are retired and cannot reach old writers", a
     assert.equal(called, 0);
   });
   await server(forbidden, async url => {
-    assert.equal((await post(url, body())).status, 401);
+    for (const name of ["restore", "state", "release", "asset", "asset-stage"]) {
+      const response = await fetch(url + "/store/native-history/" + name, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body()),
+      });
+      assert.equal(response.status, 401, name);
+    }
   }, false);
 });
 
@@ -103,4 +108,13 @@ test('continuation endpoints accept only authenticated metadata, never a history
   await withServer(app => app.use('/store', createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any })), async url => {
     assert.equal((await fetch(url + '/store/native-history/continuation-state', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ conversationId, sessionId: sid }) })).status, 401);
   });
+});
+
+
+test("retired full-history HTTP handlers carry no production dependency wiring", async () => {
+  for (const path of ["src/web-api/native-live-provider-session-store-internal-router.ts", "src/app/create-app.ts", "src/app/process-runtime.ts"]) {
+    const source = await readFile(new URL("../" + path, import.meta.url), "utf8");
+    assert.doesNotMatch(source, /\b(?:restoreNativeHistory|readNativeHistoryState|releaseNativeHistory|nativeHistoryAsset|stageNativeHistoryAssets)\b/, path);
+    assert.doesNotMatch(source, /function nativeHistory(?:Restore|State|Release|Asset|AssetStage)Handler\b/, path);
+  }
 });

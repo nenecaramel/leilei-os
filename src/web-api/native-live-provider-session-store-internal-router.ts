@@ -1,8 +1,6 @@
 import { beginNativeContinuationRelease, cancelNativeContinuationRelease, validateNativeContinuationReleaseBegin, validateNativeContinuationReleaseCancel, validateNativeContinuationInput, type attachNativeContinuation, type releaseNativeContinuation, type readNativeContinuationState } from "../domains/conversation/native-session-continuation-repository.js";
-import { validateNativeHistoryRestoreInput, type listReferencedNativeSessions, type restoreNativeSessionHistory, type readNativeSessionRestoreState, type releaseNativeSessionToDesktop, type listNativeSessionSwitchChoices } from "../domains/conversation/native-session-history-repository.js";
+import type { listReferencedNativeSessions, listNativeSessionSwitchChoices } from "../domains/conversation/native-session-history-repository.js";
 import { Router, type RequestHandler, type Response } from "express";
-import type { nativeSessionAsset } from "../domains/conversation/native-session-asset-repository.js";
-import type { stageNativeDisplayAssets } from "../domains/conversation/native-session-asset-staging.js";
 import {
   NativeLiveProviderSessionStoreError,
   type NativeLiveProviderSessionStoreEntry,
@@ -17,12 +15,7 @@ export type NativeLiveProviderSessionStoreInternalDependencies = {
   releaseNativeContinuation?: (input: Parameters<typeof releaseNativeContinuation>[1]) => ReturnType<typeof releaseNativeContinuation>;
   readNativeContinuationState?: (input: Parameters<typeof readNativeContinuationState>[1]) => ReturnType<typeof readNativeContinuationState>;
   listNativeHistoryChoices?: (input: Parameters<typeof listNativeSessionSwitchChoices>[1]) => ReturnType<typeof listNativeSessionSwitchChoices>;
-  nativeHistoryAsset?: (input: Parameters<typeof nativeSessionAsset>[1]) => ReturnType<typeof nativeSessionAsset>;
-  stageNativeHistoryAssets?: (input: Parameters<typeof stageNativeDisplayAssets>[1]) => ReturnType<typeof stageNativeDisplayAssets>;
   listReferencedNativeSessions?: (input: Parameters<typeof listReferencedNativeSessions>[1]) => ReturnType<typeof listReferencedNativeSessions>;
-  restoreNativeHistory?: (input: Parameters<typeof restoreNativeSessionHistory>[1]) => ReturnType<typeof restoreNativeSessionHistory>;
-  readNativeHistoryState?: (input: Parameters<typeof readNativeSessionRestoreState>[1]) => ReturnType<typeof readNativeSessionRestoreState>;
-  releaseNativeHistory?: (input: Parameters<typeof releaseNativeSessionToDesktop>[1]) => ReturnType<typeof releaseNativeSessionToDesktop>;
   providerSessionStoreService: Pick<
     NativeLiveProviderSessionStoreService,
     "append" | "load" | "listSessions" | "delete" | "listSubkeys"
@@ -390,78 +383,6 @@ function nativeHistoryChoicesHandler(dependencies: NativeLiveProviderSessionStor
   };
 }
 
-function nativeHistoryRestoreHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies): RequestHandler {
-  return async (request, response) => {
-    const userId = requireInternalUser(response, request.mcpUserId);
-    if (!userId) return;
-    const body = readRecord(request.body);
-    const allowed = new Set(["conversationId", "expectedHeadMessageId", "expectedRevision", "effectiveWorkingDirectory", "projection", "nativeSnapshot"]);
-    if (!body || Object.keys(body).some(key => !allowed.has(key)) || !readRecord(body.nativeSnapshot)) { sendInvalid(response); return; }
-    const input = { ...body, userId } as Parameters<typeof restoreNativeSessionHistory>[1];
-    try { validateNativeHistoryRestoreInput(input); }
-    catch { sendInvalid(response); return; }
-    if (!dependencies.restoreNativeHistory) { sendNativeHistoryError(response, null); return; }
-    try { response.json({ success: true, data: await dependencies.restoreNativeHistory(input) }); }
-    catch (error) { sendNativeHistoryError(response, error); }
-  };
-}
-function nativeHistoryStateHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies): RequestHandler {
-  return async (request, response) => {
-    const userId = requireInternalUser(response, request.mcpUserId);
-    if (!userId) return;
-    const body = readRecord(request.body);
-    if (!body || Object.keys(body).some(key => key !== "conversationId" && key !== "sessionId") ||
-      typeof body.conversationId !== "string" || typeof body.sessionId !== "string") { sendInvalid(response); return; }
-    if (!dependencies.readNativeHistoryState) { sendNativeHistoryError(response, null); return; }
-    try { response.json({ success: true, data: await dependencies.readNativeHistoryState({ userId, conversationId: body.conversationId, sessionId: body.sessionId }) }); }
-    catch (error) { sendNativeHistoryError(response, error); }
-  };
-}
-function nativeHistoryReleaseHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies): RequestHandler {
-  return async (request, response) => {
-    const userId = requireInternalUser(response, request.mcpUserId);
-    if (!userId) return;
-    const body = readRecord(request.body);
-    const ids = ["conversationId", "sessionId", "expectedHeadMessageId", "expectedCheckpointId"];
-    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!body || Object.keys(body).some(key => ![...ids, "expectedRevision"].includes(key)) ||
-      ids.some(key => typeof body[key] !== "string" || !uuid.test(body[key] as string)) ||
-      typeof body.expectedRevision !== "string" || !/^[0-9a-f]{64}$/.test(body.expectedRevision)) { sendInvalid(response); return; }
-    if (!dependencies.releaseNativeHistory) { sendNativeHistoryError(response, null); return; }
-    try { response.json({ success: true, data: await dependencies.releaseNativeHistory({ ...body, userId } as Parameters<typeof releaseNativeSessionToDesktop>[1]) }); }
-    catch (error) { sendNativeHistoryError(response, error); }
-  };
-}
-function nativeHistoryAssetHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies): RequestHandler {
-  return async (request, response) => {
-    const userId = requireInternalUser(response, request.mcpUserId);
-    if (!userId) return;
-    const body = readRecord(request.body);
-    const ids = ["conversationId", "sessionId", "sourceEntryUuid"];
-    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!body || Object.keys(body).some(key => ![...ids, "expectedRevision", "sourceBlockOrdinal", "attachmentId"].includes(key)) ||
-      ids.some(key => typeof body[key] !== "string" || !uuid.test(body[key] as string)) ||
-      typeof body.expectedRevision !== "string" || !/^[a-f0-9]{64}$/.test(body.expectedRevision) ||
-      typeof body.sourceBlockOrdinal !== "number" || !Number.isSafeInteger(body.sourceBlockOrdinal) || body.sourceBlockOrdinal < 0 ||
-      (body.attachmentId !== undefined && (typeof body.attachmentId !== "string" || !uuid.test(body.attachmentId)))) { sendInvalid(response); return; }
-    if (!dependencies.nativeHistoryAsset) { sendNativeHistoryError(response, null); return; }
-    try { response.json({ success: true, data: await dependencies.nativeHistoryAsset({ ...body, userId } as Parameters<typeof nativeSessionAsset>[1]) }); }
-    catch (error) { sendNativeHistoryError(response, error); }
-  };
-}
-function nativeHistoryAssetStageHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies): RequestHandler {
-  return async (request, response) => {
-    const userId = requireInternalUser(response, request.mcpUserId);
-    if (!userId) return;
-    const body = readRecord(request.body);
-    if (!body || Object.keys(body).some(key => !["sessionId", "revision", "total", "offset", "entries"].includes(key)) ||
-      typeof body.sessionId !== "string" || typeof body.revision !== "string" || typeof body.total !== "number" ||
-      typeof body.offset !== "number" || !Array.isArray(body.entries)) { sendInvalid(response); return; }
-    if (!dependencies.stageNativeHistoryAssets) { sendNativeHistoryError(response, null); return; }
-    try { response.json({ success: true, data: await dependencies.stageNativeHistoryAssets({ ...body, userId } as Parameters<typeof stageNativeDisplayAssets>[1]) }); }
-    catch (error) { sendNativeHistoryError(response, error); }
-  };
-}
 function sendNativeHistoryError(response: Response, error: unknown) {
   const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
   const conflicts = new Set(["NATIVE_SESSION_SWITCHING", "NATIVE_CONVERSATION_BUSY", "STALE_NATIVE_PROJECTION", "NATIVE_RELEASE_BEGIN_REQUIRED", "CANONICAL_HEAD_CHANGED", "CANONICAL_HISTORY_CHANGED", "CANONICAL_CHECKPOINT_CHANGED", "NATIVE_SOURCE_BINDING_REQUIRED", "EXPLICIT_BRANCH_SELECTION_REQUIRED", "NATIVE_HISTORY_REWRITTEN", "NATIVE_TRANSCRIPT_DIVERGED", "NATIVE_SESSION_RECOVERY_REQUIRED", "CLEANUP_IN_PROGRESS", "NATIVE_CONVERSATION_NOT_FOUND", "NATIVE_SESSION_ALREADY_ATTACHED", "NATIVE_SYNC_BASE_CHANGED", "LEGACY_ASSET_WRITE_DISABLED"]);

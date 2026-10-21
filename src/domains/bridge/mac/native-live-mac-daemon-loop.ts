@@ -314,6 +314,12 @@ export class NativeLiveMacDaemonLoop {
           persistentRun = await this.persistentExecutor.execute(command, { ...options, commit });
           return persistentRun.result;
         }
+        // Exact sends promise an owned persistent continuation. Selection,
+        // capacity or admission refusal must preserve the existing writer and
+        // its native tasks rather than silently replacing it with one-shot SDK.
+        if (this.persistentExecutor && command.parent_provider_checkpoint_id !== undefined) {
+          return runtimeFailure(command, "RUNTIME_UNAVAILABLE");
+        }
         await this.persistentExecutor?.retire(command.conversation_id, "LEGACY_FALLBACK");
         return this.executor.execute(command, options);
       };

@@ -850,6 +850,15 @@ implements NativeLiveMacDaemonRelayClient {
       return data.version===1;
     } catch {return false;}
   }
+  async publishTaskState(input: import("./native-live-mac-task-state-publisher.js").NativeLiveTaskStateUpdate & {listenerInstanceId:string}): Promise<{outcome:"created"|"idempotent"|"stale"}> {
+    const signal=AbortSignal.timeout(2_000);
+    const data=readRecord(await awaitRelayDeadline(this.postRetryableBounded(`/reservations/${encodeURIComponent(input.prepareId)}/task-state`,{
+      listener_instance_id:input.listenerInstanceId,provider_session_id:input.providerSessionId,generation_id:input.generationId,
+      snapshot_sequence:input.snapshotSequence,tasks:input.tasks,
+    },3,signal),signal));
+    if(!["created","idempotent","stale"].includes(String(data.outcome)))throw Error("Task state response invalid.");
+    return data as {outcome:"created"|"idempotent"|"stale"};
+  }
   async checkTaskAdmission(input:{listenerInstanceId:string;prepareId:string;providerSessionId:string}):Promise<boolean> {
     const data=readRecord(await this.post(`/reservations/${encodeURIComponent(input.prepareId)}/task-admission`,{listener_instance_id:input.listenerInstanceId,provider_session_id:input.providerSessionId},AbortSignal.timeout(2_000)));
     return data.admitted===true;

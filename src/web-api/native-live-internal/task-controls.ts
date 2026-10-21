@@ -1,3 +1,4 @@
+import { normalizeNativeLiveTaskStateTasks } from "../../domains/bridge/runtime-interaction/native-live-task-state.js";
 import type { RequestHandler } from "express";
 import type { NativeLiveRelayInternalDependencies } from "./dependencies.js";
 import { requireInternalUser, parseReservationId, exactRecord, isUuid, sendInvalid } from "./http.js";
@@ -36,6 +37,25 @@ export function taskCapabilitiesHandler(dependencies:NativeLiveRelayInternalDepe
  return (request,response)=>{
   if(!requireInternalUser(response,request.mcpUserId))return;
   if(!exactRecord(request.body,[])){sendInvalid(response);return;}
-  response.json({success:true,data:{version:dependencies.runtimeControlService?.waitTaskForListener && dependencies.runtimeControlService.checkTaskAdmission ? 1 : 0}});
+  response.json({success:true,data:{version:dependencies.runtimeControlService?.waitTaskForListener && dependencies.runtimeControlService.checkTaskAdmission ? 1 : 0, ...(dependencies.runtimeControlService?.publishTaskState ? {taskState:true} : {})}});
  };
+}
+
+export function taskStateHandler(dependencies: NativeLiveRelayInternalDependencies): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId); if (!userId) return;
+    const prepareId = parseReservationId(request.params.reservationId);
+    const body = exactRecord(request.body, ["listener_instance_id", "provider_session_id", "generation_id", "snapshot_sequence", "tasks"]);
+    if (!prepareId || !body || !isUuid(body.listener_instance_id) || !isUuid(body.generation_id)
+      || typeof body.provider_session_id !== "string" || !body.provider_session_id.length || body.provider_session_id.length > 1024
+      || body.provider_session_id.trim() !== body.provider_session_id || !Number.isSafeInteger(body.snapshot_sequence) || (body.snapshot_sequence as number) < 1) { sendInvalid(response); return; }
+    try {
+      const tasks = normalizeNativeLiveTaskStateTasks(body.tasks);
+      if (!dependencies.runtimeControlService?.publishTaskState) { response.status(503).json({success:false}); return; }
+      const data = await dependencies.runtimeControlService.publishTaskState({ userId, prepareId,
+        listenerInstanceId: body.listener_instance_id, providerSessionId: body.provider_session_id,
+        generationId: body.generation_id, snapshotSequence: body.snapshot_sequence as number, tasks });
+      response.json({success:true,data});
+    } catch (error) { sendRuntimeControlError(response, error); }
+  };
 }

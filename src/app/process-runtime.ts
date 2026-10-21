@@ -1,7 +1,5 @@
 import { beginNativeContinuationRelease, cancelNativeContinuationRelease, attachNativeContinuation, releaseNativeContinuation, readNativeContinuationState } from "../domains/conversation/native-session-continuation-repository.js";
-import { nativeSessionAsset } from "../domains/conversation/native-session-asset-repository.js";
-import { stageNativeDisplayAssets } from "../domains/conversation/native-session-asset-staging.js";
-import { restoreNativeSessionHistory, readNativeSessionRestoreState, releaseNativeSessionToDesktop, listNativeSessionSwitchChoices, listReferencedNativeSessions } from "../domains/conversation/native-session-history-repository.js";
+import { listNativeSessionSwitchChoices, listReferencedNativeSessions } from "../domains/conversation/native-session-history-repository.js";
 import { DrizzleClaudeCodeRecallReceipts } from "../domains/runtime/mind/claude-code-recall-receipts.js";
 import { requireActiveUser } from "../domains/require-active-user.js";
 import { ClaudeCodeMindRecallService } from "../domains/runtime/mind/claude-code-mind-recall.js";
@@ -829,11 +827,6 @@ export function createProcessRuntime(
           attachNativeContinuation: input => attachNativeContinuation(database.db, input),
           releaseNativeContinuation: input => releaseNativeContinuation(database.db, input),
           readNativeContinuationState: input => readNativeContinuationState(database.db, input),
-          restoreNativeHistory: input => restoreNativeSessionHistory(database.db, input),
-          readNativeHistoryState: input => readNativeSessionRestoreState(database.db, input),
-          releaseNativeHistory: input => releaseNativeSessionToDesktop(database.db, input),
-          nativeHistoryAsset: input => nativeSessionAsset(database.db, input),
-          stageNativeHistoryAssets: input => stageNativeDisplayAssets(database.db, input),
           listReferencedNativeSessions: input => listReferencedNativeSessions(database.db, input),
           listNativeHistoryChoices: input => listNativeSessionSwitchChoices(database.db, input),
           ...(nativeLiveAttachmentService

@@ -11,10 +11,17 @@ import type { NativeLiveRuntimeCommand } from "../src/domains/bridge/protocol/na
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,"0")}`;
 function queue<T>(){const values:T[]=[];let wake:((value:IteratorResult<T>)=>void)|null=null,ended=false;return {push(v:T){if(wake){const r=wake;wake=null;r({value:v,done:false});}else values.push(v);},end(){ended=true;wake?.({value:undefined,done:true});wake=null;},[Symbol.asyncIterator](){return this;},next():Promise<IteratorResult<T>>{if(values.length)return Promise.resolve({value:values.shift()!,done:false});if(ended)return Promise.resolve({value:undefined,done:true});return new Promise(r=>wake=r);}};}
 
+function sessionLeaseTimers() {
+ const timers=new Map<object,{work:()=>Promise<void>;delay:number}>();
+ const scheduler={schedule(work:()=>Promise<void>,delay:number){const token={};timers.set(token,{work,delay});return token;},cancel(token:unknown){timers.delete(token as object);}};
+ const take=(expiry=false)=>{const found=[...timers.entries()].find(([,timer])=>expiry?timer.delay>20_000:timer.delay===20_000);assert.ok(found,expiry?"lease expiry must remain armed":"idle writers require an ownership watchdog");timers.delete(found[0]);return found[1].work;};
+ return {scheduler,timers,take};
+}
+
 test("composed persistent runtime keeps one SDK writer across foreground, autonomous result and quiet wake",async t=>{
  const root=await realpath(await mkdtemp(join(tmpdir(),"persistent-runtime-")));t.after(()=>rm(root,{recursive:true,force:true}));
  const frames=queue<any>(),inputs=queue<any>(),calls:any[]=[];let launches=0,closes=0,next=100,quiet=false;let taskAffordance:unknown;
- let leaseAlive=true,leaseTick:(()=>Promise<void>)|null=null;
+ let leaseAlive=true;const leaseTimers=sessionLeaseTimers();
  const transcript:any[]=[];
  let releaseReadback!:()=>void,enteredReadback!:()=>void;const readbackEntered=new Promise<void>(r=>enteredReadback=r),readbackReleased=new Promise<void>(r=>releaseReadback=r);let sampled=false;
  const relay=new NativeLiveMacHttpRelayClient("https://relay.invalid","synthetic",async(url,init)=>{
@@ -26,7 +33,7 @@ test("composed persistent runtime keeps one SDK writer across foreground, autono
   return new Response(JSON.stringify({success:true,data}),{headers:{"content-type":"application/json"}});
  });
  const closeDiagnostics:any[]=[];
- const runtime=new NativeLiveMacPersistentRuntime({onSessionClose:frame=>closeDiagnostics.push(frame),sessionLeaseScheduler:{schedule(work:()=>Promise<void>){leaseTick=work;return work;},cancel(){leaseTick=null;}},environment:{},defaultWorkingDirectory:root,listenerInstanceId:id(91),relay,outboxDirectory:join(root,"outbox"),attachmentMaterializer:null,outputAttachmentSender:null,async createTransport(...args){
+ const runtime=new NativeLiveMacPersistentRuntime({onSessionClose:frame=>closeDiagnostics.push(frame),sessionLeaseScheduler:leaseTimers.scheduler,environment:{},defaultWorkingDirectory:root,listenerInstanceId:id(91),relay,outboxDirectory:join(root,"outbox"),attachmentMaterializer:null,outputAttachmentSender:null,async createTransport(...args){
   const value=await createNativeLiveMacClaudeTransport(...args);Object.assign(value.runtime,{sessionMessagesImpl:async()=>[{}],importSessionToStoreImpl:async(_sid:string,store:any)=>store.append({sessionId:id(90)},transcript.map(r=>({...r}))),queryImpl:({prompt,options}:any)=>{taskAffordance=options.perTaskStopAffordance;
    launches++;void(async()=>{for await(const item of prompt)inputs.push(item);})();frames.push({type:"system",subtype:"init",session_id:id(90)});return {async getContextUsage(){if(!sampled){sampled=true;enteredReadback();await readbackReleased;}return {model:"claude-opus-5-5",totalTokens:100,maxTokens:1000,rawMaxTokens:1000,percentage:10,categories:[]};},[Symbol.asyncIterator]:()=>frames,close(){closes++;frames.end();inputs.end();}};
   }});return value;
@@ -45,7 +52,7 @@ test("composed persistent runtime keeps one SDK writer across foreground, autono
   frames.push({type:"command_lifecycle",state:"started",command_uuid:secondInput.uuid,session_id:id(90)});
   finish(secondInput.uuid);assert.equal((await second).canonicalOutcome,"completed");
  assert.equal(launches,1);assert.equal(closes,0);assert.equal(taskAffordance,true);assert.equal((await runtime.backgroundResults.flush()),0);
- assert.ok(leaseTick,"idle writers require an ownership watchdog");leaseAlive=false;await (leaseTick as ()=>Promise<void>)();assert.equal(closes,1);assert.equal(runtime.registry.size,0);
+ leaseAlive=false;await leaseTimers.take()();assert.equal(closes,1);assert.equal(runtime.registry.size,0);
  assert.deepEqual(closeDiagnostics.map(frame=>[frame.phase,frame.reasonCode]),[["requested","SESSION_LEASE_REVOKED"],["completed","SESSION_LEASE_REVOKED"]]);
 });
 
@@ -294,4 +301,52 @@ test("a pending capability probe cannot overlap polling or enable controls after
   assert.equal(probes,1,"polling must share the in-flight request");
   await runtime.closeAll(); resolve(true); await new Promise(setImmediate);
   assert.equal(waits,0,"late capability success cannot reopen a stopped runtime");
+});
+
+
+test("session expiry closes writers opened during a hung renewal and fences old callbacks from later writers", async t => {
+ const root=await realpath(await mkdtemp(join(tmpdir(),"persistent-expiring-writers-")));
+ t.after(()=>rm(root,{recursive:true,force:true}));
+ const leaseTimers=sessionLeaseTimers();let launches=0,closes=0,inputs=0,renewals=0;
+ let resolveRenewal!:(value:boolean)=>void;
+ const heldRenewal=new Promise<boolean>(resolve=>{resolveRenewal=resolve;});
+ const relay={async checkExecutionAdmission(){return true;},async renewExecutionLease(){return true;},
+  renewSessionLease(){renewals++;return heldRenewal;},
+  async prepareBackgroundResult(){throw Error("unused");},async submitBackgroundResult(){throw Error("unused");}};
+ const runtime=new NativeLiveMacPersistentRuntime({sessionLeaseScheduler:leaseTimers.scheduler,
+  environment:{},defaultWorkingDirectory:root,listenerInstanceId:id(91),relay:relay as any,
+  outboxDirectory:join(root,"outbox"),attachmentMaterializer:null,outputAttachmentSender:null,
+  async createTransport(...args){
+   const value=await createNativeLiveMacClaudeTransport(...args),frames=queue<any>(),transcript:any[]=[];
+   const sessionId=id(200+launches++);
+   Object.assign(value.runtime,{sessionMessagesImpl:async()=>[{}],importSessionToStoreImpl:async(_sid:string,store:any)=>store.append({sessionId},transcript),
+    queryImpl:({prompt}:any)=>{
+     frames.push({type:"system",subtype:"init",session_id:sessionId});
+     void(async()=>{for await(const item of prompt){inputs++;const cp=id(300+inputs);
+      transcript.push({type:"assistant",uuid:cp,parentUuid:null,sessionId});
+      frames.push({type:"assistant",uuid:cp,session_id:sessionId,message:{role:"assistant",content:[{type:"text",text:"synthetic"}]}});
+      frames.push({type:"result",subtype:"success",session_id:sessionId,user_message_uuid:item.uuid});
+     }})();
+     return {[Symbol.asyncIterator]:()=>frames,close(){closes++;frames.end();}};
+    }});
+   return value;
+  }});
+ t.after(()=>runtime.closeAll());
+ const run=async(n:number,conversationId:string)=>{
+  const command={protocol_version:4,dispatch_target:"claude_code",prepare_id:id(n),request_id:id(n+10),
+   conversation_id:conversationId,operation:"send",runtime_mode:"new",canonical_user_message_id:id(n+20),
+   parent_provider_session_id:null,parent_provider_checkpoint_id:null,expected_working_directory:null,prompt:"synthetic"} as NativeLiveRuntimeCommand;
+  const result=await runtime.executor.execute(command,{async commit(){return {canonicalOutcome:"completed"};}});
+  assert.equal(result.canonicalOutcome,"completed");
+ };
+ await run(1,id(80));
+ const pendingRenewal=leaseTimers.take()();assert.equal(renewals,1);
+ await run(2,id(81));assert.equal(runtime.registry.size,2);
+ const oldExpiry=leaseTimers.take(true);await oldExpiry();
+ assert.equal(closes,2,"shared listener expiry must retire every current writer");
+ assert.equal(runtime.registry.size,0);assert.equal(inputs,2);assert.equal(launches,2,"expiry cannot replay provider work");
+ await run(3,id(80));assert.equal(runtime.registry.size,1);
+ resolveRenewal(false);await pendingRenewal;await oldExpiry();
+ assert.equal(closes,2,"old watchdog responses and callbacks cannot close the replacement writer");
+ assert.equal(runtime.registry.size,1);assert.equal(inputs,3);assert.equal(launches,3);
 });

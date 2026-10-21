@@ -1588,3 +1588,14 @@ test("admission releases its caller at the existing deadline even if fetch ignor
     await admission;
   }
 });
+
+test('task snapshots retry the same identity within the advisory event deadline',async()=>{
+ const bodies:string[]=[];
+ const client=new NativeLiveMacHttpRelayClient('https://relay.invalid','synthetic',async(_url,init)=>{
+  bodies.push(String(init?.body));if(bodies.length===1)throw new TypeError('fetch failed');
+  return new Response(JSON.stringify({success:true,data:{outcome:'created'}}),{headers:{'content-type':'application/json'}});
+ });
+ assert.deepEqual(await client.publishTaskState({listenerInstanceId:listenerId,prepareId,providerSessionId:'synthetic-session',generationId:conversationId,snapshotSequence:7,tasks:[]}),{outcome:'created'});
+ assert.equal(bodies.length,2);assert.equal(bodies[0],bodies[1]);
+ assert.deepEqual(JSON.parse(bodies[0]),{listener_instance_id:listenerId,provider_session_id:'synthetic-session',generation_id:conversationId,snapshot_sequence:7,tasks:[]});
+});
