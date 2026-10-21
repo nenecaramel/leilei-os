@@ -681,14 +681,22 @@ implements NativeLiveMacDaemonRelayClient {
       parent_provider_checkpoint_id: c.parent_provider_checkpoint_id };
     if (!parseNativeLiveExecutionAdmissionBody(body)) return false;
     // This endpoint only checks current ownership; it cannot submit input or
-    // execute a model/tool. A lost response may be rechecked once, never cached.
-    // Share the existing two-second budget across fetch, body and retry delay.
-    const signal = AbortSignal.timeout(2_000);
-    const data = readRecord(await awaitRelayDeadline(this.postRetryableBounded(
-      `/reservations/${encodeURIComponent(c.prepare_id)}/execution-admission`, body, 2, signal,
-    ), signal));
-    if (typeof data.admitted !== "boolean") throw new Error("Native live execution admission response is invalid.");
-    return data.admitted;
+    // execute a model/tool, so it may be rechecked but is never cached. A
+    // stalled connection that never reaches the server gets a fresh attempt
+    // after 2.5s instead of failing the turn; all attempts share eight seconds.
+    const deadline = AbortSignal.timeout(8_000);
+    for (let attempt = 1; ; attempt += 1) {
+      const signal = AbortSignal.any([deadline, AbortSignal.timeout(2_500)]);
+      try {
+        const data = readRecord(await awaitRelayDeadline(this.postRetryableBounded(
+          `/reservations/${encodeURIComponent(c.prepare_id)}/execution-admission`, body, 2, signal,
+        ), signal));
+        if (typeof data.admitted !== "boolean") throw new Error("Native live execution admission response is invalid.");
+        return data.admitted;
+      } catch (error) {
+        if (deadline.aborted || attempt >= 3 || !(error instanceof Error && error.name === "TimeoutError")) throw error;
+      }
+    }
   }
 
   async renewSessionLease(input: {listenerInstanceId:string}): Promise<boolean> {

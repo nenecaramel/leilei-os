@@ -1440,7 +1440,22 @@ for (const admitted of [false, "true", 1, null, undefined]) test(`execution admi
   const call = client.checkExecutionAdmission({ listenerInstanceId: listenerId, command: { ...command(), parent_provider_checkpoint_id: null } });
   if (admitted === false) assert.equal(await call, false); else await assert.rejects(call, /admission/i);
 });
-test("execution admission timeout aborts one request without retry or cached approval", async () => {
+// A stalled connection (the request never reaches Railway) must not spend the
+// whole budget on one attempt: each attempt has its own timeout inside it.
+test("execution admission replaces a stalled attempt with a fresh one", async () => {
+  let calls = 0;
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async (_url, init) => {
+    calls++;
+    if (calls > 1) return new Response(JSON.stringify({ success: true, data: { admitted: true } }), { status: 200 });
+    return new Promise((_resolve, reject) => {
+      init!.signal!.addEventListener("abort", () => reject(init!.signal!.reason), { once: true });
+    });
+  });
+  const keepAlive = setTimeout(() => {}, 10_000);
+  try { assert.equal(await client.checkExecutionAdmission({ listenerInstanceId: listenerId, command: { ...command(), parent_provider_checkpoint_id: null } }), true); assert.equal(calls, 2); }
+  finally { clearTimeout(keepAlive); }
+});
+test("execution admission stops at its total budget without cached approval", async () => {
   let calls = 0;
   const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async (_url, init) => {
     calls++;
@@ -1450,8 +1465,13 @@ test("execution admission timeout aborts one request without retry or cached app
     });
   });
   // Keep the synthetic process alive; AbortSignal.timeout's timer is unref'ed.
-  const keepAlive = setTimeout(() => {}, 10_000);
-  try { await assert.rejects(client.checkExecutionAdmission({ listenerInstanceId: listenerId, command: { ...command(), parent_provider_checkpoint_id: null } }), error => error instanceof Error && error.name === "TimeoutError"); assert.equal(calls, 1); }
+  const keepAlive = setTimeout(() => {}, 15_000);
+  const started = Date.now();
+  try {
+    await assert.rejects(client.checkExecutionAdmission({ listenerInstanceId: listenerId, command: { ...command(), parent_provider_checkpoint_id: null } }), error => error instanceof Error && error.name === "TimeoutError");
+    assert.equal(calls, 3);
+    assert.ok(Date.now() - started < 8_500, "bounded by the total budget");
+  }
   finally { clearTimeout(keepAlive); }
 });
 
@@ -1571,7 +1591,7 @@ for (const status of [401, 403, 409]) test(`lost HTTP ${status} body cannot turn
   assert.equal(calls, 1);
 });
 
-test("admission releases its caller at the existing deadline even if fetch ignores abort", async () => {
+test("admission releases its caller at its total budget even if fetch ignores abort", async () => {
   let release!: (value: Response) => void;
   const stalled = new Promise<Response>(resolve => { release = resolve; });
   let calls = 0;
@@ -1580,8 +1600,8 @@ test("admission releases its caller at the existing deadline even if fetch ignor
   const admission = client.checkExecutionAdmission({ listenerInstanceId: listenerId,
     command: { ...command(), parent_provider_checkpoint_id: null } }).then(() => "unexpected approval", error => error.name);
   try {
-    assert.equal(await Promise.race([admission, new Promise(resolve => { guard = setTimeout(() => resolve("blocked"), 2800); })]), "TimeoutError");
-    assert.equal(calls, 1);
+    assert.equal(await Promise.race([admission, new Promise(resolve => { guard = setTimeout(() => resolve("blocked"), 8800); })]), "TimeoutError");
+    assert.equal(calls, 3);
   } finally {
     clearTimeout(guard);
     release(new Response(JSON.stringify({ success: true, data: { admitted: true } })));

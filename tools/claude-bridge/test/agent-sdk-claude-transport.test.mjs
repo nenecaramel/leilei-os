@@ -20,6 +20,9 @@ const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = [
   LEILEIOS_WAKE_SYSTEM_PROMPT,
   LEILEIOS_MURMUR_SYSTEM_PROMPT,
 ].join("\n\n");
+// Rendered fresh on every request: a resumed Desktop-born session keeps its own
+// recorded prompt unless the snapshot is opted out.
+const LEILEIOS_SYSTEM_PROMPT_OPTION = { type: "custom", prompt: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT, snapshot: false };
 
 function fakeQuery(messages, { error = null } = {}) {
   let closed = false;
@@ -1241,8 +1244,8 @@ test("interactive foreground execution uses the dedicated turn handle with verba
   assert.equal(call.options.resume, "provider-parent");
   assert.equal(call.options.forkSession, true);
   assert.equal(call.options.verbatimPrompts, true);
-  assert.equal(call.options.systemPrompt, LEILEIOS_INTERACTIVE_SYSTEM_PROMPT);
-  assert.doesNotMatch(call.options.systemPrompt, /write_memory|Memory persistence/u);
+  assert.deepEqual(call.options.systemPrompt, LEILEIOS_SYSTEM_PROMPT_OPTION);
+  assert.doesNotMatch(call.options.systemPrompt.prompt, /write_memory|Memory persistence/u);
   assert.equal(call.options.includePartialMessages, true);
   assert.equal(
     result.providerSessionId,
@@ -1618,8 +1621,8 @@ test("interactive native schedule commands use Claude slash-command parsing", as
 
     assert.equal(call.prompt, command);
     assert.equal(call.options.verbatimPrompts, false);
-    assert.equal(call.options.systemPrompt, LEILEIOS_INTERACTIVE_SYSTEM_PROMPT);
-    assert.doesNotMatch(call.options.systemPrompt, /write_memory|Memory persistence/u);
+    assert.deepEqual(call.options.systemPrompt, LEILEIOS_SYSTEM_PROMPT_OPTION);
+    assert.doesNotMatch(call.options.systemPrompt.prompt, /write_memory|Memory persistence/u);
     assert.equal(call.options.includePartialMessages, true);
     assert.equal(result.providerSessionId, "provider-schedule");
   }
@@ -1651,8 +1654,8 @@ test("ordinary interactive turns keep verbatim streaming input", async () => {
   );
   assert.equal(call.options.verbatimPrompts, true);
   assert.deepEqual(call.options.thinking, { type: "adaptive", display: "summarized" });
-  assert.equal(call.options.systemPrompt, LEILEIOS_INTERACTIVE_SYSTEM_PROMPT);
-  assert.doesNotMatch(call.options.systemPrompt, /write_memory|Memory persistence/u);
+  assert.deepEqual(call.options.systemPrompt, LEILEIOS_SYSTEM_PROMPT_OPTION);
+  assert.doesNotMatch(call.options.systemPrompt.prompt, /write_memory|Memory persistence/u);
 });
 
 test("interactive provider failure retains SessionStore mirror health", async () => {
@@ -2558,9 +2561,9 @@ test("retired meme options cannot register a server or inject a hint; send_file 
   });
   assert.equal(retiredFactoryCalls, 0);
   assert.deepEqual(call.options.mcpServers, {leileios_local: fileServer});
-  assert.equal(call.options.systemPrompt.includes("send_meme"), false);
-  assert.equal(call.options.systemPrompt.includes("leileios-album"), false);
-  assert.match(call.options.systemPrompt, /To pass this wake without sending anything to the user, output exactly <quiet \/> and nothing else\./);
+  assert.equal(call.options.systemPrompt.prompt.includes("send_meme"), false);
+  assert.equal(call.options.systemPrompt.prompt.includes("leileios-album"), false);
+  assert.match(call.options.systemPrompt.prompt, /To pass this wake without sending anything to the user, output exactly <quiet \/> and nothing else\./);
 });
 
  test("all-directory listing preserves SDK cwd and never invents a default for unknown directories", async () => {
