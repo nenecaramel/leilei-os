@@ -138,3 +138,59 @@ OFF leaves existing server epochs/receipts intact. ON resumes the current
 schedule, so an unconsumed opportunity already due can run immediately;
 new user activity still replaces that schedule. Shutdown retains priority
 over switch notifications, and watchers are closed after each idle wait.
+
+## Persistent writer hardening
+
+An exact ordinary send that cannot use its persistent writer now fails explicitly
+instead of closing that writer and falling back to a one-shot query. This includes
+model/effort changes unsupported by the live writer and exhausted capacity. It
+preserves native tasks; it does not introduce hot settings changes. Checkpoint-less
+legacy commands retain their compatibility path. Wake and exact edit/retry keep
+their existing explicit routing rules.
+
+SDK stream completion retires the registry entry and attempts verified process
+closure. Live snapshots omit terminal sessions immediately; capacity is released
+only when closure is confirmed. Failed closes retain their owner. This does not
+clear delivery journals, automatically reopen the conversation, or replay input.
+
+Autonomous SDK `is_error`/`error_*` results are failure receipts, even when they
+contain partial assistant output. A failure needs no new assistant checkpoint.
+Partial text/attachments and the original SDK frame remain in the private local
+journal; the failure wire result cannot publish them as a completed reply or
+advance the continuation cursor. Acknowledged failures remain quarantined and
+fenced for explicit recovery; they are not automatically retried as model work.
+
+The session watchdog alone may retry uncertain renewals every five seconds within
+a previously proven 60-second lease. Its conservative deadline begins at the
+successful request's start, includes wall elapsed time across sleep, and cannot
+move backwards. An independent expiry timer also fences a hung request. Explicit
+denial, initial failure and expiry still revoke immediately; foreground turn
+lease behavior is unchanged. Revocation covers the current registry inventory,
+including sessions opened while renewal was pending, with generation guards.
+
+### Advisory post-turn task membership
+
+The Mac observes SDK task membership after foreground completion and sends bounded
+snapshots to the authenticated internal `task-state` endpoint. The existing runtime
+event reader exposes them as `task/active_set` events, so current iOS task cards can
+settle without another generated reply. No new table, model input, canonical head,
+MCP behavior or UI layout is introduced.
+
+The server locks the preparation, conversation and listener lease through the
+existing task admission predicate. Only a completed foreground source on the
+surviving session/branch can append a snapshot. Each source pins its process-local
+generation; monotonically increasing snapshot sequence plus payload fingerprint
+makes duplicate delivery idempotent and rejects conflicting/stale replacement.
+Event sequence allocation uses the same preparation lock as foreground appends.
+Handoff, edit, archive, foreign user/session and listener takeover remain fenced.
+
+The publisher keeps one upload in flight, coalesces later membership changes and
+keeps known task handles associated with their first observed committed source. HTTP retries share a two-second
+elapsed deadline; SDK callbacks and generated-result submission do not await them.
+This is advisory metadata: exhausted transport retries can leave stale membership
+until a later observation. A last observation already in flight may arrive after
+purely local SDK exit; it is not proof the writer is still alive. The existing Tasks
+control remains the live process query. More than 64 active tasks never produces a
+truncated `replace` snapshot; publication is skipped until a complete bounded set
+is available. Pending metadata sources are capped at 128. No idle model polling or
+new task timer is added.

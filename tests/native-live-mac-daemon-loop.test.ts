@@ -1552,3 +1552,50 @@ test("busy listener retains terminal recovery evidence instead of replaying anot
   assert.deepEqual(relay.calls.map(c => c.name), ["renewLease"]);
   assert.equal(executor.calls.length, 0);
 });
+
+
+for (const reason of ["model changed", "effort changed", "capacity exhausted"] as const) test(`exact send refuses legacy fallback when ${reason} and preserves its writer`, async t => {
+  const { EventEmitter } = await import("node:events");
+  const { NativeLiveMacPersistentExecutor } = await import("../src/domains/bridge/mac/native-live-mac-persistent-executor.js");
+  const { NativeLiveMacPersistentTurnRouter } = await import("../src/domains/bridge/mac/native-live-mac-persistent-turn-router.js");
+  const { NativeLiveMacSessionRegistry } = await import("../src/domains/bridge/mac/native-live-mac-session-registry.js");
+  const root = mkdtempSync(join(tmpdir(), "daemon-exact-send-"));
+  let launches = 0, closes = 0, submits = 0, finished!: () => void;
+  const completion = new Promise<void>(resolve => { finished = resolve; });
+  const host = { state: "idle", sessionId: "healthy-writer", tasks: new Map([["cron", { status: "running" }]]), events: new EventEmitter(), completion,
+    async submit(_text: string, options: { id: string }) { submits++; return { providerSessionId: "healthy-writer", inputId: options.id, result: {}, events: [], normalizedEvents: [] }; },
+    async verifyCheckpoint() { return userMessageId; },
+    async close() { closes++; this.state = "closed"; finished(); },
+  };
+  const registry = new NativeLiveMacSessionRegistry({}, root, async () => ({ kind: "agent_sdk", runtime: {
+    abort() {}, async openPersistentSession() { launches++; return host; }, async closePersistentSession() { await host.close(); },
+  } }) as never, () => null, null, 1);
+  const persistent = new NativeLiveMacPersistentExecutor({ attachmentMaterializer: null, outputAttachmentSender: null,
+    hasCapacity: () => registry.size < 1,
+    createRouter: () => new NativeLiveMacPersistentTurnRouter({ registry, listenerInstanceId,
+      relay: { async checkExecutionAdmission() { return true; } }, async onBackgroundResult() { throw Error("unexpected background result"); } }),
+  });
+  t.after(async () => { await persistent.closeAll(); await registry.closeAll(); rmSync(root, { recursive: true, force: true }); });
+  const selection = { model: "claude-opus-5-5", thinking: "adaptive", effort: "high" } as const;
+  const initial = { ...command(), parent_provider_checkpoint_id: null, execution_selection: selection };
+  const first = await persistent.execute(initial, { async commit() { return { canonicalOutcome: "completed" }; } });
+  assert.equal(first.result.status, "success");
+  const relay = new FakeRelay();
+  relay.reservation = { reservationId, command: { ...command(), runtime_mode: "resume",
+    conversation_id: reason === "capacity exhausted" ? requestId : conversationId,
+    parent_provider_session_id: "healthy-writer", parent_provider_checkpoint_id: userMessageId,
+    execution_selection: reason === "model changed" ? { ...selection, model: "claude-sonnet-4-6" } : { ...selection, effort: "low" },
+  } };
+  assert.equal(persistent.canRoute(relay.reservation.command), false);
+  let legacy = 0;
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, { async execute() { legacy++; return success(); } },
+    null, null, null, null, null, null, null, persistent);
+  const outcome = await loop.runOnce();
+  assert.equal(legacy, 0, "exact send must not run a one-shot replacement");
+  assert.equal(closes, 0, "refusal preserves the existing Cron writer");
+  assert.equal(host.tasks.size, 1);
+  assert.equal(registry.snapshot().length, 1);
+  assert.equal(launches, 1); assert.equal(submits, 1, "refused send never reaches the provider");
+  assert.equal(outcome.outcome, "completed");
+  if (outcome.outcome === "completed") assert.deepEqual([outcome.result.status, "error_code" in outcome.result && outcome.result.error_code], ["failure", "RUNTIME_UNAVAILABLE"]);
+});

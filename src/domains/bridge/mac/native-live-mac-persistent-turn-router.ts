@@ -1,3 +1,4 @@
+import { NativeLiveMacTaskStatePublisher, type NativeLiveTaskStateUpdate } from "./native-live-mac-task-state-publisher.js";
 import { createNativeLiveMacOutputAttachmentCollector, type NativeLiveMacOutputAttachmentCollector, type NativeLiveMacOutputAttachmentSenderLike } from "./native-live-mac-output-attachment-collector.js";
 import { NativeLiveMacExecutionLease } from "./native-live-mac-execution-lease.js";
 import { isDeepStrictEqual } from "node:util";
@@ -59,9 +60,9 @@ type Slot = TurnInput & {
   finish(): void;
 };
 
-// Explicit opt-in adapter. No daemon dispatch path selects this yet. A single
-// router owns one conversation generation; never reuse it after rewind/handoff.
+// One daemon-owned conversation generation; never reuse it after rewind/handoff.
 export class NativeLiveMacPersistentTurnRouter {
+  private readonly taskStates: NativeLiveMacTaskStatePublisher | null;
   private binding: NativeLiveMacSessionBinding | null = null;
   private generationId: string | null = null;
   private initialCommand: NativeLiveRuntimeCommand | null = null;
@@ -81,6 +82,7 @@ export class NativeLiveMacPersistentTurnRouter {
 
   constructor(private readonly input: {
     registry: NativeLiveMacSessionRegistry;
+    publishTaskState?(value: NativeLiveTaskStateUpdate): Promise<unknown>;
     onSessionClose?(frame: NativeLiveMacSessionCloseDiagnostic): void;
     listenerInstanceId: string;
     taskControlsAvailable?: () => Promise<boolean>;
@@ -90,7 +92,7 @@ export class NativeLiveMacPersistentTurnRouter {
     // their own durable preparation/branch fence, not the active turn's sink.
     onBackgroundResult(
       owner: NativeLiveMacPersistentBackgroundOwner,
-      frame: Parameters<NativeLiveMacPersistentSessionOptions["onBackgroundResult"]>[0] & { providerCheckpointId: string },
+      frame: Parameters<NativeLiveMacPersistentSessionOptions["onBackgroundResult"]>[0] & { providerCheckpointId?: string },
     ): Promise<NativeLiveMacPersistentAcknowledgement>;
     onForegroundCoverage?(conversationId: string, generationId: string, coveringCheckpointId: string): Promise<number>;
     onForegroundPublished?(conversationId: string, generationId: string): Promise<void>;
@@ -99,6 +101,11 @@ export class NativeLiveMacPersistentTurnRouter {
   }) {
     if (!input.listenerInstanceId.trim() || typeof input.onBackgroundResult !== "function") throw new Error("Listener and durable background sink are required.");
     this.input = { ...input };
+    this.taskStates = input.publishTaskState ? new NativeLiveMacTaskStatePublisher({
+      publish: value => input.publishTaskState!(value),
+      isLive: () => !this.retired && !this.suspended && this.binding !== null
+        && input.registry.get(this.binding.conversationId, this.binding.generationId) === this.binding,
+    }) : null;
   }
 
   async execute(input: TurnInput): Promise<NativeLiveMacSessionResult> {
@@ -293,6 +300,7 @@ export class NativeLiveMacPersistentTurnRouter {
       removeCommandStartedListener?.();
       slot.controlAbort?.abort(); slot.lease?.stop();
       if (this.active === slot) this.active = null;
+      this.publishCurrentTaskState();
       slot.finish();
     }
   }
@@ -322,6 +330,7 @@ export class NativeLiveMacPersistentTurnRouter {
 
   async close(reason: NativeLiveMacSessionCloseReason = "EXPLICIT_CLOSE"): Promise<void> {
     this.retired = true; // Fence all callbacks synchronously before closing.
+    this.taskStates?.close();
     this.abortBackgroundOutputs();
     this.active?.lease?.stop();
     this.active?.controlAbort?.abort();
@@ -332,6 +341,15 @@ export class NativeLiveMacPersistentTurnRouter {
     this.closing = closing;
     try { await closing; }
     finally { if (this.closing === closing) this.closing = null; }
+  }
+
+  private publishCurrentTaskState(): void {
+    if (this.retired || this.suspended || this.active || !this.binding || !this.backgroundSource
+      || !this.binding.session.sessionId || !this.binding.session.listTasks) return;
+    try {
+      this.taskStates?.observe({prepareId:this.backgroundSource.prepareId,providerSessionId:this.binding.session.sessionId,
+        generationId:this.binding.generationId},this.binding.session.listTasks());
+    } catch { /* Advisory task metadata must not fail a generated reply. */ }
   }
 
   private assertLive(): void {
@@ -523,7 +541,12 @@ export class NativeLiveMacPersistentTurnRouter {
         if (!this.generationId) throw new Error("Persistent background generation is unavailable.");
         await this.acknowledge(async () => {
           this.assertLive();
-          const providerCheckpointId = await this.binding!.session.verifyCheckpoint({ events: frame.events, parentCheckpointId: this.providerCheckpointId });
+          const failed = frame.result.is_error === true || (typeof frame.result.subtype === "string" && frame.result.subtype.startsWith("error_"));
+          // A failed native turn may have no assistant checkpoint at all. Its
+          // failure evidence must still reach the durable sink; it cannot move
+          // the continuation cursor or become a successful partial reply.
+          const providerCheckpointId = failed ? undefined
+            : await this.binding!.session.verifyCheckpoint({ events: frame.events, parentCheckpointId: this.providerCheckpointId });
           this.assertLive();
           // F can finish while the autonomous callback waits for its
           // started-binding ACK or completed turn. A B delivered AFTER F has
@@ -541,7 +564,8 @@ export class NativeLiveMacPersistentTurnRouter {
           const outcome = await this.input.onBackgroundResult(owner, { ...frame, providerCheckpointId });
           if (frame.segmentId) this.backgroundOutputs.delete(frame.segmentId);
           this.assertLive();
-          this.applyAcknowledgement(outcome, "background", providerCheckpointId);
+          if (failed) throw new Error("Autonomous SDK execution failed; native progress requires verified recovery.");
+          this.applyAcknowledgement(outcome, "background", providerCheckpointId!);
         });
         this.assertLive();
       },
@@ -559,6 +583,7 @@ export class NativeLiveMacPersistentTurnRouter {
         } });
     this.generationId = this.input.registry.getGenerationId(command.conversation_id);
     this.binding = await opening;
+    this.binding.session.events.on("task-state", () => this.publishCurrentTaskState());
     this.binding.session.events.on("turn-result", (frame: { inputId: string }) => {
       if (!this.retired && this.active?.inputId === frame.inputId) this.active.resultReady = true;
     });

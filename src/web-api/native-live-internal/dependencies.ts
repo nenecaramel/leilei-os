@@ -46,7 +46,7 @@ export type NativeLiveRelayInternalDependencies = {
   runtimeControlService?: Pick<
     NativeLiveRuntimeControlService,
     "waitNextForListener" | "completeForListener"
-  > & Partial<Pick<NativeLiveRuntimeControlService, "waitTaskForListener" | "checkTaskAdmission">>;
+  > & Partial<Pick<NativeLiveRuntimeControlService, "waitTaskForListener" | "checkTaskAdmission" | "publishTaskState">>;
   companionBackgroundOpportunity?: Pick<
     CompanionBackgroundOpportunityService,
     "offer"

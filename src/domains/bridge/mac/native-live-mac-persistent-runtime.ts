@@ -25,7 +25,7 @@ export class NativeLiveMacPersistentRuntime {
   constructor(input: {
     sessionLeaseScheduler?: ConstructorParameters<typeof NativeLiveMacExecutionLease>[0]["scheduler"];
     environment: NodeJS.ProcessEnv; defaultWorkingDirectory: string; listenerInstanceId: string;
-    relay: Pick<NativeLiveMacHttpRelayClient, "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission" | "renewSessionLease" | "prepareBackgroundResult" | "submitBackgroundResult"> & Partial<Pick<NativeLiveMacHttpRelayClient, "bindInput" | "renewLease">> & Partial<NativeLiveMacTaskRelay>;
+    relay: Pick<NativeLiveMacHttpRelayClient, "checkExecutionAdmission" | "renewExecutionLease" | "checkTaskAdmission" | "renewSessionLease" | "prepareBackgroundResult" | "submitBackgroundResult"> & Partial<Pick<NativeLiveMacHttpRelayClient, "bindInput" | "renewLease" | "publishTaskState">> & Partial<NativeLiveMacTaskRelay>;
     outboxDirectory: string; mcpServerConfig?: NativeLiveMacMcpServerConfig | null;
     /** Injectable clock for deterministic retry/backoff regression tests. */
     backgroundRecoveryNow?: () => number;
@@ -95,13 +95,17 @@ export class NativeLiveMacPersistentRuntime {
     void recheckTaskControls();
     const startWatchdog = () => {
       if(this.stopped || this.watchdog)return;
-      let captured: ReturnType<NativeLiveMacSessionRegistry["snapshot"]> = [];
       const lease=new NativeLiveMacExecutionLease({
         ...(input.sessionLeaseScheduler?{scheduler:input.sessionLeaseScheduler}:{}),
-        renew:()=>{captured=this.registry.snapshot();return captured.length===0?Promise.resolve(true):input.relay.renewSessionLease({listenerInstanceId:input.listenerInstanceId});},
+        transientRetry: { validForMs: 60_000, retryMs: 5_000 },
+        renew:()=>this.registry.snapshot().length===0?Promise.resolve(true):input.relay.renewSessionLease({listenerInstanceId:input.listenerInstanceId}),
         onRevoked:async()=>{
-          if(this.watchdog===lease)this.watchdog=null;
-          await Promise.allSettled(captured.map(binding=>this.registry.getGenerationId(binding.conversationId)===binding.generationId
+          if(this.watchdog!==lease)return;
+          this.watchdog=null;
+          // Listener expiry covers every current writer, including sessions
+          // opened while the last renewal request was still in flight.
+          const revoked=this.registry.snapshot();
+          await Promise.allSettled(revoked.map(binding=>this.registry.getGenerationId(binding.conversationId)===binding.generationId
             ?this.executor.retire(binding.conversationId,"SESSION_LEASE_REVOKED"):Promise.resolve()));
         },
       });
@@ -109,6 +113,7 @@ export class NativeLiveMacPersistentRuntime {
     };
     this.executor = new NativeLiveMacPersistentExecutor({ hasCapacity: () => this.registry.size < 4, attachmentMaterializer: input.attachmentMaterializer, outputAttachmentSender: input.outputAttachmentSender, onRuntimeFailure: input.onRuntimeFailure ?? null,
       createRouter: () => { startWatchdog(); return new NativeLiveMacPersistentTurnRouter({ registry: this.registry, onSessionClose: input.onSessionClose, listenerInstanceId: input.listenerInstanceId,
+        ...(input.relay.publishTaskState ? { publishTaskState: value => input.relay.publishTaskState!({...value,listenerInstanceId:input.listenerInstanceId}) } : {}),
         taskControlsAvailable: () => capabilityProbe ?? Promise.resolve(taskControlsSupported),
         outputAttachmentSender: input.outputAttachmentSender,
         relay: input.relay, onBackgroundResult: (owner, frame) => this.backgroundResults.commit(owner, frame),

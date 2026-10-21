@@ -240,3 +240,35 @@ test('retiring during an open with a live SDK host preserves the initiating reas
  release.resolve();await rejected;await closing;
  assert.deepEqual(diagnostics.map(x=>[x.phase,x.reasonCode]),[['requested','HANDOFF_DRAIN'],['completed','HANDOFF_DRAIN']]);
 });
+
+for (const mode of ["exit", "failure", "failed-close"] as const) test(`idle SDK ${mode} releases only verified closed ownership without replay`, async t => {
+  const { createNativeLiveMacClaudeTransport } = await import("../src/domains/bridge/mac/native-live-mac-claude-transport.js");
+  const root = await realpath(await mkdtemp(join(tmpdir(), "registry-idle-failure-")));
+  const end = deferred(); let launches = 0, closes = 0, refuseClose = mode === "failed-close";
+  const registry = new NativeLiveMacSessionRegistry({}, root, async (...args) => {
+    const transport = await createNativeLiveMacClaudeTransport(...args);
+    (transport.runtime as unknown as { queryImpl: unknown }).queryImpl = () => {
+      launches++;
+      return { async close() { closes++; if (refuseClose) throw Error("close unconfirmed"); }, async *[Symbol.asyncIterator]() {
+        yield { type: "system", subtype: "init", session_id: "idle-session" };
+        await end.promise;
+        if (mode !== "exit") throw Error("idle stream failed");
+      } };
+    };
+    return transport;
+  }, () => null, null, 1);
+  t.after(async () => { refuseClose = false; await registry.closeAll(); await rm(root, { recursive: true, force: true }); });
+  const binding = await registry.openNew({ conversationId: "idle", expectedWorkingDirectory: null, options: options() });
+  end.resolve(); await binding.session.completion.catch(() => {});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(registry.snapshot().length, 0, "terminal stream must not appear in live task inventory");
+  assert.equal(registry.get("idle", binding.generationId), null);
+  assert.equal(registry.size, mode === "failed-close" ? 1 : 0, "only verified query close releases capacity");
+  assert.equal(launches, 1, "failure never reruns models or launches a replacement");
+  assert.ok(closes >= 1);
+  if (mode === "failed-close") {
+    await assert.rejects(registry.openNew({ conversationId: "other", expectedWorkingDirectory: null, options: options() }), /capacity/);
+    refuseClose = false; await registry.close("idle", binding.generationId);
+    assert.equal(registry.size, 0);
+  }
+});

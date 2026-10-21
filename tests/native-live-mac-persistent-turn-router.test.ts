@@ -28,7 +28,7 @@ function command(n: number, wake = false): NativeLiveRuntimeCommand {
 type BindInput = (input: { phase: "queued" | "started"; commandUuid: string;
   command: NativeLiveRuntimeCommand }) => Promise<{ userMessageId: string; parentProviderCheckpointId: string | null } | null>;
 async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolean>, bindInput?: BindInput,
-  callbacks?: Partial<Pick<ConstructorParameters<typeof NativeLiveMacPersistentTurnRouter>[0], "onForegroundCoverage" | "onForegroundPublished" | "onForegroundUnpublished" | "hasUnpublishedDeferred" | "outputAttachmentSender" | "onSessionClose">>,
+  callbacks?: Partial<Pick<ConstructorParameters<typeof NativeLiveMacPersistentTurnRouter>[0], "onForegroundCoverage" | "onForegroundPublished" | "onForegroundUnpublished" | "hasUnpublishedDeferred" | "outputAttachmentSender" | "onSessionClose" | "publishTaskState">>,
   captureSendFileTool?: (callback: (input: {path: string; displayName: string | null}) => Promise<unknown>) => void, forkChild?: string) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "persistent-turn-router-")));
   const output = queue<Record<string, unknown>>(), inputs = queue<{ uuid: string; origin: { kind: string } }>();
@@ -890,4 +890,34 @@ test("revoked turn lease records a different cause from control timeout",async t
  f.relay.renewExecutionLease=async()=>false;
  await assert.rejects(f.run(command(1)),/lease was not renewed/);
  assert.equal(diagnostics[0]?.reasonCode,'EXECUTION_LEASE_REVOKED');assert.equal(f.closes,1);
+});
+
+
+test("task membership continues to publish after the foreground result without a new reply",async t=>{
+ const snapshots=queue<any>();
+ const nextSnapshot=async()=>{
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  try{return await Promise.race([snapshots.next(),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Task snapshot was not published.')),2000);})]);}
+  finally{clearTimeout(timer);}
+ };
+ const f=await fixture(t,undefined,undefined,{publishTaskState:async value=>{snapshots.push(value);}} as any);
+ const running=f.run(command(1));f.finish((await f.inputs.next()).value!.uuid);await running;
+ assert.deepEqual((await nextSnapshot()).value!.tasks,[]);
+ f.output.push({type:'system',subtype:'background_tasks_changed',session_id:sid,tasks:[{task_id:'bash-1',run_id:'run-1',task_type:'bash',description:'synthetic'}]});
+ const active=(await nextSnapshot()).value!;assert.equal(active.prepareId,id(1));assert.equal(active.tasks[0].task_id,'bash-1');
+ f.output.push({type:'system',subtype:'background_tasks_changed',session_id:sid,tasks:[]});
+ assert.deepEqual((await nextSnapshot()).value!.tasks,[]);assert.equal(f.results.length,1);assert.equal(f.background.length,0);
+});
+
+test("failed autonomous results reach the failure sink without requiring a new assistant checkpoint",async t=>{
+ const f=await fixture(t);
+ const running=f.run(command(1));f.finish((await f.inputs.next()).value!.uuid);await running;
+ f.setBackground(async()=>({status:'rejected'}));
+ const session=f.registry.snapshot()[0]!.session;
+ const ended=session.completion.catch(()=>{});
+ f.output.push({type:'result',subtype:'error_max_turns',is_error:true,session_id:sid,user_message_uuid:id(700)});
+ await ended;
+ assert.equal(f.backgroundFrames.length,1,"failure must be journaled by the sink, not lost in checkpoint verification");
+ assert.equal(f.backgroundFrames[0].providerCheckpointId,undefined);
+ assert.equal(f.backgroundFrames[0].result.is_error,true);
 });

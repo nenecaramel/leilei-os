@@ -1,3 +1,4 @@
+import { publishNativeLiveTaskState, type NativeLiveTaskStateInput } from "./native-live-task-state.js";
 import { createTaskControl, readTaskControl, reserveTaskControl, taskSource, validateTaskReceipt, type NativeLiveTaskBinding } from "./native-live-task-control-repository.js";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -137,6 +138,8 @@ export class DrizzleNativeLiveRuntimeControlRepository {
       };
     });
   }
+
+  publishTaskState(input: NativeLiveTaskStateInput) { return publishNativeLiveTaskState(this.db, input); }
 
   async checkTaskAdmission(input: { userId:string;prepareId:string;listenerInstanceId:string;providerSessionId:string }):Promise<boolean> {
     return this.db.transaction(async tx=>{const source=await taskSource(tx,input);return source?.providerSessionId===input.providerSessionId;});
@@ -388,6 +391,8 @@ export class NativeLiveRuntimeControlService {
     }
     return result;
   }
+
+  publishTaskState(input: NativeLiveTaskStateInput) { return this.repository.publishTaskState(input); }
 
   checkTaskAdmission(input: Parameters<DrizzleNativeLiveRuntimeControlRepository["checkTaskAdmission"]>[0]) {return this.repository.checkTaskAdmission(input);}
   readTaskForUser(input: Parameters<DrizzleNativeLiveRuntimeControlRepository["readTaskForUser"]>[0]) { return this.repository.readTaskForUser(input); }
