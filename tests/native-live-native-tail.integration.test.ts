@@ -1,8 +1,9 @@
+import { syncTestNativeSessionOwner } from "./helpers/native-session-turn.js";
 import { setTestNativeSessionTurn } from "./helpers/native-session-turn.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq, sql } from "drizzle-orm";
-import { rotateNativeWriterGeneration, syncNativeSessionOwner } from "../src/domains/bridge/turn/turn-repository/session-owner.js";
+import { rotateNativeWriterGeneration } from "../src/domains/bridge/turn/turn-repository/session-owner.js";
 import { DrizzleNativeLiveBackendRelayRepository } from "../src/domains/bridge/relay/native-live-backend-relay.js";
 import { createDatabase } from "../src/database/client.js";
 import { users, conversations, conversationMessages, nativeLiveTurnPreparations, nativeLiveRuntimeListenerLeases } from "../src/database/schema.js";
@@ -63,7 +64,7 @@ for (const stale of ["foreground", "desktop", "checkpoint"] as const) test(`stal
   const f = await fixture(t);
   if (stale === "foreground") assert.ok((await f.send()).ok);
   if (stale === "desktop") await f.database.db.execute(sql`UPDATE conversations SET provider_metadata = jsonb_set(provider_metadata, '{nativeSessionSource}', '{"owner":"desktop"}'::jsonb) WHERE id = ${f.conversation.id}::uuid`);
-  if (stale === "desktop") await syncNativeSessionOwner(f.database.db, { userId: f.user.id, conversationId: f.conversation.id });
+  if (stale === "desktop") await syncTestNativeSessionOwner(f.database.db, { userId: f.user.id, conversationId: f.conversation.id });
   if (stale === "checkpoint") await f.database.db.update(nativeLiveTurnPreparations).set({ parentProviderCheckpointId: crypto.randomUUID() }).where(eq(nativeLiveTurnPreparations.id, f.wake.prepareId));
   const finalized = await f.coordinator.finalize(f.user.id, f.result);
   assert.ok(finalized.ok); if (!finalized.ok) throw Error("finalize failed");
@@ -84,6 +85,7 @@ for (const changed of ["owner-generation", "native-revision"] as const) test(`ch
   const f = await fixture(t); await f.coordinator.finalize(f.user.id, f.result);
   if (changed === "owner-generation") await rotateNativeWriterGeneration(f.database.db, {userId:f.user.id,conversationId:f.conversation.id});
   else await f.database.db.execute(sql`UPDATE conversations SET provider_metadata = jsonb_set(provider_metadata, '{nativeSessionSource}', '{"owner":"leileios","revision":"changed"}'::jsonb) WHERE id = ${f.conversation.id}::uuid`);
+  if(changed === "native-revision")await syncTestNativeSessionOwner(f.database.db,{userId:f.user.id,conversationId:f.conversation.id});
   const next = await f.send(); assert.ok(next.ok); if (!next.ok) throw Error("next failed");
   assert.equal(next.command.parent_provider_checkpoint_id, f.base);
 });
@@ -124,7 +126,7 @@ test("next foreground reservation admits its captured cursor after presentation 
   assert.equal(await relay.checkExecutionAdmission(admission), true);
   assert.equal(await relay.checkExecutionAdmission({ ...admission, parentProviderCheckpointId: f.base }), false);
   await f.database.db.update(conversations).set({ providerMetadata: { nativeSessionSource: { owner: "desktop" } } }).where(eq(conversations.id, f.conversation.id));
-  await syncNativeSessionOwner(f.database.db, { userId: f.user.id, conversationId: f.conversation.id });
+  await syncTestNativeSessionOwner(f.database.db, { userId: f.user.id, conversationId: f.conversation.id });
   assert.equal(await relay.checkExecutionAdmission(admission), false);
 });
 
@@ -144,6 +146,7 @@ for (const changed of ["owner-generation", "native-revision"] as const) test(`qu
   const f = await fixture(t);
   if (changed === "owner-generation") await rotateNativeWriterGeneration(f.database.db, {userId:f.user.id,conversationId:f.conversation.id});
   else await f.database.db.execute(sql`UPDATE conversations SET provider_metadata = jsonb_set(provider_metadata, '{nativeSessionSource}', '{"owner":"leileios","revision":"changed"}'::jsonb) WHERE id = ${f.conversation.id}::uuid`);
+  if(changed === "native-revision")await syncTestNativeSessionOwner(f.database.db,{userId:f.user.id,conversationId:f.conversation.id});
   const finalized = await f.coordinator.finalize(f.user.id, f.result);
   assert.ok(finalized.ok && finalized.outcome === "wake_stale");
 });

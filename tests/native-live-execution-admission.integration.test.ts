@@ -1,3 +1,4 @@
+import { syncTestNativeSessionOwner } from "./helpers/native-session-turn.js";
 import { setTestNativeSessionTurn } from "./helpers/native-session-turn.js";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -137,10 +138,11 @@ test("execution admission PostgreSQL snapshot fences", { skip: process.env.RUN_N
           SET writer_generation=${crypto.randomUUID()}::uuid WHERE conversation_id=${conversationId}::uuid`);
         else await db.update(conversations).set({providerMetadata:{...before!.providerMetadata,nativeSessionSource:{owner:"leileios",revision:"b".repeat(64)}}})
           .where(eq(conversations.id,conversationId));
+        if(changed==="source-revision")await syncTestNativeSessionOwner(db,{userId,conversationId});
         try { assert.equal(await check(),false); assert.equal(await repository.renewExecutionLease(input),false); }
         finally {
           await db.update(conversations).set({providerMetadata:before!.providerMetadata}).where(eq(conversations.id,conversationId));
-          await db.execute(sql`UPDATE native_live_session_owners SET writer_generation=${reservationId}::uuid WHERE conversation_id=${conversationId}::uuid`);
+          await db.execute(sql`UPDATE native_live_session_owners SET owner_revision=NULL,writer_generation=${reservationId}::uuid WHERE conversation_id=${conversationId}::uuid`);
         }
       }
     });

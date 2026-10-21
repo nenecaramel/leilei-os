@@ -25,3 +25,15 @@ export function testNativeSessionTurnSql(alias: string) {
     anchor: sql<string|null>`(SELECT o.turn_anchor_message_id::text FROM native_live_session_owners o WHERE o.conversation_id=${c}.id AND o.user_id=${c}.user_id)`,
   };
 }
+
+/** Fixture-only conversion for tests that deliberately seed historical JSON.
+ * Production ownership writers never read these obsolete copies. */
+export async function syncTestNativeSessionOwner(db: Executor,input:{userId:string;conversationId:string}) {
+  await db.execute(sql`INSERT INTO native_live_session_owners AS o
+    (conversation_id,user_id,owner,owner_revision,writer_generation)
+    SELECT c.id,c.user_id,coalesce(c.provider_metadata->'nativeSessionSource'->>'owner','leileios'),
+      CASE WHEN c.provider_metadata->'nativeSessionSource' ? 'revision' THEN c.provider_metadata->'nativeSessionSource'->>'revision' ELSE existing.owner_revision END,gen_random_uuid()
+    FROM conversations c LEFT JOIN native_live_session_owners existing ON existing.conversation_id=c.id AND existing.user_id=c.user_id
+    WHERE c.id=${input.conversationId}::uuid AND c.user_id=${input.userId}::uuid
+    ON CONFLICT (conversation_id) DO UPDATE SET owner=EXCLUDED.owner,owner_revision=EXCLUDED.owner_revision`);
+}

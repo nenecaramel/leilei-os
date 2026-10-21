@@ -9,7 +9,8 @@ import { users, conversations, conversationMessages, conversationContentBlocks, 
 import { DrizzleNativeLiveBackendTurnPort } from '../src/domains/bridge/turn/native-live-backend-turn-repository.js';
 import { NativeLiveBackendTurnCoordinator } from '../src/domains/bridge/turn/native-live-backend-turn-coordinator.js';
 
-// Owner/revision mirror the switch source; the row independently owns the turn
+// Owner/revision and the turn are row-owned; JSON copies are retired.
+// The row independently owns the turn
 // slot and writer generation. Prepare replaces the turn without rotating generation.
 const enabled = process.env.RUN_NATIVE_SESSION_PRESERVATION_DATABASE_TEST === '1';
 const rev = (n: number) => n.toString(16).padStart(64, '0');
@@ -43,8 +44,11 @@ async function mirrored(db: Db, conversationId: string): Promise<Row> {
   assert.equal(Object.hasOwn(c!.providerMetadata, "native_live_presentation_owner"),false);
   const row = await ownerRow(db, conversationId);
   assert.ok(row, 'owner row exists');
-  assert.equal(row.owner, source?.owner === 'desktop' ? 'desktop' : 'leileios');
-  assert.equal(row.owner_revision, source?.revision ?? null);
+  assert.ok(['leileios','releasing','desktop'].includes(row.owner));
+  if ((c!.providerMetadata.nativeSessionSource as any)?.mode === 'continuation') {
+    assert.equal(source?.owner,undefined);assert.equal(source?.revision,undefined);
+    assert.match(row.owner_revision!,/^[0-9a-f]{64}$/);
+  }
 
   return row;
 }
@@ -133,8 +137,9 @@ test('switching mirrors owner/revision and sends replace the row turn; a superse
   await db.update(preparations).set({ dispatchStatus: 'completed' }).where(eq(preparations.id, second));
   const state = await api.readNativeContinuationState(db, input);
   const [cp] = await db.select().from(checkpoints).where(eq(checkpoints.canonicalMessageId, state.expectedHeadMessageId!));
+  const releaseBegin=await api.beginNativeContinuationRelease(db,{...input,expectedHeadMessageId:state.expectedHeadMessageId,expectedRevision:state.expectedRevision});
   await api.releaseNativeContinuation(db, { ...input, checkpointId: cp!.providerCheckpointId!, revision: rev(2),
-    expectedHeadMessageId: state.expectedHeadMessageId, expectedRevision: state.expectedRevision,
+    expectedHeadMessageId: state.expectedHeadMessageId, expectedRevision: releaseBegin.expectedRevision,
     checkpointIds: [input.checkpointId, cp!.providerCheckpointId!], completedTurnCheckpointIds: [cp!.providerCheckpointId!] });
   const released = await mirrored(db, input.conversationId);
   assert.equal(released.owner, 'desktop');

@@ -1,4 +1,4 @@
-import { syncNativeSessionOwner } from "../src/domains/bridge/turn/turn-repository/session-owner.js";
+import { syncTestNativeSessionOwner } from "./helpers/native-session-turn.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq, sql } from "drizzle-orm";
@@ -62,7 +62,7 @@ for (const mutation of ["head", "desktop", "expired-listener", "listener-takeove
   else if (mutation === "archived") await f.database.db.update(conversations).set({ lifecycleStatus: "archived" }).where(eq(conversations.id, f.conversation.id));
   else await f.database.db.execute(mutation === "desktop" ? sql`UPDATE conversations SET provider_metadata=jsonb_set(provider_metadata,'{nativeSessionSource}','{"owner":"desktop"}'::jsonb) WHERE id=${f.conversation.id}::uuid`
     : sql`UPDATE conversations SET provider_metadata=jsonb_set(provider_metadata,'{nativeSessionSource}',jsonb_build_object('owner','leileios','mode','continuation','headMessageId',${f.completed.assistantMessageId}::text)) WHERE id=${f.conversation.id}::uuid`);
-  if (mutation === "desktop") await syncNativeSessionOwner(f.database.db, { userId: f.user.id, conversationId: f.conversation.id });
+  if (mutation === "desktop") await syncTestNativeSessionOwner(f.database.db, { userId: f.user.id, conversationId: f.conversation.id });
   await assert.rejects(repo.createForUser({ ...input, controlId: crypto.randomUUID() }), { code: "TURN_NOT_ACTIVE" });
   await assert.rejects(repo.readTaskForUser(input), { code: "TURN_NOT_ACTIVE" });
   assert.equal(await repo.reserveTaskForListener({ userId: f.user.id, listenerInstanceId: f.prepare.listenerInstanceId, bindings: [{ conversationId: f.conversation.id, providerSessionId: "synthetic-session", generationId: f.prepare.generationId }] }), null);
@@ -81,7 +81,7 @@ test("task completion rechecks ownership and cannot publish output after handoff
  await repo.createForUser(input);
  await repo.reserveTaskForListener({userId:f.user.id,listenerInstanceId:f.prepare.listenerInstanceId,bindings:[{conversationId:f.conversation.id,providerSessionId:"synthetic-session",generationId:f.prepare.generationId}]});
  await f.database.db.execute(sql`UPDATE conversations SET provider_metadata=jsonb_set(provider_metadata,'{nativeSessionSource}','{"owner":"desktop"}'::jsonb) WHERE id=${f.conversation.id}::uuid`);
- await syncNativeSessionOwner(f.database.db, { userId: f.user.id, conversationId: f.conversation.id });
+ await syncTestNativeSessionOwner(f.database.db, { userId: f.user.id, conversationId: f.conversation.id });
  await assert.rejects(repo.completeForListener({userId:f.user.id,listenerInstanceId:f.prepare.listenerInstanceId,reservationId:input.prepareId,controlId:input.controlId,outcome:{status:"applied",receipt:{generationId:f.prepare.generationId,tasks:[]}}}),{code:"TURN_NOT_ACTIVE"});
 });
 

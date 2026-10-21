@@ -1,9 +1,11 @@
 # Native Session owner row (design, 2026-10-20)
 
-Status: PRs 1 and 2a are merged. PR 2b implements the generation-reader
-transition; later owner/slot consolidation remains planned. This implements consolidation candidate 2 from
-[state-audit.md](state-audit.md). It does not change candidate 1 (the route table)
-or candidate 3 (the cursor function). It leaves room for both.
+Status: PRs 1–4 are merged. The cleanup removes continuation owner/revision
+JSON copies and the legacy direct-release transition. The owner row is the
+single authority for owner, ownership revision, writer generation and turn slot.
+The sections below retain the rollout history of consolidation candidate 2 from
+[state-audit.md](state-audit.md). Route-table and cursor-function consolidation
+remain separate work.
 
 ## Problem
 
@@ -355,3 +357,30 @@ machine failure can still prevent a final diagnostic from being written. These
 records locate a future close; they do not identify the cause of past incidents.
 The new logger requires a later Mac daemon refresh; this PR does not restart it
 or change close conditions, timeouts, result recovery, or server behavior.
+
+## Cleanup: one ownership authority
+
+Continuation state, admission, queued input, task controls, resume tails, Wake
+and background receipts now read ownership revision from
+`native_live_session_owners.owner_revision`. Continuation switches update that
+row explicitly under the existing conversation lock and no longer write
+`nativeSessionSource.owner` or `.revision`. Existing JSON copies are ignored;
+there is no bulk rewrite or migration. First-send initialization and finalize
+never import ownership from JSON or overwrite an existing owner/revision/slot.
+
+Desktop release must go through begin → local drain → complete. A direct
+LeileiOS → Desktop release returns HTTP 409 `NATIVE_RELEASE_BEGIN_REQUIRED`.
+Retries of an already completed matching release remain idempotent. Cancel and
+complete preserve writer generation and turn slot, while ownership revision
+continues to fence stale work.
+
+The old full-history `nativeSessionSource.revision` is a content fingerprint,
+not an ownership revision, and remains available for historical data validation.
+Historical checkpoint/receipt generation stamps and the Mac handoff/resume
+fence also remain. This cleanup neither deletes session data nor repairs
+uncommitted native output after a failed canonical submission.
+
+The server must be updated before using copy-free continuation bindings.
+No schema migration or Mac daemon refresh is required by this cleanup; the
+current switch CLI already performs begin-first release. Real model acceptance
+and production changes are separate from isolated local verification.

@@ -1,4 +1,4 @@
-import { nativeSessionExecutableSql } from "./turn-repository/session-owner.js";
+import { nativeSessionOwnershipSql, nativeSessionExecutableSql } from "./turn-repository/session-owner.js";
 import { sql, type SQL } from "drizzle-orm";
 import type { Executor } from "./turn-repository/types.js";
 
@@ -20,7 +20,7 @@ export function nativeResumeTailValidSql(checkpointAlias: string, conversationAl
     AND (${tail}->>'cwd') IS NOT DISTINCT FROM ${cp}.effective_working_directory
     AND ${tail}->>'checkpoint_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     AND ${tail}->>'checkpoint_id' <> '00000000-0000-0000-0000-000000000000'
-    AND (${tail}->>'source_revision') IS NOT DISTINCT FROM (${conversation}.provider_metadata->'nativeSessionSource'->>'revision')
+    AND (${tail}->>'source_revision') IS NOT DISTINCT FROM (${nativeSessionOwnershipSql(conversationAlias).revision})
     AND (${nativeSessionExecutableSql(conversationAlias)} ${options.allowReleasingOwner ? sql`OR EXISTS (
       SELECT 1 FROM native_live_session_owners o WHERE o.conversation_id=${conversation}.id
         AND o.user_id=${conversation}.user_id AND o.owner='releasing')` : sql``})

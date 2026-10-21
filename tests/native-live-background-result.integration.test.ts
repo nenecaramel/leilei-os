@@ -1,3 +1,4 @@
+import { syncTestNativeSessionOwner } from "./helpers/native-session-turn.js";
 import { setTestNativeSessionTurn, testNativeSessionTurnSql } from "./helpers/native-session-turn.js";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -9,7 +10,7 @@ import { DrizzleNativeLiveBackendTurnPort } from "../src/domains/bridge/turn/nat
 import { DrizzleNativeLiveBackendRelayRepository } from "../src/domains/bridge/relay/native-live-backend-relay.js";
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
 import { DrizzleNativeLiveCurrentPathReader } from "../src/domains/conversation/native-live-current-path-read-repository.js";
-import { rotateNativeWriterGeneration, syncNativeSessionOwner } from "../src/domains/bridge/turn/turn-repository/session-owner.js";
+import { rotateNativeWriterGeneration } from "../src/domains/bridge/turn/turn-repository/session-owner.js";
 import { bindNativeLiveInput } from "../src/domains/bridge/relay/native-live-input-binding.js";
 import { DrizzleNativeLiveRuntimeEventRepository } from "../src/domains/bridge/runtime-interaction/native-live-runtime-event-stream.js";
 import { NativeLiveSilenceWakeService, silenceWakePreparationId } from "../src/domains/bridge/turn/native-live-silence-wake.js";
@@ -382,6 +383,7 @@ for (const mutated of ["started input", "runtime evidence", "changed revision", 
         FROM conversations WHERE id=${f.conversation.id}::uuid
       `);
       assert.equal(changed.revision, revision, "revision fence mutation must be persisted");
+      await syncTestNativeSessionOwner(f.database.db,{userId:f.user.id,conversationId:f.conversation.id});
     } else {
       const competitor = await f.coordinator.prepare(f.user.id, {
         dispatch_target: "claude_code", request_id: crypto.randomUUID(),
@@ -465,7 +467,7 @@ for (const mutation of ["foreground", "desktop", "head", "generation", "revision
   else if (mutation === "generation") await rotateNativeWriterGeneration(f.database.db, { userId: f.user.id, conversationId: f.conversation.id });
   else await f.database.db.execute(mutation === "revision" ? sql`UPDATE conversations SET provider_metadata=jsonb_set(provider_metadata, '{nativeSessionSource}', '{"owner":"leileios","revision":"changed"}'::jsonb) WHERE id=${f.conversation.id}::uuid`
       : sql`UPDATE conversations SET provider_metadata=jsonb_set(provider_metadata, '{nativeSessionSource}', '{"owner":"desktop"}'::jsonb) WHERE id=${f.conversation.id}::uuid`);
-  if (mutation === "desktop") await syncNativeSessionOwner(f.database.db, { userId: f.user.id, conversationId: f.conversation.id });
+  if (mutation === "desktop" || mutation === "revision") await syncTestNativeSessionOwner(f.database.db, { userId: f.user.id, conversationId: f.conversation.id });
   assert.deepEqual(await f.repository.submitBackgroundResult(f.submit), { outcome: "stale", duplicate: false, providerCheckpointId: null });
   const [receipt] = await f.database.db.select().from(nativeLiveRuntimeEvents).where(eq(nativeLiveRuntimeEvents.id, f.prepare.receiptId));
   assert.equal(receipt!.payload?.result, undefined, "stale background content must be discarded, not attached to a retired branch");

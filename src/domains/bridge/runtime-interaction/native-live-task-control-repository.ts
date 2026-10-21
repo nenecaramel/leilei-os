@@ -1,4 +1,4 @@
-import { nativeSessionExecutableSql } from "../turn/turn-repository/session-owner.js";
+import { nativeSessionOwnershipSql, nativeSessionExecutableSql } from "../turn/turn-repository/session-owner.js";
 import { isDeepStrictEqual } from "node:util";
 import { and, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
@@ -53,13 +53,13 @@ export async function taskSource(tx: Transaction, input: { userId: string; prepa
         OR ((c.provider_metadata->'nativeSessionSource'->>'sessionId' IS NULL
             OR c.provider_metadata->'nativeSessionSource'->>'sessionId'=${source.providerSessionId}
             OR (${source.active}=false
-              AND c.provider_metadata->'nativeSessionSource'->>'revision' ~ '^[0-9a-f]{64}$'
+              AND ${nativeSessionOwnershipSql("c").revision} ~ '^[0-9a-f]{64}$'
               AND EXISTS (SELECT 1 FROM conversation_provider_session_checkpoints child
                 WHERE child.user_id=c.user_id AND child.conversation_id=c.id AND child.provider='claude_code'
                   AND child.canonical_message_id=${source.anchorId}::uuid
                   AND child.provider_session_id=${source.providerSessionId}
                   AND child.runtime_metadata->'native_live_generation'->>'source_revision'
-                    =c.provider_metadata->'nativeSessionSource'->>'revision')))
+                    =${nativeSessionOwnershipSql("c").revision})))
           AND (c.provider_metadata->'nativeSessionSource'->>'headMessageId' IS NULL
             OR EXISTS (SELECT 1 FROM path floor WHERE floor.id::text=c.provider_metadata->'nativeSessionSource'->>'headMessageId' AND floor.depth>origin.depth))))
       AND NOT EXISTS (SELECT 1 FROM native_live_turn_preparations branch WHERE branch.user_id=c.user_id AND branch.conversation_id=c.id

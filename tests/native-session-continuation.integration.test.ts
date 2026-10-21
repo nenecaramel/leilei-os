@@ -1,5 +1,5 @@
+import { syncTestNativeSessionOwner } from "./helpers/native-session-turn.js";
 import { setTestNativeSessionTurn } from "./helpers/native-session-turn.js";
-import { syncNativeSessionOwner } from "../src/domains/bridge/turn/turn-repository/session-owner.js";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
@@ -17,12 +17,16 @@ async function fixture(run: (f: any) => Promise<void>) {
   const db = createDatabase(url.href, { ssl: false });
   const [user] = await db.db.insert(users).values({ email: `continuation-${randomUUID()}@example.com`, displayName: 'Synthetic continuation' }).returning();
   const api = await import('../src/domains/conversation/native-session-continuation-repository.js');
+  const releaseWithBegin = async (database:any,request:any) => {
+    const begin=await api.beginNativeContinuationRelease(database,{...request});
+    return api.releaseNativeContinuation(database,{...request,expectedRevision:begin.expectedRevision});
+  };
   const input = { userId: user!.id, conversationId: randomUUID(), sessionId: randomUUID(), checkpointId: randomUUID(), revision: rev(1),
     effectiveWorkingDirectory: '/synthetic/workspace', expectedHeadMessageId: null, expectedRevision: null };
   const state = () => api.readNativeContinuationState(db.db, { userId: user!.id, conversationId: input.conversationId, sessionId: input.sessionId });
   const attach = (next = {}) => api.attachNativeContinuation(db.db, { ...input, checkpointIds: [input.checkpointId], completedTurnCheckpointIds: [input.checkpointId], ...next });
   const count = async () => (await db.db.select().from(conversationMessages).where(eq(conversationMessages.conversationId, input.conversationId))).length;
-  try { await run({ db: db.db, api, input, state, attach, count }); }
+  try { await run({ db: db.db, api, releaseWithBegin, input, state, attach, count }); }
   finally { await db.db.delete(nativeLiveRuntimeListenerLeases).where(eq(nativeLiveRuntimeListenerLeases.userId, user!.id)); await db.db.delete(conversations).where(eq(conversations.userId, user!.id)); await db.db.delete(users).where(eq(users.id, user!.id)); await db.close(); }
 }
 
@@ -99,7 +103,7 @@ test('continuation input binding keeps exact identity, source and lease fences b
           const changed = { ...c.providerMetadata.nativeSessionSource, [field]: value,
             ...(invalid === 'revision' && phase === 'queued' ? { checkpointId: randomUUID() } : {}) };
           await f.db.update(conversations).set({ providerMetadata: { ...c.providerMetadata, nativeSessionSource: changed } }).where(eq(conversations.id, f.input.conversationId));
-          if (invalid === 'owner') await syncNativeSessionOwner(f.db, { userId: f.input.userId, conversationId: f.input.conversationId });
+          if (invalid === 'owner' || invalid === 'revision') await syncTestNativeSessionOwner(f.db, { userId: f.input.userId, conversationId: f.input.conversationId });
         }
         assert.equal(await bindNativeLiveInput(f.db, { ...admission, phase }), null);
       }));
@@ -110,7 +114,8 @@ test('continuation input binding keeps exact identity, source and lease fences b
 test('empty continuation release and reacquire are idempotent, CAS fenced, and preserve native ancestry', { skip: !enabled }, async () => fixture(async f => {
   await f.attach();
   const release = { ...f.input, expectedRevision: (await f.state()).expectedRevision, checkpointIds: [f.input.checkpointId], completedTurnCheckpointIds: [f.input.checkpointId] };
-  const released = await f.api.releaseNativeContinuation(f.db, release);
+  const released = await f.releaseWithBegin(f.db, release);
+  release.expectedRevision = (await f.state()).expectedRevision;
   assert.equal(released.owner, 'desktop'); assert.equal((await f.api.releaseNativeContinuation(f.db, release)).owner, 'desktop');
   const next = randomUUID();
   await assert.rejects(f.attach({ checkpointId: next, checkpointIds: [next], completedTurnCheckpointIds: [next], revision: rev(2), expectedRevision: (await f.state()).expectedRevision }), { code: 'EXPLICIT_BRANCH_SELECTION_REQUIRED' });
@@ -141,7 +146,7 @@ test('a verified quiet tail on the current handoff checkpoint remains the first 
     canonicalMessageId: a, provider: 'claude_code', providerSessionId: f.input.sessionId, providerCheckpointId: f.input.checkpointId,
     effectiveWorkingDirectory: f.input.effectiveWorkingDirectory, runtimeMetadata: { native_live_resume_tail: {
       canonical_message_id: a, provider_session_id: f.input.sessionId, base_checkpoint_id: f.input.checkpointId,
-      checkpoint_id: tail, cwd: f.input.effectiveWorkingDirectory, source_revision: source.revision, presentation_owner_id: owner, writer_generation: writerGeneration,
+      checkpoint_id: tail, cwd: f.input.effectiveWorkingDirectory, source_revision: (await f.state()).expectedRevision, presentation_owner_id: owner, writer_generation: writerGeneration,
     } } });
   const prepared = await new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.db)).prepare(f.input.userId,
     { request_id: randomUUID(), conversation_id: f.input.conversationId, operation: 'send', dispatch_target: 'claude_code',
@@ -172,7 +177,7 @@ test('handoff follows a finalized local fork without importing its transcript an
   const state = await f.api.readNativeContinuationState(f.db, { ...f.input, sessionId: fork });
   assert.equal(state.providerSessionId, fork); assert.equal(state.providerCheckpointId, cp);
   const release = { ...f.input, sessionId: fork, checkpointId: cp, checkpointIds: [cp], completedTurnCheckpointIds: [cp], revision: rev(2), expectedHeadMessageId: a, expectedRevision: state.expectedRevision };
-  assert.equal((await f.api.releaseNativeContinuation(f.db, release)).providerSessionId, fork);
+  assert.equal((await f.releaseWithBegin(f.db, release)).providerSessionId, fork);
   assert.equal(await f.count(), 2);
   const after = await f.api.attachNativeContinuation(f.db, { ...release, expectedRevision: (await f.api.readNativeContinuationState(f.db, { ...f.input, sessionId: fork })).expectedRevision });
   assert.equal(after.headMessageId, a); assert.equal(await f.count(), 2);
@@ -207,7 +212,7 @@ test('latest handoff anchor is immutable while a subsequent local turn forks the
   await f.db.insert(conversationProviderSessionCheckpoints).values({ userId: f.input.userId, conversationId: f.input.conversationId, canonicalMessageId: oldReply, provider: 'claude_code', providerSessionId: f.input.sessionId, providerCheckpointId: localCheckpoint, effectiveWorkingDirectory: f.input.effectiveWorkingDirectory });
   await f.db.update(conversations).set({ currentHeadMessageId: oldReply }).where(eq(conversations.id, f.input.conversationId));
   const base = { ...f.input, expectedHeadMessageId: oldReply, expectedRevision: (await f.state()).expectedRevision, checkpointId: localCheckpoint, revision: rev(2), checkpointIds: [localCheckpoint], completedTurnCheckpointIds: [localCheckpoint] };
-  await f.api.releaseNativeContinuation(f.db, base);
+  await f.releaseWithBegin(f.db, base);
   const desktopCheckpoint = randomUUID();
   await f.api.attachNativeContinuation(f.db, { ...base, expectedRevision: (await f.state()).expectedRevision, revision: rev(3), checkpointId: desktopCheckpoint,
     checkpointIds: [localCheckpoint, desktopCheckpoint], completedTurnCheckpointIds: [desktopCheckpoint] });
@@ -249,7 +254,7 @@ test('lost release response cannot reclaim ownership after a newer attach with a
   await f.attach();
   const first = await f.state();
   const release = { ...f.input, expectedRevision: first.expectedRevision, checkpointIds: [f.input.checkpointId], completedTurnCheckpointIds: [f.input.checkpointId] };
-  await f.api.releaseNativeContinuation(f.db, release); // ack lost
+  await f.releaseWithBegin(f.db, release); // ack lost
   const desktop = await f.state();
   assert.notEqual(desktop.expectedRevision, first.expectedRevision);
   const reacquire = { ...release, expectedRevision: desktop.expectedRevision };
@@ -257,7 +262,7 @@ test('lost release response cannot reclaim ownership after a newer attach with a
   await assert.rejects(f.api.releaseNativeContinuation(f.db, release), { code: 'STALE_NATIVE_PROJECTION' });
   assert.equal((await f.state()).owner, 'leileios');
   const current = await f.state();
-  await f.api.releaseNativeContinuation(f.db, { ...release, expectedRevision: current.expectedRevision });
+  await f.releaseWithBegin(f.db, { ...release, expectedRevision: current.expectedRevision });
   await assert.rejects(f.api.attachNativeContinuation(f.db, reacquire), { code: 'STALE_NATIVE_PROJECTION' });
   assert.equal((await f.state()).owner, 'desktop');
 }));

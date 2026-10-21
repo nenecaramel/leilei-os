@@ -1,4 +1,4 @@
-import { nativeSessionExecutableSql, nativeSessionTurnSql } from "../turn/turn-repository/session-owner.js";
+import { nativeSessionOwnershipSql, nativeSessionExecutableSql, nativeSessionTurnSql } from "../turn/turn-repository/session-owner.js";
 import { nativeResumeCheckpointSql } from "../turn/native-live-resume-checkpoint.js";
 import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
@@ -53,7 +53,7 @@ export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "exec
                 SELECT o.writer_generation::text FROM native_live_session_owners o
                 WHERE o.conversation_id=c.id AND o.user_id=c.user_id)
             AND (p.wake_context->'runtime_generation'->>'source_revision') IS NOT DISTINCT FROM
-              (c.provider_metadata->'nativeSessionSource'->>'revision')
+              (${nativeSessionOwnershipSql("c").revision})
             AND p.wake_context->>'epoch_id' = p.wake_context->>'source_user_message_id'
             AND NOT EXISTS (
               SELECT 1 FROM native_live_turn_preparations foreground
@@ -131,7 +131,7 @@ export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "exec
                           AND producer.payload->'context'->>'providerSessionId'=p.parent_provider_session_id
                           AND producer.payload->'context'->>'cwd' IS NOT DISTINCT FROM p.expected_working_directory
                           AND producer.payload->'context'->>'sourceRevision' IS NOT DISTINCT FROM
-                            c.provider_metadata->'nativeSessionSource'->>'revision'
+                            ${nativeSessionOwnershipSql("c").revision}
                           AND producer.payload->'result'->>'provider_checkpoint_id'=p.parent_provider_checkpoint_id
                       )
                     ))))

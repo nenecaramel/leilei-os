@@ -1,4 +1,4 @@
-import { nativeSessionExecutableSql, nativeSessionTurnSql } from "../turn/turn-repository/session-owner.js";
+import { nativeSessionOwnershipSql, nativeSessionExecutableSql, nativeSessionTurnSql } from "../turn/turn-repository/session-owner.js";
 import { appendBackgroundMessage, readDurableBackgroundReceipt } from "./native-live-background-message.js";
 import { isDeepStrictEqual } from "node:util";
 import { sql } from "drizzle-orm";
@@ -75,7 +75,7 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
   const resume = nativeResumeCheckpointSql("cp", "c", !(executionStart || deferred));
   const [row] = await tx.execute<Snapshot>(sql`SELECT cp.id, cp.canonical_message_id::text AS "canonicalMessageId", cp.provider_session_id AS "providerSessionId",
     cp.provider_checkpoint_id AS "baseCheckpointId", ${resume} AS "parentProviderCheckpointId", cp.effective_working_directory AS cwd,
-    ${nativeSessionTurnSql("c").prepareId} AS "presentationOwnerId", c.provider_metadata->'nativeSessionSource'->>'revision' AS "sourceRevision", o.writer_generation::text AS "writerGeneration"
+    ${nativeSessionTurnSql("c").prepareId} AS "presentationOwnerId", ${nativeSessionOwnershipSql("c").revision} AS "sourceRevision", o.writer_generation::text AS "writerGeneration"
     FROM conversation_provider_session_checkpoints cp JOIN conversations c ON c.id=cp.conversation_id AND c.user_id=cp.user_id
     JOIN native_live_session_owners o ON o.conversation_id=c.id AND o.user_id=c.user_id
     WHERE cp.user_id=${userId}::uuid AND cp.conversation_id=${origin.conversationId}::uuid AND (cp.canonical_message_id=${origin.assistantId}::uuid
@@ -85,7 +85,7 @@ async function snapshot(tx: Transaction, userId: string, identity: NativeLiveBac
       AND ${nativeSessionExecutableSql("c")}
       AND jsonb_typeof(${gen})='object' AND ${gen} ? 'presentation_owner_id' AND ${gen} ? 'source_revision'
       AND (coalesce(${gen}->>'writer_generation', ${gen}->>'presentation_owner_id') = o.writer_generation::text OR ((${executionStart} OR ${deferred}) AND ${pendingOwner}))
-      AND (${gen}->>'source_revision') IS NOT DISTINCT FROM (c.provider_metadata->'nativeSessionSource'->>'revision')
+      AND (${gen}->>'source_revision') IS NOT DISTINCT FROM (${nativeSessionOwnershipSql("c").revision})
       AND NOT EXISTS (SELECT 1 FROM native_live_turn_preparations busy WHERE busy.user_id=${userId}::uuid AND busy.conversation_id=c.id
         AND busy.status='prepared' AND busy.operation<>'wake' AND busy.dispatch_status IN ('staged','pending','reserved','executing','delivery_unknown')
         AND (NOT (${executionStart} OR ${deferred}) OR busy.operation<>'send' OR busy.runtime_mode<>'resume' OR busy.dispatch_status='delivery_unknown'
@@ -129,7 +129,7 @@ async function coveringSnapshot(tx: Transaction, userId: string, origin: Source,
       cp.provider_session_id AS "providerSessionId",cp.provider_checkpoint_id AS "baseCheckpointId",
       cp.provider_checkpoint_id AS "parentProviderCheckpointId",cp.effective_working_directory AS cwd,
       ${nativeSessionTurnSql("c").prepareId} AS "presentationOwnerId",
-      c.provider_metadata->'nativeSessionSource'->>'revision' AS "sourceRevision"
+      ${nativeSessionOwnershipSql("c").revision} AS "sourceRevision"
     FROM conversations c JOIN conversation_provider_session_checkpoints cp
       ON cp.user_id=c.user_id AND cp.conversation_id=c.id
       AND cp.canonical_message_id=c.current_head_message_id
@@ -139,7 +139,7 @@ async function coveringSnapshot(tx: Transaction, userId: string, origin: Source,
       AND cp.provider='claude_code' AND cp.provider_session_id=${preparedContext.providerSessionId}
       AND cp.provider_checkpoint_id=${coveringCheckpointId}
       AND cp.effective_working_directory IS NOT DISTINCT FROM ${preparedContext.cwd}
-      AND (c.provider_metadata->'nativeSessionSource'->>'revision') IS NOT DISTINCT FROM ${preparedContext.sourceRevision}
+      AND (${nativeSessionOwnershipSql("c").revision}) IS NOT DISTINCT FROM ${preparedContext.sourceRevision}
       AND EXISTS (SELECT 1 FROM chain WHERE id=${origin.assistantId}::uuid)
       AND EXISTS (
         SELECT 1 FROM chain witness
@@ -211,7 +211,7 @@ async function reconcileLegacyVisibleWakeAnchor(
       AND wake.assistant_message_id=c.current_head_message_id
       AND (${nativeSessionTurnSql("c").prepareId})
         IS NOT DISTINCT FROM ${context.presentationOwnerId}::text
-      AND (c.provider_metadata->'nativeSessionSource'->>'revision')
+      AND (${nativeSessionOwnershipSql("c").revision})
         IS NOT DISTINCT FROM ${context.sourceRevision}::text
       AND ${nativeSessionTurnSql("c").anchor}
         = wake.wake_context->>'source_head_message_id'

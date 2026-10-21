@@ -85,7 +85,7 @@ test("Desktop handoff fences new send/retry/edit/compact until a released native
   await assert.rejects(compact.create({ userId: f.owner, conversationId: f.input.conversationId }), { code: 'CONVERSATION_BUSY' });
   assert.deepEqual((await f.state()).messages, before.messages);
   assert.equal((await f.write({ ...f.input, expectedHeadMessageId: restored.headMessageId, expectedRevision: revision(1) })).outcome, 'already_current');
-  assert.equal((await f.state()).conversation.providerMetadata.nativeSessionSource.owner, 'leileios');
+  assert.equal((await f.database.db.execute(sql`SELECT owner FROM native_live_session_owners WHERE conversation_id=${f.input.conversationId}::uuid`))[0].owner, 'leileios');
   const prepared = await coordinator.prepare(f.owner, { request_id: randomUUID(), conversation_id: f.input.conversationId,
     dispatch_target: 'claude_code', operation: 'send', expected_head_message_id: restored.headMessageId, text: 'allowed input' });
   assert.equal(prepared.ok, true);
@@ -614,7 +614,7 @@ test("handoff accepts a proven post-assistant stop hook and preserves the execut
   const released = await releaseNativeSessionToDesktop(f.database.db, { userId: f.owner, conversationId: f.input.conversationId, sessionId: f.sessionId,
     expectedHeadMessageId: synced.headMessageId, expectedRevision: revision(2), expectedCheckpointId: assistant });
   assert.equal(released.owner, "desktop");
-  assert.equal((await f.state()).conversation.providerMetadata.nativeSessionSource.owner, "desktop");
+  assert.equal((await f.database.db.execute(sql`SELECT owner FROM native_live_session_owners WHERE conversation_id=${f.input.conversationId}::uuid`))[0].owner, "desktop");
   assert.equal((await f.write({ ...next, expectedRevision: revision(2) })).outcome, "already_current");
   const coordinator = new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.database.db));
   const send = await coordinator.prepare(f.owner, { request_id: randomUUID(), conversation_id: f.input.conversationId,
@@ -660,7 +660,7 @@ test("Desktop release refuses absent or corrupted durable stop-hook proof after 
       sessionId: f.sessionId, expectedHeadMessageId: synced.headMessageId, expectedRevision: revision(2), expectedCheckpointId: assistant }),
       { code: "CANONICAL_CHECKPOINT_CHANGED" });
     assert.deepEqual(await f.state(), before);
-    assert.equal(before.conversation.providerMetadata.nativeSessionSource.owner, "leileios");
+    assert.equal((await f.database.db.execute(sql`SELECT owner FROM native_live_session_owners WHERE conversation_id=${f.input.conversationId}::uuid`))[0]?.owner, "leileios");
   });
 });
 
@@ -682,7 +682,7 @@ test("Desktop continuation after a stop-hook handoff syncs back once without rew
   assert.deepEqual(after.messages.slice(0, 4), before.messages);
   assert.deepEqual(after.checkpoints.find((cp: any) => cp.canonicalMessageId === local.finalized.assistantMessageId),
     before.checkpoints.find((cp: any) => cp.canonicalMessageId === local.finalized.assistantMessageId));
-  assert.equal(after.conversation.providerMetadata.nativeSessionSource.owner, "leileios");
+  assert.equal((await f.database.db.execute(sql`SELECT owner FROM native_live_session_owners WHERE conversation_id=${f.input.conversationId}::uuid`))[0]?.owner, "leileios");
   assert.equal((await f.write({ ...back, expectedHeadMessageId: after.conversation.currentHeadMessageId, expectedRevision: revision(3) })).outcome, "already_current");
   assert.deepEqual(await f.state(), after);
 }));

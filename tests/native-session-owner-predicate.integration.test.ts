@@ -144,16 +144,18 @@ for(const owner of ['desktop','releasing'] as const)test(`owner row ${owner} blo
   await assert.rejects(nativeSessionAsset(f.db,request),{code:'NATIVE_CONVERSATION_BUSY'});
 });
 
-test('real attach release attach keeps row and JSON aligned and restores admission',{skip:!enabled},async t=>{
+test('real attach begin release attach keeps row authoritative without JSON copies and restores admission',{skip:!enabled},async t=>{
   const f=await fixture(t);
   const input={...f.scope,sessionId:f.session,checkpointId:f.base,revision:'2'.repeat(64),effectiveWorkingDirectory:'/synthetic',
     expectedHeadMessageId:f.completed.assistantMessageId,expectedRevision:null as string|null,checkpointIds:[f.base],completedTurnCheckpointIds:[f.base]};
   const aligned=async(expected:string)=>{const [r]=await f.db.execute<{row_owner:string;json_owner:string}>(sql`SELECT o.owner AS row_owner,
     c.provider_metadata->'nativeSessionSource'->>'owner' AS json_owner FROM conversations c JOIN native_live_session_owners o
-    ON o.conversation_id=c.id AND o.user_id=c.user_id WHERE c.id=${f.conversation.id}::uuid`);assert.deepEqual(r,{row_owner:expected,json_owner:expected});};
+    ON o.conversation_id=c.id AND o.user_id=c.user_id WHERE c.id=${f.conversation.id}::uuid`);assert.deepEqual(r,{row_owner:expected,json_owner:null});};
   await attachNativeContinuation(f.db,input);await aligned('leileios');
   let state=await readNativeContinuationState(f.db,input);
-  await releaseNativeContinuation(f.db,{...input,expectedRevision:state.expectedRevision});await aligned('desktop');
+  const {beginNativeContinuationRelease}=await import("../src/domains/conversation/native-session-continuation-repository.js");
+  const begun=await beginNativeContinuationRelease(f.db,{...input,expectedRevision:state.expectedRevision});
+  await releaseNativeContinuation(f.db,{...input,expectedRevision:begun.expectedRevision});await aligned('desktop');
   const blocked=await f.send();assert.equal(blocked.ok,false);if(!blocked.ok)assert.equal(blocked.code,'SESSION_OWNED_BY_DESKTOP');
   state=await readNativeContinuationState(f.db,input);
   await attachNativeContinuation(f.db,{...input,expectedRevision:state.expectedRevision});await aligned('leileios');
