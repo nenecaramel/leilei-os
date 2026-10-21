@@ -118,3 +118,14 @@ test("retired full-history HTTP handlers carry no production dependency wiring",
     assert.doesNotMatch(source, /function nativeHistory(?:Restore|State|Release|Asset|AssetStage)Handler\b/, path);
   }
 });
+
+test('failed native continuation recovery accepts only authenticated UUID metadata on attach',async()=>{
+ const value={conversationId,sessionId:sid,checkpointId:cp,revision,effectiveWorkingDirectory:'/synthetic',expectedHeadMessageId:null,expectedRevision:null,checkpointIds:[cp],completedTurnCheckpointIds:[cp],recoveredFailedTurnId:conversationId};let calls=0;
+ await withServer(app=>{app.use((request,_response,next)=>{request.mcpUserId=userId;next();});app.use('/store',createNativeLiveProviderSessionStoreInternalRouter({providerSessionStoreService:{} as any,attachNativeContinuation:async input=>{calls++;assert.equal(input.recoveredFailedTurnId,conversationId);assert.equal(input.userId,userId);return {outcome:'attached',owner:'leileios',conversationId,providerSessionId:sid,providerCheckpointId:cp,headMessageId:null,inserted:0};}}));},async url=>{
+  const send=(route:string,body:unknown)=>fetch(url+'/store/native-history/'+route,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+  assert.equal((await send('continuation-attach',value)).status,200);
+  assert.equal((await send('continuation-attach',{...value,recoveredFailedTurnId:'invalid'})).status,400);
+  assert.equal((await send('continuation-attach',{...value,owner:'leileios'})).status,400);
+  assert.equal((await send('continuation-release',value)).status,400);assert.equal(calls,1);
+ });
+});

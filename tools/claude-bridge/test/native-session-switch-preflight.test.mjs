@@ -829,3 +829,21 @@ test('Desktop continuation retries lost begin and cancel responses with identica
     }));
   }
 });
+
+test('manual continuation recovers an exact completed failed input using UUID evidence only',async()=>{
+ const {attachDesktopNativeContinuation}=await import('../src/native-session-continuation.mjs');
+ await fixture(async({input,transcriptFile})=>{
+  const failedInput='00000000-0000-4000-8000-000000000051',newCp='00000000-0000-4000-8000-000000000052',prepare='00000000-0000-4000-8000-000000000053';
+  const old=await readFile(transcriptFile,'utf8');const text=old+'\n'+[
+   {type:'user',uuid:failedInput,parentUuid:CP,sessionId:A,message:{content:'PRIVATE_FAILED_INPUT'}},
+   {type:'assistant',uuid:newCp,parentUuid:failedInput,sessionId:A,message:{content:[{type:'text',text:'PRIVATE_COMPLETED_REPLY'}],stop_reason:'end_turn'}}
+  ].map(JSON.stringify).join('\n')+'\n';await writeFile(transcriptFile,text);
+  const options={retryDelaysMs:[],sleep:async()=>{},input:{...input,expectedCheckpointId:newCp,expectedRevision:createHash('sha256').update(text).digest('hex')},conversationId:A,relayUrl:'https://fixture.test',relayToken:'fixture',fetchImpl:async(url,request)=>{
+   const route=new URL(url).pathname.split('/').at(-1),body=JSON.parse(request.body);assert.doesNotMatch(request.body,/PRIVATE_FAILED_INPUT|PRIVATE_COMPLETED_REPLY|normalizedEvents|projection/);
+   if(route==='continuation-state')return Response.json({success:true,data:{expectedHeadMessageId:null,expectedRevision:null,providerSessionId:A,providerCheckpointId:CP,effectiveWorkingDirectory:'/fixture',owner:'leileios',recoverableFailedTurn:{prepareId:prepare,userMessageId:failedInput}}});
+   assert.equal(route,'continuation-attach');assert.equal(body.recoveredFailedTurnId,prepare);assert.ok(body.checkpointIds.includes(failedInput));
+   return Response.json({success:true,data:{outcome:'attached',owner:'leileios',conversationId:A,headMessageId:null,providerSessionId:A,providerCheckpointId:newCp,inserted:0}});
+  }};
+  assert.equal((await attachDesktopNativeContinuation(options)).nativeProgressRecovered,true);assert.equal(await readFile(transcriptFile,'utf8'),text);
+ });
+});

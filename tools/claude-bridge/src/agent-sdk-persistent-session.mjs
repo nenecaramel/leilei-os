@@ -1,3 +1,4 @@
+import { recoverCompletedNativeTurn } from "./completed-turn-recovery.mjs";
 import { randomUUID } from "node:crypto";
 import { observeNativeSessionStartup } from "./native-session-startup-identity.mjs";
 import { durableCheckpointPrefix } from "./provider-checkpoint-prefix.mjs";
@@ -261,6 +262,26 @@ export async function openAgentSdkPersistentSession(owner, checkpoints, options 
           if (Date.now() >= deadline) throw runtimeError("Claude turn checkpoint is not durably present.", { runtimeCode: "NO_PROVIDER_SESSION" });
           await new Promise(resolve => setTimeout(resolve, pollMs));
         }
+      };
+      host.recoverCompletedTurn = async ({inputId, parentCheckpointId}) => {
+        if (!host.queryClosed || !host.sessionId || !['closed','failed'].includes(host.state)) return null;
+        let timer;
+        const deadline=performance.now()+2_000;
+        try {
+          return await Promise.race([(async () => {
+            await host.completion.catch(() => {});
+            if(performance.now()>=deadline)return null;
+            const entries=await checkpoints.checkpointEntries(host.sessionId,true,{maxEntries:100000,maxBytes:64*1024*1024});
+            const recovered=recoverCompletedNativeTurn({entries,sessionId:host.sessionId,inputId,parentCheckpointId});
+            if (!recovered || performance.now()>=deadline) return null;
+            // A later Desktop write invalidates the snapshot. No native input,
+            // network delivery, polling or new writer is started by this reader.
+            const again=await checkpoints.checkpointEntries(host.sessionId,true,{maxEntries:100000,maxBytes:64*1024*1024});
+            const stable=JSON.stringify(entries)===JSON.stringify(again);
+            return stable&&performance.now()<deadline?recovered:null;
+          })(),new Promise(resolve=>{timer=setTimeout(()=>resolve(null),2_000);})]);
+        } catch { return null; }
+        finally { clearTimeout(timer); }
       };
       const release = () => { if (owner.activeSessionHost === host && host.queryClosed) owner.activeSessionHost = null; };
       const close = host.close.bind(host);

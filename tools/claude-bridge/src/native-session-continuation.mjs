@@ -45,8 +45,18 @@ async function switchContinuation({ input, conversationId, relayUrl, relayToken,
     if (drain) input = await settleDrainedNativeSource(input, pinned, drainSettle);
     await assertNativeHandoffRecoveryClear(recoveryDirectory);
     const selection = await preflightNativeSessionSwitch(input);
-    const evidence = await readNativeContinuationEvidence(input);
+    let evidence = await readNativeContinuationEvidence(input);
+    let recoveredFailedTurnId = null;
     if (owner === 'leileios') state = await readState(selection.providerSessionId);
+    if(owner==='leileios'&&state.owner==='leileios'&&state.providerCheckpointId
+      &&!evidence.completedTurnCheckpointIds.includes(state.providerCheckpointId)&&state.recoverableFailedTurn){
+      const failed=state.recoverableFailedTurn;
+      if(!uuid.test(failed.prepareId??'')||!uuid.test(failed.userMessageId??''))throw fail('NATIVE_RESTORE_INVALID_RESPONSE');
+      evidence=await readNativeContinuationEvidence(input,{userMessageId:failed.userMessageId,parentCheckpointId:state.providerCheckpointId});
+      if(evidence.recoveredInputId!==failed.userMessageId)throw fail('CANONICAL_CHECKPOINT_CHANGED');
+      recoveredFailedTurnId=failed.prepareId;
+    }
+
     if (state.providerSessionId !== null && (state.providerSessionId !== selection.providerSessionId || state.effectiveWorkingDirectory !== selection.workingDirectory)) throw fail('EXPLICIT_BRANCH_SELECTION_REQUIRED');
     if (owner === 'desktop' && (!state.providerCheckpointId || !evidence.completedTurnCheckpointIds.includes(state.providerCheckpointId))) throw fail('CANONICAL_CHECKPOINT_CHANGED');
     if (state.providerCheckpointId && !evidence.checkpointIds.includes(state.providerCheckpointId)) throw fail('EXPLICIT_BRANCH_SELECTION_REQUIRED');
@@ -59,6 +69,7 @@ async function switchContinuation({ input, conversationId, relayUrl, relayToken,
       revision: selection.nativeRevision, effectiveWorkingDirectory: selection.workingDirectory,
       expectedHeadMessageId: state.expectedHeadMessageId, expectedRevision: begin?.expectedRevision ?? state.expectedRevision,
       checkpointIds: evidence.checkpointIds, completedTurnCheckpointIds: evidence.completedTurnCheckpointIds,
+      ...(recoveredFailedTurnId ? {recoveredFailedTurnId} : {}),
     });
     if (!result || !['attached', 'already_current'].includes(result.outcome) || result.owner !== owner || result.inserted !== 0 ||
       result.conversationId !== conversationId || result.headMessageId !== state.expectedHeadMessageId ||
@@ -69,7 +80,7 @@ async function switchContinuation({ input, conversationId, relayUrl, relayToken,
     // A running daemon still fences this conversation from the earlier Desktop
     // handoff drain. Only after the server attach may it accept turns again.
     const resumed = owner === 'leileios' ? await requestNativeSessionResume({ recoveryDirectory, conversationId, providerSessionId: selection.providerSessionId }) : null;
-    return { ...result, executionAuthorized: false, ...(drain ? { drain } : {}), ...(resumed ? { daemonResumed: true } : {}),
+    return { ...result, executionAuthorized: false, ...(recoveredFailedTurnId ? {nativeProgressRecovered:true} : {}), ...(drain ? { drain } : {}), ...(resumed ? { daemonResumed: true } : {}),
       ...(owner === 'desktop' ? { desktopLaunchRequested: true, desktopSessionVerified: false } : {}) };
   } catch (error) {
     if (begin) {

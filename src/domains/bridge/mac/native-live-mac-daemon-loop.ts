@@ -58,7 +58,7 @@ export class NativeLiveMacDaemonLoop {
     private readonly externalSessionExecutor:
       NativeLiveExternalSessionExecutor | null = null,
     private readonly resultOutbox: NativeLiveMacResultOutbox | null = null,
-    private readonly persistentExecutor: (Pick<NativeLiveMacPersistentExecutor, "canRoute" | "execute" | "retire"> & Partial<Pick<NativeLiveMacPersistentExecutor, "assertAccepting" | "retireSession" | "shouldDeferWake" | "suspend">>) | null = null,
+    private readonly persistentExecutor: (Pick<NativeLiveMacPersistentExecutor, "canRoute" | "execute" | "retire"> & Partial<Pick<NativeLiveMacPersistentExecutor, "assertAccepting" | "retireSession" | "shouldDeferWake" | "suspend" | "recoverTerminal">>) | null = null,
     private readonly backgroundResults: { flush(): Promise<number> } | null = null,
   ) {}
 
@@ -74,6 +74,9 @@ export class NativeLiveMacDaemonLoop {
     try {
       for (const entry of await this.resultOutbox?.listQuarantined() ?? []) {
         this.fenceResultConversation(entry.result.conversation_id);
+      }
+      for (const entry of await this.resultOutbox?.list() ?? []) {
+        this.persistentExecutor?.suspend?.(entry.result.conversation_id, "terminal_recovery");
       }
       // One fresh listener lease covers recovery and this dispatch iteration.
       // Replaying old output still precedes selecting any fresh model input.
@@ -101,6 +104,11 @@ export class NativeLiveMacDaemonLoop {
         } catch (error) {
           if (await this.quarantineConflict(pending, error)) return this.resultRecoveryOutcome(pending.reservationId, pending.result.conversation_id);
           return { outcome: "delivery_unknown", reservationId: pending.reservationId, result: pending.result };
+        }
+        // Keep the evidence until the old writer is verifiably retired. A
+        // close failure retries the same receipt, never the model input.
+        if (!(await this.resultOutbox!.listQuarantined()).some(entry => entry.result.conversation_id === pending.result.conversation_id)) {
+          await this.persistentExecutor?.recoverTerminal?.(pending.result.conversation_id);
         }
         await this.resultOutbox!.acknowledge(pending);
         return { outcome: "completed", reservationId: pending.reservationId, result: pending.result,
@@ -428,7 +436,10 @@ export class NativeLiveMacDaemonLoop {
       }
       const persistent = persistentRun as NativeLiveMacPersistentExecution | null;
       if (persistent && persistent.delivery !== "pending") {
-        if (persistent.delivery === "unknown") await this.bestEffortDeliveryUnknown(reservation.reservationId);
+        if (persistent.delivery === "unknown") {
+          this.persistentExecutor?.suspend?.(result.conversation_id, "terminal_recovery");
+          await this.bestEffortDeliveryUnknown(reservation.reservationId);
+        }
         return { outcome: persistent.delivery === "unknown" ? "delivery_unknown" : "completed",
           reservationId: reservation.reservationId, result,
           ...(persistent.canonicalOutcome ? { canonicalOutcome: persistent.canonicalOutcome } : {}),

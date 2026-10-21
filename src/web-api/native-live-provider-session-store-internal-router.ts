@@ -401,7 +401,7 @@ function nativeContinuationHandler(dependencies: NativeLiveProviderSessionStoreI
     const keys = operation === 'begin' ? ['conversationId','sessionId','expectedHeadMessageId','expectedRevision']
       : operation === 'cancel' ? ['conversationId','expectedRevision']
       : operation === 'state' ? ['conversationId', 'sessionId'] : ['conversationId', 'sessionId', 'checkpointId', 'revision',
-      'effectiveWorkingDirectory', 'expectedHeadMessageId', 'expectedRevision', 'checkpointIds', 'completedTurnCheckpointIds'];
+      'effectiveWorkingDirectory', 'expectedHeadMessageId', 'expectedRevision', 'checkpointIds', 'completedTurnCheckpointIds', ...(operation === 'attach' ? ['recoveredFailedTurnId'] : [])];
     if (!body || Object.keys(body).some(key => !keys.includes(key))) { sendInvalid(response); return; }
     try {
       if (operation === 'begin') {

@@ -12,7 +12,7 @@ import type { NativeLiveMacOutputAttachmentSender } from "./native-live-mac-outp
 import type { NativeLiveMacPersistentAcknowledgement, NativeLiveMacPersistentTurnRouter } from "./native-live-mac-persistent-turn-router.js";
 import { buildNativeLiveRuntimeMetadata, failure, runtimeFailureCode, runtimeFailureDiagnostics, terminalFallbackEvents, type NativeLiveMacRuntimeFailureDiagnostics } from "./native-live-mac-runtime-executor.js";
 
-type Router = Pick<NativeLiveMacPersistentTurnRouter, "execute" | "close" | "matches" | "workingDirectory"> & Partial<Pick<NativeLiveMacPersistentTurnRouter, "suspend" | "settle" | "providerSessionId" | "hasActiveTurn">>;
+type Router = Pick<NativeLiveMacPersistentTurnRouter, "execute" | "close" | "matches" | "workingDirectory"> & Partial<Pick<NativeLiveMacPersistentTurnRouter, "suspend" | "settle" | "providerSessionId" | "hasActiveTurn" | "isRetired">>;
 type Handler = (request: Record<string, unknown>, context: { signal: AbortSignal | null }) => Promise<Record<string, unknown>>;
 export type NativeLiveMacPersistentCommit = (result: NativeLiveRuntimeExecutionResult) => Promise<{ canonicalOutcome: string | null; nativeResumeCheckpointId?: string } | void>;
 /**
@@ -32,13 +32,19 @@ export class NativeLiveMacPersistentExecutor {
   private readonly routers = new Map<string, Router>();
   private readonly retiring = new Set<string>();
   private shutDown = false;
-  private readonly suspended = new Map<string, Set<"handoff" | "recovery">>();
-  suspend(conversationId: string, reason: "handoff" | "recovery" = "handoff"): void {
+  private readonly suspended = new Map<string, Set<"handoff" | "recovery" | "terminal_recovery">>();
+  suspend(conversationId: string, reason: "handoff" | "recovery" | "terminal_recovery" = "handoff"): void {
     const reasons=this.suspended.get(conversationId)??new Set();reasons.add(reason);this.suspended.set(conversationId,reasons);this.routers.get(conversationId)?.suspend?.();
   }
   async recovered(conversationId:string):Promise<void>{
     const reasons=this.suspended.get(conversationId);if(!reasons?.has("recovery"))return;
     await this.retire(conversationId,"BACKGROUND_RECOVERED");reasons.delete("recovery");if(!reasons.size)this.suspended.delete(conversationId);
+  }
+  async recoverTerminal(conversationId: string): Promise<void> {
+    await this.retire(conversationId, "BACKGROUND_RECOVERED");
+    const reasons = this.suspended.get(conversationId);
+    reasons?.delete("terminal_recovery");
+    if (reasons?.size === 0) this.suspended.delete(conversationId);
   }
   /** The conversation was attached back to LeileiOS: accept its turns again. Recovery fences stay. */
   resumeHandoff(conversationId: string): void {
@@ -181,6 +187,7 @@ export class NativeLiveMacPersistentExecutor {
             : { status: "rejected" };
         },
       });
+      if (router.isRetired) await this.retire(command.conversation_id, "BACKGROUND_RECOVERED");
       return { result: submitted!, delivery: "committed", canonicalOutcome };
     } catch (error) {
       // Only the router can prove a Wake failed before SDK submission while

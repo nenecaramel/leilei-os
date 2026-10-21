@@ -194,3 +194,43 @@ control remains the live process query. More than 64 active tasks never produces
 truncated `replace` snapshot; publication is skipped until a complete bounded set
 is available. Pending metadata sources are capped at 128. No idle model polling or
 new task timer is added.
+
+## Completed native output and failed delivery recovery
+
+A persistent foreground turn may close after its native assistant record is fully
+written but before its SDK result reaches the router. Before submitting a failure,
+the router may read back that exact stopped writer once. Verified process closure,
+the original input UUID/session/committed parent, unique valid ancestry, completed
+tool results and a native `end_turn` (or an explicit clean Stop after a null
+stop_reason) are mandatory. A complete snapshot is bounded to 64MiB/100,000 records;
+the recovered current turn is bounded to 2MiB. Two matching reads share a two-second
+elapsed wait budget. A timeout leaves only read-only work in flight. There is no
+new model input, timer polling loop, JSONL edit or replacement SDK query.
+
+Only output proved before any terminal submission is eligible. Explicit SDK
+failure/interruption, unknown/blocked trailing records, changed session/input,
+unverified closure, handoff, replacement, shutdown or unsettled deferred background
+output cannot become a recovered successful result. Handoff/recovery fences are
+rechecked after the read and before submission. Recovered output uses the normal
+terminal outbox and canonical finalizer; the latter remains responsible for
+ownership, branch, attachment and idempotency checks. A response lost after commit
+replays the exact receipt, never Claude. Verified writer retirement precedes local
+receipt removal and removal of the separate terminal-delivery fence; background
+recovery and handoff fences remain intact.
+
+For a historical turn already recorded as a failure, selecting the same native
+session through the existing manual LeileiOS switch can recover continuation only.
+The server offers UUID-only evidence for the current terminal failed ordinary
+resume input (`RUNTIME_UNAVAILABLE` or `CLAUDE_PROCESS_FAILED`) at the exact native
+session/cursor/cwd and current presentation anchor. The reader must prove that
+specific input has completed on the pinned native branch. Attach repeats the
+current-turn, idle, ownership, ancestry and revision CAS checks under its existing
+conversation lock; a newer turn, wrong input, foreign user or competing recovery
+cannot reuse the offer. Pending local output/quarantine still blocks switching.
+
+Historical recovery advances the native continuation cursor without importing the
+old reply into the LeileiOS message list, changing the failure record, guessing a
+success receipt or clearing unacknowledged output. Thus the native context can
+continue while the old UI failure remains truthful. Unsupported or incomplete
+native evidence remains blocked for explicit diagnosis; this is not a general
+history rewrite or automatic resurrection of arbitrary failed/abandoned turns.
