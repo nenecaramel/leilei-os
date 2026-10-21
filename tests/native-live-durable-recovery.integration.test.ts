@@ -14,11 +14,15 @@ import { NativeLiveConversationService } from "../src/domains/conversation/nativ
 import { DrizzleNativeLiveProviderSessionStoreRepository, NativeLiveProviderSessionStoreService } from "../src/domains/bridge/provider-session/native-live-provider-session-store.js";
 import { NativeLiveMacProviderSessionStore } from "../src/domains/bridge/mac/native-live-mac-provider-session-store.js";
 import { NativeLiveMacResultOutbox } from "../src/domains/bridge/mac/native-live-mac-result-outbox.js";
+import { isolatedPostgresTarget, verifyIsolatedPostgresTarget } from "../scripts/isolated-postgres-target.mjs";
 import { NativeLiveMacDaemonLoop, type NativeLiveMacDaemonRelayClient } from "../src/domains/bridge/mac/native-live-mac-daemon-loop.js";
 
 test("optional remote append component and terminal outbox each replay idempotently after lost commit responses", { skip: process.env.RUN_NATIVE_LIVE_RELAY_DATABASE_TEST !== "1" }, async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "leilei-combined-recovery-"));
-  const database = createDatabase(process.env.DATABASE_URL!, { ssl: false });
+  const databaseUrl = process.env.DATABASE_URL;
+  assert.ok(databaseUrl);
+  await verifyIsolatedPostgresTarget(isolatedPostgresTarget(databaseUrl));
+  const database = createDatabase(databaseUrl, { ssl: false });
   const [user] = await database.db.insert(users).values({ email: `combined-${crypto.randomUUID()}@example.com`, displayName: "Combined recovery" }).returning({ id: users.id });
   t.after(async () => {
     try {
@@ -60,16 +64,22 @@ test("optional remote append component and terminal outbox each replay idempoten
   const makeOutbox = () => new NativeLiveMacResultOutbox(join(directory, "result"));
   await makeOutbox().save(entry);
   let loseResult = true, providerCalls = 0;
-  const client = { async submitResult(input: typeof entry) {
-    assert.deepEqual(input, entry);
-    assert.deepEqual(await remote.load({ userId, key: { sessionId } }), entries);
-    events.push("result");
-    const receipt = await relay.submitResult({ userId, ...input });
-    assert.ok(receipt.ok);
-    if (loseResult) throw new Error("terminal response lost after canonical commit");
-    return { canonicalOutcome: "committed" };
-  } } as unknown as NativeLiveMacDaemonRelayClient;
-  const makeLoop = () => new NativeLiveMacDaemonLoop("restarted-owner", client, { async execute() { providerCalls += 1; throw new Error("provider must not execute"); } }, null, null, null, null, null, null, makeOutbox());
+  const client: NativeLiveMacDaemonRelayClient = {
+    renewLease: input => relay.renewLease({ userId, ...input }),
+    reserveNext: input => relay.reserveNext({ userId, ...input }),
+    markExecutionStarted: input => relay.markExecutionStarted({ userId, ...input }),
+    rejectReservation: input => relay.rejectReservation({ userId, ...input }),
+    async submitResult(input) {
+      assert.deepEqual(input, entry);
+      assert.deepEqual(await remote.load({ userId, key: { sessionId } }), entries);
+      events.push("result");
+      const receipt = await relay.submitResult({ userId, ...input });
+      assert.ok(receipt.ok);
+      if (loseResult) throw new Error("terminal response lost after canonical commit");
+      return { canonicalOutcome: "committed" };
+    },
+  };
+  const makeLoop = () => new NativeLiveMacDaemonLoop(owner, client, { async execute() { providerCalls += 1; throw new Error("provider must not execute"); } }, null, null, null, null, null, null, makeOutbox());
   // This optional remote component retains a failed append until its caller retries.
   // Foreground daemon local-SDK ownership is exercised separately below.
   await assert.rejects(makeStore().recoverPendingAppends(), /response lost/u);
@@ -119,7 +129,10 @@ test("local SDK checkpoint and terminal outbox survive daemon restart after a lo
   const { readNativeSession, readNativeBranch } = await import("../tools/claude-bridge/src/native-session-catalog.mjs");
   const { NativeLiveMacWorkingDirectoryRuntimePool } = await import("../src/domains/bridge/mac/native-live-mac-working-directory-runtime.js");
   const { NativeLiveMacRuntimeExecutor } = await import("../src/domains/bridge/mac/native-live-mac-runtime-executor.js");
-  const database = createDatabase(process.env.DATABASE_URL!, { ssl: false });
+  const databaseUrl = process.env.DATABASE_URL;
+  assert.ok(databaseUrl);
+  await verifyIsolatedPostgresTarget(isolatedPostgresTarget(databaseUrl));
+  const database = createDatabase(databaseUrl, { ssl: false });
   const [user] = await database.db.insert(users).values({ email: `local-recovery-${crypto.randomUUID()}@example.com`, displayName: "Local SDK recovery" }).returning();
   t.after(async () => {
     try {
@@ -174,7 +187,7 @@ test("local SDK checkpoint and terminal outbox survive daemon restart after a lo
       const pending = await makeOutbox().list();
       assert.equal(pending.length, 1, "daemon persists result before attempting callback");
       assert.deepEqual(pending[0], input);
-      assert.equal(input.result.status, "success");
+      assert.equal(input.result.status, "success", JSON.stringify(input.result));
       if (input.result.status !== "success") throw Error("SDK fixture did not succeed");
       assert.equal(input.result.provider_checkpoint_id, checkpointId);
       const snapshot = await readNativeSession(projectDirectory, sessionId);
@@ -193,7 +206,14 @@ test("local SDK checkpoint and terminal outbox survive daemon restart after a lo
   assert.equal(first.outcome, "delivery_unknown", JSON.stringify(first));
   assert.equal(providerCalls, 1);
   const before = await readNativeSession(projectDirectory, sessionId);
-  const restart = () => new NativeLiveMacDaemonLoop(crypto.randomUUID(), client, { async execute() { throw Error("pending replay must not rerun the SDK"); } }, null, null, null, null, null, null, makeOutbox());
+  const restartedOwner = crypto.randomUUID();
+  const restart = () => new NativeLiveMacDaemonLoop(restartedOwner, client, { async execute() { throw Error("pending replay must not rerun the SDK"); } }, null, null, null, null, null, null, makeOutbox());
+  assert.equal((await restart().runOnce()).outcome, "busy", "a live original listener prevents takeover");
+  assert.equal(receipts.length, 1, "busy restart must not replay output");
+  assert.equal((await makeOutbox().list()).length, 1, "busy restart retains evidence");
+  // Model the old process lease expiring without waiting on wall-clock time.
+  await database.db.update(nativeLiveRuntimeListenerLeases).set({ leaseExpiresAt: new Date(0) })
+    .where(eq(nativeLiveRuntimeListenerLeases.userId, user.id));
   assert.equal((await restart().runOnce()).outcome, "delivery_unknown");
   assert.equal((await makeOutbox().list()).length, 1);
   loseResponse = false;

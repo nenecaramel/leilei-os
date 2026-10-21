@@ -54,7 +54,7 @@ async function cleanupUsers(
     const sql = postgres(databaseUrl, {
       max: 1,
       prepare: false,
-      ssl: "require",
+      ssl: false,
       connect_timeout: 15,
       idle_timeout: 5,
     });
@@ -87,7 +87,11 @@ test(
     const databaseUrl = process.env.DATABASE_URL;
     assert.ok(databaseUrl, "DATABASE_URL is required");
 
+    const { isolatedPostgresTarget, verifyIsolatedPostgresTarget } = await import("../scripts/isolated-postgres-target.mjs");
+    await verifyIsolatedPostgresTarget(isolatedPostgresTarget(databaseUrl));
+
     const database = createDatabase(databaseUrl, {
+      ssl: false,
       createClient: (url, maxConnections, ssl) =>
         postgres(url, {
           max: maxConnections,
