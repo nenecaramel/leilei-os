@@ -52,27 +52,17 @@ struct NativeLiveProcessStatusHeadline: View {
     @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     let title: String
 
+    // Text only, at the same leading edge as Original's Thinking...; the
+    // Thought process glyph appears once a thinking summary exists.
     var body: some View {
-        HStack(spacing: 8) {
-            NativeLiveThoughtProcessIcon()
-                .frame(width: 14, height: 14)
-                .scaleEffect(1.1)
-                .padding(.trailing, 1)
-                .accessibilityHidden(true)
-
-            Text(title)
-                .font(.system(size: 14))
-
-            Spacer(minLength: 8)
-        }
-        .foregroundStyle(iMessageWallpaperVisible ? Color.white : Color.secondary)
-        .shadow(
-            color: iMessageWallpaperVisible ? Color.black.opacity(0.75) : .clear,
-            radius: iMessageWallpaperVisible ? 2 : 0,
-            y: iMessageWallpaperVisible ? 1 : 0
-        )
-        .padding(.leading, 2)
-        .accessibilityElement(children: .combine)
+        Text(title)
+            .font(.system(size: 14))
+            .foregroundStyle(iMessageWallpaperVisible ? Color.white : Color.secondary)
+            .shadow(
+                color: iMessageWallpaperVisible ? Color.black.opacity(0.75) : .clear,
+                radius: iMessageWallpaperVisible ? 2 : 0,
+                y: iMessageWallpaperVisible ? 1 : 0
+            )
     }
 }
 

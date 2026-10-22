@@ -124,7 +124,7 @@ test('clock paint and thought inset are refined while action icons return to reg
   assert.match(surface, /\.padding\(\.trailing, 1\)/);
 });
 
-test('iMessage loading has its glyph while Worked for is text-only at the Thought icon leading edge', () => {
+test('iMessage loading is text-only at the Original leading edge while Worked for aligns with the Thought icon', () => {
   const row = readFileSync(root + 'NativeLiveAssistantTurnRow.swift', 'utf8');
   const thinking = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
   const activity = readFileSync(root + 'NativeLiveRuntimeActivity.swift', 'utf8');
@@ -134,8 +134,8 @@ test('iMessage loading has its glyph while Worked for is text-only at the Though
   assert.match(row, /else \{\s*Text\("Thinking\.\.\."\)\.font\(\.system\(size: 14\)\)\.foregroundStyle\(\.secondary\)/);
   assert.match(thinking, /struct NativeLiveProcessStatusHeadline: View/);
   const idle = thinking.slice(thinking.indexOf('struct NativeLiveProcessStatusHeadline:'), thinking.indexOf('// A small dotted clock'));
-  assert.match(idle, /HStack\(spacing: 8\)/);
-  assert.match(idle, /NativeLiveThoughtProcessIcon\(\)/);
+  // Like Original's Thinking..., the loading line has no glyph and no 2pt inset.
+  assert.doesNotMatch(idle, /NativeLiveThoughtProcessIcon\(\)|HStack|\.padding\(\.leading/);
   assert.match(idle, /Text\(title\)\s*\.font\(\.system\(size: 14\)\)/);
   assert.match(idle, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
   assert.match(idle, /iMessageWallpaperVisible \? Color\.black\.opacity\(0\.75\) : \.clear/);
