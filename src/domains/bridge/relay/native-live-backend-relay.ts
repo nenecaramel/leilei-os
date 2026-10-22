@@ -941,13 +941,16 @@ implements NativeLiveBackendRelayPort {
       .limit(1);
     if (!row) return null;
     const preparation = mapPreparation(row);
-    // An edit rewinds past every later native input, so earlier failures at its
-    // parent checkpoint are not residue it must tolerate.
-    if (preparation.runtimeMode === "resume" && preparation.operation !== "edit" && preparation.parentProviderCheckpointId) {
+    // An edit or retry rewinds past every later native input, so earlier
+    // failures at its parent checkpoint are not residue it must tolerate.
+    if (preparation.runtimeMode === "resume" && preparation.operation !== "edit" && preparation.operation !== "retry" && preparation.parentProviderCheckpointId) {
       // Only terminal canonical failures at this exact native branch position
       // can explain an abandoned input; never trust the caller or a JSONL UUID alone.
+      // A retry resent a user message already in the transcript, so its
+      // native input is identified by the preparation id (see nativeInputId).
       const failures = await executor.execute<{ canonical_user_message_id: string }>(sql`
-        SELECT failed.canonical_user_message_id
+        SELECT CASE WHEN failed.operation = 'retry' THEN failed.id ELSE failed.canonical_user_message_id END
+          AS canonical_user_message_id
         FROM native_live_turn_preparations AS failed
         WHERE failed.user_id = ${userId}::uuid
           AND failed.conversation_id = ${preparation.conversationId}::uuid

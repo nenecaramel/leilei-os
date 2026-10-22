@@ -5,6 +5,7 @@ import { isNativeReplacement } from "./native-live-mac-persistent-executor.js";
 import { NativeLiveMacExecutionLease } from "./native-live-mac-execution-lease.js";
 import { isDeepStrictEqual } from "node:util";
 import {
+  nativeInputId,
   parseNativeLiveRuntimeCommand,
   type NativeLiveRuntimeCommand,
 } from "../protocol/native-live-runtime-protocol.js";
@@ -135,7 +136,7 @@ export class NativeLiveMacPersistentTurnRouter {
     if (this.initialCommand && !this.selectionMatches(command) && !this.canSwitchSelection(command)) throw new Error("Execution selection change cannot be applied to the live session.");
     let finish!: () => void;
     const finished = new Promise<void>(resolve => { finish = resolve; });
-    const slot: Slot = { ...input, resultReady: false, finished, finish, command, inputId: command.canonical_user_message_id ?? command.prepare_id,
+    const slot: Slot = { ...input, resultReady: false, finished, finish, command, inputId: nativeInputId(command),
       phase: "executing", authorize: createNativeLiveMacExecutionAdmission({ listenerInstanceId: this.input.listenerInstanceId, command, relay: this.input.relay }) };
     // Reserve before the first await, including path resolution and SDK startup.
     this.active = slot;
@@ -646,7 +647,7 @@ export class NativeLiveMacPersistentTurnRouter {
         : this.input.registry.openExisting({ ...input, restore: {
           sessionId: command.parent_provider_session_id!, checkpointId: command.parent_provider_checkpoint_id!,
           inputId: slot.inputId, source: command.operation === "wake" ? "task-notification" : "human",
-          ...(command.operation === "edit" ? { rewind: true } : {}),
+          ...(command.operation === "edit" || command.operation === "retry" ? { rewind: true } : {}),
         } });
     this.generationId = this.input.registry.getGenerationId(command.conversation_id);
     this.binding = await opening;

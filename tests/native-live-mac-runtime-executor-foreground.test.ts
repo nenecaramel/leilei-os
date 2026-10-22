@@ -7,6 +7,7 @@ import type {
   NativeLiveClaudeRuntime,
 } from "../src/domains/conversation/native-live-conversation-orchestrator.js";
 import {
+  prepareId,
   userMessageId,
   command,
 } from "./helpers/native-live-mac-runtime-executor-fixtures.js";
@@ -68,7 +69,8 @@ test("interactive foreground runtime is preferred and receives streaming branch 
       mode: "fork",
       parentProviderSessionId: "provider-parent",
       streaming: true,
-      userMessageUuid: userMessageId,
+      // A retry's native input is its preparation id (see nativeInputId).
+      userMessageUuid: prepareId,
     },
   ]]);
   assert.equal(result.status, "success");

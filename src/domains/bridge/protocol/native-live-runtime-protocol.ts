@@ -24,7 +24,7 @@ export type { NativeLiveRuntimeSessionStoreHealth } from "./runtime-protocol/typ
 export type { NativeLiveRuntimeMetadata } from "./runtime-protocol/types.js";
 export type { NativeLiveRuntimeExecutionResult } from "./runtime-protocol/types.js";
 export { NativeLiveRuntimeProtocolError } from "./runtime-protocol/parsing.js";
-export { parseNativeLiveRuntimeCommand } from "./runtime-protocol/command.js";
+export { nativeInputId, parseNativeLiveRuntimeCommand } from "./runtime-protocol/command.js";
 export { parseNativeLiveRuntimeExecutionResult } from "./runtime-protocol/result.js";
 export { assertRuntimeResultMatchesCommand } from "./runtime-protocol/result.js";
 export { parseNativeLiveRuntimeVcsChanges } from "./runtime-protocol/vcs.js";

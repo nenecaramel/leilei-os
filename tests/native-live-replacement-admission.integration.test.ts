@@ -11,8 +11,8 @@ import { DrizzleNativeLiveBackendRelayRepository } from "../src/domains/bridge/r
 import { parseNativeLiveExecutionAdmissionBody } from "../src/domains/bridge/protocol/native-live-execution-admission.js";
 
 for (const operation of ["edit", "retry"] as const) for (const source of ["new", "fork", "continuation"] as const) {
-  // Edit rewinds its native session in place (resume); Retry still forks.
-  const mode = source === "new" ? "new" : operation === "edit" ? "resume" : "fork";
+  // Edit and Retry rewind their native session in place (resume), as Desktop does.
+  const mode = source === "new" ? "new" : "resume";
   test(`${operation}/${source} real preparation authorizes only its captured branch and lease`, {
     skip: process.env.RUN_NATIVE_LIVE_RELAY_DATABASE_TEST !== "1",
   }, async t => {
@@ -117,7 +117,7 @@ for (const operation of ["edit", "retry"] as const) for (const source of ["new",
     assert.equal(await relay.renewExecutionLease(input), false, "expired listener is never revived");
     await db.update(leases).set({ leaseExpiresAt: later }).where(eq(leases.userId, userId));
     const { NativeLiveBackendTurnCoordinator } = await import("../src/domains/bridge/turn/native-live-backend-turn-coordinator.js");
-    // A rewound edit continues its own session; a fork gets a new one.
+    // A rewound replacement continues its own session.
     const child = mode === "resume" ? session : crypto.randomUUID();
     const finalized = await new NativeLiveBackendTurnCoordinator(port).finalize(userId, {
       protocol_version: 4, prepare_id: p!.id, request_id: p!.requestId, conversation_id: conversationId,

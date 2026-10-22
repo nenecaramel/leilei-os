@@ -541,6 +541,10 @@ test('relay supplies failed input receipts only for the exact canonical resume b
     const command=await prepare();ids.push(command.canonical_user_message_id!);
     const now=new Date();await database.db.update(nativeLiveTurnPreparations).set({...binding,...mismatch,status:'finalized_failure',dispatchStatus:'completed',failureCode:'PROVIDER_SESSION_CONFLICT',resultHash:'a'.repeat(64),finalizedAt:now,reservedBy:listener,reservedAt:now,reservationExpiresAt:now,executionStartedAt:now}).where(eq(nativeLiveTurnPreparations.id,command.prepare_id));
   }
+  // A failed in-place Retry resent its user message under the preparation id:
+  // the canonical id was already in the transcript, so that is its native input.
+  const failedRetry=await prepare();
+  {const now=new Date();await database.db.update(nativeLiveTurnPreparations).set({...binding,operation:'retry',replacementTargetUserMessageId:failedRetry.canonical_user_message_id,status:'finalized_failure',dispatchStatus:'completed',failureCode:'PROVIDER_SESSION_CONFLICT',resultHash:'a'.repeat(64),finalizedAt:now,reservedBy:listener,reservedAt:now,reservationExpiresAt:now,executionStartedAt:now}).where(eq(nativeLiveTurnPreparations.id,failedRetry.prepare_id));}
   // An unresolved turn at the same position is not proof of a failed input.
   const unresolved=await prepare();await database.db.update(nativeLiveTurnPreparations).set(binding).where(eq(nativeLiveTurnPreparations.id,unresolved.prepare_id));
   const current=await prepare();await database.db.update(nativeLiveTurnPreparations).set(binding).where(eq(nativeLiveTurnPreparations.id,current.prepare_id));
@@ -548,6 +552,6 @@ test('relay supplies failed input receipts only for the exact canonical resume b
   await relay.enqueuePreparation({userId:user.id,prepareId:current.prepare_id});
   const reserved=await relay.reserveNext({userId:user.id,listenerInstanceId:listener,dispatchTarget:'claude_code'});
   assert.ok(reserved);assert.equal(reserved.reservationId,current.prepare_id);
-  assert.deepEqual(reserved.command.failed_user_message_uuids,[ids[0]]);
+  assert.deepEqual(reserved.command.failed_user_message_uuids,[failedRetry.prepare_id,ids[0]]);
   assert.equal(reserved.command.parent_provider_session_id,session);assert.equal(reserved.command.parent_provider_checkpoint_id,checkpoint);
 });

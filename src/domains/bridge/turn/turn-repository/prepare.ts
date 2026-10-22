@@ -271,6 +271,8 @@ export async function prepareRetry(
           input.userId,
           input.conversationId,
           target.parentMessageId,
+          "replacement",
+          true,
         );
         if (!runtimeParent.ok) return runtimeParent.result;
 
@@ -557,9 +559,8 @@ export async function resolveRuntimeParent(
     conversationId: string,
     parentMessageId: string | null,
     continuation: "send" | "replacement" = "replacement",
-    // Edit rewinds its native session in place at the parent checkpoint, as
-    // Desktop's rewind does. Retry keeps the copy fork: it reuses the target's
-    // user UUID, which would appear twice in one native transcript.
+    // Edit and Retry rewind their native session in place at the parent
+    // checkpoint, as Desktop's rewind does.
     rewind = false,
   ): Promise<
     | {

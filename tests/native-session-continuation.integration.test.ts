@@ -198,8 +198,8 @@ for (const operation of ['retry', 'edit'] as const) test(`continuation ${operati
   const prepared = await coordinator.prepare(f.input.userId, { request_id: randomUUID(), conversation_id: f.input.conversationId,
     operation, dispatch_target: 'claude_code', target_user_message_id: u, ...(operation === 'edit' ? { text: 'edited synthetic' } : {}) });
   assert.ok(prepared.ok, JSON.stringify(prepared));
-  // Edit rewinds the bound session in place; Retry forks it.
-  assert.equal(prepared.command.runtime_mode, operation === 'edit' ? 'resume' : 'fork'); assert.equal(prepared.command.parent_provider_session_id, f.input.sessionId);
+  // Edit and Retry rewind the bound session in place.
+  assert.equal(prepared.command.runtime_mode, 'resume'); assert.equal(prepared.command.parent_provider_session_id, f.input.sessionId);
   assert.equal(prepared.command.parent_provider_checkpoint_id, f.input.checkpointId);
 }));
 

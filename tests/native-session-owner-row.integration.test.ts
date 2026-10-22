@@ -148,7 +148,7 @@ test('switching mirrors owner/revision and sends replace the row turn; a superse
   assert.notEqual(released.owner_revision, committed.owner_revision);
 }));
 
-test('an edit commit starts a new native line and stamps the new writer generation', { skip: !enabled }, async () => fixture(async ({ db, userId }) => {
+for (const operation of ['edit', 'retry'] as const) test(`a ${operation} commit starts a new native line and stamps the new writer generation`, { skip: !enabled }, async () => fixture(async ({ db, userId }) => {
   const conversationId = randomUUID(), parent = randomUUID(), target = randomUUID(), head = randomUUID();
   const session = randomUUID(), checkpoint = randomUUID();
   await db.insert(conversations).values({ id: conversationId, userId, origin: 'native_live' });
@@ -162,17 +162,20 @@ test('an edit commit starts a new native line and stamps the new writer generati
 
   const port = new DrizzleNativeLiveBackendTurnPort(db);
   const prepareId = randomUUID();
-  const prepared = await port.prepareEdit({ prepareId, userId, requestId: randomUUID(), conversationId,
-    targetUserMessageId: target, executionSelection: null, text: 'synthetic replacement', attachmentIds: [] });
+  const prepared = operation === 'edit'
+    ? await port.prepareEdit({ prepareId, userId, requestId: randomUUID(), conversationId,
+      targetUserMessageId: target, executionSelection: null, text: 'synthetic replacement', attachmentIds: [] })
+    : await port.prepareRetry({ prepareId, userId, requestId: randomUUID(), conversationId,
+      targetUserMessageId: target, executionSelection: null });
   assert.equal(prepared.ok, true, JSON.stringify(prepared));
   const before = await mirrored(db, conversationId);
   assert.equal(before.turn_prepare_id, prepareId);
 
-  // The edit rewinds the same native session in place, yet still replaces the line.
+  // The replacement rewinds the same native session in place, yet still replaces the line.
   const completed = await finalize(db, userId, await execute(db, userId, prepareId), session);
   assert.equal(completed.outcome, 'completed', JSON.stringify(completed));
   const after = await mirrored(db, conversationId);
-  assert.notEqual(after.writer_generation, before.writer_generation, 'an edit replaces the native line');
+  assert.notEqual(after.writer_generation, before.writer_generation, `a ${operation} replaces the native line`);
   assert.equal(await stampedGeneration(db, (completed as { assistantMessageId: string }).assistantMessageId), after.writer_generation);
 }));
 

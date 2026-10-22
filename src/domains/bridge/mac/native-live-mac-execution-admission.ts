@@ -1,7 +1,7 @@
 import { write } from "node:fs";
 import type { NativeLiveMacPersistentSessionOptions } from "./native-live-mac-claude-transport.js";
 import type { NativeLiveMacDaemonRelayClient } from "./native-live-mac-daemon-loop.js";
-import type { NativeLiveRuntimeCommand } from "../protocol/native-live-runtime-protocol.js";
+import { nativeInputId, type NativeLiveRuntimeCommand } from "../protocol/native-live-runtime-protocol.js";
 
 type DenialReason = "UNSUPPORTED_COMMAND" | "INPUT_ID_MISMATCH" | "SOURCE_MISMATCH"
   | "SESSION_MISMATCH" | "SESSION_MISSING" | "ADMISSION_NOT_GRANTED" | "RELAY_TIMEOUT"
@@ -53,11 +53,11 @@ export function createNativeLiveMacExecutionAdmission(input: {
     };
     if (!check || !(["send", "wake"].includes(command.operation) && ["new", "resume"].includes(command.runtime_mode)
         || ["edit", "retry"].includes(command.operation) && ["new", "fork"].includes(command.runtime_mode)
-        // Edit rewinds its own session in place, as Desktop does; Retry forks.
-        || command.operation === "edit" && command.runtime_mode === "resume" && !!command.parent_provider_session_id)
+        // Edit and Retry rewind their own session in place, as Desktop does.
+        || ["edit", "retry"].includes(command.operation) && command.runtime_mode === "resume" && !!command.parent_provider_session_id)
       || command.parent_provider_checkpoint_id === undefined
       || command.runtime_mode === "fork" && (!command.parent_provider_session_id || !command.parent_provider_checkpoint_id)) return deny("UNSUPPORTED_COMMAND");
-    if (context.inputId !== (command.canonical_user_message_id ?? command.prepare_id)) return deny("INPUT_ID_MISMATCH");
+    if (context.inputId !== nativeInputId(command)) return deny("INPUT_ID_MISMATCH");
     if (context.phase === "input" && context.source !== (command.operation === "wake" ? "task-notification" : "human")) return deny("SOURCE_MISMATCH");
     if (command.runtime_mode === "resume" && context.providerSessionId !== providerSessionId) return deny("SESSION_MISMATCH");
     if (context.phase === "tool" && !context.providerSessionId) return deny("SESSION_MISSING");

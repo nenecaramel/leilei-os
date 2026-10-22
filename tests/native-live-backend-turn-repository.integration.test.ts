@@ -616,7 +616,8 @@ test(
     });
     assert.equal(retry.ok, true);
     if (!retry.ok) throw new Error("expected retry prepare success");
-    assert.equal(retry.command.runtime_mode, "fork");
+    // Desktop-style rewind: a retry resumes the same native session.
+    assert.equal(retry.command.runtime_mode, "resume");
     assert.equal(
       retry.command.parent_provider_session_id,
       "provider-first",
@@ -629,7 +630,7 @@ test(
       request_id: retryRequestId,
       conversation_id: conversation.id,
       status: "success",
-      provider_session_id: "provider-retry",
+      provider_session_id: "provider-first",
         provider_checkpoint_id: retry.command.prepare_id,
       normalized_events: [
         { type: "text", payload: { text: "retry answer" } },
@@ -824,7 +825,8 @@ test(
       .where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
     assert.deepEqual(
       providerCleanupsAfterEdit.map((row) => row.providerSessionId).sort(),
-      ["provider-retry"],
+      [],
+      "retry and edit rewind one session; nothing is left to clean up",
     );
 
     const failureRequestId =
