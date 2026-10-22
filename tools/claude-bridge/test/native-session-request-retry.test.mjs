@@ -15,20 +15,20 @@ async function client(responses, options = {}) {
 
 test('idempotent relay requests ride out a database or app restart with bounded backoff', async () => {
   const { request, calls, sleeps } = await client([unavailable, () => { throw new Error('socket hang up'); }, () => ok({ expectedHeadMessageId: null })]);
-  assert.deepEqual(await request('state', { conversationId: 'x' }), { expectedHeadMessageId: null });
+  assert.deepEqual(await request('continuation-state', { conversationId: 'x' }), { expectedHeadMessageId: null });
   assert.equal(calls.length, 3);
   assert.deepEqual(sleeps, [5_000, 15_000]);
 });
 
 test('persistent unavailability gives up after four attempts with a sanitized code', async () => {
   const { request, calls, sleeps } = await client([unavailable, unavailable, unavailable, unavailable, unavailable]);
-  await assert.rejects(request('release', {}), e => e.code === 'NATIVE_RESTORE_UNAVAILABLE' && !e.message.includes('PRIVATE'));
+  await assert.rejects(request('continuation-release', {}), e => e.code === 'NATIVE_RESTORE_UNAVAILABLE' && !e.message.includes('PRIVATE'));
   assert.equal(calls.length, 4);
   assert.deepEqual(sleeps, [5_000, 15_000, 30_000]);
 });
 
-test('restore and asset binding retry unavailability; refusals and attachment slots never retry', async () => {
-  for (const route of ['restore', 'asset', 'asset-stage']) {
+test('switch metadata calls retry unavailability; refusals and attachment slots never retry', async () => {
+  for (const route of ['choices', 'continuation-attach', 'continuation-release-begin']) {
     const { request, calls } = await client([unavailable, () => ok({ done: true })]);
     assert.deepEqual(await request(route, {}), { done: true });
     assert.equal(calls.length, 2, route);
@@ -39,19 +39,19 @@ test('restore and asset binding retry unavailability; refusals and attachment sl
     assert.equal(calls.length, 1, route);
   }
   const busy = await client([() => new Response(JSON.stringify({ success: false, error: { code: 'NATIVE_CONVERSATION_BUSY' } }), { status: 409 }), () => ok({})]);
-  await assert.rejects(busy.request('restore', {}), e => e.code === 'NATIVE_CONVERSATION_BUSY');
+  await assert.rejects(busy.request('continuation-attach', {}), e => e.code === 'NATIVE_CONVERSATION_BUSY');
   assert.equal(busy.calls.length, 1);
 });
 
-test('restore always gets the long bound because server-side work, not only upload, takes time', async () => {
-  const { nativeHistoryRequest, NATIVE_RESTORE_UPLOAD_TIMEOUT_MS, NATIVE_HISTORY_REQUEST_TIMEOUT_MS } = await import('../src/native-session-switch-restore.mjs');
+test('every switch request gets the same short bound', async () => {
+  const { nativeHistoryRequest, NATIVE_HISTORY_REQUEST_TIMEOUT_MS } = await import('../src/native-session-switch-restore.mjs');
   const original = AbortSignal.timeout;
   const durations = [];
   AbortSignal.timeout = ms => { durations.push(ms); return new AbortController().signal; };
   try {
     const request = nativeHistoryRequest({ relayUrl: 'https://relay.invalid', relayToken: 'PRIVATE_TOKEN', fetchImpl: async () => ok({}) });
-    await request('restore', { small: true });
-    await request('state', { small: true });
-    assert.deepEqual(durations, [NATIVE_RESTORE_UPLOAD_TIMEOUT_MS, NATIVE_HISTORY_REQUEST_TIMEOUT_MS]);
+    await request('continuation-attach', { small: true });
+    await request('choices', { small: true });
+    assert.deepEqual(durations, [NATIVE_HISTORY_REQUEST_TIMEOUT_MS, NATIVE_HISTORY_REQUEST_TIMEOUT_MS]);
   } finally { AbortSignal.timeout = original; }
 });

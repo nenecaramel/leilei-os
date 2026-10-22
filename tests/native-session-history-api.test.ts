@@ -9,13 +9,7 @@ const cp = "00000000-0000-4000-8000-000000000032";
 const revision = "a".repeat(64);
 const entries = [{ type: "user", uuid: conversationId, parentUuid: null, message: { content: "PRIVATE_PROMPT" } }, { type: "assistant", uuid: cp, parentUuid: conversationId, message: { content: "PRIVATE_CONTENT" } }];
 const body = () => ({ conversationId, expectedHeadMessageId: null, expectedRevision: null, effectiveWorkingDirectory: "/synthetic", projection: projectNativeHistory({ sessionId: sid, revision, entries }, cp), nativeSnapshot: { sessionId: sid, revision, entries } });
-async function server(restore: any, run: (url: string) => Promise<void>, authenticated = true) {
-  await withServer(app => {
-    if (authenticated) app.use((request, _response, next) => { request.mcpUserId = userId; next(); });
-    app.use("/store", createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any, restoreNativeHistory: restore } as any));
-  }, run);
-}
-test("legacy full-history endpoints are retired and cannot reach old writers", async () => {
+test("legacy full-history endpoints no longer exist and cannot reach old writers", async () => {
   let called = 0;
   const forbidden = async () => { called++; throw new Error("OLD_WRITER_CALLED"); };
   await withServer(app => {
@@ -34,21 +28,11 @@ test("legacy full-history endpoints are retired and cannot reach old writers", a
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify(body()),
       });
-      assert.equal(response.status, 410, name);
-      const text = await response.text();
-      assert.equal(JSON.parse(text).error.code, "NATIVE_FULL_HISTORY_RETIRED");
-      assert.doesNotMatch(text, /PRIVATE_PROMPT|PRIVATE_CONTENT|OLD_WRITER_CALLED/);
+      assert.equal(response.status, 404, name);
+      assert.doesNotMatch(await response.text(), /PRIVATE_PROMPT|PRIVATE_CONTENT|OLD_WRITER_CALLED/);
     }
     assert.equal(called, 0);
   });
-  await server(forbidden, async url => {
-    for (const name of ["restore", "state", "release", "asset", "asset-stage"]) {
-      const response = await fetch(url + "/store/native-history/" + name, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body()),
-      });
-      assert.equal(response.status, 401, name);
-    }
-  }, false);
 });
 
 test("native-history-assets transport rejects copies but leaves regular SessionStore append working", async () => {

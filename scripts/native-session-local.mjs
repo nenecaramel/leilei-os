@@ -41,14 +41,12 @@ export function desktopAppRunning({ execute = execFileSync } = {}) {
   try { return /\d/.test(execute('/usr/bin/pgrep', ['-x', 'Claude'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 })); }
   catch (error) { if (error?.status === 1) return false; throw new Error('DESKTOP_STATE_UNKNOWN'); }
 }
-// Hang guard only: every relay request and attachment upload inside the child
-// has its own bound. A first import on a slow link spends minutes on the restore
-// upload plus attachments; restore is idempotent and attachments resume on rerun.
+// Hang guard only: every relay request inside the child has its own bound.
 export const NATIVE_SWITCH_CHILD_TIMEOUT_MS = 15 * 60_000;
 
 // Only the existing authenticated switch performs writes. This local wrapper
 // obtains credentials in memory; it does not start a daemon or model query.
-export function runLocalSwitch(args, { execute = execFileSync, environment = process.env, print = value => process.stdout.write(value), conversationId, historyMode = "continuation", archive = true, desktopRunning = desktopAppRunning } = {}) {
+export function runLocalSwitch(args, { execute = execFileSync, environment = process.env, print = value => process.stdout.write(value), conversationId, desktopRunning = desktopAppRunning } = {}) {
   const [mode, id] = args;
   if (!Object.hasOwn(modes, mode) || (mode === 'list' ? args.length !== 1 : args.length !== 2 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) {
     throw new Error('Usage: native-session-local.mjs list | desktop SESSION_ID | leileios SESSION_ID');
@@ -66,12 +64,10 @@ export function runLocalSwitch(args, { execute = execFileSync, environment = pro
     env.LEILEI_NATIVE_LIVE_RELAY_TOKEN = variables.NATIVE_LIVE_RELAY_AUTH_TOKEN;
     env.LEILEI_NATIVE_LIVE_RELAY_URL = variables.MCP_SERVER_URL;
   }
-  if (!['continuation', 'complete'].includes(historyMode)) throw new Error('INVALID_SWITCH_MODE');
-  const flags = ['--history-mode', historyMode, ...(mode === 'list' ? [] : ['--session-id', id])];
+  const flags = ['--history-mode', 'continuation', ...(mode === 'list' ? [] : ['--session-id', id])];
   if (mode !== 'list' && conversationId) flags.push('--conversation-id', conversationId);
   try {
     print(execute(process.execPath, [script, modes[mode], ...flags], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: NATIVE_SWITCH_CHILD_TIMEOUT_MS, maxBuffer: 128 * 1024 }));
-    if (mode === 'leileios' && historyMode === 'complete' && archive) print(afterSwitchArchive({ execute, env }));
   } catch (error) {
     // The child CLI emits only public reason codes. Do not print command/env
     // objects or raw Railway errors that may include secret values.
