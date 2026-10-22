@@ -239,7 +239,10 @@ private struct NativeLiveIMessageTrailingTimestamp: View {
             .foregroundStyle(Color.white.opacity(0.98))
             .lineLimit(1)
             .fixedSize()
-            .alignmentGuide(.trailing) { $0[.leading] - 6 }
+            .padding(.leading, 6)
+            // A zero-width anchor on the bubble's trailing edge; the time
+            // overflows to its right instead of overlapping the bubble.
+            .frame(width: 0, alignment: .leading)
             .allowsHitTesting(false)
     }
 }

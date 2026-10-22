@@ -207,7 +207,10 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   assert.match(bubble, /private struct NativeLiveIMessageTrailingTimestamp: View/);
   assert.match(bubble, /\.font\(\.system\(size: 12\)\)\.tracking\(0\.12\)/);
   assert.match(bubble, /NativeLiveIMessageTrailingTimestamp: View \{[\s\S]*?\.foregroundStyle\(Color\.white\.opacity\(0\.98\)\)/);
-  assert.match(bubble, /\.alignmentGuide\(\.trailing\) \{ \$0\[\.leading\] - 6 \}/);
+  // Device acceptance: an alignmentGuide offset was ignored and the time
+  // overlapped the bubble; a zero-width leading anchor places it outside.
+  assert.match(bubble, /\.fixedSize\(\)\s*\.padding\(\.leading, 6\)[\s\S]*?\.frame\(width: 0, alignment: \.leading\)/);
+  assert.doesNotMatch(bubble, /alignmentGuide\(\.trailing\)/);
   assert.match(history, /timeZoneIdentifier: timeZone/);
   assert.match(history, /UIPasteboard\.general\.string = text/);
   assert.match(history, /if chatTheme == \.iMessage \{[\s\S]*?\} else \{[\s\S]*?MessageTimestampFormatter\.string/);
