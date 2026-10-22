@@ -124,7 +124,7 @@ test('clock paint and thought inset are refined while action icons return to reg
   assert.match(surface, /\.padding\(\.trailing, 1\)/);
 });
 
-test('iMessage loading is text-only at the Original leading edge while Worked for aligns with the Thought icon', () => {
+test('loading, Thought process and Worked for rows share one 2pt leading inset in both themes', () => {
   const row = readFileSync(root + 'NativeLiveAssistantTurnRow.swift', 'utf8');
   const thinking = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
   const activity = readFileSync(root + 'NativeLiveRuntimeActivity.swift', 'utf8');
@@ -134,8 +134,10 @@ test('iMessage loading is text-only at the Original leading edge while Worked fo
   assert.match(row, /else \{\s*Text\("Thinking\.\.\."\)\.font\(\.system\(size: 14\)\)\.foregroundStyle\(\.secondary\)/);
   assert.match(thinking, /struct NativeLiveProcessStatusHeadline: View/);
   const idle = thinking.slice(thinking.indexOf('struct NativeLiveProcessStatusHeadline:'), thinking.indexOf('// A small dotted clock'));
-  // Like Original's Thinking..., the loading line has no glyph and no 2pt inset.
-  assert.doesNotMatch(idle, /NativeLiveThoughtProcessIcon\(\)|HStack|\.padding\(\.leading/);
+  // The loading line has no glyph; every process row starts 2pt in.
+  assert.doesNotMatch(idle, /NativeLiveThoughtProcessIcon\(\)|HStack/);
+  assert.match(idle, /\.padding\(\.leading, 2\)/);
+  assert.match(row, /Text\("Thinking\.\.\."\)\.font\(\.system\(size: 14\)\)\.foregroundStyle\(\.secondary\)\.padding\(\.leading, 2\)/);
   assert.match(idle, /Text\(title\)\s*\.font\(\.system\(size: 14\)\)/);
   assert.match(idle, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
   assert.match(idle, /iMessageWallpaperVisible \? Color\.black\.opacity\(0\.75\) : \.clear/);
@@ -146,7 +148,7 @@ test('iMessage loading is text-only at the Original leading edge while Worked fo
   assert.doesNotMatch(workHeader, /NativeLiveThoughtProcessIcon\(\)|Image\(systemName:\s*"clock"\)/);
   assert.match(thinking, /NativeLiveThoughtProcessIcon\(\)/);
   assert.match(activity, /spacing: chatTheme == \.iMessage \? 8 : 12/);
-  assert.match(activity, /\.padding\(\.leading, chatTheme == \.iMessage && !header\.isEmpty \? 2 : 0\)/);
+  assert.match(activity, /\.padding\(\.leading, header\.isEmpty \? 0 : 2\)/);
   assert.match(activity, /expansion\.toggleActivity\(\)/);
   assert.match(activity, /effectiveExpanded\s*\? "chevron\.down"\s*: "chevron\.right"/);
 });

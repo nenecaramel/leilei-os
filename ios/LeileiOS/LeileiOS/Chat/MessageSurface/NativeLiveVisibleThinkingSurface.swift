@@ -52,8 +52,8 @@ struct NativeLiveProcessStatusHeadline: View {
     @Environment(\.iMessageWallpaperVisible) private var iMessageWallpaperVisible
     let title: String
 
-    // Text only, at the same leading edge as Original's Thinking...; the
-    // Thought process glyph appears once a thinking summary exists.
+    // Text only, with the 2pt inset every process row shares; the Thought
+    // process glyph appears once a thinking summary exists.
     var body: some View {
         Text(title)
             .font(.system(size: 14))
@@ -63,6 +63,7 @@ struct NativeLiveProcessStatusHeadline: View {
                 radius: iMessageWallpaperVisible ? 2 : 0,
                 y: iMessageWallpaperVisible ? 1 : 0
             )
+            .padding(.leading, 2)
     }
 }
 

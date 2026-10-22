@@ -759,7 +759,7 @@ test('the iMessage generating-state header matches the existing Thought/Worked c
   assert.match(thinking, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
   const workHeader = activity.slice(activity.indexOf('    var body: some View {'), activity.indexOf('            if effectiveExpanded {'));
   assert.doesNotMatch(workHeader, /NativeLiveThoughtProcessIcon\(\)|Image\(systemName:\s*"clock"\)/);
-  assert.match(workHeader, /\.padding\(\.leading, chatTheme == \.iMessage && !header\.isEmpty \? 2 : 0\)/);
+  assert.match(workHeader, /\.padding\(\.leading, header\.isEmpty \? 0 : 2\)/);
   assert.match(thinking, /\.padding\(\.leading, 2\)/);
   assert.match(activity, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
 });
