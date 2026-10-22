@@ -65,6 +65,8 @@ export type NativeLiveMacPersistentSession = {
   /** Optional for legacy/test transports; current persistent SDK hosts expose it. */
   listTasks?(): NativeLiveMacTaskState[];
   stopTask(id: string, expected?: { handle: string }): Promise<void>;
+  /** Desktop's /model and /effort on the live session; absent on legacy/test transports. */
+  applyExecutionSelection?(selection: NativeLiveExecutionSelection | null | undefined): Promise<void>;
   readTaskOutput?(id: string, expected: { handle: string; signal?: AbortSignal }): Promise<{ output: string; totalBytes: number; truncated: boolean }>;
   /** The frame's last top-level assistant record, once durable and descended from the parent. */
   verifyCheckpoint(input: { events: Record<string, unknown>[]; parentCheckpointId: string | null; timeoutMs?: number }): Promise<string>;

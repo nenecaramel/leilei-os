@@ -67,6 +67,7 @@ export class NativeLiveMacPersistentTurnRouter {
   private binding: NativeLiveMacSessionBinding | null = null;
   private generationId: string | null = null;
   private initialCommand: NativeLiveRuntimeCommand | null = null;
+  private selection: NativeLiveRuntimeCommand["execution_selection"] = null;
   private active: Slot | null = null;
   private retired = false;
   private closeReason: NativeLiveMacSessionCloseReason | null = null;
@@ -132,7 +133,7 @@ export class NativeLiveMacPersistentTurnRouter {
     // A stale serialized send can only enter this writer's queue when the
     // server verifies its exact live reservation and branch at bindInput().
     // No retry/edit/wake/foreign session receives this exception.
-    if (this.initialCommand && !this.selectionMatches(command)) throw new Error("Execution selection changes are not supported by the persistent router yet.");
+    if (this.initialCommand && !this.selectionMatches(command) && !this.canSwitchSelection(command)) throw new Error("Execution selection change cannot be applied to the live session.");
     let finish!: () => void;
     const finished = new Promise<void>(resolve => { finish = resolve; });
     const slot: Slot = { ...input, resultReady: false, finished, finish, command, inputId: command.canonical_user_message_id ?? command.prepare_id,
@@ -153,6 +154,11 @@ export class NativeLiveMacPersistentTurnRouter {
       }
       if (!this.binding) await this.open(slot);
       this.assertSlot(slot);
+      if (!this.selectionMatches(command)) {
+        await this.binding!.session.applyExecutionSelection!(command.execution_selection);
+        this.assertSlot(slot);
+        this.selection = command.execution_selection ?? null;
+      }
       if (this.input.relay.renewExecutionLease) {
         slot.lease = new NativeLiveMacExecutionLease({
           // A lost renewal response is not a revocation of an already granted
@@ -366,11 +372,18 @@ export class NativeLiveMacPersistentTurnRouter {
       && command.parent_provider_session_id === this.binding.session.sessionId
       && (command.parent_provider_checkpoint_id === this.providerCheckpointId
         || (command.operation === "send" && this.input.relay.bindInput !== undefined))
-      && this.selectionMatches(command);
+      && (this.selectionMatches(command) || this.canSwitchSelection(command));
   }
   private selectionMatches(command: NativeLiveRuntimeCommand): boolean {
     return (command.operation === "wake" && command.execution_selection == null)
-      || isDeepStrictEqual(command.execution_selection, this.initialCommand?.execution_selection);
+      || isDeepStrictEqual(command.execution_selection ?? null, this.selection);
+  }
+  // Desktop's /model and /effort: a live writer switches in place, keeping its
+  // native tasks. Wake carries no new selection; thinking has no live switch.
+  private canSwitchSelection(command: NativeLiveRuntimeCommand): boolean {
+    return command.operation !== "wake" && typeof this.binding?.session.applyExecutionSelection === "function"
+      && command.execution_selection != null && this.selection != null
+      && command.execution_selection.thinking === this.selection.thinking;
   }
   get isRetired(): boolean { return this.retired; }
   hasActiveTurn(): boolean { return this.active !== null; }
@@ -550,6 +563,7 @@ export class NativeLiveMacPersistentTurnRouter {
     const command = slot.command;
     if (this.input.registry.getGenerationId(command.conversation_id)) throw new Error("Conversation already owns a persistent writer.");
     this.initialCommand = command;
+    this.selection = command.execution_selection ?? null;
     this.providerCheckpointId = command.parent_provider_checkpoint_id ?? null;
     const taskControlsAvailable = await this.input.taskControlsAvailable?.() === true;
     this.assertSlot(slot);

@@ -40,7 +40,7 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
   let transcript: Array<Record<string, unknown>> | null = null;
   let writeTranscript = true;
   let readGate: (() => Promise<void>) | null = null;
-  const resumes: unknown[] = [], submitted: string[] = [];
+  const resumes: unknown[] = [], submitted: string[] = [], live: unknown[] = [];
   let sdk!: { canUseTool: (name: string, input: unknown, context: unknown) => Promise<unknown>;
     hooks: { UserPromptSubmit: Array<{ hooks: Array<(input: Record<string, unknown>) => Promise<{ decision?: string }>> }>;
       PreToolUse: Array<{ hooks: Array<(input: Record<string, unknown>) => Promise<{ hookSpecificOutput?: { permissionDecision?: string } }>> }> } };
@@ -70,7 +70,8 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
       transcript = (options as { resume?: string }).resume ? restored.map(entry => ({ ...entry, sessionId: activeSid })) : [];
       void (async () => { for await (const item of prompt) { submitted.push(item.uuid); inputs.push(item); } })();
       output.push({ type: "system", subtype: "init", session_id: activeSid });
-      return { [Symbol.asyncIterator]: () => output, close() { closes++; output.end(); inputs.end(); }, async interrupt() { return { still_queued: [] }; } };
+      return { [Symbol.asyncIterator]: () => output, close() { closes++; output.end(); inputs.end(); }, async interrupt() { return { still_queued: [] }; },
+        async setModel(model: string) { live.push(["model", model]); }, async applyFlagSettings(settings: unknown) { live.push(["flags", settings]); } };
     } });
     return configured;
   });
@@ -89,7 +90,7 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
     output.push({ type: "result", subtype: "success", session_id: activeSid, user_message_uuid: uuid });
   };
   t.after(async () => { await router.close(); await registry.closeAll(); await rm(root, { recursive: true, force: true }); });
-  return { relay, workingDirectory: root, get sessionOptions(){return sessionOptions;}, router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, backgroundFrames, results, backgroundObserved, resumes, submitted, setTranscript(value: Array<Record<string, unknown>>) { transcript = value; }, setReadGate(value: () => Promise<void>) { readGate = value; }, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
+  return { relay, live, workingDirectory: root, get sessionOptions(){return sessionOptions;}, router, registry, run, finish, output, inputs, admissions, background, backgroundOwners, backgroundFrames, results, backgroundObserved, resumes, submitted, setTranscript(value: Array<Record<string, unknown>>) { transcript = value; }, setReadGate(value: () => Promise<void>) { readGate = value; }, get sdk() { return sdk; }, get launches() { return launches; }, holdTranscript() { writeTranscript = false; }, get closes() { return closes; }, setAdmission(sink: (command: NativeLiveRuntimeCommand) => Promise<boolean>) { admissionSink = sink; }, setBackground(sink: () => Promise<NativeLiveMacPersistentAcknowledgement>) { backgroundSink = sink; }, deny() { allow = false; } };
 }
 
 test("failed post-F background publication synchronously fences the next foreground send", async t => {
@@ -591,7 +592,20 @@ test("a wake without a model override inherits this session's existing selection
  const first=f.run({...command(1),execution_selection:selection});f.finish((await f.inputs.next()).value!.uuid);await first;
  const wake={...command(2,true),execution_selection:null};assert.equal(f.router.matches(wake),true);
  const running=f.run(wake);f.finish((await f.inputs.next()).value!.uuid);await running;assert.equal(f.launches,1);
- assert.equal(f.router.matches({...command(3),execution_selection:{...selection,effort:"low"}}),false);
+});
+
+// Desktop's /model and /effort: the running session switches in place, so its
+// native tasks keep running. Thinking mode has no live switch and still refuses.
+test("a model or effort change switches the running session in place",async t=>{
+ const f=await fixture(t);const selection={model:"claude-opus-5-5",thinking:"adaptive",effort:"high"} as const;
+ const first=f.run({...command(1),execution_selection:selection});f.finish((await f.inputs.next()).value!.uuid);await first;
+ const changed={...command(2),execution_selection:{model:"claude-sonnet-5-5",thinking:"adaptive",effort:"low"} as const};
+ assert.equal(f.router.matches(changed),true);
+ const running=f.run(changed);f.finish((await f.inputs.next()).value!.uuid);await running;
+ assert.deepEqual(f.live,[["model","claude-sonnet-5-5"],["flags",{effortLevel:"low"}]]);
+ assert.equal(f.launches,1,"no new query or session");
+ assert.equal(f.router.matches({...command(3),execution_selection:changed.execution_selection}),true,"the switched selection is now current");
+ assert.equal(f.router.matches({...command(3),execution_selection:{model:"claude-sonnet-5-5",thinking:"between_tools",effort:"low"}}),false);
 });
 
 test("suspension revokes authorization already awaiting the server response",async t=>{
