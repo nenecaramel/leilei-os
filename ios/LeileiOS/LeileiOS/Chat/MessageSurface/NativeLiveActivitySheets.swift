@@ -1,6 +1,11 @@
 import SwiftUI
 import Foundation
 
+enum NativeLiveDrawerText {
+    // About 1.5x the default visible gap between 17pt body lines (Chinese text).
+    static let lineSpacing: CGFloat = 4
+}
+
 struct NativeLiveMurmurSheet: View {
     let text: String
 
@@ -9,6 +14,7 @@ struct NativeLiveMurmurSheet: View {
             ScrollView {
                 Text(text)
                     .font(.body)
+                    .lineSpacing(NativeLiveDrawerText.lineSpacing)
                     .foregroundStyle(.primary)
                     .textSelection(.enabled)
                     .frame(

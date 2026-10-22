@@ -113,6 +113,7 @@ private struct NativeLiveThoughtProcessSheet: View {
                     ForEach(items) { item in
                         Text(item.text)
                             .font(.body)
+                            .lineSpacing(NativeLiveDrawerText.lineSpacing)
                             .foregroundStyle(.primary)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
