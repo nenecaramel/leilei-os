@@ -3,10 +3,10 @@ import test from 'node:test';
 import { AgentSdkClaudeTransport } from '../src/agent-sdk-claude-transport.mjs';
 function queue(){let waiter,ended=false;const values=[];return {push(v){if(waiter){const w=waiter;waiter=null;w({value:v,done:false});}else values.push(v);},end(){ended=true;waiter?.({done:true});},[Symbol.asyncIterator](){return {next(){return values.length?Promise.resolve({value:values.shift(),done:false}):ended?Promise.resolve({done:true}):new Promise(r=>{waiter=r;});}};}};}
 function fixture({loadQuery=null,omitEcho=false,failClose=false,manualResults=false,onInput=()=>{}}={}){
- const output=queue(),inputs=[],background=[];let calls=0,closed=0,options;
- const queryImpl=({prompt,options:opts})=>{calls++;options=opts;(async()=>{let initialized=false;for await(const input of prompt){inputs.push(input);onInput(input);if(!initialized){initialized=true;output.push({type:'system',subtype:'init',session_id:'s'});}if(manualResults)continue;output.push({type:'assistant',session_id:'s',message:{content:[{type:'text',text:input.message.content[0].text}]}});output.push({type:'result',subtype:'success',session_id:'s',result:'synthetic',...(omitEcho==='zero'?{user_message_uuid:'00000000-0000-0000-0000-000000000000'}:omitEcho?{}:{user_message_uuid:input.uuid})});}})();return {close(){closed++;if(failClose){failClose=false;throw new Error('synthetic close failure');}output.end();},async interrupt(){return {still_queued:[]};},async stopTask(){},async *[Symbol.asyncIterator](){yield* output;}};};
+ const output=queue(),inputs=[],background=[],live=[];let calls=0,closed=0,options;
+ const queryImpl=({prompt,options:opts})=>{calls++;options=opts;(async()=>{let initialized=false;for await(const input of prompt){inputs.push(input);onInput(input);if(!initialized){initialized=true;output.push({type:'system',subtype:'init',session_id:'s'});}if(manualResults)continue;output.push({type:'assistant',session_id:'s',message:{content:[{type:'text',text:input.message.content[0].text}]}});output.push({type:'result',subtype:'success',session_id:'s',result:'synthetic',...(omitEcho==='zero'?{user_message_uuid:'00000000-0000-0000-0000-000000000000'}:omitEcho?{}:{user_message_uuid:input.uuid})});}})();return {close(){closed++;if(failClose){failClose=false;throw new Error('synthetic close failure');}output.end();},async interrupt(){return {still_queued:[]};},async stopTask(){},async setModel(model){live.push(['model',model]);},async applyFlagSettings(settings){live.push(['flags',settings]);},async *[Symbol.asyncIterator](){yield* output;}};};
  const transport=new AgentSdkClaudeTransport({environment:{},cwd:'/synthetic',toolPermissionPolicy:'auto_allow',...(loadQuery?{loadQuery}:{queryImpl})});
- return {transport,inputs,background,output,queryImpl,get options(){return options;},get calls(){return calls;},get closed(){return closed;},open(extra={}){return transport.openPersistentSession({authorize:async()=>true,onBackgroundResult:async value=>{background.push(value);},...extra});}};
+ return {transport,inputs,background,output,live,queryImpl,get options(){return options;},get calls(){return calls;},get closed(){return closed;},open(extra={}){return transport.openPersistentSession({authorize:async()=>true,onBackgroundResult:async value=>{background.push(value);},...extra});}};
 }
 test('configured transport uses one SDK query for two turns and retains default settings/permissions',async t=>{
  const f=fixture();const host=await f.open();t.after(()=>host.close());
@@ -580,4 +580,17 @@ test('a reasonless first startup cancellation cannot be relabelled by later clea
  });return value;};
  await assert.rejects(f.open({onCloseDiagnostic:value=>diagnostics.push(value)}),/abort/i);
  assert.deepEqual(diagnostics.map(x=>[x.phase,x.reasonCode]),[['requested','STARTUP_ABORTED'],['completed','STARTUP_ABORTED']]);
+});
+
+test('a live session switches model and effort in place and refuses a thinking-mode change',async t=>{
+ const f=fixture();const host=await f.open({execution:{model:'claude-opus-5-5',thinking:'adaptive',effort:'high'}});t.after(()=>host.close());
+ await host.submit('first',{id:'one'});
+ await host.applyExecutionSelection({model:'claude-sonnet-5-5',thinking:'adaptive',effort:'low'});
+ assert.deepEqual(f.live,[['model','claude-sonnet-5-5'],['flags',{effortLevel:'low'}]]);
+ await host.applyExecutionSelection({model:'claude-sonnet-5-5',thinking:'adaptive'});
+ assert.deepEqual(f.live.at(-1),['flags',{effortLevel:null}],'an omitted effort returns to the model default');
+ await assert.rejects(host.applyExecutionSelection({model:'claude-sonnet-5-5',thinking:'between_tools',effort:'low'}),error=>error.runtimeCode==='RUNTIME_UNAVAILABLE');
+ assert.equal(f.live.length,3,'a refused change touches nothing');
+ const second=await host.submit('second',{id:'two'});
+ assert.equal(second.providerSessionId,'s');assert.equal(f.calls,1);assert.equal(f.closed,0);
 });

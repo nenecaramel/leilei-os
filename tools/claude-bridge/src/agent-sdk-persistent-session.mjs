@@ -1,4 +1,5 @@
 import { recoverCompletedNativeTurn } from "./completed-turn-recovery.mjs";
+import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import { observeNativeSessionStartup } from "./native-session-startup-identity.mjs";
 import { durableCheckpointPrefix } from "./provider-checkpoint-prefix.mjs";
@@ -21,6 +22,7 @@ export async function openAgentSdkPersistentSession(owner, checkpoints, options 
     const { authorize, onBackgroundResult, createBackgroundOutput = null, execution = null, permissionHandler = null,
       questionHandler = null, perTaskStopAffordance = false, onCloseDiagnostic = null } = options;
     if (typeof authorize !== "function" || typeof onBackgroundResult !== "function") throw new Error("Persistent sessions require authorize and onBackgroundResult handlers.");
+    let currentExecution = execution;
     if (createBackgroundOutput !== null && typeof createBackgroundOutput !== "function") throw new Error("Invalid background output factory.");
     if (typeof perTaskStopAffordance !== "boolean") throw new Error("Task stop capability must be boolean.");
     if (owner.activeQuery || owner.activeTurnHandle || owner.activeSessionHost || owner.legacyOperation) throw runtimeError("Claude transport already has an active session.", { runtimeCode: "RUNTIME_UNAVAILABLE" });
@@ -207,7 +209,7 @@ export async function openAgentSdkPersistentSession(owner, checkpoints, options 
           let timer;
           try {
             await Promise.race([(async () => {
-              if (execution) {
+              if (currentExecution) {
                 if (typeof host.query.getSettings !== "function") throw new Error("SDK settings readback unavailable.");
                 settings = await host.query.getSettings();
                 if (typeof host.query.supportedModels === "function") supportedModels = await host.query.supportedModels();
@@ -217,9 +219,22 @@ export async function openAgentSdkPersistentSession(owner, checkpoints, options 
           } catch (error) { readbackError = error instanceof Error ? error.message : String(error); }
           finally { clearTimeout(timer); }
           return { ...result, contextUsage: normalizeAgentSdkContextUsage(rawUsage),
-            executionReadback: execution ? normalizeAgentSdkExecutionReadback({ requested: execution, settings, supportedModels }) : null,
+            executionReadback: currentExecution ? normalizeAgentSdkExecutionReadback({ requested: currentExecution, settings, supportedModels }) : null,
             executionReadbackError: readbackError };
         });
+      };
+      // Desktop's /model and /effort: switch the live session in place so its
+      // native tasks keep running. Thinking mode has no live switch.
+      host.applyExecutionSelection = async next => {
+        const current = normalizeAgentSdkExecutionSelection(currentExecution);
+        const wanted = normalizeAgentSdkExecutionSelection(next);
+        if (!isDeepStrictEqual(current.thinking, wanted.thinking))
+          throw runtimeError("A live session cannot change its thinking mode.", { runtimeCode: "RUNTIME_UNAVAILABLE" });
+        if (typeof host.query.setModel !== "function" || typeof host.query.applyFlagSettings !== "function")
+          throw runtimeError("SDK live model and effort switching is unavailable.", { runtimeCode: "RUNTIME_UNAVAILABLE" });
+        if (wanted.model !== current.model) await host.query.setModel(wanted.model);
+        if (wanted.effort !== current.effort) await host.query.applyFlagSettings({ effortLevel: wanted.effort ?? null });
+        currentExecution = next;
       };
       // A turn's checkpoint is its last top-level assistant record, accepted only
       // once durably in the local transcript and descended from the previously
