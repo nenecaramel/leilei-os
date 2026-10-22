@@ -80,6 +80,8 @@ test('voice/audio bubbles start growing after 2 characters / 2 seconds and reach
  const iMessageVoice=user.slice(user.indexOf('private var iMessageVoiceBubble: some View'),user.indexOf('private var usesCompactVoiceInsets: Bool'));
  assert.match(iMessageVoice,/\.nativeLiveVoiceBubbleWidth\(alignment: \.trailing/);
  assert.match(iMessageVoice,/NativeLiveVoiceBubbleGeometry\.userWidth\(transcript: presentation\.copyText/);
+ // Expanding keeps the collapsed width: the width applies to the whole stack, transcript included.
+ assert.ok(iMessageVoice.indexOf('.nativeLiveVoiceBubbleWidth(') > iMessageVoice.indexOf('if isVoiceTranscriptRevealed {'));
  const originalVoice=user.slice(user.indexOf('private struct NativeLiveVoiceMessageBubbleVisual'));
  assert.match(originalVoice,/\.nativeLiveVoiceBubbleWidth\(alignment: \.trailing/);
  assert.doesNotMatch(originalVoice,/\.frame\(width: NativeLiveVoiceBubbleGeometry\.userWidth/);

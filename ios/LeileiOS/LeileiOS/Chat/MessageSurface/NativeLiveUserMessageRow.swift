@@ -79,10 +79,10 @@ struct NativeLiveUserMessagePresentationView: View {
 
     // Reusing the regular outgoing bubble is intentional: its AppStorage tint,
     // opacity, 14pt/10pt text padding and 20pt rounded material are shared
-    // automatically with typed messages. Collapsed, the width grows with the
-    // transcript up to the row's 70pt clearance, like a typed message.
+    // automatically with typed messages. The width grows with the transcript
+    // up to the row's 70pt clearance; expanding keeps it and wraps the text.
     private var iMessageVoiceBubble: some View {
-        NativeLiveIMessageTextBubble(side: .outgoing, fitsContent: isVoiceTranscriptRevealed) {
+        NativeLiveIMessageTextBubble(side: .outgoing, fitsContent: false) {
             VStack(alignment: .trailing, spacing: ChatPresentationLayout.iMessageTextBubbleSpacing) {
                 HStack(spacing: NativeLiveVoiceBubbleGeometry.userClusterSpacing) {
                     Image(systemName: "waveform")
@@ -91,10 +91,6 @@ struct NativeLiveUserMessagePresentationView: View {
                         .font(.system(size: 9, weight: .semibold))
                 }
                 .foregroundStyle(Color.white.opacity(0.98))
-                .nativeLiveVoiceBubbleWidth(alignment: .trailing, fallbackMaximum: nil) { maximum in
-                    NativeLiveVoiceBubbleGeometry.userWidth(transcript: presentation.copyText,
-                        clusterWidth: NativeLiveVoiceBubbleMetrics.userClusterWidth, maxContentWidth: maximum)
-                }
                 .frame(height: NativeLiveVoiceBubbleGeometry.contentHeight)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(
@@ -107,6 +103,10 @@ struct NativeLiveUserMessagePresentationView: View {
                     NativeLiveVisualNodesView(nodes: presentation.textNodes, role: presentation.role)
                         .foregroundStyle(Color.white.opacity(0.98))
                 }
+            }
+            .nativeLiveVoiceBubbleWidth(alignment: .trailing, fallbackMaximum: nil) { maximum in
+                NativeLiveVoiceBubbleGeometry.userWidth(transcript: presentation.copyText,
+                    clusterWidth: NativeLiveVoiceBubbleMetrics.userClusterWidth, maxContentWidth: maximum)
             }
         }
     }

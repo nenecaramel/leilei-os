@@ -87,7 +87,7 @@ enum NativeLiveIMessageBubbleSide {
 struct NativeLiveIMessageTextBubble<Content: View>: View {
     let side: NativeLiveIMessageBubbleSide
     let content: Content
-    // False lets content size itself from the row's offered width (collapsed voice).
+    // False lets content size itself from the row's offered width (voice).
     var fitsContent = true
 
     init(side: NativeLiveIMessageBubbleSide, fitsContent: Bool = true, @ViewBuilder content: () -> Content) {

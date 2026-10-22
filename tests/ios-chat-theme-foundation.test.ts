@@ -663,7 +663,7 @@ test('iMessage voice-to-text uses the identical outgoing text bubble paint, padd
   // Voice is nested in the same AppStorage-backed outgoing bubble as text,
   // so user-chosen color and opacity always update both without duplication.
   assert.match(user, /if presentation\.isVoiceInput \{\s*iMessageVoiceBubble/);
-  assert.match(user, /private var iMessageVoiceBubble: some View \{\s*NativeLiveIMessageTextBubble\(side: \.outgoing, fitsContent: isVoiceTranscriptRevealed\)/);
+  assert.match(user, /private var iMessageVoiceBubble: some View \{\s*NativeLiveIMessageTextBubble\(side: \.outgoing, fitsContent: false\)/);
   assert.match(shared, /@AppStorage\(IMessageBubbleAppearance\.outgoingColorKey\)/);
   assert.match(shared, /@AppStorage\(IMessageBubbleAppearance\.outgoingOpacityKey\)/);
   assert.match(shared, /\.opacity\(side == \.outgoing \? outgoingOpacity : incomingOpacity\)/);
