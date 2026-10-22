@@ -663,7 +663,7 @@ test('iMessage voice-to-text uses the identical outgoing text bubble paint, padd
   // Voice is nested in the same AppStorage-backed outgoing bubble as text,
   // so user-chosen color and opacity always update both without duplication.
   assert.match(user, /if presentation\.isVoiceInput \{\s*iMessageVoiceBubble/);
-  assert.match(user, /private var iMessageVoiceBubble: some View \{\s*NativeLiveIMessageTextBubble\(side: \.outgoing\)/);
+  assert.match(user, /private var iMessageVoiceBubble: some View \{\s*NativeLiveIMessageTextBubble\(side: \.outgoing, fitsContent: isVoiceTranscriptRevealed\)/);
   assert.match(shared, /@AppStorage\(IMessageBubbleAppearance\.outgoingColorKey\)/);
   assert.match(shared, /@AppStorage\(IMessageBubbleAppearance\.outgoingOpacityKey\)/);
   assert.match(shared, /\.opacity\(side == \.outgoing \? outgoingOpacity : incomingOpacity\)/);
@@ -679,9 +679,10 @@ test('iMessage voice-to-text uses the identical outgoing text bubble paint, padd
   assert.equal((voiceSurface.match(/\.foregroundStyle\(Color\.white\.opacity\(0\.98\)\)/g) || []).length, 2);
   assert.match(voiceSurface, /NativeLiveVisualNodesView\(nodes: presentation\.textNodes, role: presentation\.role\)/);
 
-  // Do not carry the old 125pt transcript-width cap, 8pt leading padding or
-  // primary/secondary glyph colors into the iMessage variant.
-  assert.doesNotMatch(voiceSurface, /userWidth\(|userMaxContentWidth|\.frame\(width:/);
+  // Collapsed voice grows with the transcript up to the row's offered width;
+  // no fixed 125pt cap, 8pt leading padding or primary/secondary glyph colors.
+  assert.match(voiceSurface, /userWidth\(transcript: presentation\.copyText/);
+  assert.doesNotMatch(voiceSurface, /userMaxContentWidth|\.frame\(width:/);
   assert.match(voice, /userMaxContentWidth: CGFloat = 125/);
   assert.match(user, /Spacer\(minLength:leadingClearance\)/);
   assert.match(user, /usesCompactVoiceInsets \? NativeLiveVoiceBubbleGeometry\.userLeadingInset/);

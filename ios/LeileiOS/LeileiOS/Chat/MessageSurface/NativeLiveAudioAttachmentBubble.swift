@@ -79,8 +79,12 @@ struct NativeLiveAudioAttachmentBubble: View {
                 ? ChatPresentationLayout.iMessageUserBubbleVerticalInset
                 : NativeLiveVoiceBubbleGeometry.verticalInset
         )
-        .frame(width: bubbleWidth, alignment: .leading)
-        .animation(.easeInOut(duration: 0.16), value: bubbleWidth)
+        // Up to the row width left of the trailing clearance, like a text reply.
+        .nativeLiveVoiceBubbleWidth(alignment: .leading, fallbackMaximum: NativeLiveVoiceBubbleGeometry.audioMaximumWidth) { maximum in
+            NativeLiveVoiceBubbleGeometry.audioWidth(duration: effectiveDuration ?? 0, sizeBytes: input.sizeBytes,
+                playWidth: NativeLiveVoiceBubbleGeometry.audioPlayWidth, labelWidth: labelWidth, maximumWidth: maximum)
+        }
+        .animation(.easeInOut(duration: 0.16), value: effectiveDuration)
         .modifier(NativeLiveAssistantAudioBubbleBackground())
         // Mirror the 70pt clearance on the right of incoming text bubbles.
         .padding(
@@ -91,11 +95,6 @@ struct NativeLiveAudioAttachmentBubble: View {
         .sheet(item: $lease, onDismiss: { lease?.cleanup(); lease = nil }) {
             NativeLiveFileOpenView(lease: $0)
         }
-    }
-
-    private var bubbleWidth: CGFloat {
-        NativeLiveVoiceBubbleGeometry.audioWidth(duration: effectiveDuration ?? 0, sizeBytes: input.sizeBytes,
-            playWidth: NativeLiveVoiceBubbleGeometry.audioPlayWidth, labelWidth: labelWidth)
     }
 
     private var labelWidth: CGFloat { NativeLiveVoiceBubbleMetrics.durationLabelWidth(durationLabel) }

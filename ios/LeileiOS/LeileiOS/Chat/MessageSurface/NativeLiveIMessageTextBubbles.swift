@@ -87,20 +87,27 @@ enum NativeLiveIMessageBubbleSide {
 struct NativeLiveIMessageTextBubble<Content: View>: View {
     let side: NativeLiveIMessageBubbleSide
     let content: Content
+    // False lets content size itself from the row's offered width (collapsed voice).
+    var fitsContent = true
 
-    init(side: NativeLiveIMessageBubbleSide, @ViewBuilder content: () -> Content) {
+    init(side: NativeLiveIMessageBubbleSide, fitsContent: Bool = true, @ViewBuilder content: () -> Content) {
         self.side = side
+        self.fitsContent = fitsContent
         self.content = content()
     }
 
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            // Short text retains its natural width.
-            bubble(content.fixedSize(horizontal: true, vertical: false))
-            // Wrapped text is measured by SwiftUI at the available width.
-            // The background stays around the rendered content instead of
-            // filling the entire row and leaving a blank right-hand strip.
-            bubble(content.fixedSize(horizontal: false, vertical: true))
+    @ViewBuilder var body: some View {
+        if !fitsContent {
+            bubble(content)
+        } else {
+            ViewThatFits(in: .horizontal) {
+                // Short text retains its natural width.
+                bubble(content.fixedSize(horizontal: true, vertical: false))
+                // Wrapped text is measured by SwiftUI at the available width.
+                // The background stays around the rendered content instead of
+                // filling the entire row and leaving a blank right-hand strip.
+                bubble(content.fixedSize(horizontal: false, vertical: true))
+            }
         }
     }
 

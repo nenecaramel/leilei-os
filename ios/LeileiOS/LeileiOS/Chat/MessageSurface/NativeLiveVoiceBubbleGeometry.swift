@@ -13,28 +13,36 @@ enum NativeLiveVoiceBubbleGeometry {
 
     // MARK: User voice (content width, i.e. inside the bubble padding)
 
+    // Fallback only when the row offers no width; in Chat the row's clearance sets the maximum.
     static let userMaxContentWidth: CGFloat = 125
+    // Transcripts up to this many characters keep the shortest width.
+    static let userShortestCharacterCount = 2
     static let userLeadingInset: CGFloat = 8
     static let userTrailingInset: CGFloat = 14
     static let userClusterSpacing: CGFloat = 6
     // Fallback only when UIKit cannot measure; the app always measures the real symbols.
     static let userFallbackClusterWidth: CGFloat = 40
 
-    static func userWidth(transcript: String?, clusterWidth: CGFloat = userFallbackClusterWidth) -> CGFloat {
+    static func userWidth(transcript: String?, clusterWidth: CGFloat = userFallbackClusterWidth,
+                          maxContentWidth: CGFloat = userMaxContentWidth) -> CGFloat {
         let count = (transcript ?? "").filter { character in
             !character.isWhitespace && character.unicodeScalars.contains {
                 $0.properties.generalCategory != .control && $0.properties.generalCategory != .format
             }
         }.count
-        let minimum = min(clusterWidth, userMaxContentWidth)
-        return minimum + (userMaxContentWidth - minimum) * CGFloat(min(1, log1p(Double(count)) / log1p(240)))
+        let minimum = min(clusterWidth, maxContentWidth)
+        let growth = Double(max(0, count - userShortestCharacterCount))
+        return minimum + (maxContentWidth - minimum) * CGFloat(min(1, log1p(growth) / log1p(Double(240 - userShortestCharacterCount))))
     }
 
     // MARK: Assistant audio (outer width)
 
     static let audioPlayWidth: CGFloat = 24
     static let audioMinimumWaveformWidth: CGFloat = 28
+    // Fallback only when the row offers no width; in Chat the row's clearance sets the maximum.
     static let audioMaximumWidth: CGFloat = 236
+    // Audio up to this length keeps the shortest width.
+    static let audioShortestSeconds: TimeInterval = 2
     static let audioFallbackLabelWidth: CGFloat = 24
     static let waveformBarWidth: CGFloat = 2
     static let waveformBarSpacing: CGFloat = 2
@@ -47,10 +55,12 @@ enum NativeLiveVoiceBubbleGeometry {
     }
 
     static func audioWidth(duration: TimeInterval, sizeBytes: Int?, playWidth: CGFloat = audioPlayWidth,
-                           labelWidth: CGFloat = audioFallbackLabelWidth) -> CGFloat {
+                           labelWidth: CGFloat = audioFallbackLabelWidth,
+                           maximumWidth: CGFloat = audioMaximumWidth) -> CGFloat {
         let minimum = audioMinimumWidth(playWidth: playWidth, labelWidth: labelWidth)
-        let growth = max(0, audioMaximumWidth - minimum)
-        return minimum + growth * CGFloat(min(1, log1p(audioSeconds(duration: duration, sizeBytes: sizeBytes)) / log1p(60)))
+        let growth = max(0, maximumWidth - minimum)
+        let seconds = max(0, audioSeconds(duration: duration, sizeBytes: sizeBytes) - audioShortestSeconds)
+        return minimum + growth * CGFloat(min(1, log1p(seconds) / log1p(60 - audioShortestSeconds)))
     }
 
     /// A coarse compressed-audio estimate, used only until the decoded duration is known.

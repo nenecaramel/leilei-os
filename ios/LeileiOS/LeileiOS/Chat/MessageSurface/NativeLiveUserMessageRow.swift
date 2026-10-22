@@ -79,9 +79,10 @@ struct NativeLiveUserMessagePresentationView: View {
 
     // Reusing the regular outgoing bubble is intentional: its AppStorage tint,
     // opacity, 14pt/10pt text padding and 20pt rounded material are shared
-    // automatically with typed messages. No fixed voice width applies here.
+    // automatically with typed messages. Collapsed, the width grows with the
+    // transcript up to the row's 70pt clearance, like a typed message.
     private var iMessageVoiceBubble: some View {
-        NativeLiveIMessageTextBubble(side: .outgoing) {
+        NativeLiveIMessageTextBubble(side: .outgoing, fitsContent: isVoiceTranscriptRevealed) {
             VStack(alignment: .trailing, spacing: ChatPresentationLayout.iMessageTextBubbleSpacing) {
                 HStack(spacing: NativeLiveVoiceBubbleGeometry.userClusterSpacing) {
                     Image(systemName: "waveform")
@@ -90,6 +91,10 @@ struct NativeLiveUserMessagePresentationView: View {
                         .font(.system(size: 9, weight: .semibold))
                 }
                 .foregroundStyle(Color.white.opacity(0.98))
+                .nativeLiveVoiceBubbleWidth(alignment: .trailing, fallbackMaximum: nil) { maximum in
+                    NativeLiveVoiceBubbleGeometry.userWidth(transcript: presentation.copyText,
+                        clusterWidth: NativeLiveVoiceBubbleMetrics.userClusterWidth, maxContentWidth: maximum)
+                }
                 .frame(height: NativeLiveVoiceBubbleGeometry.contentHeight)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(
@@ -139,7 +144,11 @@ private struct NativeLiveVoiceMessageBubbleVisual: View {
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.secondary)
         }
-        .frame(width: NativeLiveVoiceBubbleGeometry.userWidth(transcript: transcript, clusterWidth: NativeLiveVoiceBubbleMetrics.userClusterWidth), alignment: .trailing)
+        // Up to the row's 48pt clearance, like a typed message.
+        .nativeLiveVoiceBubbleWidth(alignment: .trailing, fallbackMaximum: NativeLiveVoiceBubbleGeometry.userMaxContentWidth) { maximum in
+            NativeLiveVoiceBubbleGeometry.userWidth(transcript: transcript,
+                clusterWidth: NativeLiveVoiceBubbleMetrics.userClusterWidth, maxContentWidth: maximum)
+        }
         .frame(height: NativeLiveVoiceBubbleGeometry.contentHeight, alignment: .leading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(isExpanded ? "Voice message, transcript shown" : "Voice message, tap to show transcript")
