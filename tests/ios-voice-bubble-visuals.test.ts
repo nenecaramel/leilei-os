@@ -82,9 +82,14 @@ test('voice/audio bubbles start growing after 2 characters / 2 seconds and reach
  assert.match(iMessageVoice,/NativeLiveVoiceBubbleGeometry\.userWidth\(transcript: presentation\.copyText/);
  // Expanding keeps the collapsed width: the width applies to the whole stack, transcript included.
  assert.ok(iMessageVoice.indexOf('.nativeLiveVoiceBubbleWidth(') > iMessageVoice.indexOf('if isVoiceTranscriptRevealed {'));
- const originalVoice=user.slice(user.indexOf('private struct NativeLiveVoiceMessageBubbleVisual'));
+ // Original: the width wraps the glyphs and transcript, so expanding keeps the
+ // collapsed outer width even though the leading inset grows from 8pt to 14pt.
+ const originalVoice=user.slice(user.indexOf('@ViewBuilder private var textBubble: some View'),user.indexOf('private func toggleVoice()'));
  assert.match(originalVoice,/\.nativeLiveVoiceBubbleWidth\(alignment: \.trailing/);
- assert.doesNotMatch(originalVoice,/\.frame\(width: NativeLiveVoiceBubbleGeometry\.userWidth/);
+ assert.ok(originalVoice.indexOf('.nativeLiveVoiceBubbleWidth(') > originalVoice.indexOf('if isVoiceTranscriptRevealed {'));
+ assert.match(originalVoice,/ChatPresentationLayout\.bubbleHorizontalInset - NativeLiveVoiceBubbleGeometry\.userLeadingInset/);
+ assert.match(originalVoice,/maxContentWidth: maximum \+ extra\) - extra/);
+ assert.doesNotMatch(user,/\.frame\(width: NativeLiveVoiceBubbleGeometry\.userWidth/);
  for(const surface of [audio,eleven]) {
   assert.match(surface,/\.nativeLiveVoiceBubbleWidth\(alignment: \.leading/);
   assert.match(surface,/NativeLiveVoiceBubbleGeometry\.audioWidth\([\s\S]*maximumWidth: maximum\)/);

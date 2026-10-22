@@ -118,10 +118,18 @@ struct NativeLiveUserMessagePresentationView: View {
     @ViewBuilder private var textBubble: some View {
         if presentation.isVoiceInput {
             VStack(alignment:.trailing,spacing:10) {
-                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed, transcript:presentation.copyText)
+                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed)
                 if isVoiceTranscriptRevealed {
                     NativeLiveVisualNodesView(nodes:presentation.textNodes,role:presentation.role)
                 }
+            }
+            // Expanding widens the leading inset by 6pt, so the content narrows by
+            // the same amount and the bubble keeps its collapsed width. At the
+            // shortest width the glyphs overhang into that extra inset.
+            .nativeLiveVoiceBubbleWidth(alignment: .trailing, fallbackMaximum: NativeLiveVoiceBubbleGeometry.userMaxContentWidth) { maximum in
+                let extra = isVoiceTranscriptRevealed ? ChatPresentationLayout.bubbleHorizontalInset - NativeLiveVoiceBubbleGeometry.userLeadingInset : 0
+                return NativeLiveVoiceBubbleGeometry.userWidth(transcript: presentation.copyText,
+                    clusterWidth: NativeLiveVoiceBubbleMetrics.userClusterWidth, maxContentWidth: maximum + extra) - extra
             }
         } else { NativeLiveVisualNodesView(nodes:presentation.textNodes,role:presentation.role) }
     }
@@ -133,7 +141,6 @@ struct NativeLiveUserMessagePresentationView: View {
 
 private struct NativeLiveVoiceMessageBubbleVisual: View {
     let isExpanded: Bool
-    let transcript: String?
 
     var body: some View {
         HStack(spacing: NativeLiveVoiceBubbleGeometry.userClusterSpacing) {
@@ -143,11 +150,6 @@ private struct NativeLiveVoiceMessageBubbleVisual: View {
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.secondary)
-        }
-        // Up to the row's 48pt clearance, like a typed message.
-        .nativeLiveVoiceBubbleWidth(alignment: .trailing, fallbackMaximum: NativeLiveVoiceBubbleGeometry.userMaxContentWidth) { maximum in
-            NativeLiveVoiceBubbleGeometry.userWidth(transcript: transcript,
-                clusterWidth: NativeLiveVoiceBubbleMetrics.userClusterWidth, maxContentWidth: maximum)
         }
         .frame(height: NativeLiveVoiceBubbleGeometry.contentHeight, alignment: .leading)
         .accessibilityElement(children: .ignore)
