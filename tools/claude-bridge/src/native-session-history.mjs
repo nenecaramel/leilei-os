@@ -6,19 +6,6 @@ const carrierTypes = new Set(["user", "assistant", "system", "attachment"]);
 const fail = code => Object.assign(new Error(code), { code });
 const fingerprint = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const assetFingerprint = source => fingerprint(Object.fromEntries(Object.entries(source).sort(([a], [b]) => a.localeCompare(b))));
-// Session-independent message fingerprint (mirrors the server): image/document
-// blocks name the projecting session, so that id is blanked before hashing.
-// Also ignores the native parent pointer: compaction re-parents the preserved tail.
-export function neutralMessageFingerprint(message) {
-  const { fingerprint: _fingerprint, parentProviderCheckpointId: _parent, ...body } = message;
-  const blocks = body.blocks.map(block => block.payload && typeof block.payload === "object" && "source_session_id" in block.payload
-    ? { ...block, payload: { ...block.payload, source_session_id: "" } } : block);
-  return fingerprint({ ...body, blocks });
-}
-
-/** Digest of a synchronized prefix: `[sourceMessageId, neutral fingerprint]` pairs. */
-export const nativeSyncDigest = pairs => fingerprint(pairs.map(m => [m.sourceMessageId, m.fingerprint]));
-
 // PostgreSQL JSONB preserves values but not object key order.
 export function nativeDisplayAssetRevision(entries) {
   const canonical = value => Array.isArray(value) ? value.map(canonical)
@@ -246,54 +233,4 @@ export function projectNativeHistory(snapshot, checkpointId, options) {
   }
   for (const message of messages) message.fingerprint = fingerprint(message);
   return { schemaVersion: 1, sessionId: snapshot.sessionId, revision: snapshot.revision, checkpointId, messages };
-}
-
-// A pure plan, not a database writer. The future writer must compare-and-swap
-// expectedRevision and apply all changes atomically. Branch changes are explicit.
-export function planNativeHistorySync(previous, next) {
-  if (previous) {
-    if (previous.sessionId !== next.sessionId || previous.messages.length > next.messages.length || previous.messages.some((message, index) => message.sourceMessageId !== next.messages[index]?.sourceMessageId)) {
-      throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
-    }
-  }
-  for (const [index, old] of (previous?.messages ?? []).entries()) {
-    const fresh = next.messages[index];
-    if (old.fingerprint === fresh.fingerprint) continue;
-    if (index !== previous.messages.length - 1 || old.role !== "assistant") throw fail("NATIVE_HISTORY_REWRITTEN");
-    const base = ({ blocks, sourceEntryUuids, providerCheckpointId, fingerprint, ...rest }) => rest;
-    if (!isDeepStrictEqual(base(old), base(fresh)) ||
-      old.blocks.length > fresh.blocks.length ||
-      !isDeepStrictEqual(old.blocks, fresh.blocks.slice(0, old.blocks.length)) ||
-      old.sourceEntryUuids.length > fresh.sourceEntryUuids.length ||
-      !isDeepStrictEqual(old.sourceEntryUuids, fresh.sourceEntryUuids.slice(0, old.sourceEntryUuids.length))) {
-      throw fail("NATIVE_HISTORY_REWRITTEN");
-    }
-  }
-  const existing = new Map(previous?.messages.map(message => [message.sourceMessageId, message.fingerprint]) ?? []);
-  return {
-    expectedRevision: previous?.revision ?? null,
-    nextRevision: next.revision,
-    checkpointId: next.checkpointId,
-    upserts: next.messages.filter(message => existing.get(message.sourceMessageId) !== message.fingerprint),
-  };
-}
-
-// Byte extraction only. Upload/binding must use the existing authenticated
-// attachment service later; this helper never reads a path or fetches a URL.
-export function extractNativeHistoryAsset(snapshot, reference, { expectedRevision, maxBytes }) {
-  if (snapshot.revision !== expectedRevision) throw fail("STALE_NATIVE_SNAPSHOT");
-  if (reference?.source_session_id !== snapshot.sessionId) throw fail("STALE_NATIVE_ASSET");
-  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || !Number.isInteger(reference?.source_block_ordinal) || reference.source_block_ordinal < 0) throw fail("INVALID_NATIVE_ASSET");
-  const entry = snapshot.entries.find(entry => entry.uuid === reference.source_entry_uuid && !entry.isSidechain);
-  const raw = entry && contentBlocks(entry)[reference.source_block_ordinal];
-  if (!["image", "document"].includes(raw?.type) || raw.source?.type !== "base64") throw fail("NATIVE_ASSET_UNAVAILABLE");
-  const { data, media_type: mimeType } = raw.source;
-  if (typeof data !== "string" || typeof mimeType !== "string" || !mimeType.includes("/")) throw fail("INVALID_NATIVE_ASSET");
-  if (data.length > Math.ceil(maxBytes / 3) * 4) throw fail("NATIVE_ASSET_TOO_LARGE");
-  if (!data.length || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) throw fail("INVALID_NATIVE_ASSET");
-  const bytes = Buffer.from(data, "base64");
-  if (bytes.length > maxBytes) throw fail("NATIVE_ASSET_TOO_LARGE");
-  if (bytes.toString("base64") !== data) throw fail("INVALID_NATIVE_ASSET");
-  if (reference.source_asset_hash !== assetFingerprint(raw.source)) throw fail("STALE_NATIVE_ASSET");
-  return { bytes, mimeType, sizeBytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
 }

@@ -197,18 +197,16 @@ test('begin and cancel HTTP endpoints enforce auth, shape, CAS and return the ro
   const c=await post('cancel',{conversationId:f.conversation.id,expectedRevision:data.expectedRevision});assert.equal(c.status,200);assert.equal((await c.json() as any).data.owner,'leileios');
  });
 });
-for(const action of ['asset','restore']as const)test(`releasing refuses the legacy ${action} API before its compatibility path`,{skip:!enabled},async t=>{
+for(const action of ['restore']as const)test(`releasing refuses the legacy ${action} API before its compatibility path`,{skip:!enabled},async t=>{
  const f=await releaseFixture(t),sessionId=randomUUID(),u=randomUUID(),a=randomUUID(),conversationId=randomUUID(),revision='2'.repeat(64);
  const {projectNativeHistory}=await import('../tools/claude-bridge/src/native-session-history.mjs');
  const {restoreNativeSessionHistory}=await import('../src/domains/conversation/native-session-history-repository.js');
- const {nativeSessionAsset}=await import('../src/domains/conversation/native-session-asset-repository.js');
  const entries=[{uuid:u,parentUuid:null,type:'user',timestamp:'2026-10-20T00:00:00Z',message:{content:[{type:'image',source:{type:'base64',media_type:'image/png',data:Buffer.from('synthetic').toString('base64')}}]}},
   {uuid:a,parentUuid:u,type:'assistant',timestamp:'2026-10-20T00:00:01Z',message:{content:[{type:'text',text:'synthetic'}]}}];
  const input={userId:f.user.id,conversationId,expectedHeadMessageId:null,expectedRevision:null,effectiveWorkingDirectory:'/synthetic',projection:projectNativeHistory({sessionId,revision,entries},a),nativeSnapshot:{sessionId,revision,entries}};
  const restored=await restoreNativeSessionHistory(f.db,input);const state=await readNativeContinuationState(f.db,{userId:f.user.id,conversationId,sessionId});
  const release=await continuation.beginNativeContinuationRelease(f.db,{userId:f.user.id,conversationId,sessionId,expectedHeadMessageId:restored.headMessageId,expectedRevision:state.expectedRevision});
- if(action==='asset')await assert.rejects(nativeSessionAsset(f.db,{userId:f.user.id,conversationId,sessionId,expectedRevision:revision,sourceEntryUuid:u,sourceBlockOrdinal:0}),{code:'NATIVE_CONVERSATION_BUSY'});
- else await assert.rejects(restoreNativeSessionHistory(f.db,{...input,expectedHeadMessageId:restored.headMessageId,expectedRevision:state.expectedRevision}),{code:'NATIVE_SESSION_SWITCHING'});
+ await assert.rejects(restoreNativeSessionHistory(f.db,{...input,expectedHeadMessageId:restored.headMessageId,expectedRevision:state.expectedRevision}),{code:'NATIVE_SESSION_SWITCHING'});
 });
 
 for(const atAnchor of [false,true])for(const finish of ['complete','cancel']as const)test(`verified quiet cursor survives begin then ${finish}, at handoff anchor=${atAnchor}`,{skip:!enabled},async t=>{

@@ -76,17 +76,6 @@ test("incomplete compact history, contradictory UUIDs and logical cycles fail cl
   ]) assert.throws(() => projectNativeHistory(snapshot(entries), "a"));
 });
 
-test("sync is idempotent and appends new turns without deleting existing history", async () => {
-  const { projectNativeHistory, planNativeHistorySync } = await import(moduleUrl);
-  const before = projectNativeHistory(snapshot(initial), "a2");
-  assert.deepEqual(planNativeHistorySync(before, before).upserts, []);
-  const after = projectNativeHistory({ ...snapshot([...initial, row("u2", "a2", "user", "again"), row("a3", "u2", "assistant", "next")]), revision: "next" }, "a3");
-  assert.deepEqual(planNativeHistorySync(before, after).upserts.map(m => m.sourceMessageId), ["u2", "a3"]);
-  assert.equal(planNativeHistorySync(before, after).expectedRevision, "revision");
-  assert.throws(() => planNativeHistorySync(after, before), e => e.code === "EXPLICIT_BRANCH_SELECTION_REQUIRED");
-  assert.throws(() => planNativeHistorySync(before, { ...after, sessionId: "B" }), e => e.code === "EXPLICIT_BRANCH_SELECTION_REQUIRED");
-});
-
 test("replayed duplicate carriers do not duplicate displayed messages", async () => {
   const { projectNativeHistory } = await import(moduleUrl);
   assert.equal(projectNativeHistory(snapshot([...initial, ...initial]), "a2").messages.length, 2);
@@ -103,80 +92,4 @@ test("Desktop rewritten preserved tail requires a source transcript, never a gue
     row("a2", "u2", "assistant", "new reply"),
   ];
   assert.throws(() => projectNativeHistory(snapshot(entries), "a2"), e => e.code === "COMPACT_SOURCE_HISTORY_REQUIRED");
-});
-
-test("sync cannot silently rewrite a previously projected older turn", async () => {
-  const { projectNativeHistory, planNativeHistorySync } = await import(moduleUrl);
-  const before = projectNativeHistory(snapshot(initial), "a2");
-  const changed = structuredClone(initial);
-  changed[0].message.content = "different old prompt";
-  const after = projectNativeHistory(snapshot([...changed, row("u2", "a2", "user", "new"), row("a3", "u2", "assistant", "next")]), "a3");
-  assert.throws(() => planNativeHistorySync(before, after), e => e.code === "NATIVE_HISTORY_REWRITTEN");
-});
-
-test("same active assistant may append blocks while preserving previously seen blocks", async () => {
-  const { projectNativeHistory, planNativeHistorySync } = await import(moduleUrl);
-  const before = projectNativeHistory(snapshot(initial), "a2");
-  const after = projectNativeHistory(snapshot([...initial, row("a3", "a2", "assistant", "extra")]), "a3");
-  assert.deepEqual(planNativeHistorySync(before, after).upserts.map(m => m.sourceMessageId), ["a1"]);
-  const changed = structuredClone(initial);
-  changed[3].message.content[0].text = "replaced reply";
-  assert.throws(() => planNativeHistorySync(before, projectNativeHistory(snapshot(changed), "a2")), e => e.code === "NATIVE_HISTORY_REWRITTEN");
-});
-
-test("image extraction preserves bytes and computes integrity without writing files", async () => {
-  const { projectNativeHistory, extractNativeHistoryAsset } = await import(moduleUrl);
-  const bytes = Buffer.from([0, 1, 2, 255, 128]);
-  const source = snapshot([row("u", null, "user", [{ type: "image", source: { type: "base64", media_type: "image/png", data: bytes.toString("base64") } }])]);
-  const ref = projectNativeHistory(source, "u").messages[0].blocks[0].payload;
-  const result = extractNativeHistoryAsset(source, ref, { expectedRevision: source.revision, maxBytes: 10 });
-  assert.deepEqual(result.bytes, bytes);
-  assert.equal(result.sizeBytes, 5);
-  assert.equal(result.sha256.length, 64);
-  assert.equal(result.mimeType, "image/png");
-});
-
-test("image extraction rejects stale references, oversized bytes and invalid base64", async () => {
-  const { projectNativeHistory, extractNativeHistoryAsset } = await import(moduleUrl);
-  const source = snapshot([row("u", null, "user", [{ type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } }])]);
-  const ref = projectNativeHistory(source, "u").messages[0].blocks[0].payload;
-  assert.throws(() => extractNativeHistoryAsset(source, ref, { expectedRevision: "other", maxBytes: 10 }), e => e.code === "STALE_NATIVE_SNAPSHOT");
-  assert.throws(() => extractNativeHistoryAsset(source, ref, { expectedRevision: source.revision, maxBytes: 1 }), e => e.code === "NATIVE_ASSET_TOO_LARGE");
-  source.entries[0].message.content[0].source.data = "INVALID!";
-  assert.throws(() => extractNativeHistoryAsset(source, ref, { expectedRevision: source.revision, maxBytes: 10 }), e => e.code === "INVALID_NATIVE_ASSET");
-});
-
-test("external URLs and local paths never trigger implicit image reads or downloads", async () => {
-  const { projectNativeHistory, extractNativeHistoryAsset } = await import(moduleUrl);
-  for (const asset of [{ type: "url", url: "https://private.invalid/image" }, { type: "file", path: "/private/file" }]) {
-    const source = snapshot([row("u", null, "user", [{ type: "image", source: asset }])]);
-    const ref = projectNativeHistory(source, "u").messages[0].blocks[0].payload;
-    assert.throws(() => extractNativeHistoryAsset(source, ref, { expectedRevision: source.revision, maxBytes: 10 }), e => e.code === "NATIVE_ASSET_UNAVAILABLE");
-  }
-});
-
-test("asset references cannot cross sessions or resolve to changed image content", async () => {
-  const { projectNativeHistory, extractNativeHistoryAsset } = await import(moduleUrl);
-  const source = snapshot([row("u", null, "user", [{ type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } }])]);
-  const ref = projectNativeHistory(source, "u").messages[0].blocks[0].payload;
-  assert.throws(() => extractNativeHistoryAsset({ ...source, sessionId: "B" }, ref, { expectedRevision: source.revision, maxBytes: 10 }), e => e.code === "STALE_NATIVE_ASSET");
-  source.entries[0].message.content[0].source.data = "AQAA";
-  assert.throws(() => extractNativeHistoryAsset(source, ref, { expectedRevision: source.revision, maxBytes: 10 }), e => e.code === "STALE_NATIVE_ASSET");
-});
-
-test("next-turn internal context does not rewrite a completed assistant checkpoint or fingerprint", async () => {
-  const { projectNativeHistory, planNativeHistorySync } = await import(moduleUrl);
-  const previous = projectNativeHistory(snapshot(initial), "a2");
-  const entries = [...initial,
-    row("next-context", "a2", "attachment", null, { attachment: { type: "hook_context", content: "PRIVATE_NEXT_CONTEXT" } }),
-    row("next-meta", "next-context", "user", "PRIVATE_META", { isMeta: true }),
-    row("u2", "next-meta", "user", "next real user"),
-    row("a3", "u2", "assistant", "next reply"),
-  ];
-  const next = projectNativeHistory({ ...snapshot(entries), revision: "next" }, "a3");
-  assert.deepEqual(next.messages.slice(0, 2), previous.messages);
-  assert.equal(next.messages[2].parentProviderCheckpointId, "next-meta", "the next turn still retains its exact native parent");
-  assert.doesNotMatch(JSON.stringify(next), /PRIVATE_NEXT_CONTEXT|PRIVATE_META/);
-  const plan = planNativeHistorySync(previous, next);
-  assert.deepEqual(plan.upserts, next.messages.slice(2));
 });

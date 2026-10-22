@@ -1,5 +1,4 @@
 import { attachDesktopNativeContinuation, handoffNativeContinuationToDesktop } from '../src/native-session-continuation.mjs';
-import { restoreDesktopNativeSession, handoffNativeSessionToDesktop } from '../src/native-session-switch-restore.mjs';
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { inspectDesktopNativeSession, listDesktopNativeSessions, resolveDesktopNativeSelection } from '../src/native-session-inspection.mjs';
@@ -16,7 +15,8 @@ for (let i = 1; i < args.length; i += 2) {
   if (!allowed.has(args[i]) || flags.has(args[i]) || !args[i + 1] || args[i + 1].startsWith('--')) valid = false;
   flags.set(args[i], args[i + 1]);
 }
-if (flags.has('--history-mode') && !['complete', 'continuation'].includes(flags.get('--history-mode'))) valid = false;
+// Full-history restore is retired; the flag remains for existing callers.
+if (flags.has('--history-mode') && flags.get('--history-mode') !== 'continuation') valid = false;
 const explicitPaths = flags.has('--desktop-index') || flags.has('--project-dir');
 if (args[0] === '--list') valid &&= [...flags.keys()].every(flag => ['--config-dir', '--desktop-dir', '--history-mode'].includes(flag));
 else valid &&= flags.has('--session-id')
@@ -27,7 +27,7 @@ if (!valid || (['--desktop', '--desktop-manual'].includes(args[0]) && !flags.has
   process.exitCode = 1;
 } else {
   const configDirectory = path.resolve(flags.get('--config-dir') ?? process.env.CLAUDE_CONFIG_DIR ?? path.join(homedir(), '.claude'));
-  const historyMode = flags.get('--history-mode') ?? 'complete';
+  const historyMode = 'continuation';
   const discovery = { historyMode, desktopSessionsDirectory: path.resolve(flags.get('--desktop-dir') ?? path.join(homedir(), 'Library', 'Application Support', 'Claude', 'claude-code-sessions')),
     projectsDirectory: path.join(configDirectory, 'projects'), peerDirectory: path.join(configDirectory, 'sessions') };
   try {
@@ -47,9 +47,7 @@ if (!valid || (['--desktop', '--desktop-manual'].includes(args[0]) && !flags.has
         expectedRevision: selection.nativeRevision,
       };
       const desktop = ['--desktop', '--desktop-manual'].includes(args[0]);
-      const write = historyMode === 'continuation'
-        ? (desktop ? handoffNativeContinuationToDesktop : attachDesktopNativeContinuation)
-        : (desktop ? handoffNativeSessionToDesktop : restoreDesktopNativeSession);
+      const write = desktop ? handoffNativeContinuationToDesktop : attachDesktopNativeContinuation;
       const result = args[0] === '--check' ? await preflightNativeSessionSwitch(pinned) : await write({
         input: pinned, conversationId: flags.get('--conversation-id') ?? selection.providerSessionId,
         relayUrl: process.env.LEILEI_NATIVE_LIVE_RELAY_URL,

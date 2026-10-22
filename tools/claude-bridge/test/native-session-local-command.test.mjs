@@ -75,13 +75,12 @@ test('selected conversation is forwarded explicitly and invalid identity is reje
 
 test('local switch child budget covers the largest bounded request and reports its own timeout by code', async () => {
   const { runLocalSwitch, NATIVE_SWITCH_CHILD_TIMEOUT_MS } = await import('../../../scripts/native-session-local.mjs');
-  const { NATIVE_HISTORY_REQUEST_TIMEOUT_MS, NATIVE_RESTORE_UPLOAD_TIMEOUT_MS, NATIVE_SERVER_REQUEST_TIMEOUT_MS } =
-    await import('../src/native-session-switch-restore.mjs');
-  // Client gives up on a large upload before the server's own request bound.
-  assert.ok(NATIVE_RESTORE_UPLOAD_TIMEOUT_MS < NATIVE_SERVER_REQUEST_TIMEOUT_MS);
-  // The outer guard must never cut a legitimate state + restore + release sequence,
-  // leaving room for resumable attachment uploads after the restore commits.
-  assert.ok(NATIVE_SWITCH_CHILD_TIMEOUT_MS >= 2 * (NATIVE_RESTORE_UPLOAD_TIMEOUT_MS + 2 * NATIVE_HISTORY_REQUEST_TIMEOUT_MS));
+  const { NATIVE_HISTORY_REQUEST_TIMEOUT_MS, NATIVE_RELAY_RETRY_DELAYS_MS } = await import('../src/native-session-switch-restore.mjs');
+  // The outer guard must never cut a legitimate sequence of switch requests,
+  // each of which may use every retry.
+  const oneRequest = (NATIVE_RELAY_RETRY_DELAYS_MS.length + 1) * NATIVE_HISTORY_REQUEST_TIMEOUT_MS
+    + NATIVE_RELAY_RETRY_DELAYS_MS.reduce((sum, ms) => sum + ms, 0);
+  assert.ok(NATIVE_SWITCH_CHILD_TIMEOUT_MS >= 4 * oneRequest);
   let childTimeout;
   assert.throws(() => runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { desktopRunning: () => false,
     execute(command, _args, options) {
@@ -93,59 +92,25 @@ test('local switch child budget covers the largest bounded request and reports i
   assert.equal(childTimeout, NATIVE_SWITCH_CHILD_TIMEOUT_MS);
 });
 
-test('without AUTO_APPLY a switch plans the archive and archive failure cannot fail the switch', () => {
-  withArchiveHome(false, ({ runLocalSwitch, afterSwitchArchive }) => {
-    const calls = [], output = [];
-    const relay = JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 'PRIVATE', MCP_SERVER_URL: 'https://fixture.example' });
-    runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], { historyMode: 'complete', desktopRunning: () => false, print: v => output.push(v), execute(command, args, options) {
-      if (command === 'railway') return relay;
-      calls.push(args);
-      if (args[0].endsWith('native-transcript-archive.mjs')) {
-        assert.equal(options.env.LEILEI_NATIVE_LIVE_RELAY_TOKEN, 'PRIVATE');
-        return JSON.stringify({ mode: 'plan', results: [{ folder: '-fixture', keep: 22, archive: 40, keepMB: 103, archiveMB: 307, applied: null }] });
-      }
-      return '{"outcome":"restored"}';
+// A switch no longer archives by itself (continuation switching since #1109);
+// the after-switch archive step stays available on its own.
+test('the archive step plans without AUTO_APPLY, applies with it, and reports only sanitized failures', () => {
+  withArchiveHome(false, ({ afterSwitchArchive }) => {
+    const planned = afterSwitchArchive({ autoApply: false, env: {}, execute(_command, args) {
+      assert.deepEqual(args.slice(1), [], 'plan-only: no --apply');
+      return JSON.stringify({ mode: 'plan', results: [{ folder: '-fixture', keep: 22, archive: 40, keepMB: 103, archiveMB: 307, applied: null }] });
     } });
-    assert.equal(calls.length, 2);
-    assert.deepEqual(calls[1].slice(1), [], 'plan-only: no --apply');
-    assert.match(output.join(''), /归档预演 -fixture：可归档 40 个（307 MB），保留 22 个（103 MB）/);
-    // Desktop direction never archives (Desktop is about to open).
-    const desktopCalls = [];
-    runLocalSwitch(['desktop', '00000000-0000-4000-8000-000000000001'], { print() {}, execute(command, args) { if (command !== 'railway') desktopCalls.push(args); return command === 'railway' ? relay : '{}'; } });
-    assert.equal(desktopCalls.length, 1);
-    // A failing archive only reports its sanitized reason.
+    assert.match(planned, /归档预演 -fixture：可归档 40 个（307 MB），保留 22 个（103 MB）/);
     const failed = afterSwitchArchive({ autoApply: false, env: {}, execute() { throw Object.assign(new Error('PRIVATE_DETAIL'), { stderr: 'ARCHIVE_REFERENCES_UNAVAILABLE\n' }); } });
     assert.equal(failed, '归档预演跳过：ARCHIVE_REFERENCES_UNAVAILABLE\n');
     let applied;
-    afterSwitchArchive({ autoApply: true, env: {}, execute(_c, args) { applied = args; return JSON.stringify({ mode: 'apply', results: [] }); } });
+    const done = afterSwitchArchive({ autoApply: true, env: {}, execute(_c, args) { applied = args;
+      return JSON.stringify({ mode: 'apply', results: [{ archive: 40, archiveMB: 307, keep: 22, keepMB: 103, applied: '-fixture' }] }); } });
     assert.equal(applied.at(-1), '--apply', 'the owner-created flag enables applying');
-  });
-});
-
-test('with AUTO_APPLY a switch applies the archive and archive failure cannot fail the switch', () => {
-  withArchiveHome(true, ({ runLocalSwitch }) => {
-    const archiveCalls = [], output = [];
-    const execute = (command, args) => {
-      if (command === 'railway') return JSON.stringify({ NATIVE_LIVE_RELAY_AUTH_TOKEN: 'fixture', MCP_SERVER_URL: 'https://fixture.example' });
-      if (args[0].endsWith('native-transcript-archive.mjs')) {
-        archiveCalls.push(args.slice(1));
-        return JSON.stringify({ mode: 'apply', results: [{ archive: 40, archiveMB: 307, keep: 22, keepMB: 103, applied: '-fixture' }] });
-      }
-      return '{"outcome":"restored"}';
-    };
-    const options = { historyMode: 'complete', desktopRunning: () => false, execute, print: value => output.push(value) };
-    runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], options);
-    assert.deepEqual(archiveCalls, [['--apply']]);
-    assert.match(output.join(''), /已归档 40 个旧会话文件/);
-    runLocalSwitch(['leileios', '00000000-0000-4000-8000-000000000001'], {
-      ...options, execute(command, args) {
-        if (args[0].endsWith('native-transcript-archive.mjs')) throw Object.assign(new Error('private fixture detail'), { stderr: 'ARCHIVE_REFERENCES_UNAVAILABLE\n' });
-        return execute(command, args);
-      },
-    });
-    assert.equal(output.filter(value => value === '{"outcome":"restored"}').length, 2);
-    assert.match(output.join(''), /归档跳过：ARCHIVE_REFERENCES_UNAVAILABLE/);
-    assert.doesNotMatch(output.join(''), /private fixture detail/);
+    assert.match(done, /已归档 40 个旧会话文件/);
+    const skipped = afterSwitchArchive({ autoApply: true, env: {}, execute() { throw Object.assign(new Error('private fixture detail'), { stderr: 'ARCHIVE_REFERENCES_UNAVAILABLE\n' }); } });
+    assert.match(skipped, /归档跳过：ARCHIVE_REFERENCES_UNAVAILABLE/);
+    assert.doesNotMatch(skipped, /private fixture detail/);
   });
 });
 

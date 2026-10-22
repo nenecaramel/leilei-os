@@ -23,14 +23,6 @@ export type NativeLiveProviderSessionStoreInternalDependencies = {
   >;
 };
 
-const retiredNativeHistoryHandler: RequestHandler = (request, response) => {
-  if (!requireInternalUser(response, request.mcpUserId)) return;
-  response.status(410).json({ success: false, error: {
-    code: "NATIVE_FULL_HISTORY_RETIRED",
-    message: "Legacy full-history copy/restore is retired; use native continuation.",
-  } });
-};
-
 export function createNativeLiveProviderSessionStoreInternalRouter(
   dependencies: NativeLiveProviderSessionStoreInternalDependencies,
 ): Router {
@@ -44,14 +36,9 @@ export function createNativeLiveProviderSessionStoreInternalRouter(
   router.post("/native-history/continuation-release-begin", nativeContinuationHandler(dependencies, "begin"));
   router.post("/native-history/continuation-release-cancel", nativeContinuationHandler(dependencies, "cancel"));
   router.post("/native-history/continuation-release", nativeContinuationHandler(dependencies, "release"));
-  // The former full-history writer and reader are retired. Keep the
-  // continuation-only ownership endpoints and the metadata-only picker.
-  router.post("/native-history/restore", retiredNativeHistoryHandler);
-  router.post("/native-history/state", retiredNativeHistoryHandler);
+  // Continuation-only ownership endpoints and the metadata-only picker; the
+  // former full-history copy/restore routes are gone.
   router.post("/native-history/choices", nativeHistoryChoicesHandler(dependencies));
-  router.post("/native-history/release", retiredNativeHistoryHandler);
-  router.post("/native-history/asset", retiredNativeHistoryHandler);
-  router.post("/native-history/asset-stage", retiredNativeHistoryHandler);
   router.post("/native-history/referenced-sessions", async (request, response) => {
     const userId = requireInternalUser(response, request.mcpUserId);
     if (!userId) return;

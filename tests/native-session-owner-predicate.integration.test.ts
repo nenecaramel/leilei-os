@@ -128,22 +128,6 @@ test('missing owner row allows a new conversation first prepare, admission, rene
     conversation_id:c.id,provider_session_id:randomUUID()});assert.ok(result.ok&&result.outcome==='completed');
 });
 
-for(const owner of ['desktop','releasing'] as const)test(`owner row ${owner} blocks native asset binding while JSON permits it`,{skip:!enabled},async t=>{
-  const f=await fixture(t),sessionId=randomUUID(),u=randomUUID(),a=randomUUID(),conversationId=randomUUID(),revision='1'.repeat(64);
-  const {projectNativeHistory}=await import('../tools/claude-bridge/src/native-session-history.mjs');
-  const {restoreNativeSessionHistory}=await import('../src/domains/conversation/native-session-history-repository.js');
-  const {nativeSessionAsset}=await import('../src/domains/conversation/native-session-asset-repository.js');
-  const entries=[{uuid:u,parentUuid:null,type:'user',timestamp:'2026-10-20T00:00:00Z',message:{content:[
-    {type:'image',source:{type:'base64',media_type:'image/png',data:Buffer.from('synthetic image').toString('base64')}}]}},
-    {uuid:a,parentUuid:u,type:'assistant',timestamp:'2026-10-20T00:00:01Z',message:{content:[{type:'text',text:'synthetic'}]}}];
-  await restoreNativeSessionHistory(f.db,{userId:f.user.id,conversationId,expectedHeadMessageId:null,expectedRevision:null,
-    effectiveWorkingDirectory:'/synthetic',projection:projectNativeHistory({sessionId,revision,entries},a),nativeSnapshot:{sessionId,revision,entries}});
-  const request={userId:f.user.id,conversationId,sessionId,expectedRevision:revision,sourceEntryUuid:u,sourceBlockOrdinal:0};
-  assert.equal((await nativeSessionAsset(f.db,request)).mimeType,'image/png');
-  await f.db.execute(sql`UPDATE native_live_session_owners SET owner=${owner} WHERE user_id=${f.user.id}::uuid AND conversation_id=${conversationId}::uuid`);
-  await assert.rejects(nativeSessionAsset(f.db,request),{code:'NATIVE_CONVERSATION_BUSY'});
-});
-
 test('real attach begin release attach keeps row authoritative without JSON copies and restores admission',{skip:!enabled},async t=>{
   const f=await fixture(t);
   const input={...f.scope,sessionId:f.session,checkpointId:f.base,revision:'2'.repeat(64),effectiveWorkingDirectory:'/synthetic',
