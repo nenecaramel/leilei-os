@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -253,6 +253,31 @@ test('Mind-only UI changes select actual Swift count and refresh regressions', (
   file(root, 'ios/LeileiOS/LeileiOS/Pages/Mind/MindKindList.swift');
   const plan = json(verifyScript, root, '--plan');
   assert.ok(plan.gates.some((gate: { command: string[] }) => gate.command.includes('tests/ios-mind-header-count.test.ts')));
+});
+
+test('iOS changes select the regressions for the area they touch', (t) => {
+  const cases: [string, string][] = [
+    ['ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveUserMessageRow.swift', 'tests/ios-voice-bubble-visuals.test.ts'],
+    ['ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveIMessageTextBubbles.swift', 'tests/ios-chat-theme-foundation.test.ts'],
+    ['ios/LeileiOS/LeileiOS/Navigation/Settings/SettingsHomeContent.swift', 'tests/ios-settings-boundaries.test.ts'],
+    ['ios/LeileiOS/LeileiOS/Pages/Universe/UniverseView.swift', 'tests/ios-universe-boundaries.test.ts'],
+    ['ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLiveAPI.swift', 'tests/ios-api-boundaries.test.ts'],
+    ['ios/LeileiOS/LeileiOS/App/AppModel.swift', 'tests/ios-runtime-delivery-latency.test.ts'],
+  ];
+  for (const [path, regression] of cases) {
+    const root = fixture(t);
+    file(root, path);
+    const plan = json(verifyScript, root, '--plan');
+    assert.ok(plan.gates.some((gate: { command: string[] }) => gate.command.includes(regression)), path);
+  }
+});
+
+test('every iOS source test belongs to an iOS verification gate', () => {
+  const map = JSON.parse(readFileSync('.agent/domain-map.json', 'utf8'));
+  const gated = new Set(Object.entries(map.gates as Record<string, { command: string[] }>)
+    .filter(([id]) => id.startsWith('ios-')).flatMap(([, gate]) => gate.command));
+  const tests = readdirSync('tests').filter(name => /^ios-.*\.test\.ts$/.test(name)).map(name => 'tests/' + name);
+  assert.deepEqual(tests.filter(test => !gated.has(test)), []);
 });
 
 test('Mind repository changes recommend isolated DB regressions without executing them', (t) => {
