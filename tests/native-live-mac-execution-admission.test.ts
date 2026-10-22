@@ -99,16 +99,18 @@ for (const operation of ["edit", "retry"] as const) for (const runtime_mode of [
       parent_provider_checkpoint_id: runtime_mode === "fork" ? "checkpoint" : null };
     const gate = createNativeLiveMacExecutionAdmission({ listenerInstanceId: "listener", command: replacement,
       relay: { async checkExecutionAdmission() { calls++; return true; } } });
-    assert.equal(await gate({ phase: "input", inputId: "user-input", source: "human", providerSessionId: "child" }), true);
-    assert.equal(await gate({ phase: "tool", inputId: "user-input", source: null, providerSessionId: "child" }), true);
+    // A retry's native input is its preparation id (see nativeInputId).
+    const inputId = operation === "retry" ? "prepare" : "user-input";
+    assert.equal(await gate({ phase: "input", inputId, source: "human", providerSessionId: "child" }), true);
+    assert.equal(await gate({ phase: "tool", inputId, source: null, providerSessionId: "child" }), true);
     for (const providerSessionId of ["parent", "foreign"])
-      assert.equal(await gate({ phase: "tool", inputId: "user-input", source: null, providerSessionId }), false);
+      assert.equal(await gate({ phase: "tool", inputId, source: null, providerSessionId }), false);
     assert.equal(calls, 2);
   });
 }
 
-// Edit rewinds its own session in place (resume); Retry keeps forking.
-test("edit/resume is admitted only for its own session; retry/resume is unsupported", async () => {
+// Edit and Retry rewind their own session in place (resume), as Desktop does.
+test("edit/resume is admitted only for its own session", async () => {
   let calls = 0;
   const rewind = { ...command, operation: "edit" as const, runtime_mode: "resume" as const,
     parent_provider_session_id: "parent", parent_provider_checkpoint_id: "checkpoint" };
@@ -116,10 +118,19 @@ test("edit/resume is admitted only for its own session; retry/resume is unsuppor
     relay: { async checkExecutionAdmission() { calls++; return true; } } });
   assert.equal(await gate({ phase: "input", inputId: "user-input", source: "human", providerSessionId: "parent" }), true);
   assert.equal(await gate({ phase: "tool", inputId: "user-input", source: null, providerSessionId: "foreign" }), false);
+  assert.equal(calls, 1);
+});
+
+// The retried user message is already in the transcript under its canonical
+// id, so the resent native input is identified by the fresh preparation id.
+test("retry/resume is admitted only for its fresh native input id", async () => {
+  let calls = 0;
   const reasons: string[] = [];
-  const retry = createNativeLiveMacExecutionAdmission({ listenerInstanceId: "listener", command: { ...rewind, operation: "retry" },
-    relay: { async checkExecutionAdmission() { return true; } }, onDenied: event => reasons.push(event.reasonCode) });
+  const retry = createNativeLiveMacExecutionAdmission({ listenerInstanceId: "listener", command: { ...command, operation: "retry",
+    runtime_mode: "resume", parent_provider_session_id: "parent", parent_provider_checkpoint_id: "checkpoint" },
+    relay: { async checkExecutionAdmission() { calls++; return true; } }, onDenied: event => reasons.push(event.reasonCode) });
   assert.equal(await retry({ phase: "input", inputId: "user-input", source: "human", providerSessionId: "parent" }), false);
-  assert.deepEqual(reasons, ["UNSUPPORTED_COMMAND"]);
+  assert.deepEqual(reasons, ["INPUT_ID_MISMATCH"]);
+  assert.equal(await retry({ phase: "input", inputId: "prepare", source: "human", providerSessionId: "parent" }), true);
   assert.equal(calls, 1);
 });

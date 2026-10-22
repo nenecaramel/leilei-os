@@ -430,20 +430,22 @@ test("idempotent durable acknowledgement succeeds without replaying provider inp
 });
 
 
-// Edit is a Desktop-style rewind: the same session resumes at the parent
-// checkpoint, dropping later LeileiOS turns from its view (never Desktop's).
-for (const writer of ["sdk-ts", "claude-desktop"] as const) test(writer === "sdk-ts" ? "an edit rewinds its session in place over LeileiOS turns" : "an edit never rewinds over Desktop turns", async t => {
+// Edit and Retry are a Desktop-style rewind: the same session resumes at the
+// parent checkpoint, dropping later LeileiOS turns from its view (never Desktop's).
+// Retry resends a user message already in the transcript (id 600 here), so its
+// native input takes the fresh preparation id instead of the canonical id.
+for (const operation of ["edit", "retry"] as const) for (const writer of ["sdk-ts", "claude-desktop"] as const) test(writer === "sdk-ts" ? `a ${operation} rewinds its session in place over LeileiOS turns` : `a ${operation} never rewinds over Desktop turns`, async t => {
   const f = await fixture(t);
   f.setTranscript([{ type: "user", uuid: id(500), parentUuid: null, sessionId: sid }, { type: "assistant", uuid: id(102), parentUuid: id(500), sessionId: sid },
     { type: "user", uuid: id(600), parentUuid: id(102), sessionId: sid, entrypoint: writer }, { type: "assistant", uuid: id(601), parentUuid: id(600), sessionId: sid, entrypoint: writer }]);
-  const edit = { ...command(3), operation: "edit" as const, runtime_mode: "resume" as const };
+  const replacement = { ...command(3), operation, runtime_mode: "resume" as const, ...(operation === "retry" ? { canonical_user_message_id: id(600) } : {}) };
   if (writer === "claude-desktop") {
-    await assert.rejects(f.run(edit), /unsynchronized|history/i);
+    await assert.rejects(f.run(replacement), /unsynchronized|history/i);
     assert.equal(f.launches, 0, "Desktop history is never rewound");
     return;
   }
-  const running = f.run(edit);
-  const input = (await f.inputs.next()).value!; assert.equal(input.uuid, id(23)); assert.equal(input.origin.kind, "human");
+  const running = f.run(replacement);
+  const input = (await f.inputs.next()).value!; assert.equal(input.uuid, operation === "retry" ? id(3) : id(23)); assert.equal(input.origin.kind, "human");
   f.finish(input.uuid); await running;
   assert.equal(f.launches, 1); assert.deepEqual(f.resumes, [sid]);
   assert.equal((f.sdk as { resumeSessionAt?: string }).resumeSessionAt, id(102));
@@ -889,7 +891,7 @@ for (const operation of ["edit", "retry"] as const) {
     });
     const running = f.run(replacement);
     const first = (await f.inputs.next()).value!;
-    assert.equal(first.uuid, replacement.canonical_user_message_id);
+    assert.equal(first.uuid, operation === "retry" ? replacement.prepare_id : replacement.canonical_user_message_id);
     f.finish(first.uuid); await running;
     assert.equal(f.router.providerSessionId, child);
     assert.equal(f.closes, 0);

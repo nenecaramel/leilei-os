@@ -9,7 +9,7 @@ import { NativeLiveConversationService } from '../src/domains/conversation/nativ
 import { NativeLiveBackendTurnCoordinator } from '../src/domains/bridge/turn/native-live-backend-turn-coordinator.js';
 import { DrizzleNativeLiveBackendTurnPort } from '../src/domains/bridge/turn/native-live-backend-turn-repository.js';
 const enabled = process.env.RUN_NATIVE_LIVE_TURN_DATABASE_TEST === '1';
-test('five linear sends share session A; Retry forks and Edit rewinds A at the exact parent; continuation resumes replacement', { skip: !enabled }, async () => {
+test('five linear sends share session A; Retry and Edit rewind A at the exact parent; continuation resumes replacement', { skip: !enabled }, async () => {
     const database = createDatabase(process.env.DATABASE_URL!, { ssl: false });
     try {
         const [user] = await database.db.insert(users).values({ email: `branch-${randomUUID()}@example.com`, displayName: 'Branch session test' }).returning();
@@ -46,10 +46,11 @@ test('five linear sends share session A; Retry forks and Edit rewinds A at the e
         assert.equal(retry.ok, true);
         if (!retry.ok)
             throw Error('retry failed');
-        assert.equal(retry.command.runtime_mode, 'fork');
+        // Retry rewinds session A in place at the parent checkpoint, as Desktop does.
+        assert.equal(retry.command.runtime_mode, 'resume');
         assert.equal(retry.command.parent_provider_session_id, 'A');
         assert.equal(retry.command.parent_provider_checkpoint_id, cps[0]);
-        head = (await finish(retry.command, 'B')).head;
+        head = (await finish(retry.command, 'A')).head;
         const cleanups = await database.db.select().from(nativeLiveProviderSessionCleanups).where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
         assert.equal(cleanups.some(x => x.providerSessionId === 'A'), false);
         const continuation = await coordinator.prepare(user.id, { dispatch_target: 'claude_code', request_id: randomUUID(), operation: 'send', conversation_id: conversation.id, expected_head_message_id: head, text: 'after retry' });
@@ -57,8 +58,8 @@ test('five linear sends share session A; Retry forks and Edit rewinds A at the e
         if (!continuation.ok)
             throw Error('send failed');
         assert.equal(continuation.command.runtime_mode, 'resume');
-        assert.equal(continuation.command.parent_provider_session_id, 'B');
-        head = (await finish(continuation.command, 'B')).head;
+        assert.equal(continuation.command.parent_provider_session_id, 'A');
+        head = (await finish(continuation.command, 'A')).head;
         const edit = await coordinator.prepare(user.id, { dispatch_target: 'claude_code', request_id: randomUUID(), operation: 'edit', conversation_id: conversation.id, target_user_message_id: userIds[1], text: 'edited turn2' });
         assert.equal(edit.ok, true);
         if (!edit.ok)
@@ -69,8 +70,7 @@ test('five linear sends share session A; Retry forks and Edit rewinds A at the e
         assert.equal(edit.command.parent_provider_checkpoint_id, cps[0]);
         const edited = await finish(edit.command, 'A');
         const finalCleanups = await database.db.select().from(nativeLiveProviderSessionCleanups).where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
-        assert.equal(finalCleanups.some(x => x.providerSessionId === 'A'), false);
-        assert.equal(finalCleanups.some(x => x.providerSessionId === 'B'), true);
+        assert.equal(finalCleanups.some(x => x.providerSessionId === 'A'), false, 'the one rewound session is never cleaned up');
         const remaining = await database.db.select().from(conversationProviderSessionCheckpoints).where(eq(conversationProviderSessionCheckpoints.userId, user.id));
         assert.equal(remaining.filter(x => x.providerSessionId === 'A').length, 2, 'the rewound edit commits its head in A');
         await database.db.update(conversationProviderSessionCheckpoints).set({providerCheckpointId:null}).where(eq(conversationProviderSessionCheckpoints.canonicalMessageId,edited.head));

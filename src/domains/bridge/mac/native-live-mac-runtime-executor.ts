@@ -116,6 +116,7 @@ import {
   type NativeLiveRuntimeFailureCode,
   type NativeLiveRuntimeMetadata,
   type NativeLiveRuntimeSessionStoreHealth,
+  nativeInputId,
 } from "../protocol/native-live-runtime-protocol.js";
 
 export class NativeLiveMacRuntimeExecutor {
@@ -231,7 +232,7 @@ export class NativeLiveMacRuntimeExecutor {
           ...(command.failed_user_message_uuids ? { failedUserMessageUuids: command.failed_user_message_uuids } : {}),
           streaming: true,
           userMessageUuid:
-            command.canonical_user_message_id,
+            nativeInputId(command),
           ...(command.execution_selection
             ? { execution: command.execution_selection }
             : {}),

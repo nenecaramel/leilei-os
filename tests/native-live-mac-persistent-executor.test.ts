@@ -108,13 +108,12 @@ test("edit and retry own a persistent child across supported new/fork modes", as
   }
 });
 
-test("an edit that rewinds its session in place owns a persistent writer; a retry never resumes", async () => {
+for (const operation of ["edit", "retry"] as const) test(`a ${operation} that rewinds its session in place owns a persistent writer`, async () => {
   const f = fixture(async input => { await frame(input); return {}; });
-  const rewind = command({ operation: "edit", runtime_mode: "resume" });
+  const rewind = command({ operation, runtime_mode: "resume" });
   assert.equal(f.executor.canRoute(rewind), true);
   const result = await f.executor.execute(rewind, { async commit() { return { canonicalOutcome: "completed" }; } });
   assert.equal(result.delivery, "committed");
-  assert.equal(f.executor.canRoute(command({ operation: "retry", runtime_mode: "resume" })), false);
 });
 
 test("Wake uses the current matching writer, or restores its original SID after restart; never forks", async () => {

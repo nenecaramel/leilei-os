@@ -215,11 +215,11 @@ export class NativeLiveMacPersistentExecutor {
   }
 }
 
-/** Edit/Retry with an exact branch point: a new session, a Retry fork, or an
- * Edit that rewinds its own session in place (Desktop's rewind). */
+/** Edit/Retry with an exact branch point: a new session, a fork, or a rewind
+ * of its own session in place (Desktop's rewind). */
 export function isNativeReplacement(command: NativeLiveRuntimeCommand): boolean {
   if (!["edit", "retry"].includes(command.operation)) return false;
   if (command.runtime_mode === "new") return true;
   const exact = !!command.parent_provider_session_id && !!command.parent_provider_checkpoint_id;
-  return exact && (command.runtime_mode === "fork" || (command.runtime_mode === "resume" && command.operation === "edit"));
+  return exact && (command.runtime_mode === "fork" || command.runtime_mode === "resume");
 }

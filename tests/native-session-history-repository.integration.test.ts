@@ -191,8 +191,8 @@ for (const operation of ["retry", "edit"] as const) test(`restored ${operation} 
   const coordinator = new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.database.db));
   const prepared = await coordinator.prepare(f.owner, { request_id: randomUUID(), conversation_id: f.input.conversationId, dispatch_target: "claude_code", operation, target_user_message_id: messages[2].id, ...(operation === "edit" ? { text: "edited synthetic user" } : {}) });
   assert.ok(prepared.ok, JSON.stringify(prepared));
-  // Edit rewinds the session in place at that exact point; Retry forks it.
-  assert.equal(prepared.command.runtime_mode, operation === "edit" ? "resume" : "fork");
+  // Edit and Retry rewind the session in place at that exact point.
+  assert.equal(prepared.command.runtime_mode, "resume");
   assert.equal(prepared.command.parent_provider_session_id, f.sessionId);
   assert.equal(prepared.command.parent_provider_checkpoint_id, f.entries[1].uuid);
   assert.notEqual(prepared.command.parent_provider_checkpoint_id, a);

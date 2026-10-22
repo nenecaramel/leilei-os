@@ -254,3 +254,10 @@ function normalizePrompt(value: unknown): string {
   }
   return prompt;
 }
+
+/** The UUID of the user input sent to the native session. A Retry resends a
+ * user message whose canonical id is already in the transcript, so its native
+ * input takes the fresh preparation id instead. */
+export function nativeInputId(command: NativeLiveRuntimeCommand): string {
+  return command.operation === "retry" ? command.prepare_id : command.canonical_user_message_id ?? command.prepare_id;
+}
