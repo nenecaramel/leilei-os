@@ -466,7 +466,8 @@ test(
     if (!edit.ok) throw new Error("expected edit");
     await h.finalizeText({
       prepareId: edit.command.prepare_id, requestId, conversationId: conversation.id,
-      providerSessionId: "provider-rewind", text: "好的",
+      // The edit rewinds its own session in place, as Desktop does.
+      providerSessionId: edit.command.parent_provider_session_id!, text: "好的",
     });
     const rewound = await h.silence.readSchedule({ userId: h.user.id });
     assert.equal(rewound?.conversationId, conversation.id);

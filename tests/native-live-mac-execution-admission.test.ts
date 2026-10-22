@@ -106,3 +106,20 @@ for (const operation of ["edit", "retry"] as const) for (const runtime_mode of [
     assert.equal(calls, 2);
   });
 }
+
+// Edit rewinds its own session in place (resume); Retry keeps forking.
+test("edit/resume is admitted only for its own session; retry/resume is unsupported", async () => {
+  let calls = 0;
+  const rewind = { ...command, operation: "edit" as const, runtime_mode: "resume" as const,
+    parent_provider_session_id: "parent", parent_provider_checkpoint_id: "checkpoint" };
+  const gate = createNativeLiveMacExecutionAdmission({ listenerInstanceId: "listener", command: rewind,
+    relay: { async checkExecutionAdmission() { calls++; return true; } } });
+  assert.equal(await gate({ phase: "input", inputId: "user-input", source: "human", providerSessionId: "parent" }), true);
+  assert.equal(await gate({ phase: "tool", inputId: "user-input", source: null, providerSessionId: "foreign" }), false);
+  const reasons: string[] = [];
+  const retry = createNativeLiveMacExecutionAdmission({ listenerInstanceId: "listener", command: { ...rewind, operation: "retry" },
+    relay: { async checkExecutionAdmission() { return true; } }, onDenied: event => reasons.push(event.reasonCode) });
+  assert.equal(await retry({ phase: "input", inputId: "user-input", source: "human", providerSessionId: "parent" }), false);
+  assert.deepEqual(reasons, ["UNSUPPORTED_COMMAND"]);
+  assert.equal(calls, 1);
+});

@@ -40,12 +40,16 @@ export async function openAgentSdkPersistentSession(owner, checkpoints, options 
       if (await authorize({ phase, inputId, source, providerSessionId: host?.sessionId ?? restore?.sessionId ?? null }) !== true) throw new Error("Persistent session admission denied.");
       assertLive(phase);
     };
+    // An Edit rewinds its session in place; every other restore continues the tail.
+    const validateRestoreTail = () => restore.rewind
+      ? checkpoints.validateLocalRewindTail(restore.sessionId, restore.checkpointId)
+      : checkpoints.validateLocalResumeTail(restore.sessionId, restore.checkpointId, null, []);
     try {
       if (restore) {
         await admit("input", restore.inputId, restore.source);
         await checkpoints.requireSession(restore.sessionId);
         await checkpoints.requireCheckpoint(restore.sessionId, restore.checkpointId);
-        await checkpoints.validateLocalResumeTail(restore.sessionId, restore.checkpointId, null, []);
+        await validateRestoreTail();
       }
       const queryImpl = await checkpoints.resolveQuery();
       if (owner.activeSessionHost !== claim || claim.cancelled) throw runtimeError("Persistent session startup was aborted.", { runtimeCode: "ABORTED" });
@@ -54,7 +58,7 @@ export async function openAgentSdkPersistentSession(owner, checkpoints, options 
         // Re-read after asynchronous SDK loading: the ancestry cache cannot
         // prove Desktop has not advanced the source transcript in the meantime.
         await admit("input", restore.inputId, restore.source);
-        await checkpoints.validateLocalResumeTail(restore.sessionId, restore.checkpointId, null, []);
+        await validateRestoreTail();
         assertLive("input");
         startupReady = new Promise((resolve, reject) => {
           rejectStartup = reject;

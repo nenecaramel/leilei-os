@@ -1,6 +1,7 @@
 import { NativeLiveMacTaskStatePublisher, type NativeLiveTaskStateUpdate } from "./native-live-mac-task-state-publisher.js";
 import { createNativeLiveMacOutputAttachmentCollector, type NativeLiveMacOutputAttachmentCollector, type NativeLiveMacOutputAttachmentSenderLike } from "./native-live-mac-output-attachment-collector.js";
 import { isTransientRelayWaitError } from "./native-live-mac-relay-http.js";
+import { isNativeReplacement } from "./native-live-mac-persistent-executor.js";
 import { NativeLiveMacExecutionLease } from "./native-live-mac-execution-lease.js";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -118,9 +119,7 @@ export class NativeLiveMacPersistentTurnRouter {
     if (this.active) throw new Error("Persistent turn is active or awaiting durable acknowledgement.");
     const command = freezeCommand(parseNativeLiveRuntimeCommand(input.command));
     const ordinary = ["send", "wake"].includes(command.operation) && ["new", "resume"].includes(command.runtime_mode);
-    const replacement = ["edit", "retry"].includes(command.operation)
-      && (command.runtime_mode === "new" || command.runtime_mode === "fork"
-        && !!command.parent_provider_session_id && !!command.parent_provider_checkpoint_id);
+    const replacement = isNativeReplacement(command);
     if ((!ordinary && !replacement)
       || (command.attachments?.length && typeof input.prompt !== "string") || command.failed_user_message_uuids?.length
       || command.parent_provider_checkpoint_id === undefined) throw new Error("Unsupported command for persistent turn routing.");
@@ -647,6 +646,7 @@ export class NativeLiveMacPersistentTurnRouter {
         : this.input.registry.openExisting({ ...input, restore: {
           sessionId: command.parent_provider_session_id!, checkpointId: command.parent_provider_checkpoint_id!,
           inputId: slot.inputId, source: command.operation === "wake" ? "task-notification" : "human",
+          ...(command.operation === "edit" ? { rewind: true } : {}),
         } });
     this.generationId = this.input.registry.getGenerationId(command.conversation_id);
     this.binding = await opening;

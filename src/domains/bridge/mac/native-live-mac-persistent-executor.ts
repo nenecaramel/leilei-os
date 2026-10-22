@@ -69,9 +69,7 @@ export class NativeLiveMacPersistentExecutor {
     let command: NativeLiveRuntimeCommand;
     try { command = parseNativeLiveRuntimeCommand(rawCommand); } catch { return false; }
     const ordinary = ["send", "wake"].includes(command.operation) && ["new", "resume"].includes(command.runtime_mode);
-    const replacement = ["edit", "retry"].includes(command.operation)
-      && (command.runtime_mode === "new" || command.runtime_mode === "fork"
-        && !!command.parent_provider_session_id && !!command.parent_provider_checkpoint_id);
+    const replacement = isNativeReplacement(command);
     if ((!ordinary && !replacement) || command.parent_provider_checkpoint_id === undefined
       || command.failed_user_message_uuids?.length) return false;
     if (command.attachments?.length && !this.input.attachmentMaterializer) return false;
@@ -215,4 +213,13 @@ export class NativeLiveMacPersistentExecutor {
       await this.input.attachmentMaterializer?.cleanup(command).catch(() => undefined);
     }
   }
+}
+
+/** Edit/Retry with an exact branch point: a new session, a Retry fork, or an
+ * Edit that rewinds its own session in place (Desktop's rewind). */
+export function isNativeReplacement(command: NativeLiveRuntimeCommand): boolean {
+  if (!["edit", "retry"].includes(command.operation)) return false;
+  if (command.runtime_mode === "new") return true;
+  const exact = !!command.parent_provider_session_id && !!command.parent_provider_checkpoint_id;
+  return exact && (command.runtime_mode === "fork" || (command.runtime_mode === "resume" && command.operation === "edit"));
 }

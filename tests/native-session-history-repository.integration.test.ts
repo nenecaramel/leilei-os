@@ -183,7 +183,7 @@ test("restored native history uses the production reader with original dates and
   assert.equal(prepared.command.expected_working_directory, "/synthetic/workspace");
 }));
 
-for (const operation of ["retry", "edit"] as const) test(`restored ${operation} plans an exact historical fork rather than the latest native tail`, { skip: !enabled }, async () => fixture(async f => {
+for (const operation of ["retry", "edit"] as const) test(`restored ${operation} plans an exact historical branch point rather than the latest native tail`, { skip: !enabled }, async () => fixture(async f => {
   const u = randomUUID(), a = randomUUID();
   const entries = [...f.entries, row(u, f.entries[1].uuid, "user", "second user"), row(a, u, "assistant", "second reply")];
   await f.write({ ...f.input, projection: projectNativeHistory({ sessionId: f.sessionId, revision: revision(2), entries }, a) });
@@ -191,7 +191,8 @@ for (const operation of ["retry", "edit"] as const) test(`restored ${operation} 
   const coordinator = new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.database.db));
   const prepared = await coordinator.prepare(f.owner, { request_id: randomUUID(), conversation_id: f.input.conversationId, dispatch_target: "claude_code", operation, target_user_message_id: messages[2].id, ...(operation === "edit" ? { text: "edited synthetic user" } : {}) });
   assert.ok(prepared.ok, JSON.stringify(prepared));
-  assert.equal(prepared.command.runtime_mode, "fork");
+  // Edit rewinds the session in place at that exact point; Retry forks it.
+  assert.equal(prepared.command.runtime_mode, operation === "edit" ? "resume" : "fork");
   assert.equal(prepared.command.parent_provider_session_id, f.sessionId);
   assert.equal(prepared.command.parent_provider_checkpoint_id, f.entries[1].uuid);
   assert.notEqual(prepared.command.parent_provider_checkpoint_id, a);

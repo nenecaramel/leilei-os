@@ -17,6 +17,7 @@ import type {
   NativeLiveMacPersistentExecutor,
   NativeLiveMacPersistentExecution,
 } from "./native-live-mac-persistent-executor.js";
+import { isNativeReplacement } from "./native-live-mac-persistent-executor.js";
 import { failure as runtimeFailure } from "./native-live-mac-runtime-executor.js";
 import type { NativeLiveMacResultOutbox, NativeLivePendingResult } from "./native-live-mac-result-outbox.js";
 import type {
@@ -302,9 +303,7 @@ export class NativeLiveMacDaemonLoop {
             persistentRun = await this.persistentExecutor.execute(command, { ...options, commit });
             return persistentRun.result;
           }
-          const exactReplacement = command.parent_provider_checkpoint_id !== undefined
-            && (command.runtime_mode === "new" || command.runtime_mode === "fork"
-              && !!command.parent_provider_session_id && !!command.parent_provider_checkpoint_id);
+          const exactReplacement = command.parent_provider_checkpoint_id !== undefined && isNativeReplacement(command);
           if (this.persistentExecutor && exactReplacement) return runtimeFailure(command, "RUNTIME_UNAVAILABLE");
           return this.executor.execute(command, options);
         }

@@ -71,3 +71,33 @@ test('abort immediately after a valid startup receipt cannot report a closed hos
  }});
  await assert.rejects(f.open(),/abort|closed/i);assert.equal(f.transport.activeSessionHost,null);
 });
+
+// Desktop-style rewind for Edit: resume the same session at an earlier
+// checkpoint. Only LeileiOS (sdk-ts) records may follow it; a Desktop record
+// there is unseen native history and must never be rewound.
+const later=(entrypoint)=>{const user='66666666-6666-4666-8666-666666666666',reply='77777777-7777-4777-8777-777777777777';
+ return [{type:'user',uuid:user,parentUuid:cp,sessionId:sid,entrypoint,message:{role:'user',content:'later'}},{type:'assistant',uuid:reply,parentUuid:user,sessionId:sid,entrypoint,message:{role:'assistant',content:[]}}];};
+test('an edit rewinds its own session in place over LeileiOS-written turns',async t=>{
+ const f=fixture();f.entries.push(...later('sdk-ts'));
+ const host=await f.transport.restorePersistentSession({...spec,source:'human',rewind:true},f.opts);t.after(()=>host.close());
+ assert.equal(f.options.resume,sid);assert.equal(f.options.resumeSessionAt,cp);assert.equal(f.options.forkSession,undefined);
+ const turn=await host.submit('edited',{id:inputId,source:'human'});assert.equal(turn.providerSessionId,sid);
+});
+test('without rewind the same later turns remain unsynchronized history',async()=>{
+ const f=fixture();f.entries.push(...later('sdk-ts'));await assert.rejects(f.open(),/unsynchronized|history/i);assert.equal(f.calls,0);
+});
+test('an edit never rewinds over a Desktop-written turn',async()=>{
+ const f=fixture();f.entries.push(...later('claude-desktop'));
+ await assert.rejects(f.transport.restorePersistentSession({...spec,source:'human',rewind:true},f.opts),/unsynchronized|history/i);assert.equal(f.calls,0);
+});
+test('an edit cannot rewind to a checkpoint outside the current history',async()=>{
+ const f=fixture();f.entries.splice(0,f.entries.length,{type:'user',uuid:prior,parentUuid:null,sessionId:sid,message:{role:'user',content:'synthetic'}},
+  {type:'assistant',uuid:'88888888-8888-4888-8888-888888888888',parentUuid:prior,sessionId:sid,entrypoint:'sdk-ts',message:{role:'assistant',content:[]}});
+ await assert.rejects(f.transport.restorePersistentSession({...spec,source:'human',rewind:true},f.opts),/checkpoint|history|provider/i);assert.equal(f.calls,0);
+});
+test('an edit cannot rewind past the latest compaction',async()=>{
+ const f=fixture();const boundary='99999999-9999-4999-8999-999999999990',summary='99999999-9999-4999-8999-999999999991';
+ f.entries.push({type:'system',subtype:'compact_boundary',uuid:boundary,parentUuid:null,logicalParentUuid:cp,sessionId:sid,entrypoint:'sdk-ts'},
+  {type:'user',uuid:summary,parentUuid:boundary,isCompactSummary:true,sessionId:sid,entrypoint:'sdk-ts',message:{role:'user',content:'summary'}},...later('sdk-ts'));
+ await assert.rejects(f.transport.restorePersistentSession({...spec,source:'human',rewind:true},f.opts),/compaction/i);assert.equal(f.calls,0);
+});

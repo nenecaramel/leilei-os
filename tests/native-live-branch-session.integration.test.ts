@@ -9,7 +9,7 @@ import { NativeLiveConversationService } from '../src/domains/conversation/nativ
 import { NativeLiveBackendTurnCoordinator } from '../src/domains/bridge/turn/native-live-backend-turn-coordinator.js';
 import { DrizzleNativeLiveBackendTurnPort } from '../src/domains/bridge/turn/native-live-backend-turn-repository.js';
 const enabled = process.env.RUN_NATIVE_LIVE_TURN_DATABASE_TEST === '1';
-test('five linear sends share session A; Retry/Edit fork exact parent and continuation resumes replacement', { skip: !enabled }, async () => {
+test('five linear sends share session A; Retry forks and Edit rewinds A at the exact parent; continuation resumes replacement', { skip: !enabled }, async () => {
     const database = createDatabase(process.env.DATABASE_URL!, { ssl: false });
     try {
         const [user] = await database.db.insert(users).values({ email: `branch-${randomUUID()}@example.com`, displayName: 'Branch session test' }).returning();
@@ -63,14 +63,16 @@ test('five linear sends share session A; Retry/Edit fork exact parent and contin
         assert.equal(edit.ok, true);
         if (!edit.ok)
             throw Error('edit failed');
-        assert.equal(edit.command.runtime_mode, 'fork');
+        // Edit rewinds session A in place at the parent checkpoint, as Desktop does.
+        assert.equal(edit.command.runtime_mode, 'resume');
+        assert.equal(edit.command.parent_provider_session_id, 'A');
         assert.equal(edit.command.parent_provider_checkpoint_id, cps[0]);
-        const edited = await finish(edit.command, 'C');
+        const edited = await finish(edit.command, 'A');
         const finalCleanups = await database.db.select().from(nativeLiveProviderSessionCleanups).where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
         assert.equal(finalCleanups.some(x => x.providerSessionId === 'A'), false);
         assert.equal(finalCleanups.some(x => x.providerSessionId === 'B'), true);
         const remaining = await database.db.select().from(conversationProviderSessionCheckpoints).where(eq(conversationProviderSessionCheckpoints.userId, user.id));
-        assert.equal(remaining.filter(x => x.providerSessionId === 'A').length, 1);
+        assert.equal(remaining.filter(x => x.providerSessionId === 'A').length, 2, 'the rewound edit commits its head in A');
         await database.db.update(conversationProviderSessionCheckpoints).set({providerCheckpointId:null}).where(eq(conversationProviderSessionCheckpoints.canonicalMessageId,edited.head));
         const missingModern = await coordinator.prepare(user.id,{dispatch_target:'claude_code',request_id:randomUUID(),operation:'send',conversation_id:conversation.id,expected_head_message_id:edited.head,text:'cannot downgrade'});
         assert.equal(missingModern.ok,false);if(!missingModern.ok)assert.equal(missingModern.code,'BRANCH_POINT_INVALID');

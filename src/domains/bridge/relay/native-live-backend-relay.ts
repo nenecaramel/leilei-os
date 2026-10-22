@@ -941,7 +941,9 @@ implements NativeLiveBackendRelayPort {
       .limit(1);
     if (!row) return null;
     const preparation = mapPreparation(row);
-    if (preparation.runtimeMode === "resume" && preparation.parentProviderCheckpointId) {
+    // An edit rewinds past every later native input, so earlier failures at its
+    // parent checkpoint are not residue it must tolerate.
+    if (preparation.runtimeMode === "resume" && preparation.operation !== "edit" && preparation.parentProviderCheckpointId) {
       // Only terminal canonical failures at this exact native branch position
       // can explain an abandoned input; never trust the caller or a JSONL UUID alone.
       const failures = await executor.execute<{ canonical_user_message_id: string }>(sql`

@@ -240,6 +240,7 @@ implements NativeLiveBackendTurnPort {
     conversationId: string,
     parentMessageId: string | null,
     continuation: "send" | "replacement" = "replacement",
+    rewind = false,
   ): Promise<
     | {
         ok: true;
@@ -253,7 +254,7 @@ implements NativeLiveBackendTurnPort {
         result: NativeLivePreparePortResult;
       }
   > {
-    return resolveRuntimeParent.call(this.context, executor, conversations, userId, conversationId, parentMessageId, continuation);
+    return resolveRuntimeParent.call(this.context, executor, conversations, userId, conversationId, parentMessageId, continuation, rewind);
   }
 
   private insertPreparation(

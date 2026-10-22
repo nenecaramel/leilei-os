@@ -114,6 +114,7 @@ export type TurnRepositoryContext = {
     conversationId: string,
     parentMessageId: string | null,
     continuation?: "send" | "replacement",
+    rewind?: boolean,
   ): Promise<
     | {
         ok: true;

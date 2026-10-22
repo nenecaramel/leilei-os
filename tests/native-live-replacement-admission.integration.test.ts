@@ -11,7 +11,8 @@ import { DrizzleNativeLiveBackendRelayRepository } from "../src/domains/bridge/r
 import { parseNativeLiveExecutionAdmissionBody } from "../src/domains/bridge/protocol/native-live-execution-admission.js";
 
 for (const operation of ["edit", "retry"] as const) for (const source of ["new", "fork", "continuation"] as const) {
-  const mode = source === "new" ? "new" : "fork";
+  // Edit rewinds its native session in place (resume); Retry still forks.
+  const mode = source === "new" ? "new" : operation === "edit" ? "resume" : "fork";
   test(`${operation}/${source} real preparation authorizes only its captured branch and lease`, {
     skip: process.env.RUN_NATIVE_LIVE_RELAY_DATABASE_TEST !== "1",
   }, async t => {
@@ -19,7 +20,7 @@ for (const operation of ["edit", "retry"] as const) for (const source of ["new",
     await verifyIsolatedPostgresTarget(isolatedPostgresTarget(process.env.DATABASE_URL));
     const database = createDatabase(process.env.DATABASE_URL!, { ssl: false }), db = database.db;
     const userId = crypto.randomUUID(), conversationId = crypto.randomUUID(), target = crypto.randomUUID();
-    const head = crypto.randomUUID(), parent = mode === "fork" ? crypto.randomUUID() : null;
+    const head = crypto.randomUUID(), parent = mode !== "new" ? crypto.randomUUID() : null;
     const session = crypto.randomUUID(), checkpoint = crypto.randomUUID(), listenerInstanceId = crypto.randomUUID();
     t.after(async () => { try {
       await db.delete(leases).where(eq(leases.userId, userId));
@@ -116,11 +117,12 @@ for (const operation of ["edit", "retry"] as const) for (const source of ["new",
     assert.equal(await relay.renewExecutionLease(input), false, "expired listener is never revived");
     await db.update(leases).set({ leaseExpiresAt: later }).where(eq(leases.userId, userId));
     const { NativeLiveBackendTurnCoordinator } = await import("../src/domains/bridge/turn/native-live-backend-turn-coordinator.js");
-    const child = crypto.randomUUID();
+    // A rewound edit continues its own session; a fork gets a new one.
+    const child = mode === "resume" ? session : crypto.randomUUID();
     const finalized = await new NativeLiveBackendTurnCoordinator(port).finalize(userId, {
       protocol_version: 4, prepare_id: p!.id, request_id: p!.requestId, conversation_id: conversationId,
       status: "success", provider_session_id: child, provider_checkpoint_id: crypto.randomUUID(),
-      effective_working_directory: mode === "fork" ? "/synthetic" : "/",
+      effective_working_directory: mode !== "new" ? "/synthetic" : "/",
       normalized_events: [{ type: "text", payload: { text: "synthetic child reply" } }],
     });
     assert.equal(finalized.ok, true);
@@ -129,8 +131,10 @@ for (const operation of ["edit", "retry"] as const) for (const source of ["new",
     const tasks = new DrizzleNativeLiveRuntimeControlRepository(db);
     const taskInput = { userId, listenerInstanceId, prepareId: p!.id, providerSessionId: child };
     assert.equal(await tasks.checkTaskAdmission(taskInput), true, "finalized child may run its own background tasks");
-    assert.equal(await tasks.checkTaskAdmission({...taskInput,providerSessionId:session}), false, "retired parent cannot borrow child authority");
-    if (source === "continuation") {
+    if (mode !== "resume") assert.equal(await tasks.checkTaskAdmission({...taskInput,providerSessionId:session}), false, "retired parent cannot borrow child authority");
+    // Revision lineage proves a forked child. A rewound edit runs in the bound
+    // session itself, which the owner row (not the revision) gates, as for sends.
+    if (source === "continuation" && mode !== "resume") {
       const [current] = await db.select().from(conversations).where(eq(conversations.id, conversationId));
       await db.update(conversations).set({ providerMetadata: {...current!.providerMetadata,nativeSessionSource: {
         ...(current!.providerMetadata.nativeSessionSource as object), revision: "b".repeat(64),
