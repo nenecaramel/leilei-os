@@ -14,7 +14,6 @@ import {
 import { normalizeAgentSdkExecutionSelection } from "./agent-sdk-execution-selection.mjs";
 import { normalizeAgentSdkContextUsage } from "./agent-sdk-context-observability.mjs";
 import { normalizeAgentSdkExecutionReadback } from "./agent-sdk-execution-readback.mjs";
-import { prepareLocalCheckpointFork } from "./local-checkpoint-fork.mjs";
 import {
   runtimeError,
   loadDefaultListSessions,
@@ -56,7 +55,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     mcpServerConfig = null,
     createSendFileMcpServerImpl =
       createDefaultSendFileMcpServer,
-    prepareLocalCheckpointForkImpl = prepareLocalCheckpointFork,
     environment = process.env,
     cwd = process.cwd(),
   } = {}) {
@@ -92,8 +90,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       normalizeLeileiosMcpServerConfig(mcpServerConfig);
     this.createSendFileMcpServerImpl =
       createSendFileMcpServerImpl;
-    this.prepareLocalCheckpointForkImpl =
-      prepareLocalCheckpointForkImpl;
     this.localCheckpointAncestry = new Map();
     this.environment = {
       ...environment,
@@ -133,45 +129,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     return this.#openPersistentSession(options, { ...restore, timeoutMs });
   }
 
-  // Edit/retry forks own a new live SDK writer. A one-shot fork query closes
-  // after its reply and would lose native Cron tasks created in that reply.
-  async forkPersistentSession(fork, options = {}) {
-    const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-    if (!fork || Object.keys(fork).some(key => !["sessionId", "checkpointId"].includes(key))
-      || !uuid.test(fork.sessionId ?? "") || !uuid.test(fork.checkpointId ?? "")
-      || fork.checkpointId === "00000000-0000-0000-0000-000000000000") {
-      throw new Error("Persistent fork requires an exact parent session and checkpoint.");
-    }
-    if (this.sessionStore) throw new Error("Persistent fork requires the original local transcript.");
-    const preflight = await this.#requireCheckpoint(fork.sessionId, fork.checkpointId, { needPrefix: true });
-    const prepared = await this.prepareLocalCheckpointForkImpl({
-      sessionId: fork.sessionId, checkpointId: fork.checkpointId,
-      prefix: preflight?.prefix ?? null, cwd: this.cwd, environment: this.environment,
-    });
-    if (!prepared || !uuid.test(prepared.sessionId ?? "")) throw new Error("Persistent fork transcript preflight failed.");
-    let cleaned = false;
-    const cleanup = async () => {
-      if (cleaned) return;
-      cleaned = true;
-      await prepared.cleanup();
-    };
-    try {
-      const host = await this.#openPersistentSession(options, null, {
-        checkpointId: fork.checkpointId, localSessionId: prepared.sessionId,
-      });
-      // The synthetic prefix is necessary only until the first native result.
-      // Retain crash-cleanup receipts during startup; never leak an extra
-      // transcript indefinitely, and never remove a still-loading prefix.
-      host.events.once("turn-result", () => { void cleanup().catch(() => {}); });
-      void host.completion.then(cleanup, cleanup).catch(() => {});
-      return host;
-    } catch (error) {
-      await cleanup().catch(() => {});
-      throw error;
-    }
-  }
-
-  async #openPersistentSession(options = {}, restore = null, fork = null) {
+  async #openPersistentSession(options = {}, restore = null) {
     return openAgentSdkPersistentSession(this, {
       requireSession: (...args) => this.#requireSession(...args),
       requireCheckpoint: (...args) => this.#requireCheckpoint(...args),
@@ -179,7 +137,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       validateLocalRewindTail: (...args) => this.#validateLocalRewindTail(...args),
       resolveQuery: (...args) => this.#resolveQuery(...args),
       checkpointEntries: (...args) => this.#checkpointEntries(...args),
-    }, options, restore, fork);
+    }, options, restore);
   }
 
   // Call after openPersistentSession settles; failed startup may still own a
@@ -566,12 +524,10 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   async #requireCheckpoint(
     sessionId,
     checkpointId,
-    { needPrefix = false } = {},
   ) {
     const id = nonblankString(sessionId);
     if (
-      !needPrefix
-      && !this.sessionStore
+      !this.sessionStore
       && this.localCheckpointAncestry
         .get(id)
         ?.has(checkpointId)

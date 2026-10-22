@@ -23,8 +23,7 @@ async function fixture(t: test.TestContext, config: { limit?: number; opening?: 
   const registry = new NativeLiveMacSessionRegistry({}, root, async (_env, cwd) => {
     if (config.reuseRuntime && transports[0]) return { kind: "agent_sdk" as const, runtime: transports[0] };
     const call = { cwd: cwd!, closed: 0, inputs: [] as string[],
-      options: undefined as NativeLiveMacPersistentSessionOptions | undefined,
-      fork: null as {sessionId:string;checkpointId:string} | null };
+      options: undefined as NativeLiveMacPersistentSessionOptions | undefined };
     calls.push(call);
     const completion = deferred();
     const host = { state: "idle", sessionId: config.delayedInit ? null : `session-${calls.length}`, tasks: new Map(), events: new EventEmitter(), completion: completion.promise,
@@ -34,10 +33,6 @@ async function fixture(t: test.TestContext, config: { limit?: number; opening?: 
     };
     const runtime = { abort() {}, async deleteSession() {},
       async openPersistentSession(opts: NativeLiveMacPersistentSessionOptions) { call.options = opts; await config.opening?.promise; if (config.rejectOpen) throw Error("startup failed"); return host; },
-      async forkPersistentSession(fork: {sessionId:string;checkpointId:string}, opts: NativeLiveMacPersistentSessionOptions) {
-        call.fork = {...fork}; call.options=opts; await config.opening?.promise;
-        if (config.rejectOpen) throw Error("startup failed"); return host;
-      },
       async closePersistentSession() { await host.close(); } };
     transports.push(runtime);
     return { kind: "agent_sdk" as const, runtime };
@@ -55,20 +50,6 @@ test("different conversations in the same directory own distinct persistent SDK 
   assert.deepEqual(f.calls.map(c => c.inputs), [["one", "two"], []]);
   assert.equal(f.registry.get("a", a.generationId), a);
 });
-test("edited branch forks into a new OWNED persistent session with exact source checkpoint", async t => {
-  const f = await fixture(t);
-  const fork = {sessionId:"parent-session",checkpointId:"parent-checkpoint"};
-  const binding = await f.registry.openFork({conversationId:"edit",expectedWorkingDirectory:null,
-    options:options(),fork});
-  assert.deepEqual(f.calls[0]!.fork,fork);
-  assert.equal(binding.session.sessionId,"session-1");
-  assert.notEqual(binding.session.sessionId,fork.sessionId,
-    "the fork must never claim to be the old branch's writer");
-  await binding.session.submit("after edited message");
-  assert.deepEqual(f.calls[0]!.inputs,["after edited message"]);
-  assert.equal(f.calls[0]!.closed,0,"native scheduling survives the foreground boundary");
-});
-
 test("duplicate opens cannot replace callbacks or launch a second query", async t => {
   const opening = deferred(); const f = await fixture(t, { opening });
   const first = f.registry.openNew({ conversationId: "a", expectedWorkingDirectory: null, options: options() });

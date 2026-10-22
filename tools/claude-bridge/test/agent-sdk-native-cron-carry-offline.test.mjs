@@ -8,8 +8,9 @@ import {query} from '@anthropic-ai/claude-agent-sdk';
 import {AgentSdkClaudeTransport} from '../src/agent-sdk-claude-transport.mjs';
 
 // Pinned real CLI + isolated config + local fake model. A native Cron is created
-// BEFORE a later message is retried in a fork. No second CronCreate is allowed.
-test('an earlier native Cron survives edit/retry fork without duplication', {
+// BEFORE a later message is retried by rewinding the same session in place.
+// No second CronCreate is allowed.
+test('an earlier native Cron survives an edit/retry rewind without duplication', {
   skip: process.env.RUN_NATIVE_CLI_OFFLINE_CRON_CARRY_TEST !== '1'
     && 'Set RUN_NATIVE_CLI_OFFLINE_CRON_CARRY_TEST=1 (zero external model calls)',
   timeout: 125_000,
@@ -56,11 +57,13 @@ test('an earlier native Cron survives edit/retry fork without duplication', {
     ANTHROPIC_CUSTOM_HEADERS:'',CLAUDE_CODE_USE_BEDROCK:'0',
     CLAUDE_CODE_USE_VERTEX:'0',CLAUDE_CODE_USE_FOUNDRY:'0',
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1',
+    // As in production: LeileiOS writes as the SDK, even from a Claude shell.
+    CLAUDE_CODE_ENTRYPOINT:'sdk-ts',
     DISABLE_TELEMETRY:'1',DISABLE_ERROR_REPORTING:'1',
     HTTP_PROXY:'',HTTPS_PROXY:'',ALL_PROXY:'',NO_PROXY:'127.0.0.1',TZ:'UTC'};
   // SDK's global session listing/import helpers do not receive the query's
   // isolated env. Read the REAL CLI-written JSONL directly instead; this
-  // keeps the local checkpoint materializer and native CLI fork unmocked.
+  // keeps the native CLI rewind unmocked.
   const readRealEntries=async sessionId=>{
     const dirs=await readdir(join(root,'projects'),{withFileTypes:true});
     const matches=[];
@@ -99,30 +102,30 @@ test('an earlier native Cron survives edit/retry fork without duplication', {
       id:'11111111-1111-4111-8111-111111111111',source:'human'});
     assert.equal(created.result.subtype,'success');
     assert.equal(requests,2);
+    const createdCheckpoint=await source.verifyCheckpoint({events:created.events,parentCheckpointId:null});
     const ordinary=await source.submit('Ordinary message after Cron',{
       id:'22222222-2222-4222-8222-222222222222',source:'human'});
     assert.equal(ordinary.result.subtype,'success');
     assert.equal(requests,3);
     const sourceId=source.sessionId;
-    const checkpoint=await source.verifyCheckpoint({events:ordinary.events,parentCheckpointId:null});
     await source.close();
 
-    // Critically: do not stub prepareLocalCheckpointForkImpl. The actual
-    // LeileiOS historical transcript prefix and native CLI fork are exercised.
-    child=await createTransport().forkPersistentSession({sessionId:sourceId,checkpointId:checkpoint},handlers);
+    // Retry the ordinary message: rewind to the turn that created the Cron.
+    child=await createTransport().restorePersistentSession({sessionId:sourceId,checkpointId:createdCheckpoint,
+      inputId:'33333333-3333-4333-8333-333333333333',source:'human',rewind:true},handlers);
     child.events.on('event',observe);
     const result=await child.submit('Retry the later message and list existing schedules',{
       id:'33333333-3333-4333-8333-333333333333',source:'human'});
     assert.equal(result.result.subtype,'success');
-    assert.notEqual(child.sessionId,sourceId);
-    assert.equal(requests,5,'fork must use CronList, not CronCreate');
+    assert.equal(child.sessionId,sourceId,'the retry rewinds its own session in place');
+    assert.equal(requests,5,'the rewind must use CronList, not CronCreate');
     assert.deepEqual(errors,[]);
-    assert.deepEqual(counts,[1],'exactly one original Cron survives the fork');
+    assert.deepEqual(counts,[1],'exactly one original Cron survives the rewind');
     assert.equal(child.state,'idle');
   }catch(error){
     console.error('native-cron-carry-diag',JSON.stringify({
       requests,counts,toolErrors:errors.length,
-      sourceState:source?.state??'none',forkState:child?.state??'none'}));
+      sourceState:source?.state??'none',rewoundState:child?.state??'none'}));
     throw error;
   }finally{
     clearTimeout(timer);

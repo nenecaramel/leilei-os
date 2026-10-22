@@ -52,8 +52,8 @@ export function createNativeLiveMacExecutionAdmission(input: {
       return false;
     };
     if (!check || !(["send", "wake"].includes(command.operation) && ["new", "resume"].includes(command.runtime_mode)
-        || ["edit", "retry"].includes(command.operation) && ["new", "fork"].includes(command.runtime_mode)
-        // Edit and Retry rewind their own session in place, as Desktop does.
+        // Edit and Retry start new or rewind their own session in place, as Desktop does.
+        || ["edit", "retry"].includes(command.operation) && command.runtime_mode === "new"
         || ["edit", "retry"].includes(command.operation) && command.runtime_mode === "resume" && !!command.parent_provider_session_id)
       || command.parent_provider_checkpoint_id === undefined
       || command.runtime_mode === "fork" && (!command.parent_provider_session_id || !command.parent_provider_checkpoint_id)) return deny("UNSUPPORTED_COMMAND");

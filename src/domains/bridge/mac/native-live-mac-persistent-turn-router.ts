@@ -640,11 +640,7 @@ export class NativeLiveMacPersistentTurnRouter {
     const input = { conversationId: command.conversation_id, expectedWorkingDirectory: command.expected_working_directory, options };
     const opening = command.runtime_mode === "new"
       ? this.input.registry.openNew(input)
-      : command.runtime_mode === "fork"
-        ? this.input.registry.openFork({ ...input, fork: {
-            sessionId: command.parent_provider_session_id!, checkpointId: command.parent_provider_checkpoint_id!,
-          } })
-        : this.input.registry.openExisting({ ...input, restore: {
+      : this.input.registry.openExisting({ ...input, restore: {
           sessionId: command.parent_provider_session_id!, checkpointId: command.parent_provider_checkpoint_id!,
           inputId: slot.inputId, source: command.operation === "wake" ? "task-notification" : "human",
           ...(command.operation === "edit" || command.operation === "retry" ? { rewind: true } : {}),

@@ -59,10 +59,6 @@ async function fixture(t: test.TestContext, idleAdmission?: () => Promise<boolea
       return options.onBackgroundResult(frame);
     } });};
     Object.assign(configured.runtime, {
-      prepareLocalCheckpointForkImpl: async (fork: { sessionId: string; checkpointId: string }) => {
-        assert.equal(fork.sessionId, sid); assert.equal(fork.checkpointId, id(102));
-        return { sessionId: activeSid, async cleanup() {} };
-      },
       sessionMessagesImpl: async () => [{}],
       importSessionToStoreImpl: async (_id: string, store: { append(key: unknown, entries: unknown[]): Promise<void> }) => { await readGate?.(); return store.append({ sessionId: sid }, (transcript ?? restored).map(entry => ({ ...entry, sessionId: _id }))); },
       queryImpl: ({ prompt, options }: { prompt: AsyncIterable<{ uuid: string; origin: { kind: string } }>; options: typeof sdk }) => {
@@ -876,34 +872,35 @@ test("source rotation during autonomous upload rejects the old segment instead o
 });
 
 for (const operation of ["edit", "retry"] as const) {
-  test(`${operation} exact fork retains child background delivery and later sends through real registry/transport`, async t => {
-    const child = id(700);
-    const f = await fixture(t, async () => true, undefined, undefined, undefined, child);
-    const replacement = { ...command(2), operation, runtime_mode: "fork" as const, parent_provider_checkpoint_id: id(102) };
+  test(`${operation} rewind retains background delivery and later sends through real registry/transport`, async t => {
+    const f = await fixture(t, async () => true);
+    f.setTranscript([{ type: "user", uuid: id(500), parentUuid: null, sessionId: sid }, { type: "assistant", uuid: id(102), parentUuid: id(500), sessionId: sid },
+      { type: "user", uuid: id(600), parentUuid: id(102), sessionId: sid, entrypoint: "sdk-ts" }, { type: "assistant", uuid: id(601), parentUuid: id(600), sessionId: sid, entrypoint: "sdk-ts" }]);
+    const replacement = { ...command(2), operation, runtime_mode: "resume" as const, parent_provider_checkpoint_id: id(102) };
     let admitted = 0;
     f.setAdmission(async raw => {
       const { parseNativeLiveExecutionAdmissionBody } = await import("../src/domains/bridge/protocol/native-live-execution-admission.js");
       const parsed = parseNativeLiveExecutionAdmissionBody({ listener_instance_id: id(800), request_id: raw.request_id,
         conversation_id: raw.conversation_id, runtime_mode: raw.runtime_mode, canonical_user_message_id: raw.canonical_user_message_id,
         parent_provider_session_id: raw.parent_provider_session_id, parent_provider_checkpoint_id: raw.parent_provider_checkpoint_id });
-      assert.ok(parsed, "exercise production admission parser rather than assuming fork support");
+      assert.ok(parsed, "exercise production admission parser rather than assuming rewind support");
       admitted++; return true;
     });
     const running = f.run(replacement);
     const first = (await f.inputs.next()).value!;
     assert.equal(first.uuid, operation === "retry" ? replacement.prepare_id : replacement.canonical_user_message_id);
     f.finish(first.uuid); await running;
-    assert.equal(f.router.providerSessionId, child);
+    assert.equal(f.router.providerSessionId, sid, "the rewound writer keeps its own session");
     assert.equal(f.closes, 0);
     const backgroundDone = deferred<void>();
     f.setBackground(async () => { backgroundDone.resolve(); return acknowledged(id(104)); });
     f.finish(id(777)); await backgroundDone.promise;
     await f.router.settle();
-    assert.equal(f.backgroundOwners.at(-1)?.providerSessionId, child);
+    assert.equal(f.backgroundOwners.at(-1)?.providerSessionId, sid);
     assert.equal(f.backgroundOwners.at(-1)?.source.prepareId, replacement.prepare_id);
-    const later = f.run({ ...command(3), parent_provider_session_id: child, parent_provider_checkpoint_id: id(104) });
+    const later = f.run({ ...command(3), parent_provider_session_id: sid, parent_provider_checkpoint_id: id(104) });
     f.finish((await f.inputs.next()).value!.uuid); await later;
-    assert.equal(f.launches, 1, "ordinary continuation reuses the child writer");
+    assert.equal(f.launches, 1, "ordinary continuation reuses the rewound writer");
     assert.equal(f.closes, 0);
     assert.ok(admitted >= 2);
   });

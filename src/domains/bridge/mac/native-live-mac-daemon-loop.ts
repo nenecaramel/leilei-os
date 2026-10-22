@@ -293,12 +293,12 @@ export class NativeLiveMacDaemonLoop {
       const execute = async (command: NativeLiveRuntimeCommand, options: Parameters<NativeLivePreparedCommandExecutor["execute"]>[1]) => {
         this.persistentExecutor?.assertAccepting?.(command.conversation_id);
         // Edit/retry replaces the visible branch. Retire its old writer BEFORE
-        // asking the new fork to open; the replaced native schedule must never
+        // the rewound writer opens; the replaced native schedule must never
         // keep running in parallel with a different presentation branch.
         if (command.operation === "edit" || command.operation === "retry") {
           await this.persistentExecutor?.retire(command.conversation_id, "BRANCH_REPLACED");
           // Only exact-checkpoint replacements can own a persistent child.
-          // The executor still leaves legacy checkpoint-less forks one-shot.
+          // Admission refuses an edit/retry fork (a server older than rewind).
           if (this.persistentExecutor?.canRoute(command)) {
             persistentRun = await this.persistentExecutor.execute(command, { ...options, commit });
             return persistentRun.result;

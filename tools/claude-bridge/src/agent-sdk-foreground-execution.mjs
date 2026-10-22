@@ -74,15 +74,10 @@ export async function executeAgentSdkTurn(owner, checkpoints,
       !isNativeSessionMirror(nativeSessionMirror, parentProviderSessionId, owner.sessionStore))) {
       throw runtimeError("Native resume requires an exact durable checkpoint and its original-source mirror.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
     }
-    let checkpointPreflight = null;
     if (parentProviderCheckpointId !== null) {
-      checkpointPreflight = await checkpoints.requireCheckpoint(
+      await checkpoints.requireCheckpoint(
         parentProviderSessionId,
         parentProviderCheckpointId,
-        {
-          needPrefix:
-            mode === "fork" && !owner.sessionStore,
-        },
       );
     }
 
@@ -147,35 +142,14 @@ export async function executeAgentSdkTurn(owner, checkpoints,
           )
         : null;
 
-    let localCheckpointFork = null;
-    if (
-      mode === "fork"
-      && !owner.sessionStore
-      && parentProviderCheckpointId !== null
-    ) {
-      localCheckpointFork =
-        await owner.prepareLocalCheckpointForkImpl({
-          sessionId: parentProviderSessionId,
-          checkpointId: parentProviderCheckpointId,
-          prefix: checkpointPreflight?.prefix ?? null,
-          cwd: owner.cwd,
-          environment: owner.environment,
-        });
-    }
-    const sdkParentProviderSessionId =
-      localCheckpointFork?.sessionId
-      ?? parentProviderSessionId;
-
-    let handle;
-    try {
-      handle = await createAgentSdkTurnHandle({
+    const handle = await createAgentSdkTurnHandle({
       prompt,
       mode,
       parentProviderSessionId,
       resume:
         mode === "new"
           ? null
-          : sdkParentProviderSessionId,
+          : parentProviderSessionId,
       forkSession: mode === "fork",
       resumeSessionAt: parentProviderCheckpointId,
       queryImpl,
@@ -223,13 +197,7 @@ export async function executeAgentSdkTurn(owner, checkpoints,
       midTurnInput:
         Boolean(controlPump) && !nativeScheduleCommand,
       executionReadback: Boolean(execution),
-      });
-    } catch (cause) {
-      if (localCheckpointFork) {
-        await localCheckpointFork.cleanup().catch(() => undefined);
-      }
-      throw cause;
-    }
+    });
 
     owner.activeTurnHandle = handle;
     const forwardRaw = (event) => {
@@ -341,10 +309,7 @@ export async function executeAgentSdkTurn(owner, checkpoints,
       }
       if (
         mode === "fork"
-        && (
-          result.providerSessionId === parentProviderSessionId
-          || result.providerSessionId === sdkParentProviderSessionId
-        )
+        && result.providerSessionId === parentProviderSessionId
       ) {
         throw runtimeError(
           "Claude Agent SDK fork returned the same provider session id as its parent.",
@@ -436,16 +401,6 @@ export async function executeAgentSdkTurn(owner, checkpoints,
       );
       if (owner.activeTurnHandle === handle) {
         owner.activeTurnHandle = null;
-      }
-      if (localCheckpointFork) {
-        try {
-          await localCheckpointFork.cleanup();
-        } catch (cause) {
-          owner.events.emit(
-            "local-checkpoint-fork-cleanup-error",
-            cause,
-          );
-        }
       }
     }
   }

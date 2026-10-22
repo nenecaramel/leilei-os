@@ -7,10 +7,10 @@ import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { AgentSdkClaudeTransport } from '../src/agent-sdk-claude-transport.mjs';
 
-// Real pinned CLI fork + CronCreate + fully completed ordinary chat + idle fire.
+// Real pinned CLI rewind + CronCreate + fully completed ordinary chat + idle fire.
 // No account/model calls: every Anthropic response comes from a loopback server.
 // Opt-in because this must cross a real native minute boundary.
-test('native edited fork preserves one-shot Cron across a later completed human turn', {
+test('native edit rewound in place preserves one-shot Cron across a later completed human turn', {
   skip: process.env.RUN_NATIVE_CLI_OFFLINE_EDIT_CRON_TEST !== '1'
     && 'Set RUN_NATIVE_CLI_OFFLINE_EDIT_CRON_TEST=1 (no external model calls)',
   timeout: 215_000,
@@ -21,7 +21,7 @@ test('native edited fork preserves one-shot Cron across a later completed human 
   const target = new Date(Date.now() + 95_000);
   const cron = `${target.getUTCMinutes()} ${target.getUTCHours()} * * *`;
   let modelRequests = 0, hookCallbacks = 0, scheduledAdmissions = 0;
-  let jobCounts = [], host, seedId = null, checkpointId = null, cleaned = 0;
+  let jobCounts = [], host, seedId = null, checkpointId = null;
   let resolveBackground;
   const background = new Promise(resolve => { resolveBackground = resolve; });
 
@@ -60,7 +60,9 @@ test('native edited fork preserves one-shot Cron across a later completed human 
     ANTHROPIC_BASE_URL:`http://127.0.0.1:${server.address().port}`,
     ANTHROPIC_AUTH_TOKEN:'',CLAUDE_CODE_OAUTH_TOKEN:'',ANTHROPIC_CUSTOM_HEADERS:'',
     CLAUDE_CODE_USE_BEDROCK:'0',CLAUDE_CODE_USE_VERTEX:'0',CLAUDE_CODE_USE_FOUNDRY:'0',
-    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1',DISABLE_TELEMETRY:'1',
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1',
+    // As in production: LeileiOS writes as the SDK, even from a Claude shell.
+    CLAUDE_CODE_ENTRYPOINT:'sdk-ts',DISABLE_TELEMETRY:'1',
     DISABLE_ERROR_REPORTING:'1',HTTP_PROXY:'',HTTPS_PROXY:'',ALL_PROXY:'',
     NO_PROXY:'127.0.0.1',TZ:'UTC',
   };
@@ -80,6 +82,8 @@ test('native edited fork preserves one-shot Cron across a later completed human 
     const transport = new AgentSdkClaudeTransport({
       environment:{CLAUDE_CONFIG_DIR:root},cwd:root,toolPermissionPolicy:'auto_allow',
       createSendFileMcpServerImpl:async()=>null,
+      // SDK session listing does not receive the isolated config dir.
+      sessionMessagesImpl:async()=>[{}],
       importSessionToStoreImpl:async(_session,store)=>store.append({subpath:null},[
         {type:'user',uuid:'11111111-1111-4111-8111-111111111111',
           parentUuid:null,sessionId:seedId,message:{role:'user',content:[{type:'text',text:'synthetic'}]}},
@@ -87,11 +91,8 @@ test('native edited fork preserves one-shot Cron across a later completed human 
           parentUuid:'11111111-1111-4111-8111-111111111111',
           sessionId:seedId,message:{role:'assistant',content:[{type:'text',text:'synthetic'}]}},
       ]),
-      // Only the historical-prefix file materialization is stubbed. The pinned
-      // CLI performs the ACTUAL fork, scheduling, human continuation and fire.
-      prepareLocalCheckpointForkImpl:async()=>({
-        sessionId:seedId,async cleanup(){cleaned++;},
-      }),
+      // The pinned CLI performs the ACTUAL rewind (resumeSessionAt on the same
+      // session), scheduling, human continuation and fire.
       queryImpl:({prompt,options})=>query({prompt,options:{
         ...options,env:environment,settingSources:[],mcpServers:{},
         tools:['CronCreate','CronList','CronDelete'],persistSession:true,
@@ -100,7 +101,8 @@ test('native edited fork preserves one-shot Cron across a later completed human 
         }]}]},
       }}),
     });
-    host = await transport.forkPersistentSession({sessionId:seedId,checkpointId},{
+    host = await transport.restorePersistentSession({sessionId:seedId,checkpointId,
+      inputId:'22222222-2222-4222-8222-222222222222',source:'human',rewind:true},{
       authorize:async ctx=>{if(ctx.phase==='scheduled')scheduledAdmissions++;return true;},
       onBackgroundResult:async frame=>resolveBackground(frame),
     });
@@ -116,24 +118,23 @@ test('native edited fork preserves one-shot Cron across a later completed human 
     assert.equal(modelRequests,4);
     assert.equal(ordinary.providerSessionId,edit.providerSessionId,
       'the edited branch MUST keep one native SDK process after a normal chat');
-    assert.notEqual(edit.providerSessionId,seedId,
-      'the edited fork must get a separate provider session');
+    assert.equal(edit.providerSessionId,seedId,
+      'the edit rewinds its own provider session in place');
     assert.equal(host.state,'idle');
     const frame = await Promise.race([
       background,
-      host.completion.then(()=>{throw Error('fork writer closed before native Cron');}),
+      host.completion.then(()=>{throw Error('rewound writer closed before native Cron');}),
       new Promise((_,reject)=>abort.signal.addEventListener('abort',()=>reject(Error('native Cron deadline expired')),{once:true})),
     ]);
     assert.equal(frame.result.subtype,'success');
     assert.equal(scheduledAdmissions,1);
     assert.equal(modelRequests,6);
     assert.equal(hookCallbacks,3);
-    assert.equal(cleaned,1,'synthetic preflight prefix must be cleaned exactly once');
     assert.equal(host.state,'idle');
   } catch (error) {
     console.error('native-edit-cron-offline-diag',JSON.stringify({
       modelRequests,hookCallbacks,scheduledAdmissions,
-      hostState:host?.state??'not-open',cleaned,jobCounts,
+      hostState:host?.state??'not-open',jobCounts,
     }));
     throw error;
   } finally {

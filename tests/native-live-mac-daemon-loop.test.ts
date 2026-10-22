@@ -1394,7 +1394,7 @@ for (const operation of ["edit", "retry"] as const) for (const runtime_mode of [
 
 test("exact replacement cannot fall back to one-shot when persistent capacity is exhausted",async()=>{
   const relay=new FakeRelay();
-  relay.reservation={reservationId,command:{...command(),operation:"edit",runtime_mode:"fork",
+  relay.reservation={reservationId,command:{...command(),operation:"edit",runtime_mode:"resume",
     parent_provider_session_id:"original-session",parent_provider_checkpoint_id:"original-checkpoint"}};
   let legacy=0;
   const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){legacy++;return success();}},
@@ -1415,7 +1415,7 @@ test("legacy fallback never starts if retiring the persistent writer failed",asy
 for (const operation of ["edit", "retry"] as const) {
   test(`${operation} waits for verified old-writer retirement and never executes after a failed close`,async()=>{
     const relay=new FakeRelay();
-    relay.reservation={reservationId,command:{...command(),operation,runtime_mode:"fork",
+    relay.reservation={reservationId,command:{...command(),operation,runtime_mode:"resume",
       parent_provider_session_id:"original-session",parent_provider_checkpoint_id:"original-checkpoint"}};
     let entered!:()=>void,rejectClose!:(error:Error)=>void,legacy=0;
     const retiring=new Promise<void>(resolve=>{entered=resolve;});

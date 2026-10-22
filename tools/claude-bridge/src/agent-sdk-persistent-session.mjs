@@ -16,7 +16,7 @@ import {
 } from "./agent-sdk-transport-support.mjs";
 
 // State stays on the transport owner; private checkpoint operations are bound by its entry point.
-export async function openAgentSdkPersistentSession(owner, checkpoints, options = {}, restore = null, fork = null) {
+export async function openAgentSdkPersistentSession(owner, checkpoints, options = {}, restore = null) {
     const allowed = new Set(["authorize", "onBackgroundResult", "createBackgroundOutput", "execution", "permissionHandler", "questionHandler", "perTaskStopAffordance", "onCloseDiagnostic"]);
     for (const key of Object.keys(options)) if (!allowed.has(key)) throw new Error(`Unsupported persistent session option: ${key}`);
     const { authorize, onBackgroundResult, createBackgroundOutput = null, execution = null, permissionHandler = null,
@@ -124,7 +124,6 @@ export async function openAgentSdkPersistentSession(owner, checkpoints, options 
       const executionOptions = normalizeAgentSdkExecutionSelection(execution);
       host = await createAgentSdkSessionHost({ queryImpl, onCloseDiagnostic,
         expectedSessionId: restore?.sessionId ?? null,
-        allowInitialFork: fork !== null,
         observeOutput: startup ? message => observeNativeSessionStartup(startup, message) : null,
         beforeSubmit: async context => {
           if (restore && !firstInputAdmitted && (context.inputId !== restore.inputId || context.source !== restore.source)) throw new Error("Initial native input identity/source does not match its reservation.");
@@ -152,7 +151,6 @@ export async function openAgentSdkPersistentSession(owner, checkpoints, options 
               type: "command", command: `printf '%s' '${startup.startupReceipt}'`,
             }] }] } },
           } : {}),
-          ...(fork ? { resume: fork.localSessionId, resumeSessionAt: fork.checkpointId, forkSession: true } : {}),
           canUseTool: async (name, input, context) => {
             // Capture native selection through admission and permission waits.
             const owner = toolOwner();

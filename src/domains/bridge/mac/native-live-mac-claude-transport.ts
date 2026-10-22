@@ -74,7 +74,6 @@ export type NativeLiveMacPersistentSession = {
   recoverCompletedTurn?(input: { inputId: string; parentCheckpointId: string | null }): Promise<{result: NativeLiveMacSessionResult; providerCheckpointId: string} | null>;
   close(reason?: Error): Promise<void>;
 };
-export type NativeLiveMacSessionFork = Readonly<{ sessionId: string; checkpointId: string }>;
 export type NativeLiveMacSessionRestore = Readonly<{
   sessionId: string;
   checkpointId: string;
@@ -154,7 +153,6 @@ export type NativeLiveMacClaudeTransport =
   NativeLiveClaudeRuntime & {
     closePersistentSession?(reason?: Error): Promise<void>;
     restorePersistentSession?(restore: NativeLiveMacSessionRestore, options: NativeLiveMacPersistentSessionOptions): Promise<NativeLiveMacPersistentSession>;
-    forkPersistentSession?(fork: NativeLiveMacSessionFork, options: NativeLiveMacPersistentSessionOptions): Promise<NativeLiveMacPersistentSession>;
     openPersistentSession?(options: NativeLiveMacPersistentSessionOptions): Promise<NativeLiveMacPersistentSession>;
     abort(reason?: Error): void;
     deleteSession(sessionId: string): Promise<void>;
