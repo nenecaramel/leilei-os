@@ -13,7 +13,7 @@ daemon's Claude session uses (never on the public connector). Actions:
 
 | Action | Input | Effect |
 | --- | --- | --- |
-| `create` | `content`, optional `reason`, `consider_in_minutes` (≥ 5), `expires_at` (ISO with offset, ≤ 7 days) | Bind a concern to the conversation and user turn now being answered. A create with identical content in the same conversation within 10 minutes replays the existing row. |
+| `create` | `content`, optional `reason`, `consider_in_minutes` (≥ 2), `expires_at` (ISO with offset, ≤ 7 days) | Bind a concern to the conversation and user turn now being answered. A create with identical content in the same conversation within 10 minutes replays the existing row. |
 | `update` | `concern_id`, `expected_revision`, any of `content`/`reason`/`progress`/`consider_in_minutes`/`expires_at` | Edit or move earlier/later. |
 | `release` | `concern_id`, `expected_revision`, `outcome` (`resolved`/`dropped`) | End it. |
 | `list` | — | Active, unexpired concerns of the current conversation. |
@@ -29,7 +29,7 @@ Claude cannot change these through the tool: at most 12 active concerns per user
 text ≤ 300 characters; at most 3 wakes per concern (`wake_count`, `last_woken_at`,
 `woken_consider_at` are an execution record outside the model revision); at most
 3 concern-only wakes per unanswered user message (receipt slots
-`concern_1..3`); no concern wake within 5 minutes of a reply or 30 minutes of any
+`concern_1..3`); no concern wake within 2 minutes of a reply or 30 minutes of any
 other wake in the same epoch; at most 5 concerns per wake. Released or expired
 rows are pruned 7 days after they end. The local Wake switch
 (`pnpm wake off`) and `NATIVE_LIVE_SILENCE_WAKE_ENABLED=false` stop concern wakes

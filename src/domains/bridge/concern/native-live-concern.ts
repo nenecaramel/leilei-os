@@ -12,12 +12,13 @@ import { formatCurrentTime } from "../../time/current-time.js";
 export const CONCERN_LIMITS = {
   maxActivePerUser: 12,
   maxTextLength: 300,
-  minConsiderInMinutes: 5,
+  // As soon as the 2–5 minute reply wake, which can then carry it.
+  minConsiderInMinutes: 2,
   maxHorizonMs: 7 * 24 * 60 * 60_000,
   maxWakesPerConcern: 3,
   maxConcernsPerWake: 5,
   cooldownMs: 30 * 60_000,
-  postTurnGapMs: 5 * 60_000,
+  postTurnGapMs: 2 * 60_000,
   duplicateWindowMs: 10 * 60_000,
   endedRetentionMs: 7 * 24 * 60 * 60_000,
 } as const;

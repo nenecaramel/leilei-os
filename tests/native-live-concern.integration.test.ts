@@ -296,7 +296,8 @@ test(
     await h.turn({ conversationId: conversation.id, expectedHead: null, text: "记得提醒我吃药", reply: "好" });
     h.clock.now = new Date();
     const { concern } = await h.concerns.create({
-      userId: h.user.id, content: "提醒吃药", considerInMinutes: 5,
+      // Due before the 2–5 minute reply wake, which therefore carries it.
+      userId: h.user.id, content: "提醒吃药", considerInMinutes: 2,
       expiresAt: new Date(h.clock.now.getTime() + 6 * 60 * minute).toISOString(),
     });
     const schedule = await h.silence.readSchedule({ userId: h.user.id });

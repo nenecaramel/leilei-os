@@ -21,8 +21,19 @@ test("silence wake jitter is stable and stays inside both configured windows", (
     Date.parse(first.postTurnDueAt) - Date.parse(input.assistantCompletedAt);
   const longDelay =
     Date.parse(first.longIdleDueAt) - Date.parse(input.userActivityAt);
-  assert.ok(postDelay >= 5 * 60_000 && postDelay <= 10 * 60_000);
+  assert.ok(postDelay >= 2 * 60_000 && postDelay <= 5 * 60_000);
   assert.ok(longDelay >= 90 * 60_000 && longDelay <= 120 * 60_000);
+});
+
+test("the post-reply wake lands 2–5 minutes after the reply for every epoch", () => {
+  const delays = Array.from({ length: 64 }, (_, index) => {
+    const epochId = `44444444-4444-4444-8444-${String(index).padStart(12, "0")}`;
+    const { postTurnDueAt } = silenceWakeDeadlines({ epochId,
+      userActivityAt: "2026-10-04T01:00:00.000Z", assistantCompletedAt: "2026-10-04T01:01:00.000Z" });
+    return Date.parse(postTurnDueAt) - Date.parse("2026-10-04T01:01:00.000Z");
+  });
+  for (const delay of delays) assert.ok(delay >= 2 * 60_000 && delay <= 5 * 60_000, String(delay));
+  assert.ok(Math.min(...delays) < 3 * 60_000 && Math.max(...delays) > 4 * 60_000, "the jitter spans the window");
 });
 
 test("wake marker carries only elapsed silence, without the hook-provided date and clock", () => {

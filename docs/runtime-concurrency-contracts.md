@@ -124,7 +124,7 @@ pnpm wake off
 pnpm wake status
 ```
 
-This persistent local switch controls only the post-reply 5–10 minute and
+This persistent local switch controls only the post-reply 2–5 minute and
 last-user-message 90–120 minute silence opportunities, and the
 [concern](native-live-concerns.md) wakes that share them. It does not change
 normal chat, Cron/Monitor/Bash jobs, Mind recall, or Railway configuration.
