@@ -73,7 +73,10 @@ export async function checkNativeLiveExecutionAdmission(db: Pick<Database, "exec
         AND (
           (p.runtime_mode = 'new' AND p.operation IN ('send', 'edit', 'retry') AND u.parent_message_id IS NULL
             AND p.parent_provider_session_id IS NULL AND p.parent_provider_checkpoint_id IS NULL)
-          OR (p.runtime_mode='fork' AND p.operation IN ('edit','retry')
+          -- Retry forks; Edit rewinds its session in place (resume). Both
+          -- authorize against the exact parent checkpoint captured at prepare.
+          OR (((p.runtime_mode='fork' AND p.operation IN ('edit','retry'))
+              OR (p.runtime_mode='resume' AND p.operation='edit'))
             AND p.parent_provider_session_id IS NOT NULL AND p.parent_provider_checkpoint_id IS NOT NULL
             AND (
               (c.provider_metadata->'nativeSessionSource'->>'mode'='continuation'

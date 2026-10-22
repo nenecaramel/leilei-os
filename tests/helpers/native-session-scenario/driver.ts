@@ -184,7 +184,7 @@ export class Scenario {
           const result=await this.coordinator.finalize(this.userId,resultInput);outcome=result.ok?result.outcome:result.code;
           if(operation==='success'&&result.ok&&'assistantMessageId'in result){
             if((command.operation==='edit'||command.operation==='retry')&&this.target===this.lateUser)this.model.lateRetained=false;
-            rotate=command.runtime_mode!=='resume';this.model.head=result.assistantMessageId;this.target=command.canonical_user_message_id!;this.model.branchAllowed=true;
+            rotate=command.operation==='edit'||command.runtime_mode!=='resume';this.model.head=result.assistantMessageId;this.target=command.canonical_user_message_id!;this.model.branchAllowed=true;
             const committed=await readState(this.db,this.userId,this.conversationId);
             if(command.operation==='edit'||command.operation==='retry'){
               const retained=new Set(committed.messages.map(message=>message.id));

@@ -168,10 +168,11 @@ test('an edit commit starts a new native line and stamps the new writer generati
   const before = await mirrored(db, conversationId);
   assert.equal(before.turn_prepare_id, prepareId);
 
-  const completed = await finalize(db, userId, await execute(db, userId, prepareId), randomUUID());
+  // The edit rewinds the same native session in place, yet still replaces the line.
+  const completed = await finalize(db, userId, await execute(db, userId, prepareId), session);
   assert.equal(completed.outcome, 'completed', JSON.stringify(completed));
   const after = await mirrored(db, conversationId);
-  assert.notEqual(after.writer_generation, before.writer_generation, 'an edit forks the native line');
+  assert.notEqual(after.writer_generation, before.writer_generation, 'an edit replaces the native line');
   assert.equal(await stampedGeneration(db, (completed as { assistantMessageId: string }).assistantMessageId), after.writer_generation);
 }));
 

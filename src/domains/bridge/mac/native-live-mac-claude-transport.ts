@@ -81,6 +81,8 @@ export type NativeLiveMacSessionRestore = Readonly<{
   inputId: string;
   source: "human" | "task-notification";
   timeoutMs?: number;
+  /** Edit: resume this session at the earlier checkpoint over LeileiOS-only turns. */
+  rewind?: boolean;
 }>;
 export type NativeLiveMacPersistentSessionOptions = {
   authorize(context: { phase: "input" | "tool" | "scheduled"; inputId: string | null; source: NativeLiveMacSessionSource | null; providerSessionId: string | null }): Promise<boolean>;

@@ -119,7 +119,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
   async restorePersistentSession(restore, options = {}) {
     const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-    if (!restore || Object.keys(restore).some(key => !["sessionId", "checkpointId", "inputId", "source", "timeoutMs"].includes(key))
+    if (!restore || Object.keys(restore).some(key => !["sessionId", "checkpointId", "inputId", "source", "timeoutMs", "rewind"].includes(key))
+      || (restore.rewind !== undefined && typeof restore.rewind !== "boolean")
       || !uuid.test(restore.sessionId ?? "") || !uuid.test(restore.checkpointId ?? "") || !uuid.test(restore.inputId ?? "")
       || !["human", "task-notification"].includes(restore.source)) throw new Error("Native restore requires exact session/checkpoint/input identity and source.");
     const timeoutMs = restore.timeoutMs ?? 8_000;
@@ -171,6 +172,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       requireSession: (...args) => this.#requireSession(...args),
       requireCheckpoint: (...args) => this.#requireCheckpoint(...args),
       validateLocalResumeTail: (...args) => this.#validateLocalResumeTail(...args),
+      validateLocalRewindTail: (...args) => this.#validateLocalRewindTail(...args),
       resolveQuery: (...args) => this.#resolveQuery(...args),
       checkpointEntries: (...args) => this.#checkpointEntries(...args),
     }, options, restore, fork);
@@ -242,6 +244,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       prepareSessionForTurn: (...args) => this.#prepareSessionForTurn(...args),
       resolveQuery: (...args) => this.#resolveQuery(...args),
       validateLocalResumeTail: (...args) => this.#validateLocalResumeTail(...args),
+      validateLocalRewindTail: (...args) => this.#validateLocalRewindTail(...args),
       completePortability: (...args) => this.#completePortability(...args),
       completedCheckpoint: (...args) => this.#completedCheckpoint(...args),
       validateRecoveredCheckpoint: (...args) => this.#validateRecoveredCheckpoint(...args),
@@ -474,6 +477,35 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     return entries.filter(entry => entry && !entry.isSidechain
       && ["user", "assistant", "system", "attachment"].includes(entry.type)
       && typeof entry.uuid === "string" && Object.hasOwn(entry, "parentUuid"));
+  }
+
+  // Desktop-style rewind (Edit): resumeSessionAt an earlier checkpoint drops
+  // everything after it from the resumed view. Only LeileiOS's own SDK records
+  // (entrypoint sdk-ts) may be dropped; any other writer's record is unseen
+  // native history and is never rewound. The JSONL itself is never edited.
+  async #validateLocalRewindTail(sessionId, checkpointId) {
+    const allEntries = await this.#checkpointEntries(sessionId, true);
+    const tailId = this.#chainEntries(allEntries).at(-1)?.uuid;
+    const conflict = () => runtimeError(
+      "Native session has unsynchronized history; restore it before continuing.",
+      { runtimeCode: "PROVIDER_SESSION_CONFLICT" },
+    );
+    if (!tailId) throw conflict();
+    let verified;
+    try { verified = durableCheckpointPrefix(allEntries, tailId); }
+    catch { throw conflict(); }
+    if (!verified.ancestry.has(checkpointId)) throw conflict();
+    // The CLI starts history at the last compact boundary in file order, so a
+    // checkpoint before it cannot be resumed; Desktop's rewind refuses it too.
+    const boundary = allEntries.findLastIndex(entry => entry && !entry.isSidechain
+      && entry.type === "system" && entry.subtype === "compact_boundary");
+    if (boundary > allEntries.findLastIndex(entry => entry && !entry.isSidechain && entry.uuid === checkpointId)) {
+      throw runtimeError("Edit cannot rewind past the latest native compaction.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
+    }
+    const byId = new Map(this.#chainEntries(verified.prefix).map(entry => [entry.uuid, entry]));
+    for (let id = tailId; id !== checkpointId; id = byId.get(id).parentUuid) {
+      if (byId.get(id).entrypoint !== "sdk-ts") throw conflict();
+    }
   }
 
   async #validateLocalResumeTail(sessionId, checkpointId, userMessageUuid, failedUserMessageUuids) {

@@ -378,6 +378,8 @@ export async function prepareEdit(
           input.userId,
           input.conversationId,
           target.parentMessageId,
+          "replacement",
+          true,
         );
         if (!runtimeParent.ok) return runtimeParent.result;
 
@@ -555,6 +557,10 @@ export async function resolveRuntimeParent(
     conversationId: string,
     parentMessageId: string | null,
     continuation: "send" | "replacement" = "replacement",
+    // Edit rewinds its native session in place at the parent checkpoint, as
+    // Desktop's rewind does. Retry keeps the copy fork: it reuses the target's
+    // user UUID, which would appear twice in one native transcript.
+    rewind = false,
   ): Promise<
     | {
         ok: true;
@@ -602,7 +608,7 @@ export async function resolveRuntimeParent(
           && canonical.effectiveWorkingDirectory === binding.effectiveWorkingDirectory
           ? await readNativeResumeCheckpoint(executor, { userId, conversationId, canonicalMessageId: parentMessageId })
           : null;
-        return { ok: true, runtimeMode: continuation === "send" ? "resume" : "fork",
+        return { ok: true, runtimeMode: continuation === "send" || rewind ? "resume" : "fork",
           parentProviderSessionId: binding.sessionId, parentProviderCheckpointId: nativeCursor ?? binding.checkpointId,
           expectedWorkingDirectory: binding.effectiveWorkingDirectory };
       }
@@ -660,7 +666,7 @@ export async function resolveRuntimeParent(
 
     return {
       ok: true,
-      runtimeMode: continuation === "send" && checkpoint.providerCheckpointId ? "resume" : "fork",
+      runtimeMode: (continuation === "send" || rewind) && checkpoint.providerCheckpointId ? "resume" : "fork",
       parentProviderSessionId: checkpoint.providerSessionId,
       expectedWorkingDirectory: checkpoint.effectiveWorkingDirectory,
       parentProviderCheckpointId: continuation === "send" ? await readNativeResumeCheckpoint(executor, { userId, conversationId, canonicalMessageId: parentMessageId }) : checkpoint.providerCheckpointId,

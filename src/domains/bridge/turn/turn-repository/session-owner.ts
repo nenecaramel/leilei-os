@@ -75,9 +75,10 @@ export async function rotateNativeWriterGeneration(executor: Executor, input: {
   `);
 }
 
-/** A committed turn starts a new native line unless it resumes the head. Wake never does. */
+/** A committed turn starts a new native line unless it resumes the head. Wake
+ * never does; an edit always does, even when it rewinds the same session. */
 export function commitRotatesWriterGeneration(row: { operation: string; runtimeMode: string }): boolean {
-  return row.operation !== "wake" && row.runtimeMode !== "resume";
+  return row.operation !== "wake" && (row.operation === "edit" || row.runtimeMode !== "resume");
 }
 
 export type NativeSessionOwner = "leileios" | "releasing" | "desktop";

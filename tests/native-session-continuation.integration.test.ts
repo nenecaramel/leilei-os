@@ -183,7 +183,7 @@ test('handoff follows a finalized local fork without importing its transcript an
   assert.equal(after.headMessageId, a); assert.equal(await f.count(), 2);
 }));
 
-for (const operation of ['retry', 'edit'] as const) test(`continuation ${operation} forks only post-handoff input from exact external checkpoint`, { skip: !enabled }, async () => fixture(async f => {
+for (const operation of ['retry', 'edit'] as const) test(`continuation ${operation} branches only post-handoff input from exact external checkpoint`, { skip: !enabled }, async () => fixture(async f => {
   await f.attach();
   const u = randomUUID(), a = randomUUID(), cp = randomUUID();
   await f.db.insert(conversationMessages).values([
@@ -198,7 +198,8 @@ for (const operation of ['retry', 'edit'] as const) test(`continuation ${operati
   const prepared = await coordinator.prepare(f.input.userId, { request_id: randomUUID(), conversation_id: f.input.conversationId,
     operation, dispatch_target: 'claude_code', target_user_message_id: u, ...(operation === 'edit' ? { text: 'edited synthetic' } : {}) });
   assert.ok(prepared.ok, JSON.stringify(prepared));
-  assert.equal(prepared.command.runtime_mode, 'fork'); assert.equal(prepared.command.parent_provider_session_id, f.input.sessionId);
+  // Edit rewinds the bound session in place; Retry forks it.
+  assert.equal(prepared.command.runtime_mode, operation === 'edit' ? 'resume' : 'fork'); assert.equal(prepared.command.parent_provider_session_id, f.input.sessionId);
   assert.equal(prepared.command.parent_provider_checkpoint_id, f.input.checkpointId);
 }));
 

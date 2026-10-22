@@ -80,10 +80,15 @@ native session file, and once more when a turn that starts a new line commits:
 2. **First runtime events** of a non-Wake turn whose binding has not started.
    This covers the one-shot path, which has no binding
    (`native-live-runtime-event-stream.ts`).
-3. **Commit of a non-resume foreground turn:**
-   `operation <> 'wake' AND runtime_mode <> 'resume'`. In practice this is edit
-   and retry (always `fork`), and a send that starts `new` or forks from a
-   bootstrap. Wake prepares with `runtime_mode = 'fork'`
+3. **Commit of a line-replacing foreground turn:**
+   `operation <> 'wake' AND (operation = 'edit' OR runtime_mode <> 'resume')`.
+   In practice this is edit, retry, and a send that starts `new` or forks from a
+   bootstrap. Since 10/22 an edit rewinds its own session in place
+   (`runtime_mode = 'resume'` at the parent checkpoint, like Desktop's rewind),
+   so it rotates by operation; retry still forks, because it reuses the target's
+   user UUID, which would appear twice in one transcript. The Mac only rewinds
+   over records written by LeileiOS (`entrypoint = 'sdk-ts'`) and never past the
+   latest compact boundary. Wake prepares with `runtime_mode = 'fork'`
    (`native-live-silence-wake.ts:445`), but it is pinned to the same session, so
    it is excluded by operation, not by mode.
 

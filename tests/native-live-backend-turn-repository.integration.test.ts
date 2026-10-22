@@ -764,7 +764,8 @@ test(
     });
     assert.equal(edit.ok, true);
     if (!edit.ok) throw new Error("expected edit prepare success");
-    assert.equal(edit.command.runtime_mode, "fork");
+    // Desktop-style rewind: an edit resumes the same native session.
+    assert.equal(edit.command.runtime_mode, "resume");
     assert.equal(
       edit.command.parent_provider_session_id,
       "provider-first",
@@ -778,7 +779,7 @@ test(
       request_id: editRequestId,
       conversation_id: conversation.id,
       status: "success",
-      provider_session_id: "provider-edit",
+      provider_session_id: "provider-first",
         provider_checkpoint_id: edit.command.prepare_id,
       normalized_events: [
         { type: "text", payload: { text: "edited answer" } },
