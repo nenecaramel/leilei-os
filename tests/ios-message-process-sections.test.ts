@@ -29,41 +29,30 @@ test('thinking sheet is independent and timestamp belongs only to the footer', (
   assert.match(actions, /if let timestamp = turn\.visibleTimestamp/);
   assert.ok(actions.indexOf('if let timestamp') > actions.indexOf('if turn.canRetry'));
 });
-test('process section gaps are 18 while body/footer spacing stays 6', () => {
-  const layout = readFileSync('ios/LeileiOS/LeileiOS/Chat/ChatPresentationLayout.swift', 'utf8');
+// Appearance (fonts, spacing, insets, icon sizes, colors) is owner-tuned on
+// device and deliberately unpinned. These tests cover which rows appear, what
+// they open or toggle, and where callbacks go.
+test('process sections drive which rows appear between thinking, activity and body', () => {
   const row = readFileSync(root + 'NativeLiveAssistantTurnRow.swift', 'utf8');
-  assert.match(layout, /processSectionSpacing: CGFloat = 18/);
-  assert.match(layout, /assistantSpacing: CGFloat = 6/);
-  assert.match(row, /\(chatTheme == \.iMessage \? ChatPresentationLayout\.iMessageProcessSectionSpacing : ChatPresentationLayout\.processSectionSpacing\) - ChatPresentationLayout\.assistantSpacing/);
+  assert.match(row, /if processSections\.showsLoading \{\s*if chatTheme == \.iMessage \{/);
+  assert.match(row, /NativeLiveProcessStatusHeadline\(\s*title: turn\.header\.isEmpty \? "Thinking…" : turn\.header/);
+  assert.match(row, /else \{\s*Text\("Thinking\.\.\."\)/);
   assert.match(row, /processSections\.showsThinking && \(processSections\.showsActivity \|\| !turn\.bodyPresentation\.nodes\.isEmpty\)/);
   assert.match(row, /processSections\.showsActivity && !turn\.bodyPresentation\.nodes\.isEmpty/);
-});
-test('process labels stay 14 regular with light arrows and an 8pt gap', () => {
-  const thinking = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
-  const activity = readFileSync(root + 'NativeLiveRuntimeActivity.swift', 'utf8');
-  const row = readFileSync(root + 'NativeLiveAssistantTurnRow.swift', 'utf8');
-  assert.match(row, /Text\("Thinking\.\.\."\)\.font\(\.system\(size: 14\)\)/);
-  assert.match(thinking, /HStack\(spacing: 8\)/);
-  assert.doesNotMatch(thinking, /size: 13\.5|size: 10|weight: \.medium|weight: \.semibold/);
-  assert.match(thinking, /Image\(systemName:[^\n]+\n\s*\.font\(\.system\(size: 14, weight: \.light\)\)/);
-  assert.ok(thinking.indexOf('Image(systemName:') < thinking.indexOf('Spacer(minLength:'));
-  const header = activity.slice(activity.indexOf('var body:'), activity.indexOf('if effectiveExpanded {'));
-  assert.match(header, /Text\(header\)\s*\.font\(\.system\(size: 14\)\)/);
-  assert.match(header, /\.font\(\.system\(size: 14, weight: \.light\)\)\s*\.foregroundStyle\(iMessageWallpaperVisible \? Color\.white : Color\.secondary\)/);
-  assert.doesNotMatch(header, /maxWidth: \.infinity/);
-  assert.ok(header.indexOf('? "chevron.down"') < header.indexOf('Spacer(minLength:'));
+  const list = readFileSync(root + 'NativeLiveMessageList.swift', 'utf8');
+  assert.match(list, /LazyVStack\(spacing: rowSpacing\)/);
 });
 
-test('message timestamps are 12pt and user-to-assistant row spacing is 25pt', () => {
-  for (const name of ['NativeLiveAssistantActions.swift', 'NativeLiveHistoryMessageRow.swift']) {
-    const source = readFileSync(root + name, 'utf8');
-    assert.match(source, /\.font\(\.system\(size:\s*12\)\)\s*\.tracking\(0\.12\)\s*\.foregroundStyle\(\.secondary\)/);
-  }
-  const layout = readFileSync('ios/LeileiOS/LeileiOS/Chat/ChatPresentationLayout.swift', 'utf8');
-  const list = readFileSync(root + 'NativeLiveMessageList.swift', 'utf8');
-  assert.match(layout, /turnSpacing: CGFloat = 25/);
-  assert.match(list, /rowSpacing: CGFloat = ChatPresentationLayout\.turnSpacing/);
-  assert.match(list, /LazyVStack\(spacing: rowSpacing\)/);
+test('the loading line is a passive status; only Thought process and Worked for are interactive', () => {
+  const thinking = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
+  const activity = readFileSync(root + 'NativeLiveRuntimeActivity.swift', 'utf8');
+  const idle = thinking.slice(thinking.indexOf('struct NativeLiveProcessStatusHeadline:'), thinking.indexOf('// A small dotted clock'));
+  assert.match(idle, /Text\(title\)/);
+  assert.doesNotMatch(idle, /Button|Image\(systemName: "chevron|NativeLiveThoughtProcessIcon\(\)/);
+  const workHeader = activity.slice(activity.indexOf('    var body: some View {'), activity.indexOf('            if effectiveExpanded {'));
+  assert.doesNotMatch(workHeader, /NativeLiveThoughtProcessIcon\(\)|Image\(systemName:\s*"clock"\)/);
+  assert.match(activity, /expansion\.toggleActivity\(\)/);
+  assert.match(activity, /effectiveExpanded\s*\? "chevron\.down"\s*: "chevron\.right"/);
 });
 
 test('thought process opens a native sheet with a leading icon and no toolbar buttons', () => {
@@ -85,70 +74,11 @@ test('thought process opens a native sheet with a leading icon and no toolbar bu
   assert.match(sheet, /\.presentationDragIndicator\(\.visible\)/);
   assert.doesNotMatch(sheet, /toolbar|Button|dismiss|raw_metadata/);
 });
-test('assistant action glyphs keep centered copy and clockwise retry rotations', () => {
+
+test('assistant footer actions copy the reply and retry its parent user message', () => {
   const actions = readFileSync(root + 'NativeLiveAssistantActions.swift', 'utf8');
-  assert.match(actions, /Image\(systemName:isCopied \? "checkmark" : "square.on.square"\)\.rotationEffect\(\.degrees\(isCopied \? 0 : 180\)\)/);
-  assert.equal((actions.match(/rotationEffect/g) ?? []).length, 2);
+  assert.match(actions, /Image\(systemName:isCopied \? "checkmark" : "square.on.square"\)/);
+  assert.match(actions, /Image\(systemName:"arrow.clockwise"\)/);
   assert.match(actions, /onCopyMessage\(text\)/);
   assert.match(actions, /onRetryMessage\(user\)/);
-});
-
-test('thinking icon uses the reference dotted clock without changing the sheet or work row', () => {
-  const surface = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
-  assert.match(surface, /NativeLiveThoughtProcessIcon\(\)\s*\.frame\(width: 14, height: 14\)\s*\.scaleEffect\(1\.1\)\s*\.padding\(\.trailing, 1\)\s*\.accessibilityHidden\(true\)/);
-  assert.doesNotMatch(surface, /clock\.arrow\.circlepath/);
-  assert.match(surface, /struct NativeLiveThoughtProcessIcon: View/);
-  assert.match(surface, /for degrees in \[200\.0, 220, 240, 260\]/);
-  assert.match(surface, /lineCap: \.round/);
-});
-
-test('process and footer glyphs align with body and action spacing is 10pt', () => {
-  const layout = readFileSync('ios/LeileiOS/LeileiOS/Chat/ChatPresentationLayout.swift', 'utf8');
-  assert.doesNotMatch(layout, /processLeadingInset/);
-  assert.match(layout, /actionSpacing: CGFloat = 10/);
-  for (const name of ['NativeLiveVisibleThinkingSurface.swift', 'NativeLiveRuntimeActivity.swift']) {
-    assert.doesNotMatch(readFileSync(root + name, 'utf8'), /ChatPresentationLayout\.processLeadingInset/);
-  }
-  const actions = readFileSync(root + 'NativeLiveAssistantActions.swift', 'utf8');
-  assert.equal((actions.match(/height:ChatPresentationLayout\.actionDiameter,alignment:\.leading/g) ?? []).length, 2);
-});
-
-test('clock paint and thought inset are refined while action icons return to regular', () => {
-  const surface = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
-  assert.match(surface, /NativeLiveThoughtProcessIcon\(\)\s*\.frame\(width: 14, height: 14\)\s*\.scaleEffect\(1\.1\)/);
-  const actions = readFileSync(root + 'NativeLiveAssistantActions.swift', 'utf8');
-  assert.match(actions, /Image\(systemName:"arrow.clockwise"\)\.rotationEffect\(\.degrees\(20\)\)\.frame/);
-  assert.doesNotMatch(actions, /weight:\s*\.light/);
-  assert.match(actions, /\}\.font\(\.system\(size:14\)\)/);
-  assert.match(surface, /\.padding\(\.leading, 2\)/);
-  assert.match(surface, /\.padding\(\.trailing, 1\)/);
-});
-
-test('loading, Thought process and Worked for rows share one 2pt leading inset in both themes', () => {
-  const row = readFileSync(root + 'NativeLiveAssistantTurnRow.swift', 'utf8');
-  const thinking = readFileSync(root + 'NativeLiveVisibleThinkingSurface.swift', 'utf8');
-  const activity = readFileSync(root + 'NativeLiveRuntimeActivity.swift', 'utf8');
-
-  assert.match(row, /if processSections\.showsLoading \{\s*if chatTheme == \.iMessage \{/);
-  assert.match(row, /NativeLiveProcessStatusHeadline\(\s*title: turn\.header\.isEmpty \? "Thinking…" : turn\.header/);
-  assert.match(row, /else \{\s*Text\("Thinking\.\.\."\)\.font\(\.system\(size: 14\)\)\.foregroundStyle\(\.secondary\)/);
-  assert.match(thinking, /struct NativeLiveProcessStatusHeadline: View/);
-  const idle = thinking.slice(thinking.indexOf('struct NativeLiveProcessStatusHeadline:'), thinking.indexOf('// A small dotted clock'));
-  // The loading line has no glyph; every process row starts 2pt in.
-  assert.doesNotMatch(idle, /NativeLiveThoughtProcessIcon\(\)|HStack/);
-  assert.match(idle, /\.padding\(\.leading, 2\)/);
-  assert.match(row, /Text\("Thinking\.\.\."\)\.font\(\.system\(size: 14\)\)\.foregroundStyle\(\.secondary\)\.padding\(\.leading, 2\)/);
-  assert.match(idle, /Text\(title\)\s*\.font\(\.system\(size: 14\)\)/);
-  assert.match(idle, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
-  assert.match(idle, /iMessageWallpaperVisible \? Color\.black\.opacity\(0\.75\) : \.clear/);
-  assert.doesNotMatch(idle, /Button|Image\(systemName: "chevron/);
-
-  assert.match(activity, /@Environment\(\\\.chatTheme\) private var chatTheme/);
-  const workHeader = activity.slice(activity.indexOf('    var body: some View {'), activity.indexOf('            if effectiveExpanded {'));
-  assert.doesNotMatch(workHeader, /NativeLiveThoughtProcessIcon\(\)|Image\(systemName:\s*"clock"\)/);
-  assert.match(thinking, /NativeLiveThoughtProcessIcon\(\)/);
-  assert.match(activity, /spacing: chatTheme == \.iMessage \? 8 : 12/);
-  assert.match(activity, /\.padding\(\.leading, header\.isEmpty \? 0 : 2\)/);
-  assert.match(activity, /expansion\.toggleActivity\(\)/);
-  assert.match(activity, /effectiveExpanded\s*\? "chevron\.down"\s*: "chevron\.right"/);
 });

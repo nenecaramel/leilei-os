@@ -26,7 +26,6 @@ test("iMessage composer explicitly measures draft height, including an empty one
   assert.match(sizing, /let minimum = ceil\(font\.lineHeight\)/);
   assert.match(sizing, /let maximum = min\(iMessageTextMaxHeight, ceil\(font\.lineHeight \* 6\)\)/);
   assert.match(sizing, /return min\(max\(ceil\(measured\.height\), minimum\), maximum\)/);
-  assert.match(iMessage, /\.glassEffect\(\.regular, in: RoundedRectangle\(cornerRadius: 22, style: \.continuous\)\)/);
 });
 
 test("iMessage sizing regression fix leaves original appearance and action ownership intact", () => {

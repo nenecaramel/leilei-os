@@ -54,7 +54,6 @@ test("source panels match assistant copy interaction without growing the button"
   );
   assert.match(source, /"square\.on\.square"/);
   assert.match(source, /"checkmark"/);
-  assert.match(source, /font\(\.system\(size: 15\)\)/);
   assert.match(source, /frame\(width: 24, height: 24\)/);
   assert.match(source, /copyFeedback\("Copied"\)/);
   assert.match(source, /UIPasteboard\.general\.string = copyText/);
@@ -140,7 +139,7 @@ test("compact provider tables, inline math visuals, wide math scrolling and visu
 });
 
 
-test("all special-card top-right copy glyphs rotate in place across both chat themes", () => {
+test("all special-card copy controls share two implementations across both chat themes", () => {
   const root = "ios/LeileiOS/LeileiOS/Chat/MessageSurface/";
   const source = fs.readFileSync(root + "NativeLiveCodeRenderer.swift", "utf8");
   const visual = fs.readFileSync(root + "NativeLiveVisualSurface.swift", "utf8");
@@ -148,17 +147,14 @@ test("all special-card top-right copy glyphs rotate in place across both chat th
   const diff = fs.readFileSync(root + "NativeLiveDiffRenderer.swift", "utf8");
   const math = fs.readFileSync(root + "NativeLiveMathRenderer.swift", "utf8");
   const svg = fs.readFileSync(root + "NativeLiveSVGRenderer.swift", "utf8");
-  const actions = fs.readFileSync(root + "NativeLiveAssistantActions.swift", "utf8");
 
-  // Rotate only the SF Symbol inside its existing fixed 24x24 hit target,
-  // and leave the temporary "Copied" checkmark in its normal orientation.
-  const icon = /Image\(\s*systemName:\s*isCopied\s*\?\s*"checkmark"\s*:\s*"square\.on\.square"\s*\)\s*\.font\(\.system\(size: 15\)\)\s*\.rotationEffect\(\.degrees\(isCopied \? 0 : 180\)\)\s*\.frame\(width: 24, height: 24\)/;
+  // The copy glyph swaps to a checkmark inside its fixed 24x24 hit target.
+  const icon = /Image\(\s*systemName:\s*isCopied\s*\?\s*"checkmark"\s*:\s*"square\.on\.square"\s*\)[\s\S]*?\.frame\(width: 24, height: 24\)/;
   for (const [name, text] of [
     ["code/table/diff shared source", source],
     ["math/Mermaid visual preview", visual],
   ] as const) {
     assert.match(text, icon, name);
-    assert.equal((text.match(/\.rotationEffect\(\.degrees\(isCopied \? 0 : 180\)\)/g) ?? []).length, 1);
     assert.match(text, /\.buttonStyle\(\.plain\)/);
     assert.match(text, /accessibilityLabel\(/);
   }
@@ -174,35 +170,25 @@ test("all special-card top-right copy glyphs rotate in place across both chat th
   assert.match(svg, /NativeLiveVisualSurface\(input:visual/);
   assert.match(source, /UIPasteboard\.general\.string = copyText/);
   assert.match(visual, /UIPasteboard\.general\.string = input\.source/);
-  assert.match(actions, /\.rotationEffect\(\.degrees\(isCopied \? 0 : 180\)\)/);
-  assert.doesNotMatch(source, /chatTheme == \.iMessage[\s\S]*?rotationEffect/);
-  assert.doesNotMatch(visual, /chatTheme == \.iMessage[\s\S]*?rotationEffect/);
 });
 
-test("iMessage Markdown bubble links match ordinary white message text and quotes use softer white", () => {
+test("iMessage Markdown bubbles route link runs through the bubble palette", () => {
   const root = "ios/LeileiOS/LeileiOS/Chat/MessageSurface/";
   const markdown = fs.readFileSync(root + "ChatMarkdown.swift", "utf8");
   const math = fs.readFileSync(root + "NativeLiveMathRenderer.swift", "utf8");
   const model = fs.readFileSync(root + "NativeLiveMarkdownModel.swift", "utf8");
-  const bubble = fs.readFileSync(root + "NativeLiveIMessageTextBubbles.swift", "utf8");
 
-  // The palette follows the same 98%-white as the bubble's ordinary body text.
-  assert.match(bubble, /\.foregroundStyle\(Color\.white\.opacity\(0\.98\)\)/);
-  assert.match(markdown, /static let body = Color\.white\.opacity\(0\.98\)/);
-  assert.match(markdown, /static let quote = Color\.white\.opacity\(0\.86\)/);
+  // Links keep their link run; colors are owner-tuned.
   assert.match(markdown, /static func inline\(_ source: AttributedString, isQuote: Bool\) -> AttributedString/);
   assert.match(markdown, /let linkRanges = source\.runs\.compactMap/);
   assert.match(markdown, /run\.link == nil \? nil : run\.range/);
-  assert.match(markdown, /styled\[range\]\.foregroundColor = isQuote \? quote : body/);
   assert.doesNotMatch(markdown, /styled\[range\]\.link = nil/);
 
-  // Only actual iMessage user/assistant bubbles recolor link runs.
+  // Only actual iMessage user/assistant bubbles use the bubble palette.
   for (const renderer of [markdown, math]) {
     assert.match(renderer, /chatTheme == \.iMessage && \(role == "user" \|\| role == "assistant"\)/);
     assert.match(renderer, /isIMessageBubbleText\s*\? NativeLiveIMessageMarkdownPalette\.inline\(/);
     assert.match(renderer, /: model\.inline|: markdown\.inline/);
-    assert.match(renderer, /if isIMessageBubbleText \{\s*(?:inline|flow)\s*\.foregroundStyle\(NativeLiveIMessageMarkdownPalette\.quote\)/);
-    assert.match(renderer, /else \{\s*(?:inline\.foregroundStyle\(\.secondary\)|flow\s*\.foregroundStyle\(\.secondary\))/);
     assert.match(renderer, /if case \.quote\(_\) = model\.style/);
   }
 

@@ -55,6 +55,11 @@ with deferred responses/barriers against production logic; source text matching
 only establishes declarations, wiring or resource contracts. Do not use it as
 evidence that a callback, fallback or concurrency fence actually executes.
 
+Chat UI appearance (fonts, colors, spacing, insets, sizes, alignment) is
+owner-tuned on device. Do not pin it in tests. Source-conservation tests strip
+it with `tests/helpers/swift-paint.ts`; assert structure, actions, state owners
+and data flow instead, and check numeric geometry in Swift fixtures.
+
 The complete ordinary suite uses two isolated file processes. Shared-resource
 opt-ins force serial execution; use `pnpm test:serial` for an explicit baseline
 and `pnpm test:profile` for metadata-only timing output. Keep database/device

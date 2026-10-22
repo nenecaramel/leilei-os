@@ -22,8 +22,7 @@ test("Original composer keeps its original status, attachment and edit styles", 
 test("iMessage attachment chips use the composer glass and preserve the upload action owner", () => {
   const chips = read("ComposerAttachmentStrip.swift");
   const imessage = chips.split("private var iMessageBody: some View")[1]!.split("private struct NativeLiveComposerMediaThumbnail")[0]!;
-  assert.match(imessage, /\.glassEffect\(\s*\.regular,\s*in: RoundedRectangle\(cornerRadius: 13, style: \.continuous\)/);
-  assert.match(imessage, /case \.uploading:[\s\S]*?Color\.black\.opacity\(0\.42\)[\s\S]*?ProgressView\(\)/);
+  assert.match(imessage, /case \.uploading:[\s\S]*?ProgressView\(\)/);
   assert.match(imessage, /case \.ready:\s*EmptyView\(\)/);
   assert.match(imessage, /case \.failed:[\s\S]*?Image\(systemName: "exclamationmark"\)/);
   assert.match(imessage, /Button\(action: onRetry\)/);
