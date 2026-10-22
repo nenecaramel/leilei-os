@@ -58,6 +58,20 @@ export function durableCheckpointPrefix(entries, checkpointId) {
     for (const call of new Set(content.map(block => block.tool_use_id))) claims.set(call, (claims.get(call) ?? 0) + 1);
   }
   const results = new Set([...candidates].filter(([, ids]) => ids.every(call => claims.get(call) === 1)).map(([uuid]) => uuid));
+  // A manual /compact writes its boundary (parentUuid null) and summary off the
+  // message chain: later turns hang off the /compact command, whose parent is
+  // the pre-compact leaf. The CLI starts history at the last boundary in file
+  // order, so a fork without it reloads everything that boundary compacted.
+  // Carry each boundary that compacted this branch, with its summary.
+  const compacted = new Set();
+  for (const [uuid, entry] of carriers) {
+    if (entry.type === "system" && entry.subtype === "compact_boundary" && entry.parentUuid === null
+      && !conflicts.has(uuid) && uuidCounts.get(uuid) === 1 && ancestry.has(entry.logicalParentUuid)) compacted.add(uuid);
+  }
+  for (const [uuid, entry] of carriers) {
+    if (entry.type === "user" && entry.isCompactSummary === true && compacted.has(entry.parentUuid)
+      && !conflicts.has(uuid) && uuidCounts.get(uuid) === 1) compacted.add(uuid);
+  }
   // Claude CLI serializes native Cron separately from the user/assistant
   // message ancestry. A historical edit/retry fork must carry the most recent
   // session-level schedule snapshot even when that metadata was appended
@@ -68,7 +82,7 @@ export function durableCheckpointPrefix(entries, checkpointId) {
     entry && typeof entry === "object" && !entry.isSidechain
       && entry.type === "session_cron_carry") ?? null;
   const projected = prefix.filter(entry => !entry.isSidechain
-    && (!carriers.has(entry.uuid) || ancestry.has(entry.uuid) || results.has(entry.uuid)));
+    && (!carriers.has(entry.uuid) || ancestry.has(entry.uuid) || results.has(entry.uuid) || compacted.has(entry.uuid)));
   // The SDK's resumeSessionAt checkpoint can truncate following records.
   // Put the schedule metadata BEFORE that checkpoint so the native reader
   // sees it while keeping the selected assistant as the transcript tail.
