@@ -201,16 +201,19 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   // The turn time left the long-press menu; it trails the turn's last text bubble.
   const assistantMenu = actions.slice(actions.indexOf('struct IMessageAssistantBubbleContextMenuInteraction'));
   assert.doesNotMatch(assistantMenu, /timestamp|stamp|displayInline/);
-  assert.doesNotMatch(bubble.slice(bubble.indexOf('private struct NativeLiveIMessageAssistantTextBubble'), bubble.indexOf('struct NativeLiveIMessageTextBubbleList')), /timestamp/);
+  // Only the last text bubble gets the time, aligned to its last text baseline
+  // (10pt, 98% white), 6pt outside the bubble's 14pt trailing inset.
   assert.match(bubble, /let lastTextBubbleIndex = segments\.lastIndex\(where: \{ \$0\.isTextBubble \}\)/);
-  assert.match(bubble, /\.overlay\(alignment: \.bottomTrailing\) \{\s*if index == lastTextBubbleIndex, let timestamp, !timestamp\.isEmpty \{\s*NativeLiveIMessageTrailingTimestamp\(text: timestamp\)/);
-  assert.match(bubble, /private struct NativeLiveIMessageTrailingTimestamp: View/);
-  assert.match(bubble, /\.font\(\.system\(size: 12\)\)\.tracking\(0\.12\)/);
-  assert.match(bubble, /NativeLiveIMessageTrailingTimestamp: View \{[\s\S]*?\.foregroundStyle\(Color\.white\.opacity\(0\.98\)\)/);
-  // Device acceptance: an alignmentGuide offset was ignored and the time
-  // overlapped the bubble; a zero-width leading anchor places it outside.
-  assert.match(bubble, /\.fixedSize\(\)\s*\.padding\(\.leading, 6\)[\s\S]*?\.frame\(width: 0, alignment: \.leading\)/);
-  assert.doesNotMatch(bubble, /alignmentGuide\(\.trailing\)/);
+  assert.match(bubble, /timestamp: index == lastTextBubbleIndex \? timestamp : nil/);
+  const assistantBubble = bubble.slice(bubble.indexOf('private struct NativeLiveIMessageAssistantTextBubble'), bubble.indexOf('struct NativeLiveIMessageTextBubbleList'));
+  assert.match(assistantBubble, /NativeLiveVisualNodeView\(node: node, role: "assistant"\)\s*\.overlay\(alignment: Alignment\(horizontal: \.trailing, vertical: \.lastTextBaseline\)\) \{\s*NativeLiveIMessageTrailingTimestamp\(text: timestamp\)/);
+  assert.doesNotMatch(assistantBubble, /if let timestamp|if index ==/);
+  const stamp = bubble.slice(bubble.indexOf('private struct NativeLiveIMessageTrailingTimestamp'));
+  assert.match(stamp, /Text\(text \?\? ""\)/);
+  assert.match(stamp, /\.font\(\.system\(size: 10\)\)\.tracking\(0\.12\)/);
+  assert.match(stamp, /\.foregroundStyle\(Color\.white\.opacity\(0\.98\)\)/);
+  assert.match(stamp, /\.padding\(\.leading, ChatPresentationLayout\.bubbleHorizontalInset \+ 6\)[\s\S]*?\.frame\(width: 0, alignment: \.leading\)/);
+  assert.doesNotMatch(bubble, /alignmentGuide\(\.trailing\)|\.overlay\(alignment: \.bottomTrailing\)/);
   assert.match(history, /timeZoneIdentifier: timeZone/);
   assert.match(history, /UIPasteboard\.general\.string = text/);
   assert.match(history, /if chatTheme == \.iMessage \{[\s\S]*?\} else \{[\s\S]*?MessageTimestampFormatter\.string/);

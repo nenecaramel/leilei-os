@@ -194,6 +194,8 @@ struct NativeLiveAssistantAudioBubbleBackground: ViewModifier {
 // from thinking, tools, citations, media or other nested controls.
 private struct NativeLiveIMessageAssistantTextBubble: View {
     let node: NativeLiveVisualNode
+    // Only the turn's last text bubble carries its time.
+    let timestamp: String?
     let onCopy: (String) -> Void
     let onRetry: (() -> Void)?
     let isRetryDisabled: Bool
@@ -209,7 +211,12 @@ private struct NativeLiveIMessageAssistantTextBubble: View {
 
     var body: some View {
         NativeLiveIMessageTextBubble(side: .incoming) {
+            // Anchored to the text, not the bubble, so the time shares the
+            // last line's baseline.
             NativeLiveVisualNodeView(node: node, role: "assistant")
+                .overlay(alignment: Alignment(horizontal: .trailing, vertical: .lastTextBaseline)) {
+                    NativeLiveIMessageTrailingTimestamp(text: timestamp)
+                }
         }
         .overlay {
             IMessageAssistantBubbleContextMenuInteraction(
@@ -229,19 +236,20 @@ private struct NativeLiveIMessageAssistantTextBubble: View {
 }
 
 // Sits 6pt right of the bubble, inside the 70pt clearance; it never changes
-// the bubble's layout and takes no touches.
+// the bubble's layout and takes no touches. Nil renders nothing.
 private struct NativeLiveIMessageTrailingTimestamp: View {
-    let text: String
+    let text: String?
 
     var body: some View {
-        Text(text)
-            .font(.system(size: 12)).tracking(0.12)
+        Text(text ?? "")
+            .font(.system(size: 10)).tracking(0.12)
             .foregroundStyle(Color.white.opacity(0.98))
             .lineLimit(1)
             .fixedSize()
-            .padding(.leading, 6)
-            // A zero-width anchor on the bubble's trailing edge; the time
-            // overflows to its right instead of overlapping the bubble.
+            // Anchored at the text's trailing edge: skip the bubble inset, then 6pt.
+            .padding(.leading, ChatPresentationLayout.bubbleHorizontalInset + 6)
+            // A zero-width anchor; the time overflows to its right instead of
+            // overlapping the bubble.
             .frame(width: 0, alignment: .leading)
             .allowsHitTesting(false)
     }
@@ -272,16 +280,11 @@ struct NativeLiveIMessageTextBubbleList: View {
                             HStack(spacing: 0) {
                                 NativeLiveIMessageAssistantTextBubble(
                                     node: segment.node,
+                                    timestamp: index == lastTextBubbleIndex ? timestamp : nil,
                                     onCopy: onCopy ?? { _ in },
                                     onRetry: onRetry,
                                     isRetryDisabled: isRetryDisabled
                                 )
-                                // Only the turn's last text bubble shows its time.
-                                .overlay(alignment: .bottomTrailing) {
-                                    if index == lastTextBubbleIndex, let timestamp, !timestamp.isEmpty {
-                                        NativeLiveIMessageTrailingTimestamp(text: timestamp)
-                                    }
-                                }
                                 .frame(maxWidth:.infinity,alignment:.leading)
                                 // Mirror the user's exact 70pt clearance so
                                 // the wrapped bubble receives the full width.
