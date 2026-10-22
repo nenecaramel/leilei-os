@@ -271,8 +271,6 @@ export async function prepareRetry(
           input.userId,
           input.conversationId,
           target.parentMessageId,
-          "replacement",
-          true,
         );
         if (!runtimeParent.ok) return runtimeParent.result;
 
@@ -380,8 +378,6 @@ export async function prepareEdit(
           input.userId,
           input.conversationId,
           target.parentMessageId,
-          "replacement",
-          true,
         );
         if (!runtimeParent.ok) return runtimeParent.result;
 
@@ -558,10 +554,9 @@ export async function resolveRuntimeParent(
     userId: string,
     conversationId: string,
     parentMessageId: string | null,
+    // Edit and Retry ("replacement") rewind their native session in place at
+    // the parent checkpoint, as Desktop's rewind does; nothing copies a transcript.
     continuation: "send" | "replacement" = "replacement",
-    // Edit and Retry rewind their native session in place at the parent
-    // checkpoint, as Desktop's rewind does.
-    rewind = false,
   ): Promise<
     | {
         ok: true;
@@ -609,7 +604,7 @@ export async function resolveRuntimeParent(
           && canonical.effectiveWorkingDirectory === binding.effectiveWorkingDirectory
           ? await readNativeResumeCheckpoint(executor, { userId, conversationId, canonicalMessageId: parentMessageId })
           : null;
-        return { ok: true, runtimeMode: continuation === "send" || rewind ? "resume" : "fork",
+        return { ok: true, runtimeMode: "resume",
           parentProviderSessionId: binding.sessionId, parentProviderCheckpointId: nativeCursor ?? binding.checkpointId,
           expectedWorkingDirectory: binding.effectiveWorkingDirectory };
       }
@@ -667,7 +662,7 @@ export async function resolveRuntimeParent(
 
     return {
       ok: true,
-      runtimeMode: (continuation === "send" || rewind) && checkpoint.providerCheckpointId ? "resume" : "fork",
+      runtimeMode: checkpoint.providerCheckpointId ? "resume" : "fork",
       parentProviderSessionId: checkpoint.providerSessionId,
       expectedWorkingDirectory: checkpoint.effectiveWorkingDirectory,
       parentProviderCheckpointId: continuation === "send" ? await readNativeResumeCheckpoint(executor, { userId, conversationId, canonicalMessageId: parentMessageId }) : checkpoint.providerCheckpointId,

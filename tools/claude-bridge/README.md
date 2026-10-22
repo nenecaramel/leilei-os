@@ -11,7 +11,6 @@ lockfile versions remain unchanged (`@anthropic-ai/claude-agent-sdk@0.3.286`).
 | `claude-transport.mjs` | Abstract transport contract | No SDK or runtime state |
 | `agent-sdk-claude-transport.mjs` | SDK options, session preflight/portability, identity and checkpoint completion, compact, SendFile MCP adapter | Session mutation and durability stay together; callbacks and ordering unchanged |
 | `provider-checkpoint-prefix.mjs` | Pure canonical ancestry validation and query-local SessionStore read views | No SDK/filesystem imports; real store writes still receive their original receiver |
-| `local-checkpoint-fork.mjs` | Transient local fork transcript and durable cleanup receipt | Path/symlink guards, fsync, permissions and orphan cleanup remain intact |
 | `agent-sdk-turn-handle.mjs` | Input queue, MCP readiness, interactive callbacks, interrupt and event-consumption lifecycle | One query and one lifecycle owner; no state-machine rewrite |
 | `normalized-events.mjs` | Ordered provider-event projection, attribution, bounded tool output and telemetry | Stateful sequence/stream accumulation remain here; no event schema change |
 | `output-contract.mjs` | Bounded compatibility envelopes, reasoning/binary redaction, provenance and SDK surface map | Its limits differ intentionally from tool-result text projection |

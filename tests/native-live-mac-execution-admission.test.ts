@@ -91,7 +91,7 @@ for (const closeStderr of [false, true]) {
   });
 }
 
-for (const operation of ["edit", "retry"] as const) for (const runtime_mode of ["new", "fork"] as const) {
+for (const operation of ["edit", "retry"] as const) for (const runtime_mode of ["new"] as const) {
   test(`${operation}/${runtime_mode} pins the admitted child session and rejects parent/foreign callbacks`, async () => {
     let calls = 0;
     const replacement = { ...command, operation, runtime_mode,
@@ -109,7 +109,18 @@ for (const operation of ["edit", "retry"] as const) for (const runtime_mode of [
   });
 }
 
-// Edit and Retry rewind their own session in place (resume), as Desktop does.
+// Edit and Retry rewind their own session in place (resume), as Desktop does;
+// a copy fork (sent only by a server older than rewind) never reaches the relay.
+for (const operation of ["edit", "retry"] as const) test(`${operation}/fork is unsupported`, async () => {
+  let calls = 0;
+  const reasons: string[] = [];
+  const gate = createNativeLiveMacExecutionAdmission({ listenerInstanceId: "listener", command: { ...command, operation, runtime_mode: "fork",
+    parent_provider_session_id: "parent", parent_provider_checkpoint_id: "checkpoint" },
+    relay: { async checkExecutionAdmission() { calls++; return true; } }, onDenied: event => reasons.push(event.reasonCode) });
+  assert.equal(await gate({ phase: "input", inputId: operation === "retry" ? "prepare" : "user-input", source: "human", providerSessionId: "child" }), false);
+  assert.deepEqual(reasons, ["UNSUPPORTED_COMMAND"]);
+  assert.equal(calls, 0);
+});
 test("edit/resume is admitted only for its own session", async () => {
   let calls = 0;
   const rewind = { ...command, operation: "edit" as const, runtime_mode: "resume" as const,
