@@ -101,6 +101,10 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       LEILEI_MIND_HOOK_DISABLED: environment.LEILEI_MIND_HOOK_DISABLED ?? "0",
       DISABLE_AUTO_COMPACT: "1",
       CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
+      // Edit/Retry rewind only over LeileiOS's own records. The SDK keeps an
+      // inherited entrypoint, so a daemon started from a Claude Code or Desktop
+      // shell would otherwise write its turns as claude-desktop.
+      CLAUDE_CODE_ENTRYPOINT: "sdk-ts",
     };
     this.cwd = cwd;
     this.events = new EventEmitter();

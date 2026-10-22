@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AgentSdkClaudeTransport } from '../src/agent-sdk-claude-transport.mjs';
 function queue(){let waiter,ended=false;const values=[];return {push(v){if(waiter){const w=waiter;waiter=null;w({value:v,done:false});}else values.push(v);},end(){ended=true;waiter?.({done:true});},[Symbol.asyncIterator](){return {next(){return values.length?Promise.resolve({value:values.shift(),done:false}):ended?Promise.resolve({done:true}):new Promise(r=>{waiter=r;});}};}};}
-function fixture({loadQuery=null,omitEcho=false,failClose=false,manualResults=false,onInput=()=>{}}={}){
+function fixture({loadQuery=null,omitEcho=false,failClose=false,manualResults=false,onInput=()=>{},environment={}}={}){
  const output=queue(),inputs=[],background=[],live=[];let calls=0,closed=0,options;
  const queryImpl=({prompt,options:opts})=>{calls++;options=opts;(async()=>{let initialized=false;for await(const input of prompt){inputs.push(input);onInput(input);if(!initialized){initialized=true;output.push({type:'system',subtype:'init',session_id:'s'});}if(manualResults)continue;output.push({type:'assistant',session_id:'s',message:{content:[{type:'text',text:input.message.content[0].text}]}});output.push({type:'result',subtype:'success',session_id:'s',result:'synthetic',...(omitEcho==='zero'?{user_message_uuid:'00000000-0000-0000-0000-000000000000'}:omitEcho?{}:{user_message_uuid:input.uuid})});}})();return {close(){closed++;if(failClose){failClose=false;throw new Error('synthetic close failure');}output.end();},async interrupt(){return {still_queued:[]};},async stopTask(){},async setModel(model){live.push(['model',model]);},async applyFlagSettings(settings){live.push(['flags',settings]);},async *[Symbol.asyncIterator](){yield* output;}};};
- const transport=new AgentSdkClaudeTransport({environment:{},cwd:'/synthetic',toolPermissionPolicy:'auto_allow',...(loadQuery?{loadQuery}:{queryImpl})});
+ const transport=new AgentSdkClaudeTransport({environment,cwd:'/synthetic',toolPermissionPolicy:'auto_allow',...(loadQuery?{loadQuery}:{queryImpl})});
  return {transport,inputs,background,output,live,queryImpl,get options(){return options;},get calls(){return calls;},get closed(){return closed;},open(extra={}){return transport.openPersistentSession({authorize:async()=>true,onBackgroundResult:async value=>{background.push(value);},...extra});}};
 }
 test('configured transport uses one SDK query for two turns and retains default settings/permissions',async t=>{
@@ -65,6 +65,15 @@ test('a forked edit keeps its native SDK query open through a second human turn 
   assert.equal(options.forkSession,true);
   assert.equal(options.resume,localForkId);
   assert.equal(options.resumeSessionAt,checkpoint);
+});
+
+// Edit/Retry rewind only over records LeileiOS wrote (entrypoint sdk-ts). The
+// SDK keeps an inherited entrypoint, so a daemon started from a Claude Code or
+// Desktop shell would otherwise label its own turns as Desktop's.
+test('LeileiOS turns are always written as the SDK writer, even from a Claude shell',async t=>{
+ const f=fixture({environment:{CLAUDE_CODE_ENTRYPOINT:'claude-desktop'}});const host=await f.open();t.after(()=>host.close());
+ await host.submit('first',{id:'a'});
+ assert.equal(f.options.env.CLAUDE_CODE_ENTRYPOINT,'sdk-ts');
 });
 
 test('persistent SDK thinking summaries survive continued turns and respect explicit modes',async t=>{
