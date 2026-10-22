@@ -4,12 +4,13 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { swiftc, swiftUnavailable } from './helpers/swift-toolchain.js';
 const root = 'ios/LeileiOS/LeileiOS/Chat/MessageSurface/';
-test('Swift process sections follow actual content throughout a turn', () => {
+test('Swift process sections follow actual content throughout a turn', { skip: swiftUnavailable }, () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'leilei-process-'));
   try {
     const binary = path.join(dir, 'check');
-    const compile = spawnSync('xcrun', ['swiftc', '-parse-as-library', root + 'NativeLiveProcessSections.swift', 'tests/fixtures/ios-message-process-sections.swift', '-o', binary], { encoding: 'utf8', timeout: 120000 });
+    const compile = spawnSync(...swiftc(['-parse-as-library', root + 'NativeLiveProcessSections.swift', 'tests/fixtures/ios-message-process-sections.swift', '-o', binary]), { encoding: 'utf8', timeout: 120000 });
     assert.equal(compile.status, 0, compile.stderr);
     const run = spawnSync(binary, [], { encoding: 'utf8', timeout: 30000 });
     assert.equal(run.status, 0, run.stderr);

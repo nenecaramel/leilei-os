@@ -630,7 +630,8 @@
         "tests/fixtures/spotify-result-surface-main-c47b0975/**",
         "tests/helpers/ios-swift-declarations.ts",
         "tests/fixtures/spotify-surface-main-41bf880f/**",
-        "tests/helpers/swift-paint.ts"
+        "tests/helpers/swift-paint.ts",
+        "tests/helpers/swift-toolchain.ts"
       ],
       "verification": [
         "ios-contract"
