@@ -157,6 +157,7 @@ test('UIKit context menu and tap coordinator implementation remains byte identic
   /attributes: self\.isRetryDisabled \? \[\.disabled\] : \[\]/,
   /self\?\.onRetry\?\(\)/,
   /self\?\.onTranslate\(\)/,
-  /UIMenu\(title: stamp, options: \.displayInline, children: actions\)/,
  ]) assert.match(assistantMenu, contract);
+ // The turn time now trails the last text bubble instead of titling the menu.
+ assert.doesNotMatch(assistantMenu, /timestamp|displayInline/);
 });

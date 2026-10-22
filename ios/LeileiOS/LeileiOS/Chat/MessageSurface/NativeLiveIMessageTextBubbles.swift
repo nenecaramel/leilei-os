@@ -194,7 +194,6 @@ struct NativeLiveAssistantAudioBubbleBackground: ViewModifier {
 // from thinking, tools, citations, media or other nested controls.
 private struct NativeLiveIMessageAssistantTextBubble: View {
     let node: NativeLiveVisualNode
-    let timestamp: String?
     let onCopy: (String) -> Void
     let onRetry: (() -> Void)?
     let isRetryDisabled: Bool
@@ -215,7 +214,6 @@ private struct NativeLiveIMessageAssistantTextBubble: View {
         .overlay {
             IMessageAssistantBubbleContextMenuInteraction(
                 text: plainText,
-                timestamp: timestamp,
                 isRetryDisabled: isRetryDisabled,
                 cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
                 onCopy: onCopy,
@@ -227,6 +225,22 @@ private struct NativeLiveIMessageAssistantTextBubble: View {
             isPresented: $showsTranslation,
             text: plainText
         )
+    }
+}
+
+// Sits 6pt right of the bubble, inside the 70pt clearance; it never changes
+// the bubble's layout and takes no touches.
+private struct NativeLiveIMessageTrailingTimestamp: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12)).tracking(0.12)
+            .foregroundStyle(Color.white.opacity(0.98))
+            .lineLimit(1)
+            .fixedSize()
+            .alignmentGuide(.trailing) { $0[.leading] - 6 }
+            .allowsHitTesting(false)
     }
 }
 
@@ -246,6 +260,7 @@ struct NativeLiveIMessageTextBubbleList: View {
     }
 
     var body: some View {
+        let lastTextBubbleIndex = segments.lastIndex(where: { $0.isTextBubble })
         VStack(alignment: side == .outgoing ? .trailing : .leading, spacing: ChatPresentationLayout.iMessageTextBubbleSpacing) {
             ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
                 Group {
@@ -254,11 +269,16 @@ struct NativeLiveIMessageTextBubbleList: View {
                             HStack(spacing: 0) {
                                 NativeLiveIMessageAssistantTextBubble(
                                     node: segment.node,
-                                    timestamp: timestamp,
                                     onCopy: onCopy ?? { _ in },
                                     onRetry: onRetry,
                                     isRetryDisabled: isRetryDisabled
                                 )
+                                // Only the turn's last text bubble shows its time.
+                                .overlay(alignment: .bottomTrailing) {
+                                    if index == lastTextBubbleIndex, let timestamp, !timestamp.isEmpty {
+                                        NativeLiveIMessageTrailingTimestamp(text: timestamp)
+                                    }
+                                }
                                 .frame(maxWidth:.infinity,alignment:.leading)
                                 // Mirror the user's exact 70pt clearance so
                                 // the wrapped bubble receives the full width.

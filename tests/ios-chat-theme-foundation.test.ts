@@ -198,7 +198,16 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   assert.match(actions, /title: "Retry"/);
   assert.match(actions, /self\.isRetryDisabled \? \[\.disabled\] : \[\]/);
   assert.match(actions, /UIAction\(title: "Translate"/);
-  assert.match(actions, /UIMenu\(title: stamp, options: \.displayInline, children: actions\)/);
+  // The turn time left the long-press menu; it trails the turn's last text bubble.
+  const assistantMenu = actions.slice(actions.indexOf('struct IMessageAssistantBubbleContextMenuInteraction'));
+  assert.doesNotMatch(assistantMenu, /timestamp|stamp|displayInline/);
+  assert.doesNotMatch(bubble.slice(bubble.indexOf('private struct NativeLiveIMessageAssistantTextBubble'), bubble.indexOf('struct NativeLiveIMessageTextBubbleList')), /timestamp/);
+  assert.match(bubble, /let lastTextBubbleIndex = segments\.lastIndex\(where: \{ \$0\.isTextBubble \}\)/);
+  assert.match(bubble, /\.overlay\(alignment: \.bottomTrailing\) \{\s*if index == lastTextBubbleIndex, let timestamp, !timestamp\.isEmpty \{\s*NativeLiveIMessageTrailingTimestamp\(text: timestamp\)/);
+  assert.match(bubble, /private struct NativeLiveIMessageTrailingTimestamp: View/);
+  assert.match(bubble, /\.font\(\.system\(size: 12\)\)\.tracking\(0\.12\)/);
+  assert.match(bubble, /NativeLiveIMessageTrailingTimestamp: View \{[\s\S]*?\.foregroundStyle\(Color\.white\.opacity\(0\.98\)\)/);
+  assert.match(bubble, /\.alignmentGuide\(\.trailing\) \{ \$0\[\.leading\] - 6 \}/);
   assert.match(history, /timeZoneIdentifier: timeZone/);
   assert.match(history, /UIPasteboard\.general\.string = text/);
   assert.match(history, /if chatTheme == \.iMessage \{[\s\S]*?\} else \{[\s\S]*?MessageTimestampFormatter\.string/);
