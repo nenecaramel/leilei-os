@@ -28,7 +28,7 @@ struct NativeLiveAssistantTurnRow: View {
                         title: turn.header.isEmpty ? "Thinking…" : turn.header
                     )
                 } else {
-                    Text("Thinking...").font(.system(size: 14)).foregroundStyle(.secondary)
+                    Text("Thinking...").font(.system(size: 14)).foregroundStyle(.secondary).padding(.leading, 2)
                 }
             }
             NativeLiveVisibleThinkingSurface(items: turn.visibleThinking, murmurText: turn.murmurText)

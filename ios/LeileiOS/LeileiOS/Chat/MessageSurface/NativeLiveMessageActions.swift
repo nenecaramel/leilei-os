@@ -175,7 +175,6 @@ struct LightweightContextMenuInteraction: UIViewRepresentable {
 // *single* incoming iMessage text bubble. No row-wide gesture ownership.
 struct IMessageAssistantBubbleContextMenuInteraction: UIViewRepresentable {
     let text: String
-    let timestamp: String?
     let isRetryDisabled: Bool
     let cornerRadius: CGFloat
     let onCopy: (String) -> Void
@@ -185,7 +184,6 @@ struct IMessageAssistantBubbleContextMenuInteraction: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator(
             text: text,
-            timestamp: timestamp,
             isRetryDisabled: isRetryDisabled,
             cornerRadius: cornerRadius,
             onCopy: onCopy,
@@ -204,7 +202,6 @@ struct IMessageAssistantBubbleContextMenuInteraction: UIViewRepresentable {
 
     func updateUIView(_ view: UIView, context: Context) {
         context.coordinator.text = text
-        context.coordinator.timestamp = timestamp
         context.coordinator.isRetryDisabled = isRetryDisabled
         context.coordinator.cornerRadius = cornerRadius
         context.coordinator.onCopy = onCopy
@@ -214,7 +211,6 @@ struct IMessageAssistantBubbleContextMenuInteraction: UIViewRepresentable {
 
     final class Coordinator: NSObject, UIContextMenuInteractionDelegate {
         var text: String
-        var timestamp: String?
         var isRetryDisabled: Bool
         var cornerRadius: CGFloat
         var onCopy: (String) -> Void
@@ -223,7 +219,6 @@ struct IMessageAssistantBubbleContextMenuInteraction: UIViewRepresentable {
 
         init(
             text: String,
-            timestamp: String?,
             isRetryDisabled: Bool,
             cornerRadius: CGFloat,
             onCopy: @escaping (String) -> Void,
@@ -231,7 +226,6 @@ struct IMessageAssistantBubbleContextMenuInteraction: UIViewRepresentable {
             onTranslate: @escaping () -> Void
         ) {
             self.text = text
-            self.timestamp = timestamp
             self.isRetryDisabled = isRetryDisabled
             self.cornerRadius = cornerRadius
             self.onCopy = onCopy
@@ -276,14 +270,6 @@ struct IMessageAssistantBubbleContextMenuInteraction: UIViewRepresentable {
                     }
                 )
 
-                // UIKit renders an inline-menu title as subdued, secondary
-                // section metadata. It is neither a tappable action nor a
-                // separate on-screen timestamp below the message.
-                if let stamp = self.timestamp, !stamp.isEmpty {
-                    return UIMenu(children: [
-                        UIMenu(title: stamp, options: .displayInline, children: actions)
-                    ])
-                }
                 return UIMenu(children: actions)
             }
         }

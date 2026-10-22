@@ -73,9 +73,9 @@ struct NativeLiveTurnActivityView: View {
                     .frame(
                         alignment: .leading
                     )
-                    // iMessage Work text starts at the Thought process icon's
-                    // left edge (2pt inset), without reserving space for a glyph.
-                    .padding(.leading, chatTheme == .iMessage && !header.isEmpty ? 2 : 0)
+                    // Work text starts at the Thought process icon's left edge
+                    // (2pt inset) in both themes, without reserving a glyph.
+                    .padding(.leading, header.isEmpty ? 0 : 2)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)

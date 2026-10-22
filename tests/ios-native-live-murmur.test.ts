@@ -114,3 +114,15 @@ test("canonical murmur is projected separately and raw streaming tags are fail-c
     /"<murmur>"\.hasPrefix\(suffix\)[\s\S]*"<\/murmur>"\.hasPrefix\(suffix\)/u,
   );
 });
+
+test("Murmur and Thought process drawers share one widened text line spacing", () => {
+  const surface = "ios/LeileiOS/LeileiOS/Chat/MessageSurface/";
+  const sheets = fs.readFileSync(surface + "NativeLiveActivitySheets.swift", "utf8");
+  const thinking = fs.readFileSync(surface + "NativeLiveVisibleThinkingSurface.swift", "utf8");
+  assert.match(sheets, /enum NativeLiveDrawerText \{\s*\/\/[^\n]*\n\s*static let lineSpacing: CGFloat = 4\s*\}/u);
+  const murmur = sheets.slice(sheets.indexOf("struct NativeLiveMurmurSheet"), sheets.indexOf("struct NativeLiveToolDetailSheet"));
+  const thought = thinking.slice(thinking.indexOf("private struct NativeLiveThoughtProcessSheet"));
+  for (const sheet of [murmur, thought]) {
+    assert.match(sheet, /Text\((?:text|item\.text)\)\s*\.font\(\.body\)\s*\.lineSpacing\(NativeLiveDrawerText\.lineSpacing\)/u);
+  }
+});

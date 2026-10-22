@@ -198,7 +198,22 @@ test('Only iMessage text adopts split, mirrored bubbles and native typography', 
   assert.match(actions, /title: "Retry"/);
   assert.match(actions, /self\.isRetryDisabled \? \[\.disabled\] : \[\]/);
   assert.match(actions, /UIAction\(title: "Translate"/);
-  assert.match(actions, /UIMenu\(title: stamp, options: \.displayInline, children: actions\)/);
+  // The turn time left the long-press menu; it trails the turn's last text bubble.
+  const assistantMenu = actions.slice(actions.indexOf('struct IMessageAssistantBubbleContextMenuInteraction'));
+  assert.doesNotMatch(assistantMenu, /timestamp|stamp|displayInline/);
+  // Only the last text bubble gets the time, aligned to its last text baseline
+  // (10pt, 98% white), 6pt outside the bubble's 14pt trailing inset.
+  assert.match(bubble, /let lastTextBubbleIndex = segments\.lastIndex\(where: \{ \$0\.isTextBubble \}\)/);
+  assert.match(bubble, /timestamp: index == lastTextBubbleIndex \? timestamp : nil/);
+  const assistantBubble = bubble.slice(bubble.indexOf('private struct NativeLiveIMessageAssistantTextBubble'), bubble.indexOf('struct NativeLiveIMessageTextBubbleList'));
+  assert.match(assistantBubble, /NativeLiveVisualNodeView\(node: node, role: "assistant"\)\s*\.overlay\(alignment: Alignment\(horizontal: \.trailing, vertical: \.lastTextBaseline\)\) \{\s*NativeLiveIMessageTrailingTimestamp\(text: timestamp\)/);
+  assert.doesNotMatch(assistantBubble, /if let timestamp|if index ==/);
+  const stamp = bubble.slice(bubble.indexOf('private struct NativeLiveIMessageTrailingTimestamp'));
+  assert.match(stamp, /Text\(text \?\? ""\)/);
+  assert.match(stamp, /\.font\(\.system\(size: 10\)\)\.tracking\(0\.12\)/);
+  assert.match(stamp, /\.foregroundStyle\(Color\.white\.opacity\(0\.98\)\)/);
+  assert.match(stamp, /\.padding\(\.leading, ChatPresentationLayout\.bubbleHorizontalInset \+ 6\)[\s\S]*?\.frame\(width: 0, alignment: \.leading\)/);
+  assert.doesNotMatch(bubble, /alignmentGuide\(\.trailing\)|\.overlay\(alignment: \.bottomTrailing\)/);
   assert.match(history, /timeZoneIdentifier: timeZone/);
   assert.match(history, /UIPasteboard\.general\.string = text/);
   assert.match(history, /if chatTheme == \.iMessage \{[\s\S]*?\} else \{[\s\S]*?MessageTimestampFormatter\.string/);
@@ -663,7 +678,7 @@ test('iMessage voice-to-text uses the identical outgoing text bubble paint, padd
   // Voice is nested in the same AppStorage-backed outgoing bubble as text,
   // so user-chosen color and opacity always update both without duplication.
   assert.match(user, /if presentation\.isVoiceInput \{\s*iMessageVoiceBubble/);
-  assert.match(user, /private var iMessageVoiceBubble: some View \{\s*NativeLiveIMessageTextBubble\(side: \.outgoing\)/);
+  assert.match(user, /private var iMessageVoiceBubble: some View \{\s*NativeLiveIMessageTextBubble\(side: \.outgoing, fitsContent: false\)/);
   assert.match(shared, /@AppStorage\(IMessageBubbleAppearance\.outgoingColorKey\)/);
   assert.match(shared, /@AppStorage\(IMessageBubbleAppearance\.outgoingOpacityKey\)/);
   assert.match(shared, /\.opacity\(side == \.outgoing \? outgoingOpacity : incomingOpacity\)/);
@@ -679,9 +694,10 @@ test('iMessage voice-to-text uses the identical outgoing text bubble paint, padd
   assert.equal((voiceSurface.match(/\.foregroundStyle\(Color\.white\.opacity\(0\.98\)\)/g) || []).length, 2);
   assert.match(voiceSurface, /NativeLiveVisualNodesView\(nodes: presentation\.textNodes, role: presentation\.role\)/);
 
-  // Do not carry the old 125pt transcript-width cap, 8pt leading padding or
-  // primary/secondary glyph colors into the iMessage variant.
-  assert.doesNotMatch(voiceSurface, /userWidth\(|userMaxContentWidth|\.frame\(width:/);
+  // Collapsed voice grows with the transcript up to the row's offered width;
+  // no fixed 125pt cap, 8pt leading padding or primary/secondary glyph colors.
+  assert.match(voiceSurface, /userWidth\(transcript: presentation\.copyText/);
+  assert.doesNotMatch(voiceSurface, /userMaxContentWidth|\.frame\(width:/);
   assert.match(voice, /userMaxContentWidth: CGFloat = 125/);
   assert.match(user, /Spacer\(minLength:leadingClearance\)/);
   assert.match(user, /usesCompactVoiceInsets \? NativeLiveVoiceBubbleGeometry\.userLeadingInset/);
@@ -743,7 +759,7 @@ test('the iMessage generating-state header matches the existing Thought/Worked c
   assert.match(thinking, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
   const workHeader = activity.slice(activity.indexOf('    var body: some View {'), activity.indexOf('            if effectiveExpanded {'));
   assert.doesNotMatch(workHeader, /NativeLiveThoughtProcessIcon\(\)|Image\(systemName:\s*"clock"\)/);
-  assert.match(workHeader, /\.padding\(\.leading, chatTheme == \.iMessage && !header\.isEmpty \? 2 : 0\)/);
+  assert.match(workHeader, /\.padding\(\.leading, header\.isEmpty \? 0 : 2\)/);
   assert.match(thinking, /\.padding\(\.leading, 2\)/);
   assert.match(activity, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
 });

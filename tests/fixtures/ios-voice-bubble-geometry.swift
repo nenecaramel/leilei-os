@@ -41,6 +41,18 @@ import Foundation
   for (s,l) in [(0.2,"1\u{2033}"),(1.0,"1\u{2033}"),(4.4,"4\u{2033}"),(7.6,"8\u{2033}"),(23,"23\u{2033}")] {
    precondition(G.durationLabel(seconds:s) == l)
   }
+  // Two characters or fewer and two seconds or shorter stay at the shortest width.
+  precondition(widths[0] == cluster && widths[1] == cluster)
+  precondition(G.userWidth(transcript:"字字",clusterWidth:cluster) == cluster)
+  precondition(G.userWidth(transcript:"字字字",clusterWidth:cluster) > cluster)
+  precondition(G.audioWidth(duration:1,sizeBytes:nil) == minimum && G.audioWidth(duration:2,sizeBytes:nil) == minimum)
+  precondition(G.audioWidth(duration:2.5,sizeBytes:nil) > minimum)
+  // The longest bubble follows the width its row offers, not a fixed cap.
+  precondition(G.userWidth(transcript:String(repeating:"字",count:240),clusterWidth:cluster,maxContentWidth:263) == 263)
+  precondition(G.userWidth(transcript:"字",clusterWidth:cluster,maxContentWidth:263) == cluster)
+  precondition(G.audioWidth(duration:60,sizeBytes:nil,maximumWidth:291) == 291)
+  precondition(G.audioWidth(duration:2,sizeBytes:nil,maximumWidth:291) == minimum)
+  precondition(G.audioWidth(duration:30,sizeBytes:nil,maximumWidth:291) > audio[4])
   let seed=NativeLiveVoiceBubbleGeometry.identity(entityID:"entity",sha256:"sha",draftID:"draft",filename:"f")
   precondition(seed == "entity")
   precondition(NativeLiveVoiceBubbleGeometry.identity(entityID:nil,sha256:"sha",draftID:"draft",filename:"f") == "sha")

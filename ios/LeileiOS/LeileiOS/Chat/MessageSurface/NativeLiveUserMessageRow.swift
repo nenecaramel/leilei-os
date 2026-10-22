@@ -79,9 +79,10 @@ struct NativeLiveUserMessagePresentationView: View {
 
     // Reusing the regular outgoing bubble is intentional: its AppStorage tint,
     // opacity, 14pt/10pt text padding and 20pt rounded material are shared
-    // automatically with typed messages. No fixed voice width applies here.
+    // automatically with typed messages. The width grows with the transcript
+    // up to the row's 70pt clearance; expanding keeps it and wraps the text.
     private var iMessageVoiceBubble: some View {
-        NativeLiveIMessageTextBubble(side: .outgoing) {
+        NativeLiveIMessageTextBubble(side: .outgoing, fitsContent: false) {
             VStack(alignment: .trailing, spacing: ChatPresentationLayout.iMessageTextBubbleSpacing) {
                 HStack(spacing: NativeLiveVoiceBubbleGeometry.userClusterSpacing) {
                     Image(systemName: "waveform")
@@ -103,6 +104,10 @@ struct NativeLiveUserMessagePresentationView: View {
                         .foregroundStyle(Color.white.opacity(0.98))
                 }
             }
+            .nativeLiveVoiceBubbleWidth(alignment: .trailing, fallbackMaximum: nil) { maximum in
+                NativeLiveVoiceBubbleGeometry.userWidth(transcript: presentation.copyText,
+                    clusterWidth: NativeLiveVoiceBubbleMetrics.userClusterWidth, maxContentWidth: maximum)
+            }
         }
     }
 
@@ -113,10 +118,18 @@ struct NativeLiveUserMessagePresentationView: View {
     @ViewBuilder private var textBubble: some View {
         if presentation.isVoiceInput {
             VStack(alignment:.trailing,spacing:10) {
-                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed, transcript:presentation.copyText)
+                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed)
                 if isVoiceTranscriptRevealed {
                     NativeLiveVisualNodesView(nodes:presentation.textNodes,role:presentation.role)
                 }
+            }
+            // Expanding widens the leading inset by 6pt, so the content narrows by
+            // the same amount and the bubble keeps its collapsed width. At the
+            // shortest width the glyphs overhang into that extra inset.
+            .nativeLiveVoiceBubbleWidth(alignment: .trailing, fallbackMaximum: NativeLiveVoiceBubbleGeometry.userMaxContentWidth) { maximum in
+                let extra = isVoiceTranscriptRevealed ? ChatPresentationLayout.bubbleHorizontalInset - NativeLiveVoiceBubbleGeometry.userLeadingInset : 0
+                return NativeLiveVoiceBubbleGeometry.userWidth(transcript: presentation.copyText,
+                    clusterWidth: NativeLiveVoiceBubbleMetrics.userClusterWidth, maxContentWidth: maximum + extra) - extra
             }
         } else { NativeLiveVisualNodesView(nodes:presentation.textNodes,role:presentation.role) }
     }
@@ -128,7 +141,6 @@ struct NativeLiveUserMessagePresentationView: View {
 
 private struct NativeLiveVoiceMessageBubbleVisual: View {
     let isExpanded: Bool
-    let transcript: String?
 
     var body: some View {
         HStack(spacing: NativeLiveVoiceBubbleGeometry.userClusterSpacing) {
@@ -139,7 +151,6 @@ private struct NativeLiveVoiceMessageBubbleVisual: View {
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.secondary)
         }
-        .frame(width: NativeLiveVoiceBubbleGeometry.userWidth(transcript: transcript, clusterWidth: NativeLiveVoiceBubbleMetrics.userClusterWidth), alignment: .trailing)
         .frame(height: NativeLiveVoiceBubbleGeometry.contentHeight, alignment: .leading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(isExpanded ? "Voice message, transcript shown" : "Voice message, tap to show transcript")

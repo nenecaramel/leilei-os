@@ -87,20 +87,27 @@ enum NativeLiveIMessageBubbleSide {
 struct NativeLiveIMessageTextBubble<Content: View>: View {
     let side: NativeLiveIMessageBubbleSide
     let content: Content
+    // False lets content size itself from the row's offered width (voice).
+    var fitsContent = true
 
-    init(side: NativeLiveIMessageBubbleSide, @ViewBuilder content: () -> Content) {
+    init(side: NativeLiveIMessageBubbleSide, fitsContent: Bool = true, @ViewBuilder content: () -> Content) {
         self.side = side
+        self.fitsContent = fitsContent
         self.content = content()
     }
 
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            // Short text retains its natural width.
-            bubble(content.fixedSize(horizontal: true, vertical: false))
-            // Wrapped text is measured by SwiftUI at the available width.
-            // The background stays around the rendered content instead of
-            // filling the entire row and leaving a blank right-hand strip.
-            bubble(content.fixedSize(horizontal: false, vertical: true))
+    @ViewBuilder var body: some View {
+        if !fitsContent {
+            bubble(content)
+        } else {
+            ViewThatFits(in: .horizontal) {
+                // Short text retains its natural width.
+                bubble(content.fixedSize(horizontal: true, vertical: false))
+                // Wrapped text is measured by SwiftUI at the available width.
+                // The background stays around the rendered content instead of
+                // filling the entire row and leaving a blank right-hand strip.
+                bubble(content.fixedSize(horizontal: false, vertical: true))
+            }
         }
     }
 
@@ -187,6 +194,7 @@ struct NativeLiveAssistantAudioBubbleBackground: ViewModifier {
 // from thinking, tools, citations, media or other nested controls.
 private struct NativeLiveIMessageAssistantTextBubble: View {
     let node: NativeLiveVisualNode
+    // Only the turn's last text bubble carries its time.
     let timestamp: String?
     let onCopy: (String) -> Void
     let onRetry: (() -> Void)?
@@ -203,12 +211,16 @@ private struct NativeLiveIMessageAssistantTextBubble: View {
 
     var body: some View {
         NativeLiveIMessageTextBubble(side: .incoming) {
+            // Anchored to the text, not the bubble, so the time shares the
+            // last line's baseline.
             NativeLiveVisualNodeView(node: node, role: "assistant")
+                .overlay(alignment: Alignment(horizontal: .trailing, vertical: .lastTextBaseline)) {
+                    NativeLiveIMessageTrailingTimestamp(text: timestamp)
+                }
         }
         .overlay {
             IMessageAssistantBubbleContextMenuInteraction(
                 text: plainText,
-                timestamp: timestamp,
                 isRetryDisabled: isRetryDisabled,
                 cornerRadius: ChatPresentationLayout.iMessageUserBubbleRadius,
                 onCopy: onCopy,
@@ -220,6 +232,26 @@ private struct NativeLiveIMessageAssistantTextBubble: View {
             isPresented: $showsTranslation,
             text: plainText
         )
+    }
+}
+
+// Sits 6pt right of the bubble, inside the 70pt clearance; it never changes
+// the bubble's layout and takes no touches. Nil renders nothing.
+private struct NativeLiveIMessageTrailingTimestamp: View {
+    let text: String?
+
+    var body: some View {
+        Text(text ?? "")
+            .font(.system(size: 10)).tracking(0.12)
+            .foregroundStyle(Color.white.opacity(0.98))
+            .lineLimit(1)
+            .fixedSize()
+            // Anchored at the text's trailing edge: skip the bubble inset, then 6pt.
+            .padding(.leading, ChatPresentationLayout.bubbleHorizontalInset + 6)
+            // A zero-width anchor; the time overflows to its right instead of
+            // overlapping the bubble.
+            .frame(width: 0, alignment: .leading)
+            .allowsHitTesting(false)
     }
 }
 
@@ -239,6 +271,7 @@ struct NativeLiveIMessageTextBubbleList: View {
     }
 
     var body: some View {
+        let lastTextBubbleIndex = segments.lastIndex(where: { $0.isTextBubble })
         VStack(alignment: side == .outgoing ? .trailing : .leading, spacing: ChatPresentationLayout.iMessageTextBubbleSpacing) {
             ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
                 Group {
@@ -247,7 +280,7 @@ struct NativeLiveIMessageTextBubbleList: View {
                             HStack(spacing: 0) {
                                 NativeLiveIMessageAssistantTextBubble(
                                     node: segment.node,
-                                    timestamp: timestamp,
+                                    timestamp: index == lastTextBubbleIndex ? timestamp : nil,
                                     onCopy: onCopy ?? { _ in },
                                     onRetry: onRetry,
                                     isRetryDisabled: isRetryDisabled

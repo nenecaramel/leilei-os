@@ -94,7 +94,8 @@ test('render reference applies only the approved disclosure header layout', () =
   // Worked for has no leading clock or reserved icon slot. Its 2pt inset
   // aligns the label with the Thought process glyph's leading edge.
   assert.doesNotMatch(currentHeader, /NativeLiveThoughtProcessIcon\(\)|Image\(systemName:\s*"clock"\)/);
-  assert.match(currentHeader, /\.padding\(\.leading, chatTheme == \.iMessage && !header\.isEmpty \? 2 : 0\)/);
+  // Both themes share this inset with the loading and Thought process rows.
+  assert.match(currentHeader, /\.padding\(\.leading, header\.isEmpty \? 0 : 2\)/);
   assert.equal((currentHeader.match(/expansion\.toggleActivity\(\)/g) ?? []).length, 2);
   assert.match(currentHeader, /\.disabled\(header\.isEmpty\)/);
   assert.match(currentHeader, /if normalizedMurmurText != nil/);
