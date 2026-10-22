@@ -39,6 +39,22 @@ test("a checkpoint fork retains the latest native session Cron table outside mes
     projected.prefix);
 });
 
+// A manual /compact in Desktop writes its boundary (parentUuid null) and summary
+// off the message chain: later turns hang off the /compact command, whose
+// parent is the pre-compact leaf. The CLI starts history at the last boundary
+// in file order, so a fork that drops it reloads everything before it.
+test("a fork keeps the compact boundary and summary of its own branch in file order", () => {
+  const boundary = entry("boundary", null, "system", { subtype: "compact_boundary", logicalParentUuid: "leaf" });
+  const summary = entry("summary", "boundary", "user", { isCompactSummary: true });
+  const otherBoundary = entry("other-boundary", null, "system", { subtype: "compact_boundary", logicalParentUuid: "failed" });
+  const otherSummary = entry("other-summary", "other-boundary", "user", { isCompactSummary: true });
+  const entries = [entry("u", null, "user"), entry("failed", "u"), otherBoundary, otherSummary, entry("leaf", "u"),
+    boundary, summary, entry("command", "leaf", "user"), entry("checkpoint", "command"), entry("later", "checkpoint")];
+  const result = durableCheckpointPrefix(entries, "checkpoint");
+  assert.deepEqual(result.prefix.map(item => item.uuid), ["u", "leaf", "boundary", "summary", "command", "checkpoint"]);
+  assert.deepEqual([...result.ancestry], ["checkpoint", "command", "leaf", "u"], "the boundary is carried, not ancestry");
+});
+
 test("attachment and compact system ancestry remain valid carriers", () => {
   const entries = [entry("u", null, "user"), entry("file", "u", "attachment"), entry("compact", "file", "system"), entry("a", "compact")];
   assert.deepEqual(durableCheckpointPrefix(entries, "a").prefix, entries);
