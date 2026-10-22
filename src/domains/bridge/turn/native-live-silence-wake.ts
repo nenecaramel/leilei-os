@@ -60,8 +60,9 @@ export type NativeLiveSilenceWakeFireResult =
       schedule: NativeLiveSilenceWakeSchedule | null;
     };
 
-const POST_TURN_MIN_MS = 5 * 60_000;
-const POST_TURN_SPAN_MS = 5 * 60_000;
+// Post-reply wake: 2–5 minutes after the reply (owner's choice, 10/22).
+const POST_TURN_MIN_MS = 2 * 60_000;
+const POST_TURN_SPAN_MS = 3 * 60_000;
 const LONG_IDLE_MIN_MS = 90 * 60_000;
 const LONG_IDLE_SPAN_MS = 30 * 60_000;
 

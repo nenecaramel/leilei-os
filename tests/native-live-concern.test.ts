@@ -44,6 +44,10 @@ test("concern wake waits for its consider time and never fires right after a tur
     }),
     at(CONCERN_LIMITS.postTurnGapMs / minute),
   );
+  // Like the post-reply wake, a concern may come back two minutes after a reply,
+  // and may be set that soon, so the 2–5 minute reply wake can carry it.
+  assert.equal(CONCERN_LIMITS.postTurnGapMs, 2 * minute);
+  assert.equal(CONCERN_LIMITS.minConsiderInMinutes, 2);
 });
 
 test("every wake in the epoch opens a shared cooldown", () => {
