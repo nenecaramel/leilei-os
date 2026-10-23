@@ -50,3 +50,31 @@ export async function readNativeResumeCheckpoint(db: Executor, input: { userId: 
   `);
   return row?.checkpoint ?? null;
 }
+
+// A send that fails after its first events rotates the generation, yet it ran
+// from the quiet cursor and the native JSONL still holds that cursor below the
+// failed input. Only then may a later send keep the generation-stale cursor;
+// falling back to the canonical base would make the quiet Wake itself look
+// like unsynchronized history.
+export async function readSendResumeCheckpoint(db: Executor, input: { userId: string; conversationId: string; canonicalMessageId: string }): Promise<string | null> {
+  const [row] = await db.execute<{ checkpoint: string | null }>(sql`
+    SELECT CASE WHEN ${nativeResumeTailValidSql("cp", "c", false)} AND EXISTS (
+        SELECT 1 FROM native_live_turn_preparations failed
+        JOIN conversation_messages u ON u.id = failed.canonical_user_message_id AND u.user_id = failed.user_id
+        WHERE failed.user_id = cp.user_id AND failed.conversation_id = cp.conversation_id
+          AND failed.operation = 'send' AND failed.runtime_mode = 'resume' AND failed.status = 'finalized_failure'
+          AND u.parent_message_id = cp.canonical_message_id
+          AND failed.parent_provider_session_id = cp.provider_session_id
+          AND failed.parent_provider_checkpoint_id = cp.runtime_metadata->'native_live_resume_tail'->>'checkpoint_id')
+      THEN cp.runtime_metadata->'native_live_resume_tail'->>'checkpoint_id'
+      ELSE ${nativeResumeCheckpointSql("cp", "c")} END AS checkpoint
+    FROM conversation_provider_session_checkpoints cp
+    JOIN conversations c ON c.id = cp.conversation_id AND c.user_id = cp.user_id
+    WHERE cp.user_id = ${input.userId}::uuid AND cp.conversation_id = ${input.conversationId}::uuid
+      AND cp.canonical_message_id = ${input.canonicalMessageId}::uuid AND cp.provider = 'claude_code'
+      AND c.origin = 'native_live' AND c.lifecycle_status = 'active'
+      AND c.current_head_message_id = cp.canonical_message_id
+    LIMIT 1
+  `);
+  return row?.checkpoint ?? null;
+}

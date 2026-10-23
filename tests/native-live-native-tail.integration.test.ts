@@ -121,6 +121,23 @@ for (const changed of ["owner-generation", "native-revision"] as const) test(`ch
 });
 
 
+// A send that failed after its first events reached the server rotated the
+// generation, but it ran from the quiet cursor: the native JSONL still holds
+// that cursor below the failed turn. Resuming from the canonical base would
+// show the quiet Wake itself as unsynchronized history.
+test("a send failed at the quiet cursor keeps the next send on that cursor", { skip: !enabled }, async t => {
+  const f = await fixture(t); await f.coordinator.finalize(f.user.id, f.result);
+  const failed = await f.send(); assert.ok(failed.ok); if (!failed.ok) throw Error("send failed");
+  assert.equal(failed.command.parent_provider_checkpoint_id, f.next);
+  const now = new Date();
+  await f.database.db.update(nativeLiveTurnPreparations).set({ status: "finalized_failure", dispatchStatus: "completed", failureCode: "RUNTIME_UNAVAILABLE", resultHash: "a".repeat(64), finalizedAt: now,
+    reservedBy: crypto.randomUUID(), reservedAt: now, reservationExpiresAt: now, executionStartedAt: now })
+    .where(eq(nativeLiveTurnPreparations.id, failed.command.prepare_id));
+  await rotateNativeWriterGeneration(f.database.db, {userId:f.user.id,conversationId:f.conversation.id});
+  const next = await f.send(); assert.ok(next.ok); if (!next.ok) throw Error("next failed");
+  assert.equal(next.command.parent_provider_checkpoint_id, f.next);
+});
+
 test("successive quiet wakes follow the committed native cursor while preserving the visible head", { skip: !enabled }, async t => {
   const f = await fixture(t); await f.coordinator.finalize(f.user.id, f.result);
   const second = await f.longWake(); assert.equal(second.parentProviderCheckpointId, f.next);
