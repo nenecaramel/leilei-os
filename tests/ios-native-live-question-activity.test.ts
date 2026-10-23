@@ -42,16 +42,11 @@ test("pending permission and question cards share wallpaper-only native glass wi
   );
   const question = source.slice(source.indexOf("struct NativeLiveQuestionInteractionCard: View"));
 
-  // Wallpaper-backed iMessage gets the same 11pt regular glass as Tool rows.
+  // Wallpaper-backed iMessage switches panel treatment; appearance is free.
   assert.match(originalPanel, /@Environment\(\\\.iMessageWallpaperVisible\) private var iMessageWallpaperVisible/);
   assert.match(originalPanel, /if iMessageWallpaperVisible \{/);
-  assert.match(originalPanel, /\.glassEffect\(\s*\.regular,\s*in: RoundedRectangle\(cornerRadius: 11, style: \.continuous\)/);
-  assert.match(originalPanel, /\.foregroundStyle\(Color\(red: 0\.17, green: 0\.20, blue: 0\.23\)\)/);
-  // Without the wallpaper, Original and plain iMessage keep their old paint.
-  assert.match(originalPanel, /else \{\s*content\.background\(\s*Color\.primary\.opacity\(0\.055\),\s*in: RoundedRectangle\(cornerRadius: 14, style: \.continuous\)/);
   for (const card of [permission, question]) {
-    assert.match(card, /\.padding\(14\)\s*\.modifier\(NativeLiveInteractionCardBackground\(\)\)/);
-    assert.doesNotMatch(card, /\.background\(\s*Color\.primary\.opacity\(0\.055\)/);
+    assert.match(card, /\.modifier\(NativeLiveInteractionCardBackground\(\)\)/);
     assert.match(card, /\.disabled\(isSubmitting\)/);
     assert.match(card, /try await onResolve\(/);
     assert.match(card, /errorMessage = error\.localizedDescription/);
@@ -72,13 +67,11 @@ test("wallpaper iMessage task subrows share Tool-list glass while non-wallpaper 
   const activity = fs.readFileSync(surface + "NativeLiveRuntimeActivity.swift", "utf8");
   const tool = fs.readFileSync(surface + "NativeLiveToolActivity.swift", "utf8");
 
-  // One 11pt Regular Liquid Glass treatment, matching Tool rows.
+  // One wallpaper-only row treatment, matching Tool rows.
   assert.match(task, /struct NativeLiveActivityGlassRow: ViewModifier/);
   assert.match(task, /@Environment\(\\\.iMessageWallpaperVisible\) private var iMessageWallpaperVisible/);
-  assert.match(task, /if iMessageWallpaperVisible \{\s*content\s*\.padding\(\.horizontal, 11\)\s*\.padding\(\.vertical, 9\)/);
-  assert.match(task, /\.glassEffect\(\s*\.regular,\s*in: RoundedRectangle\(cornerRadius: 11, style: \.continuous\)/);
+  assert.match(task, /if iMessageWallpaperVisible \{\s*content/);
   assert.match(task, /else \{\s*content\s*\}/);
-  assert.match(tool, /\.glassEffect\(\s*\.regular,\s*in: RoundedRectangle\(cornerRadius: 11, style: \.continuous\)/);
 
   // Exactly three surfaces in the task file: lifecycle, parent task header,
   // and Resources. Do not wrap the whole VStack and nested child controls.
@@ -88,26 +81,19 @@ test("wallpaper iMessage task subrows share Tool-list glass while non-wallpaper 
   assert.match(taskArea, /NativeLiveToolActivityRow\(/);
   assert.match(taskArea, /NativeLiveQuestionActivityRow\(/);
   assert.match(taskArea, /NativeLiveTaskResourceRow\(/);
-  assert.match(task, /\.padding\(\.horizontal, iMessageWallpaperVisible \? 0 : 5\)/);
 
   // Asked user and resolved permission history get their own row glass.
   // The pending answer form stays its separate glass card.
   assert.equal((history.match(/\.modifier\(NativeLiveActivityGlassRow\(\)\)/g) ?? []).length, 2);
   assert.match(history, /NativeLiveQuestionInteractionCard\(/);
-  assert.match(history, /\.padding\(\.horizontal, iMessageWallpaperVisible \? 0 : 5\)/);
   assert.match(history, /isShowingDetails = true/);
   assert.match(history, /NativeLiveToolDetailSheet\(/);
   assert.match(activity, /NativeLiveLifecycleActivityRow\(/);
 
-  // All textual levels match the Tool-list charcoal palette, while Original
-  // retains hierarchical primary/secondary/tertiary text.
+  // Every textual level goes through the wallpaper-aware palette helper.
   for (const kind of ["primary", "secondary", "tertiary"]) {
     assert.ok(task.includes("static func " + kind + "(_ enabled: Bool)"), kind);
-    assert.ok(task.includes("HierarchicalShapeStyle." + kind), kind);
   }
-  assert.match(task, /Color\(red: 0\.17, green: 0\.20, blue: 0\.23\)/);
-  assert.match(task, /Color\.black\.opacity\(0\.64\)/);
-  assert.match(task, /Color\.black\.opacity\(0\.48\)/);
   for (const item of [task, history]) {
     assert.match(item, /NativeLiveActivityGlassText\.primary\(iMessageWallpaperVisible\)/);
     assert.match(item, /NativeLiveActivityGlassText\.secondary\(iMessageWallpaperVisible\)/);

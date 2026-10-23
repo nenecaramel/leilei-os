@@ -13,7 +13,7 @@ test("ElevenLabs stays in the assistant result surface, not tool history or back
   const audio = readFileSync(surface + "NativeLiveAudioAttachmentBubble.swift", "utf8");
   const source = readFileSync(surface + "NativeLiveElevenLabsResultSurface.swift", "utf8");
   const parse = readFileSync(surface + "NativeLiveElevenLabsPresentation.swift", "utf8");
-  assert.match(row, /NativeLiveVisibleThinkingSurface\(items: turn\.visibleThinking, murmurText: turn\.murmurText\)\s*\.padding\([^\n]*\)\s+activityArea\s*\.padding\([^\n]*\)\s+spotifyResultArea\s+elevenLabsResultArea\s+if chatTheme == \.iMessage \{\s*NativeLiveIMessageTextBubbleList\(/);
+  assert.match(row, /NativeLiveVisibleThinkingSurface\(items: turn\.visibleThinking, murmurText: turn\.murmurText\)(?:\s*\.padding\([^\n]*\))?\s+activityArea(?:\s*\.padding\([^\n]*\))?\s+spotifyResultArea\s+elevenLabsResultArea\s+if chatTheme == \.iMessage \{\s*NativeLiveIMessageTextBubbleList\(/);
   assert.match(row, /else \{\s*NativeLiveMessagePresentationView\(presentation:turn\.bodyPresentation\)/);
   assert.match(row, /NativeLiveElevenLabsResultProjector\.project\(tools: turn\.activityProjection\.tools\)/);
   assert.match(source, /TimelineView\(\.periodic\(from: \.now, by: 30\)\)/);

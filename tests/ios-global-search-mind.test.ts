@@ -4,8 +4,9 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {execFileSync} from "node:child_process";
 import test from "node:test";
+import {swiftc, swiftUnavailable} from "./helpers/swift-toolchain.js";
 
-test("native search decodes dated and undated Memory and includes all four modules", () => {
+test("native search decodes dated and undated Memory and includes all four modules", {skip: swiftUnavailable}, () => {
   const temporary = mkdtempSync(join(tmpdir(),"global-mind-swift-"));
   try {
     const source = readFileSync("ios/LeileiOS/LeileiOS/Pages/GlobalSearch/GlobalSearchService.swift","utf8").split("final class LeileiGlobalSearchService")[0];
@@ -21,7 +22,7 @@ let datedItem = try JSONDecoder().decode(GlobalSearchResultItem.self, from: Data
 precondition(datedItem.businessTime == "2026-10-08T16:00:00.000Z")
 print("native Mind search decoding PASS")
 `);
-    execFileSync("swiftc",["-module-cache-path",join(temporary,"cache"),join(temporary,"main.swift"),"-o",join(temporary,"test")],{timeout:120000});
+    execFileSync(...swiftc(["-module-cache-path",join(temporary,"cache"),join(temporary,"main.swift"),"-o",join(temporary,"test")]),{timeout:120000});
     assert.match(execFileSync(join(temporary,"test"),{encoding:"utf8"}),/PASS/);
   } finally {rmSync(temporary,{recursive:true,force:true});}
 });

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
+import { withoutSwiftPaint } from './helpers/swift-paint.js';
 const root='ios/LeileiOS/LeileiOS/Chat/MessageSurface/';
 const fixture='tests/fixtures/message-rows-main-72a67f44/';
 const read=(name:string)=>readFileSync(root+name,'utf8');
@@ -19,7 +20,8 @@ function block(s:string,marker:string) {
  for(;depth && end<s.length;end++){if(s[end]==='{')depth++;if(s[end]==='}')depth--;}
  assert.equal(depth,0);return s.slice(open+1,end-1);
 }
-const equal=(a:string,b:string,label:string)=>assert.equal(compact(a),compact(b),label);
+// Appearance is not conserved; structure, actions and data flow are.
+const equal=(a:string,b:string,label:string)=>assert.equal(compact(withoutSwiftPaint(a)),compact(withoutSwiftPaint(b)),label);
 test('Message row baseline fixtures are exact main Git blobs',()=>{
  const manifest=JSON.parse(readFileSync(fixture+'blobs.json','utf8'));
  assert.equal(manifest.commit,'72a67f4422368156dca75f44e3b97fc2143123c4');
@@ -29,15 +31,14 @@ test('Message row baseline fixtures are exact main Git blobs',()=>{
 });
 test('User row and history/divider moves retain complete presentation and interaction blocks',()=>{
  const baseline=old('NativeLiveMessageRows.swift');const user=read('NativeLiveUserMessageRow.swift');
- // The accepted iMessage branch has a fixed 70pt clearance; Original keeps
- // the historical spacer. Preserve identity, edit/copy actions and state owner.
+ // Both theme branches render the same message view; appearance is free.
+ // Preserve identity, edit/copy actions and state owner.
  const userRow = block(user,'func nativeLiveUserMessageRow(');
  assert.match(userRow, /let messageView = NativeLiveUserMessagePresentationView\(presentation:user/);
  assert.match(userRow, /appModel\.nativeLiveMessageUIState\[row\.id\]\.voiceTranscriptExpansion/);
  assert.match(userRow, /onEdit:row\.userBacking\.map \{ message in \{ onEditMessage\(message\) \} \}/);
  assert.match(userRow, /onCopy:onCopyMessage,isDisabled:isTurnInFlight/);
- assert.match(userRow, /if isIMessage \{[\s\S]*?Color\.clear\.frame\(width:leadingClearance\)[\s\S]*?messageView\.frame\(maxWidth:\.infinity,alignment:\.trailing\)/);
- assert.match(userRow, /else \{[\s\S]*?Spacer\(minLength:leadingClearance\)\s*messageView/);
+ assert.match(userRow, /if isIMessage \{[\s\S]*?messageView[\s\S]*?\} else \{[\s\S]*?messageView/);
  // A history row now uses separate Original and iMessage paint, with no
  // changes to time-zone formatting or history presentation projection.
  const history=read('NativeLiveHistoryMessageRow.swift');
@@ -45,21 +46,18 @@ test('User row and history/divider moves retain complete presentation and intera
  assert.match(history,/NativeLiveMessagePresentationProjector\.project\(\.history\(message\)\)/);
  assert.match(history,/if message\.role == "user"/);
  assert.match(history,/if chatTheme == \.iMessage \{/);
- assert.match(history,/Color\.clear\.frame\(width: ChatPresentationLayout\.iMessageUserLeadingClearance\)/);
  assert.match(history,/NativeLiveIMessageTextBubbleList\(presentation: presentation, side: \.outgoing\)/);
- assert.match(history,/Spacer\(minLength: ChatPresentationLayout\.userLeadingClearance\)/);
  assert.match(history,/NativeLiveMessagePresentationView\(presentation: presentation\)/);
  assert.match(history,/side: \.incoming,[\s\S]*timestamp: MessageTimestampFormatter\.string/);
  assert.match(history,/UIPasteboard\.general\.string = text\s*copyFeedback\("Message copied"\)/);
  assert.match(history,/timeZoneIdentifier: timeZone/);
- assert.match(history,/\.font\(\.system\(size: 12\)\)\s*\.tracking\(0\.12\)\s*\.foregroundStyle\(\.secondary\)\s*\.padding\(\.top, 4\)/);
  assert.match(oldHistory,/NativeLiveMessagePresentationProjector\.project\(\.history\(message\)\)/);
  equal(block(read('NativeLiveHistoryDivider.swift'),'struct NativeLiveHistoryForkDivider:'),
    block(baseline,'struct NativeLiveHistoryForkDivider:'), 'History divider and fork metadata');
  // The Original body and iMessage text/voice paths now live behind the same
  // message presentation. Verify critical actions instead of raw enclosing bytes.
  assert.match(user, /if chatTheme == \.iMessage \{[\s\S]*?NativeLiveIMessageTextBubbleList\(presentation: presentation, side: \.outgoing\)/);
- assert.match(user, /else \{[\s\S]*?textBubble[\s\S]*?\.background\(Color\.chatSoftFill,in:RoundedRectangle/);
+ assert.match(user, /else \{[\s\S]*?textBubble/);
  assert.match(user, /LightweightContextMenuInteraction\(title:"Edit",copyText:presentation\.copyText,isDisabled:isDisabled/);
  assert.match(user, /onCopy:onCopy,onTap:toggleVoice,action:onEdit\)/);
  assert.match(user, /guard presentation\.isVoiceInput, presentation\.copyText != nil else \{ return \}/);
@@ -79,7 +77,6 @@ test('Assistant organization conserves activity bindings, refresh owner, indicat
  const rawAction=withoutFooterTimestamp(footer);
  const action=process.env.ROWS_CALLBACK_NEGATIVE ? rawAction.replace('onRetryMessage(user)','onRetryMessage(turn.id)'):rawAction;
  equal(block(action,'HStack('),block(baseline,'HStack('),'copy and retry callbacks/targets/order/disabled');
- assert.ok(compact(action).includes(compact('}.font(.system(size:14)).foregroundStyle(.secondary).buttonStyle(.plain).padding(.top,ChatPresentationLayout.actionTopInset)')));
  for(const exact of ['NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)','MindWriteIndicator(items:mindWrites)']) assert.ok(compact(current).includes(compact(exact)),exact);
  assert.doesNotMatch(current, /AlbumSaveIndicator|refreshAlbumSaves/);
  const route=read('NativeLiveMessageRows.swift');

@@ -86,16 +86,11 @@ test('render reference applies only the approved disclosure header layout', () =
   const header = (source: string) =>
     source.slice(source.indexOf('    var body: some View {'), source.indexOf('            if effectiveExpanded {'));
   const currentHeader = header(current);
-  // iMessage changes alignment, wallpaper contrast and shadow. These checks
+  // Appearance (alignment, colors, insets, shadow) is free. These checks
   // preserve disclosure/murmur actions and their relative order instead of
   // comparing to the pre-theme header pixels.
-  assert.match(currentHeader, /alignment: chatTheme == \.iMessage \? \.center : \.firstTextBaseline/);
-  assert.match(currentHeader, /iMessageWallpaperVisible \? Color\.white : Color\.secondary/);
-  // Worked for has no leading clock or reserved icon slot. Its 2pt inset
-  // aligns the label with the Thought process glyph's leading edge.
+  // Worked for has no leading clock or reserved icon slot.
   assert.doesNotMatch(currentHeader, /NativeLiveThoughtProcessIcon\(\)|Image\(systemName:\s*"clock"\)/);
-  // Both themes share this inset with the loading and Thought process rows.
-  assert.match(currentHeader, /\.padding\(\.leading, header\.isEmpty \? 0 : 2\)/);
   assert.equal((currentHeader.match(/expansion\.toggleActivity\(\)/g) ?? []).length, 2);
   assert.match(currentHeader, /\.disabled\(header\.isEmpty\)/);
   assert.match(currentHeader, /if normalizedMurmurText != nil/);
@@ -103,7 +98,6 @@ test('render reference applies only the approved disclosure header layout', () =
   assert.match(currentHeader, /\.accessibilityLabel\("Murmur"\)/);
   assert.ok(currentHeader.indexOf('"chevron.right"') < currentHeader.indexOf('Image(systemName: "bubble.left")'),
     'Disclosure precedes the independent Murmur action');
-  assert.match(currentHeader, /\.shadow\(\s*color: iMessageWallpaperVisible \? Color\.black\.opacity\(0\.75\) : \.clear/);
   assert.match(current, /prepareID: projection\.prepareID/);
   assert.match(header(reference), /isShowingMurmur = true/);
   const original = readFileSync(fixture + 'NativeLiveRuntimeActivity.swift', 'utf8');

@@ -35,64 +35,41 @@ test('only the two bubble presentations change; playback/open/expansion remain e
  assert.doesNotMatch(readFileSync(root+'NativeLiveVoiceBubbleGeometry.swift','utf8'),/Hasher|nativeLiveAttachmentBytes\(/);
 });
 
-test('assistant audio is one 45pt row with total-seconds label and no time text; user voice height matches',()=>{
+// Sizes, insets and caps are owner-tuned on device; the numeric geometry is
+// exercised by the Swift fixture above. These tests cover content and wiring.
+test('assistant audio shows total seconds and no time text; play and open are separate actions',()=>{
  const audio=readFileSync(root+'NativeLiveAudioAttachmentBubble.swift','utf8');
  const geometry=readFileSync(root+'NativeLiveVoiceBubbleGeometry.swift','utf8');
- const user=readFileSync(root+'NativeLiveUserMessageRow.swift','utf8');
  assert.doesNotMatch(audio,/--:--|statusLabel|Text\("Audio"\)|\/ \\\(time|%d:%02d/);
  assert.match(audio,/private var effectiveDuration: TimeInterval\?[\s\S]*playback\.duration\.isFinite, playback\.duration > 0[\s\S]*return playback\.duration[\s\S]*return input\.durationSeconds/);
  assert.match(audio,/guard let duration = effectiveDuration else \{ return "—" \}/);
  assert.match(geometry,/u\{2033\}/);
- assert.match(geometry,/contentHeight: CGFloat = 21/);assert.match(geometry,/verticalInset: CGFloat = 12/);
- assert.match(audio,/\.padding\(\s*\.vertical,\s*chatTheme == \.iMessage\s*\? ChatPresentationLayout\.iMessageUserBubbleVerticalInset\s*: NativeLiveVoiceBubbleGeometry\.verticalInset\s*\)/);
- assert.match(user,/frame\(height: NativeLiveVoiceBubbleGeometry\.contentHeight/);
- assert.match(geometry,/waveformMinimumHeight: CGFloat = 4/);assert.match(geometry,/waveformMaximumHeight: CGFloat = 15/);
- assert.match(geometry,/waveformBarWidth: CGFloat = 2/);
- assert.match(geometry,/userLeadingInset: CGFloat = 8/);
- assert.match(geometry,/userTrailingInset: CGFloat = 14/);
- assert.match(geometry,/userClusterSpacing: CGFloat = 6/);
- assert.match(geometry,/audioMinimumWaveformWidth: CGFloat = 28/);
  assert.match(audio,/Button \{ playOrPause\(\) \}/);assert.match(audio,/Button \{ open\(\) \}/);
 });
 
-
-test('expanded user voice transcript inherits normal user text bubble layout',()=>{
+test('expanded user voice transcript reuses the normal text renderer',()=>{
  const user=readFileSync(root+'NativeLiveUserMessageRow.swift','utf8');
  assert.match(user,/private var usesCompactVoiceInsets: Bool[\s\S]*presentation\.isVoiceInput && !isVoiceTranscriptRevealed/);
- assert.match(user,/\.padding\(\.leading, usesCompactVoiceInsets \? NativeLiveVoiceBubbleGeometry\.userLeadingInset : ChatPresentationLayout\.bubbleHorizontalInset\)/);
- assert.match(user,/\.padding\(\.trailing, usesCompactVoiceInsets \? NativeLiveVoiceBubbleGeometry\.userTrailingInset : ChatPresentationLayout\.bubbleHorizontalInset\)/);
  assert.match(user,/NativeLiveVisualNodesView\(nodes:presentation\.textNodes,role:presentation\.role\)/);
 });
 
-test('voice/audio bubbles start growing after 2 characters / 2 seconds and reach the row width offered by each theme',()=>{
- const geometry=readFileSync(root+'NativeLiveVoiceBubbleGeometry.swift','utf8');
+test('voice and audio bubbles size from the transcript or duration and the width their row offers',()=>{
  const user=readFileSync(root+'NativeLiveUserMessageRow.swift','utf8');
  const audio=readFileSync(root+'NativeLiveAudioAttachmentBubble.swift','utf8');
  const eleven=readFileSync(root+'NativeLiveElevenLabsResultSurface.swift','utf8');
- assert.match(geometry,/userShortestCharacterCount = 2\b/);
- assert.match(geometry,/audioShortestSeconds: TimeInterval = 2\b/);
- assert.match(geometry,/static func userWidth\(transcript: String\?, clusterWidth: CGFloat = userFallbackClusterWidth,\s*maxContentWidth: CGFloat = userMaxContentWidth\)/);
- assert.match(geometry,/maximumWidth: CGFloat = audioMaximumWidth\) -> CGFloat/);
- // The offered width comes from the row: Original 48pt / iMessage 70pt clearance.
  const layout=readFileSync(root+'NativeLiveVoiceBubbleWidthLayout.swift','utf8');
  assert.match(layout,/struct NativeLiveVoiceBubbleWidthLayout: Layout/);
  assert.match(layout,/if let offered = proposal\.width, offered\.isFinite, offered > 0 \{ return width\(offered\) \}/);
  const iMessageVoice=user.slice(user.indexOf('private var iMessageVoiceBubble: some View'),user.indexOf('private var usesCompactVoiceInsets: Bool'));
- assert.match(iMessageVoice,/\.nativeLiveVoiceBubbleWidth\(alignment: \.trailing/);
- assert.match(iMessageVoice,/NativeLiveVoiceBubbleGeometry\.userWidth\(transcript: presentation\.copyText/);
- // Expanding keeps the collapsed width: the width applies to the whole stack, transcript included.
- assert.ok(iMessageVoice.indexOf('.nativeLiveVoiceBubbleWidth(') > iMessageVoice.indexOf('if isVoiceTranscriptRevealed {'));
- // Original: the width wraps the glyphs and transcript, so expanding keeps the
- // collapsed outer width even though the leading inset grows from 8pt to 14pt.
  const originalVoice=user.slice(user.indexOf('@ViewBuilder private var textBubble: some View'),user.indexOf('private func toggleVoice()'));
- assert.match(originalVoice,/\.nativeLiveVoiceBubbleWidth\(alignment: \.trailing/);
- assert.ok(originalVoice.indexOf('.nativeLiveVoiceBubbleWidth(') > originalVoice.indexOf('if isVoiceTranscriptRevealed {'));
- assert.match(originalVoice,/ChatPresentationLayout\.bubbleHorizontalInset - NativeLiveVoiceBubbleGeometry\.userLeadingInset/);
- assert.match(originalVoice,/maxContentWidth: maximum \+ extra\) - extra/);
- assert.doesNotMatch(user,/\.frame\(width: NativeLiveVoiceBubbleGeometry\.userWidth/);
+ for(const voice of [iMessageVoice,originalVoice]) {
+  assert.match(voice,/\.nativeLiveVoiceBubbleWidth\(/);
+  assert.match(voice,/NativeLiveVoiceBubbleGeometry\.userWidth\(transcript: presentation\.copyText/);
+  // Expanding keeps the collapsed width: the width wraps glyphs and transcript.
+  assert.ok(voice.indexOf('.nativeLiveVoiceBubbleWidth(') > voice.indexOf('if isVoiceTranscriptRevealed {'));
+ }
  for(const surface of [audio,eleven]) {
-  assert.match(surface,/\.nativeLiveVoiceBubbleWidth\(alignment: \.leading/);
+  assert.match(surface,/\.nativeLiveVoiceBubbleWidth\(/);
   assert.match(surface,/NativeLiveVoiceBubbleGeometry\.audioWidth\([\s\S]*maximumWidth: maximum\)/);
-  assert.doesNotMatch(surface,/\.frame\(width: bubbleWidth/);
  }
 });

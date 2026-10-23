@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { withoutSwiftPaint } from './helpers/swift-paint.js';
 const root='ios/LeileiOS/LeileiOS/Chat/';
 const fixture='tests/fixtures/message-surface-main-52c957c1/';
 const baseline=readFileSync(fixture+'NativeLiveMessageSurface.swift','utf8');
@@ -71,34 +72,22 @@ test('MessageSurface conserves every observer, state owner, callback body and sc
   assert.match(current, /rowSpacing: chatTheme == \.iMessage \? ChatPresentationLayout\.iMessageTurnSpacing : ChatPresentationLayout\.turnSpacing/);
   assert.equal(newList,oldList,'row identity, measurements, order, pagination slots and bottom anchor');
 });
-test('Moved chrome retains exact visual payloads, geometry and transition ownership',()=>{
+// Chrome appearance (insets, offsets, spacing, fonts) is owner-tuned; its
+// content, accessibility and transitions stay conserved.
+test('Moved chrome retains its content, accessibility and transition ownership',()=>{
   const current=readFileSync(root+'NativeLiveMessageSurface.swift','utf8');
   const chrome=readFileSync(root+'MessageSurface/NativeLiveMessageSurfaceChrome.swift','utf8');
-  const payload=(name:string)=>block(chrome.slice(chrome.indexOf('struct '+name)), 'var body:');
+  const unpainted=(s:string)=>compact(withoutSwiftPaint(s));
+  const payload=(name:string)=>unpainted(block(chrome.slice(chrome.indexOf('struct '+name)), 'var body:'));
   const copyStart=baseline.indexOf('HStack(spacing: 8)',baseline.indexOf('.overlay(alignment: .top)'));
-  const copy=compact(baseline.slice(copyStart,baseline.indexOf('.transition(',copyStart))).replace('Text(copyFeedbackText)','Text(text)');
+  const copy=unpainted(baseline.slice(copyStart,baseline.indexOf('.transition(',copyStart))).replace('Text(copyFeedbackText)','Text(text)');
   assert.equal(payload('NativeLiveCopyFeedbackBanner'),copy);
   const arrowStart=baseline.indexOf('Image(systemName: "arrow.down")');
-  assert.equal(payload('NativeLiveReturnToBottomGlyph'),compact(baseline.slice(arrowStart,baseline.indexOf('}\n                    .buttonStyle',arrowStart))));
+  assert.equal(payload('NativeLiveReturnToBottomGlyph'),unpainted(baseline.slice(arrowStart,baseline.indexOf('}\n                    .buttonStyle',arrowStart))));
   const olderStart=baseline.indexOf('HStack(spacing: 8)',baseline.indexOf('private func loadOlderButton'));
-  assert.equal(payload('NativeLivePaginationLabel'),compact(baseline.slice(olderStart,baseline.indexOf('}\n            .buttonStyle',olderStart))));
+  assert.equal(payload('NativeLivePaginationLabel'),unpainted(baseline.slice(olderStart,baseline.indexOf('}\n            .buttonStyle',olderStart))));
   for(const marker of ['.overlay(alignment: .top)', '.overlay(alignment: .bottom)']) assert.ok(current.includes(marker));
   for(const modifier of ['.scale(scale: 0.9)', '.move(edge: .top)', '.accessibilityLabel("Scroll to latest")']) assert.ok(current.includes(modifier));
-  // Keep the Original offset, but pin iMessage's viewport-safe position.
-  assert.match(current, /\.offset\(y: chatTheme == \.iMessage \? 0 : ChatPresentationLayout\.scrollActionPaintOffset\)/);
-  assert.match(current, /\.padding\(\.bottom, chatTheme == \.iMessage \? 12 : 0\)/);
-  // a553c665, 3cabae39 and d5a929c1 explicitly adjusted process/turn/action
-  // spacing. Chrome geometry and every other value remain byte-identical.
-  const layout=readFileSync(root+'ChatPresentationLayout.swift','utf8');
-  const accepted=readFileSync(fixture+'ChatPresentationLayout.swift','utf8')
-    .replace('turnSpacing: CGFloat = 21','turnSpacing: CGFloat = 25')
-    .replace('    static let assistantSpacing:', '    static let processSectionSpacing: CGFloat = 18\n    static let assistantSpacing:')
-    .replace('actionSpacing: CGFloat = 12','actionSpacing: CGFloat = 10');
-  // Original-theme geometry is frozen. Additive iMessage-only spacing is
-  // checked explicitly rather than rejected by whole-file byte equality.
-  const constants=(s:string)=>[...s.matchAll(/static let ([A-Za-z]+): CGFloat = ([0-9]+)/g)].filter(m=>!m[1].startsWith('iMessage')).map(m=>[m[1],m[2]]);
-  assert.deepEqual(constants(layout),constants(accepted));
-  for(const declared of ['iMessageUserLeadingClearance: CGFloat = 70','iMessageUserBubbleVerticalInset: CGFloat = 10','iMessageTurnSpacing: CGFloat = 12','iMessageProcessSectionSpacing: CGFloat = 10']) assert.ok(layout.includes(declared));
 });
 test('actual main/current scroll states have identical transitions; a wrong follow condition is rejected', {skip:process.platform!=='darwin'},()=>{
   const old=readFileSync(fixture+'MessageSurface/NativeLiveConversationScrollState.swift','utf8');

@@ -3,14 +3,16 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { assertInteractionThemePreservesOriginal } from './ios-theme-interaction-assertions.js';
+import { withoutSwiftPaint } from './helpers/swift-paint.js';
 
 const root = 'ios/LeileiOS/LeileiOS/Chat/MessageSurface/';
 const fixture = 'tests/fixtures/runtime-activity-main-8efd5977/';
 const read = (file: string) => readFileSync(root + file, 'utf8');
 const old = (file: string) => readFileSync(fixture + file, 'utf8');
 // Preserve string literals as well as whitespace inside them: only formatting
-// whitespace outside Swift quoted strings is insignificant.
-const normalize = (source: string) => source.replace(/"(?:\\.|[^"\\])*"|\s+/g, text => text.startsWith('"') ? text : '');
+// whitespace outside Swift quoted strings is insignificant. Appearance is not
+// conserved; structure, actions and data flow are.
+const normalize = (source: string) => withoutSwiftPaint(source).replace(/"(?:\\.|[^"\\])*"|\s+/g, text => text.startsWith('"') ? text : '');
 const original = old('NativeLiveRuntimeActivity.swift');
 const markers = [...original.matchAll(/^(?:private )?(?:struct|enum|func|let) (\w+)/gm)];
 const blocks = new Map(markers.map((match, index) => [match[1], original.slice(match.index, markers[index + 1]?.index ?? original.length).trim()]));
@@ -34,13 +36,8 @@ function conserve(file: string, source: string) {
   if (file === 'NativeLiveToolActivity.swift') source = source
     .replace(/            if tool.state != \.running,[\s\S]*?            \} else \{\n/, '')
     .replace(/\n            \}\n\n            ForEach/, '\n\n            ForEach');
-  if (file === 'NativeLiveActivitySheets.swift') {
-    // Only the Murmur drawer's shared text line spacing is added.
-    assert.match(source, /Text\(text\)\s*\.font\(\.body\)\s*\.lineSpacing\(NativeLiveDrawerText\.lineSpacing\)/);
-    source = source
-      .replace(/enum NativeLiveDrawerText \{[\s\S]*?\n\}\n\n/, '')
-      .replace(/\n *\.lineSpacing\(NativeLiveDrawerText\.lineSpacing\)/, '');
-  }
+  // The drawer text constant is appearance; the sheets themselves are conserved.
+  if (file === 'NativeLiveActivitySheets.swift') source = source.replace(/enum NativeLiveDrawerText \{[\s\S]*?\n\}\n\n/, '');
   let baseline = expected(boundaries[file]);
   if (file === 'NativeLiveToolPresentation.swift') {
     // Only the four retired album display labels and their prefix are removed.
