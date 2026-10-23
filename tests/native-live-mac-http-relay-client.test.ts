@@ -1475,6 +1475,29 @@ test("execution admission stops at its total budget without cached approval", as
   finally { clearTimeout(keepAlive); }
 });
 
+// The started binding is what lets a finished reply publish. One stalled
+// request must not turn a completed turn into a failure.
+test("input binding replaces a stalled attempt with a fresh one", async () => {
+  let calls = 0;
+  const parentSessionId = "66666666-6666-4666-8666-666666666666";
+  const checkpointId = "77777777-7777-4777-8777-777777777777";
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async (_url, init) => {
+    calls++;
+    if (calls > 1) return new Response(JSON.stringify({ success: true, data: { bound: { userMessageId, parentProviderCheckpointId: checkpointId } } }), { status: 200 });
+    return new Promise((_resolve, reject) => {
+      init!.signal!.addEventListener("abort", () => reject(init!.signal!.reason), { once: true });
+    });
+  });
+  const cmd = { ...command(), runtime_mode: "resume", parent_provider_session_id: parentSessionId, parent_provider_checkpoint_id: checkpointId };
+  const keepAlive = setTimeout(() => {}, 10_000);
+  try {
+    assert.deepEqual(await client.bindInput({ listenerInstanceId: listenerId, command: cmd as never, phase: "started", commandUuid: userMessageId }),
+      { userMessageId, parentProviderCheckpointId: checkpointId });
+    assert.equal(calls, 2);
+  }
+  finally { clearTimeout(keepAlive); }
+});
+
 test("separate task stopping is advertised only by the matching authenticated backend",async()=>{
  for(const [status,version,expected] of [[404,null,false],[200,0,false],[200,1,true]] as const){
   const client=new NativeLiveMacHttpRelayClient("https://relay.invalid","synthetic",async(url,init)=>{
