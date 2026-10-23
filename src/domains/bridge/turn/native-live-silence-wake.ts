@@ -1,6 +1,7 @@
 import { nativeSessionOwnershipSql, nativeSessionExecutableSql, nativeSessionTurnSql, readNativeSessionOwner } from "./turn-repository/session-owner.js";
 import { nativeResumeCheckpointSql } from "./native-live-resume-checkpoint.js";
 import { createHash } from "node:crypto";
+import { parseNativeLiveExecutionSelection, type NativeLiveExecutionSelection } from "./native-live-execution-selection.js";
 import { and, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import {
@@ -220,6 +221,7 @@ type SilenceWakeSource = {
   writerGeneration: string | null;
   nativeSourceRevision: string | null;
   nativeSourceOwner: string | null;
+  executionSelection: NativeLiveExecutionSelection | null;
 };
 
 export class NativeLiveSilenceWakeService {
@@ -458,7 +460,9 @@ export class NativeLiveSilenceWakeService {
           parentProviderSessionId: source.providerSessionId,
           expectedWorkingDirectory: source.effectiveWorkingDirectory,
           parentProviderCheckpointId: source.providerCheckpointId,
-          executionSelection: null,
+          // After a daemon restart this Wake may reopen the native writer;
+          // it opens with the owner's last choice so the next send continues it.
+          executionSelection: source.executionSelection,
           attachments: [],
           prompt,
           mindPrepared: true,
@@ -571,6 +575,7 @@ export class NativeLiveSilenceWakeService {
       writer_generation: string | null;
       source_revision: string | null;
       source_owner: string | null;
+      execution_selection: unknown;
     }>(sql`
       WITH RECURSIVE latest_user AS (
         SELECT
@@ -655,7 +660,11 @@ export class NativeLiveSilenceWakeService {
         ${nativeSessionOwnershipSql("tail_surface").revision} AS source_revision,
         -- This internal value classifies executability; releasing uses today's
         -- existing non-LeileiOS refusal path, without a new wire error code.
-        CASE WHEN ${nativeSessionExecutableSql("tail_surface")} THEN 'leileios' ELSE 'desktop' END AS source_owner
+        CASE WHEN ${nativeSessionExecutableSql("tail_surface")} THEN 'leileios' ELSE 'desktop' END AS source_owner,
+        (SELECT p.execution_selection FROM native_live_turn_preparations p
+          WHERE p.conversation_id = source.conversation_id AND p.user_id = ${userId}::uuid
+            AND p.operation IN ('send', 'edit', 'retry')
+          ORDER BY p.created_at DESC, p.id DESC LIMIT 1) AS execution_selection
       FROM latest_user AS source
       JOIN conversations tail_surface ON tail_surface.id = source.conversation_id AND tail_surface.user_id = ${userId}::uuid
       JOIN direct_reply AS reply ON TRUE
@@ -692,9 +701,16 @@ export class NativeLiveSilenceWakeService {
           writerGeneration: row.writer_generation ?? null,
           nativeSourceRevision: row.source_revision ?? null,
           nativeSourceOwner: row.source_owner ?? null,
+          executionSelection: readExecutionSelection(row.execution_selection),
         }
       : null;
   }
+}
+
+// A stored selection a later release no longer supports opens with the default.
+function readExecutionSelection(value: unknown): NativeLiveExecutionSelection | null {
+  if (value == null) return null;
+  try { return parseNativeLiveExecutionSelection(value); } catch { return null; }
 }
 
 function readDatabaseTimestamp(

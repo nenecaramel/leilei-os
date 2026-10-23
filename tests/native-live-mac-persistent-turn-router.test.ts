@@ -612,6 +612,23 @@ test("a wake without a model override inherits this session's existing selection
  const running=f.run(wake);f.finish((await f.inputs.next()).value!.uuid);await running;assert.equal(f.launches,1);
 });
 
+// A Wake carries the owner's last choice only to open a writer after a daemon
+// restart; it never gates or switches a writer that is already running.
+test("a wake opens with its carried selection and never switches a running writer",async t=>{
+ const selection={model:"claude-opus-5-5",thinking:"adaptive",effort:"high"} as const;
+ const opened=await fixture(t);
+ const wakeFirst=opened.run({...command(3,true),execution_selection:selection});opened.finish((await opened.inputs.next()).value!.uuid);await wakeFirst;
+ assert.equal((opened.sdk as unknown as {model?: string}).model,selection.model,"the restored writer opens with the carried selection");
+ assert.equal(opened.router.matches({...command(4),execution_selection:selection}),true,"the next send continues the writer the Wake opened");
+ const f=await fixture(t);
+ const first=f.run({...command(1),execution_selection:selection});f.finish((await f.inputs.next()).value!.uuid);await first;
+ const wake={...command(2,true),execution_selection:{model:"claude-sonnet-5-5",thinking:"between_tools",effort:"low"} as const};
+ assert.equal(f.router.matches(wake),true);
+ const running=f.run(wake);f.finish((await f.inputs.next()).value!.uuid);await running;
+ assert.deepEqual(f.live,[]);assert.equal(f.launches,1);
+ assert.equal(f.router.matches({...command(3),execution_selection:selection}),true,"the writer keeps the owner's selection");
+});
+
 // Desktop's /model and /effort: the running session switches in place, so its
 // native tasks keep running. Thinking mode has no live switch and still refuses.
 test("a model or effort change switches the running session in place",async t=>{
