@@ -1,23 +1,6 @@
-import { registerHooks } from "node:module";
+import { register } from "node:module";
 
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    if (specifier.endsWith(".css")) {
-      return { url: new URL(specifier, context.parentURL).href, shortCircuit: true };
-    }
-    return nextResolve(specifier, context);
-  },
-  load(url, context, nextLoad) {
-    if (url.endsWith(".css")) {
-      return { format: "module", source: "export default {};", shortCircuit: true };
-    }
-    const loaded = nextLoad(url, context);
-    // Vite supplies this module's build-time environment in the browser. Node
-    // tests use an explicitly unconfigured Auth0 fixture, without browser globals.
-    if (url.endsWith("/web/src/config/auth.ts") && loaded.source != null) {
-      const fixture = JSON.stringify({ VITE_AUTH0_REDIRECT_URI: "https://leilei.test/" });
-      return { ...loaded, source: String(loaded.source).replaceAll("import.meta.env", fixture) };
-    }
-    return loaded;
-  },
-});
+// Asynchronous hooks, chained with tsx's own. Node 22 rejects a synchronous
+// (registerHooks) load hook that forwards a CommonJS module tsx leaves to
+// Node's CommonJS loader, because that module has no ESM source.
+register("./css-loader-hooks.mjs", import.meta.url);
