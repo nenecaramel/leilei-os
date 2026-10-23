@@ -15,6 +15,7 @@ async function fixture(t: test.TestContext) {
     copyFile("scripts/run-tests.mjs", join(root, "scripts/run-tests.mjs")),
     copyFile("scripts/test-timing-reporter.mjs", join(root, "scripts/test-timing-reporter.mjs")),
     copyFile("tests/register-css-loader.mjs", join(root, "tests/register-css-loader.mjs")),
+    copyFile("tests/css-loader-hooks.mjs", join(root, "tests/css-loader-hooks.mjs")),
     copyFile("web/tsconfig.app.json", join(root, "web/tsconfig.app.json")),
     writeFile(join(root, "package.json"), '{"type":"module"}'),
     symlink(resolve("node_modules"), join(root, "node_modules"), "dir"),
