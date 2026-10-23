@@ -1,6 +1,6 @@
 import { readNativeSessionOwner } from "./session-owner.js";
 import { nativeContinuationBinding } from "../../../conversation/native-session-continuation-repository.js";
-import { readNativeResumeCheckpoint } from "../native-live-resume-checkpoint.js";
+import { readSendResumeCheckpoint } from "../native-live-resume-checkpoint.js";
 import {
   and,
   eq,
@@ -602,7 +602,7 @@ export async function resolveRuntimeParent(
         const nativeCursor = parentMessageId && canonical?.providerCheckpointId === binding.checkpointId
           && canonical.providerSessionId === binding.sessionId
           && canonical.effectiveWorkingDirectory === binding.effectiveWorkingDirectory
-          ? await readNativeResumeCheckpoint(executor, { userId, conversationId, canonicalMessageId: parentMessageId })
+          ? await readSendResumeCheckpoint(executor, { userId, conversationId, canonicalMessageId: parentMessageId })
           : null;
         return { ok: true, runtimeMode: "resume",
           parentProviderSessionId: binding.sessionId, parentProviderCheckpointId: nativeCursor ?? binding.checkpointId,
@@ -665,7 +665,7 @@ export async function resolveRuntimeParent(
       runtimeMode: checkpoint.providerCheckpointId ? "resume" : "fork",
       parentProviderSessionId: checkpoint.providerSessionId,
       expectedWorkingDirectory: checkpoint.effectiveWorkingDirectory,
-      parentProviderCheckpointId: continuation === "send" ? await readNativeResumeCheckpoint(executor, { userId, conversationId, canonicalMessageId: parentMessageId }) : checkpoint.providerCheckpointId,
+      parentProviderCheckpointId: continuation === "send" ? await readSendResumeCheckpoint(executor, { userId, conversationId, canonicalMessageId: parentMessageId }) : checkpoint.providerCheckpointId,
     };
   }
 
