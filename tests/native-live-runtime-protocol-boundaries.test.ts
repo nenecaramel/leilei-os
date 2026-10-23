@@ -9,6 +9,7 @@ test("runtime protocol facade retains its exact runtime export surface", () => {
   "NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION",
   "NativeLiveRuntimeProtocolError",
   "assertRuntimeResultMatchesCommand",
+  "nativeInputId",
   "parseNativeLiveRuntimeCommand",
   "parseNativeLiveRuntimeEnvironment",
   "parseNativeLiveRuntimeExecutionResult",
