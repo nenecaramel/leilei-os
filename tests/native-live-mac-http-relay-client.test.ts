@@ -1646,3 +1646,41 @@ test('task snapshots retry the same identity within the advisory event deadline'
  assert.equal(bodies.length,2);assert.equal(bodies[0],bodies[1]);
  assert.deepEqual(JSON.parse(bodies[0]),{listener_instance_id:listenerId,provider_session_id:'synthetic-session',generation_id:conversationId,snapshot_sequence:7,tasks:[]});
 });
+
+// A proxy can drop a reserve response after the server answered. The daemon's
+// main loop must get the call back and retry, not wait out fetch's 5 minutes.
+test("main-loop reserve calls release the daemon when a response never arrives", async () => {
+  const paths: string[] = [];
+  const stalled = new Promise<Response>(() => {});
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async (url, init) => {
+    paths.push(new URL(String(url)).pathname);
+    assert.ok(init?.signal, "each reserve carries an abort signal");
+    return stalled;
+  }, { reserveTimeoutMs: 20 });
+  const input = { listenerInstanceId: listenerId, dispatchTarget: "claude_code" } as const;
+  const calls = {
+    semantic: () => client.reserveSemanticScoring(input),
+    next: () => client.reserveNext({ ...input, persistentSessions: true }),
+    external: () => client.reserveExternalSessions(input),
+    compact: () => client.reserveManualCompact(input),
+    cleanup: () => client.reserveProviderSessionCleanup(input),
+    background: () => client.reserveBackgroundModel(input),
+  };
+  for (const [name, call] of Object.entries(calls)) {
+    let guard!: ReturnType<typeof setTimeout>;
+    const outcome = await Promise.race([
+      call().then(() => "unexpected reservation", (error: Error) => error.name),
+      new Promise(resolve => { guard = setTimeout(() => resolve("blocked"), 2_000); }),
+    ]);
+    clearTimeout(guard);
+    assert.equal(outcome, "TimeoutError", name);
+  }
+  assert.deepEqual(paths, [
+    "/internal/native-live-relay/semantic/reserve",
+    "/internal/native-live-relay/reserve",
+    "/internal/native-live-relay/external-sessions/reserve",
+    "/internal/native-live-relay/manual-compact/reserve",
+    "/internal/native-live-relay/provider-session-cleanup/reserve",
+    "/internal/native-live-relay/background-model/reserve",
+  ]);
+});

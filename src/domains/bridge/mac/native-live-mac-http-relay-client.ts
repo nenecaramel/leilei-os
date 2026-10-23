@@ -48,10 +48,25 @@ import type {
 
 type FetchLike = typeof fetch;
 
+// Server-side reserves answer in milliseconds; this only bounds a lost response.
+const RESERVE_TIMEOUT_MS = 15_000;
+
 export class NativeLiveMacHttpRelayClient extends NativeLiveMacRelayHttp
 implements NativeLiveMacDaemonRelayClient {
-  constructor(baseUrl: string, token: string, fetchImpl: FetchLike = fetch) {
+  private readonly reserveTimeoutMs: number;
+
+  constructor(baseUrl: string, token: string, fetchImpl: FetchLike = fetch,
+    options: { reserveTimeoutMs?: number } = {}) {
     super(baseUrl, token, fetchImpl);
+    this.reserveTimeoutMs = options.reserveTimeoutMs ?? RESERVE_TIMEOUT_MS;
+  }
+
+  // Reserves run in the daemon's main loop. A response a proxy drops after the
+  // server answered must not hold the loop until fetch's own 5-minute timeout;
+  // the loop's retry and durable recovery already handle that ambiguity.
+  private reserve(path: string, body: unknown): Promise<unknown> {
+    const signal = AbortSignal.timeout(this.reserveTimeoutMs);
+    return awaitRelayDeadline(this.post(path, body, signal), signal);
   }
 
   async createAttachmentUploadSlot(input: {
@@ -181,7 +196,7 @@ implements NativeLiveMacDaemonRelayClient {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
   }): Promise<NativeLiveSemanticScoringReservation | null> {
-    const data = await this.post("/semantic/reserve", {
+    const data = await this.reserve("/semantic/reserve", {
       listener_instance_id: input.listenerInstanceId,
       dispatch_target: input.dispatchTarget,
     });
@@ -249,7 +264,7 @@ implements NativeLiveMacDaemonRelayClient {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
   }) {
-    const data = await this.post(
+    const data = await this.reserve(
       "/external-sessions/reserve",
       {
         listener_instance_id: input.listenerInstanceId,
@@ -319,7 +334,7 @@ implements NativeLiveMacDaemonRelayClient {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
   }) {
-    const data = await this.post(
+    const data = await this.reserve(
       "/manual-compact/reserve",
       {
         listener_instance_id: input.listenerInstanceId,
@@ -406,7 +421,7 @@ implements NativeLiveMacDaemonRelayClient {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
   }) {
-    const data = await this.post(
+    const data = await this.reserve(
       "/provider-session-cleanup/reserve",
       {
         listener_instance_id: input.listenerInstanceId,
@@ -468,7 +483,7 @@ implements NativeLiveMacDaemonRelayClient {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
   }) {
-    const data = await this.post("/background-model/reserve", {
+    const data = await this.reserve("/background-model/reserve", {
       listener_instance_id: input.listenerInstanceId,
       dispatch_target: input.dispatchTarget,
     });
@@ -625,7 +640,7 @@ implements NativeLiveMacDaemonRelayClient {
     dispatchTarget: "claude_code";
     persistentSessions?: boolean;
   }): Promise<NativeLiveDaemonReservation | null> {
-    const data = await this.post("/reserve", {
+    const data = await this.reserve("/reserve", {
       listener_instance_id: input.listenerInstanceId,
       dispatch_target: input.dispatchTarget,
       ...(input.persistentSessions === true ? { persistent_sessions: true } : {}),
