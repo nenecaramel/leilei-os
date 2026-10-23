@@ -1548,12 +1548,16 @@ test("real HTTP event response loss retries the same sequence batch without repl
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     bodies.push(Buffer.concat(chunks).toString());
     response.setHeader("content-type", "application/json");
+    const complete = JSON.stringify({ success: true, data: { idempotent: 1 } });
     if (bodies.length === 1) {
       firstResponse = response;
-      response.writeHead(200);
+      // Express's response.json() declares Content-Length, which lets every
+      // supported Node detect the cut body. A cut chunked body without it ends
+      // "normally" on Node 22 and is indistinguishable from malformed JSON.
+      response.writeHead(200, { "content-length": String(Buffer.byteLength(complete)) });
       response.flushHeaders();
-      response.write('{"success":');
-    } else response.end(JSON.stringify({ success: true, data: { idempotent: 1 } }));
+      response.write(complete.slice(0, 11));
+    } else response.end(complete);
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
