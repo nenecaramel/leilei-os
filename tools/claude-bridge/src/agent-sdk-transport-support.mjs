@@ -227,6 +227,25 @@ export function sdkAuthenticationFailureTailStart(entries, failedInputs, session
   return awaitingError ? null : start;
 }
 
+// A server-failed input can still have finished a reply (its result receipt
+// was lost). Only closed SDK segments with plain text input and text/thinking
+// output qualify: a tool call may have had effects the server never saw.
+export function sdkFailedReplyTailStart(entries, failedInputs, sessionId) {
+  const start = entries.findIndex(entry => entry.type === "user" && failedInputs.has(entry.uuid));
+  if (start < 0) return null;
+  for (const entry of entries.slice(start)) {
+    if (entry.entrypoint !== "sdk-ts" || entry.sessionId !== sessionId || entry.isSidechain === true) return null;
+    const content = entry.message?.content;
+    if (entry.type === "user") {
+      if (!failedInputs.has(entry.uuid) || !(typeof content === "string" || (Array.isArray(content) && content.length > 0
+        && content.every(block => block?.type === "text" && typeof block.text === "string")))) return null;
+    } else if (entry.type === "assistant") {
+      if (!Array.isArray(content) || !content.every(block => ["text", "thinking", "redacted_thinking"].includes(block?.type))) return null;
+    } else if (!["attachment", "system"].includes(entry.type)) return null;
+  }
+  return start;
+}
+
 export function isNativeClaudeScheduleCommand(value) {
   return typeof value === "string"
     && /^\/(?:schedule|routines)(?:\s|$)/iu.test(value);

@@ -25,6 +25,7 @@ import {
   nonblankString,
   sdkInterruptedTailStart,
   sdkAuthenticationFailureTailStart,
+  sdkFailedReplyTailStart,
   sdkResultFailed,
   sdkMirrorFailed,
   clippedSessionStoreReason,
@@ -494,7 +495,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     const orderedSuffix = suffix.reverse();
     const interruptedStart = sdkInterruptedTailStart(orderedSuffix,
       new Set([...failedInputs, ...(userMessageUuid ? [userMessageUuid] : [])]), sessionId)
-      ?? sdkAuthenticationFailureTailStart(orderedSuffix, failedInputs, sessionId);
+      ?? sdkAuthenticationFailureTailStart(orderedSuffix, failedInputs, sessionId)
+      ?? sdkFailedReplyTailStart(orderedSuffix, failedInputs, sessionId);
     // Keep validating any earlier residue. Only the proven closed SDK segment
     // is superseded by resumeSessionAt; the underlying JSONL is never edited.
     const unprovenSuffix = interruptedStart === null ? orderedSuffix : orderedSuffix.slice(0, interruptedStart);

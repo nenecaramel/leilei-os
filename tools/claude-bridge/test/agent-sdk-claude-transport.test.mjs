@@ -2902,6 +2902,8 @@ test("local resume recovers only proven SDK authentication failure tails", async
     {type:"assistant",uuid:"auth-error",parentUuid:"context",isApiErrorMessage:true,error:"authentication_failed",
       message:{role:"assistant",model:"<synthetic>",stop_reason:"stop_sequence",usage:{input_tokens:0,output_tokens:0,cache_creation_input_tokens:0,cache_read_input_tokens:0},content:[{type:"text",text:"synthetic auth error"}]}}
   ].map(row=>({entrypoint:"sdk-ts",sessionId,...row}));
+  // A failed input's text-only output is also superseded as a lost-receipt
+  // reply (see the next test), so only non-text output still conflicts here.
   const cases=[
     ["confirmed failed input",tail=>tail,[failed],true],
     ["two closed confirmed failures",tail=>[...tail,
@@ -2910,13 +2912,13 @@ test("local resume recovers only proven SDK authentication failure tails", async
     ["no server failure evidence",tail=>tail,[],false],
     ["Desktop error",tail=>{tail.at(-1).entrypoint="claude-desktop";return tail;},[failed],false],
     ["foreign session",tail=>{tail.at(-1).sessionId="another";return tail;},[failed],false],
-    ["ordinary assistant text",tail=>{delete tail.at(-1).isApiErrorMessage;return tail;},[failed],false],
-    ["different error",tail=>{tail.at(-1).error="rate_limit";return tail;},[failed],false],
-    ["real model output",tail=>{tail.at(-1).message.model="real-model";return tail;},[failed],false],
-    ["nonzero output",tail=>{tail.at(-1).message.usage.output_tokens=1;return tail;},[failed],false],
-    ["missing usage",tail=>{delete tail.at(-1).message.usage;return tail;},[failed],false],
+    ["ordinary assistant text",tail=>{delete tail.at(-1).isApiErrorMessage;return tail;},[failed],true],
+    ["different error",tail=>{tail.at(-1).error="rate_limit";return tail;},[failed],true],
+    ["real model output",tail=>{tail.at(-1).message.model="real-model";return tail;},[failed],true],
+    ["nonzero output",tail=>{tail.at(-1).message.usage.output_tokens=1;return tail;},[failed],true],
+    ["missing usage",tail=>{delete tail.at(-1).message.usage;return tail;},[failed],true],
     ["tool call",tail=>{tail.at(-1).message.content=[{type:"tool_use",id:"tool"}];return tail;},[failed],false],
-    ["generated text before error",tail=>{tail[1].parentUuid="real-output";return [tail[0],{...tail[2],uuid:"real-output",parentUuid:failed,isApiErrorMessage:false},...tail.slice(1)];},[failed],false],
+    ["generated text before error",tail=>{tail[1].parentUuid="real-output";return [tail[0],{...tail[2],uuid:"real-output",parentUuid:failed,isApiErrorMessage:false},...tail.slice(1)];},[failed],true],
     ["new unrelated input",tail=>[...tail,{type:"user",uuid:"new-user",parentUuid:"auth-error",entrypoint:"sdk-ts",sessionId,promptId:"new",message:{content:"new text"}}],[failed],false],
     ["unclosed input",tail=>tail.slice(0,-1),[],false],
   ];
@@ -2938,6 +2940,47 @@ test("local resume recovers only proven SDK authentication failure tails", async
         }};
       }});
     const run=transport.executeTurn("synthetic retry",{mode:"resume",parentProviderSessionId:sessionId,parentProviderCheckpointId:cp,
+      requireProviderCheckpoint:true,userMessageUuid:user,failedUserMessageUuids:evidence});
+    if(allowed){const result=await run;assert.equal(result.providerCheckpointId,child);assert.equal(queries,1);}
+    else{await assert.rejects(run,error=>error.runtimeCode==="PROVIDER_SESSION_CONFLICT");assert.equal(queries,0);assert.deepEqual(entries,original);}
+  });
+});
+
+// A turn can finish its reply after the server already failed it (a lost
+// result receipt). Its text-only reply is LeileiOS's own abandoned branch.
+test("local resume supersedes a failed input's text-only reply", async t => {
+  const sessionId="00000000-0000-4000-8000-000000000171", cp="00000000-0000-4000-8000-000000000172";
+  const failed="00000000-0000-4000-8000-000000000173", user="00000000-0000-4000-8000-000000000174", child="00000000-0000-4000-8000-000000000175";
+  const makeTail=()=>[
+    {type:"user",uuid:failed,parentUuid:cp,promptId:"lost-prompt",message:{role:"user",content:[{type:"text",text:"synthetic input"}]}},
+    {type:"attachment",uuid:"context",parentUuid:failed},
+    {type:"assistant",uuid:"thinking",parentUuid:"context",message:{role:"assistant",model:"real-model",content:[{type:"thinking",thinking:"",signature:"s"}]}},
+    {type:"assistant",uuid:"reply",parentUuid:"thinking",message:{role:"assistant",model:"real-model",content:[{type:"text",text:"synthetic reply"}]}},
+    {type:"system",uuid:"stop-hook",parentUuid:"reply",subtype:"stop_hook_summary"},
+  ].map(row=>({entrypoint:"sdk-ts",sessionId,...row}));
+  const cases=[
+    ["confirmed failed input with a finished reply",tail=>tail,[failed],true],
+    ["no server failure evidence",tail=>tail,[],false],
+    ["Desktop reply",tail=>{tail[3].entrypoint="claude-desktop";return tail;},[failed],false],
+    ["foreign session",tail=>{tail[3].sessionId="another";return tail;},[failed],false],
+    ["tool call",tail=>{tail[3].message.content=[{type:"tool_use",id:"tool",name:"Bash",input:{}}];return tail;},[failed],false],
+    ["tool result",tail=>[...tail,{type:"user",uuid:"tool-result",parentUuid:"stop-hook",entrypoint:"sdk-ts",sessionId,message:{content:[{type:"tool_result",tool_use_id:"tool"}]}}],[failed],false],
+    ["new unrelated input",tail=>[...tail,{type:"user",uuid:"new-user",parentUuid:"stop-hook",entrypoint:"sdk-ts",sessionId,promptId:"new",message:{content:"new text"}}],[failed],false],
+  ];
+  for(const [name,mutate,evidence,allowed] of cases) await t.test(name,async()=>{
+    const entries=[{type:"assistant",uuid:cp,parentUuid:null},...mutate(makeTail())];
+    const original=structuredClone(entries);let queries=0;
+    const transport=new AgentSdkClaudeTransport({environment:{},cwd:"/synthetic/lost-receipt",
+      sessionMessagesImpl:async()=>[{type:"assistant"}],importSessionToStoreImpl:async(_id,store)=>store.append({},entries),
+      queryImpl:input=>{queries++;assert.equal(input.options.resume,sessionId);assert.equal(input.options.resumeSessionAt,cp);assert.notEqual(input.options.forkSession,true);
+        return{close(){},async *[Symbol.asyncIterator](){
+          yield successFixture(sessionId)[0];const prompt=await input.prompt[Symbol.asyncIterator]().next();assert.equal(prompt.value.uuid,user);
+          assert.deepEqual(entries,original,"recovery must not edit original history");
+          entries.push({type:"user",uuid:user,parentUuid:cp},{type:"assistant",uuid:child,parentUuid:user});
+          yield successFixture(sessionId)[1];yield successFixture(sessionId)[2];
+        }};
+      }});
+    const run=transport.executeTurn("synthetic send",{mode:"resume",parentProviderSessionId:sessionId,parentProviderCheckpointId:cp,
       requireProviderCheckpoint:true,userMessageUuid:user,failedUserMessageUuids:evidence});
     if(allowed){const result=await run;assert.equal(result.providerCheckpointId,child);assert.equal(queries,1);}
     else{await assert.rejects(run,error=>error.runtimeCode==="PROVIDER_SESSION_CONFLICT");assert.equal(queries,0);assert.deepEqual(entries,original);}
