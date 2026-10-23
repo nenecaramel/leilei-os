@@ -656,9 +656,22 @@ implements NativeLiveMacDaemonRelayClient {
       parent_provider_checkpoint_id: c.parent_provider_checkpoint_id,
       command_uuid: input.commandUuid, phase: input.phase,
     };
-    const data = readRecord(await this.post(
-      `/reservations/${encodeURIComponent(c.prepare_id)}/input-binding`, body, AbortSignal.timeout(3_000),
-    ));
+    // Binding is idempotent on the server (a started marker is returned as is),
+    // so a stalled attempt gets a fresh one instead of failing a finished turn.
+    // All attempts share eight seconds.
+    const deadline = AbortSignal.timeout(8_000);
+    let data: Record<string, unknown>;
+    for (let attempt = 1; ; attempt += 1) {
+      const signal = AbortSignal.any([deadline, AbortSignal.timeout(3_000)]);
+      try {
+        data = readRecord(await awaitRelayDeadline(this.post(
+          `/reservations/${encodeURIComponent(c.prepare_id)}/input-binding`, body, signal,
+        ), signal));
+        break;
+      } catch (error) {
+        if (deadline.aborted || attempt >= 3 || !(error instanceof Error && error.name === "TimeoutError")) throw error;
+      }
+    }
     const bound = data.bound;
     if (!bound || typeof bound !== "object" || Array.isArray(bound)) return null;
     const row = bound as Record<string, unknown>;
