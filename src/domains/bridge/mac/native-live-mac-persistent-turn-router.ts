@@ -374,12 +374,14 @@ export class NativeLiveMacPersistentTurnRouter {
         || (command.operation === "send" && this.input.relay.bindInput !== undefined))
       && (this.selectionMatches(command) || this.canSwitchSelection(command));
   }
+  // A Wake's selection (the owner's last choice) only opens a writer after a
+  // daemon restart; it never gates or switches a writer already running.
   private selectionMatches(command: NativeLiveRuntimeCommand): boolean {
-    return (command.operation === "wake" && command.execution_selection == null)
+    return command.operation === "wake"
       || isDeepStrictEqual(command.execution_selection ?? null, this.selection);
   }
   // Desktop's /model and /effort: a live writer switches in place, keeping its
-  // native tasks. Wake carries no new selection; thinking has no live switch.
+  // native tasks. A Wake never switches; thinking has no live switch.
   private canSwitchSelection(command: NativeLiveRuntimeCommand): boolean {
     return command.operation !== "wake" && typeof this.binding?.session.applyExecutionSelection === "function"
       && command.execution_selection != null && this.selection != null

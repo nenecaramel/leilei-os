@@ -803,3 +803,83 @@ test(
     });
   },
 );
+
+// After a daemon restart the Wake is often what reopens the native writer.
+// It must open it with the model the owner last chose, or the next send
+// (which carries that choice) cannot continue the writer the Wake opened.
+test(
+  "a silence wake carries the conversation's latest chosen execution selection",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+    const database = createDatabase(databaseUrl, { ssl: false });
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email: `native-live-wake-selection-${crypto.randomUUID()}@example.com`,
+        displayName: "Native Live Wake Selection",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+    t.after(async () => {
+      try {
+        await database.db.delete(nativeLiveProviderSessionCleanups).where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
+        await database.db.delete(conversations).where(eq(conversations.userId, user.id));
+        await database.db.delete(users).where(eq(users.id, user.id));
+      } finally {
+        await database.close();
+      }
+    });
+
+    const conversation = await new NativeLiveConversationService(
+      new DrizzleNativeLiveConversationRepository(database.db),
+    ).createConversation({ userId: user.id, title: "Wake selection" });
+    const port = new DrizzleNativeLiveBackendTurnPort(database.db);
+    const coordinator = new NativeLiveBackendTurnCoordinator(port, () => crypto.randomUUID());
+    const selection = { model: "claude-opus-5-5", thinking: "adaptive", effort: "high" } as const;
+
+    const requestId = crypto.randomUUID();
+    const send = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: requestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id: null,
+      text: "hello",
+      execution: selection,
+    });
+    assert.equal(send.ok, true);
+    if (!send.ok) throw new Error("expected send prepare success");
+    assert.deepEqual(send.command.execution_selection, selection);
+    const finalized = await coordinator.finalize(user.id, {
+      protocol_version: 4,
+      prepare_id: send.command.prepare_id,
+      request_id: requestId,
+      conversation_id: conversation.id,
+      status: "success",
+      provider_session_id: "provider-selection",
+      provider_checkpoint_id: send.command.prepare_id,
+      normalized_events: [
+        { type: "text", payload: { text: "answer" } },
+        { type: "result", payload: { status: "success", final_text: "answer" } },
+      ],
+    });
+    assert.equal(finalized.ok, true);
+
+    let now = new Date();
+    const silence = new NativeLiveSilenceWakeService(database.db, () => now);
+    const schedule = await silence.readSchedule({ userId: user.id });
+    assert.ok(schedule);
+    now = new Date(schedule.postTurnDueAt);
+    const fired = await silence.fire({ userId: user.id, epochId: schedule.epochId, slot: "post_turn_idle" });
+    assert.equal(fired.outcome, "queued");
+    const wake = await port.getPreparation({
+      userId: user.id,
+      prepareId: silenceWakePreparationId(schedule.epochId, "post_turn_idle"),
+    });
+    assert.ok(wake);
+    assert.equal(wake.operation, "wake");
+    assert.deepEqual(wake.executionSelection, selection);
+  },
+);
