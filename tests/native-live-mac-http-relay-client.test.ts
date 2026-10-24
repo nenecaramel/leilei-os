@@ -1475,6 +1475,40 @@ test("execution admission stops at its total budget without cached approval", as
   finally { clearTimeout(keepAlive); }
 });
 
+// An edit's first renewal starts its writer. One stalled request (it never
+// reaches Railway) must not close a writer whose reservation is still valid.
+test("execution lease renewal replaces a stalled attempt with a fresh one", async () => {
+  let calls = 0;
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async (url, init) => {
+    calls++;
+    assert.ok(String(url).endsWith(`/reservations/${prepareId}/execution-lease/renew`));
+    if (calls > 1) return new Response(JSON.stringify({ success: true, data: { renewed: true } }), { status: 200 });
+    return new Promise((_resolve, reject) => {
+      init!.signal!.addEventListener("abort", () => reject(init!.signal!.reason), { once: true });
+    });
+  });
+  const keepAlive = setTimeout(() => {}, 10_000);
+  try { assert.equal(await client.renewExecutionLease({ listenerInstanceId: listenerId, command: { ...command(), parent_provider_checkpoint_id: null } }), true); assert.equal(calls, 2); }
+  finally { clearTimeout(keepAlive); }
+});
+test("execution lease renewal stops at its total budget without assuming renewal", async () => {
+  let calls = 0;
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async (_url, init) => {
+    calls++;
+    return new Promise((_resolve, reject) => {
+      init!.signal!.addEventListener("abort", () => reject(init!.signal!.reason), { once: true });
+    });
+  });
+  const keepAlive = setTimeout(() => {}, 15_000);
+  const started = Date.now();
+  try {
+    await assert.rejects(client.renewExecutionLease({ listenerInstanceId: listenerId, command: { ...command(), parent_provider_checkpoint_id: null } }), error => error instanceof Error && error.name === "TimeoutError");
+    assert.equal(calls, 3);
+    assert.ok(Date.now() - started < 8_500, "bounded by the total budget");
+  }
+  finally { clearTimeout(keepAlive); }
+});
+
 // The started binding is what lets a finished reply publish. One stalled
 // request must not turn a completed turn into a failure.
 test("input binding replaces a stalled attempt with a fresh one", async () => {
