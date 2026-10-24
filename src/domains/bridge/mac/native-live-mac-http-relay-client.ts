@@ -738,9 +738,22 @@ implements NativeLiveMacDaemonRelayClient {
       runtime_mode: c.runtime_mode, canonical_user_message_id: c.canonical_user_message_id,
       parent_provider_session_id: c.parent_provider_session_id, parent_provider_checkpoint_id: c.parent_provider_checkpoint_id };
     if (!parseNativeLiveExecutionAdmissionBody(body)) return false;
-    const data = readRecord(await this.post(`/reservations/${encodeURIComponent(c.prepare_id)}/execution-lease/renew`, body, AbortSignal.timeout(2_000)));
-    if (typeof data.renewed !== "boolean") throw new Error("Native execution renewal response is invalid.");
-    return data.renewed;
+    // Renewal is idempotent and the first one gates the writer, so a stalled
+    // connection that never reaches the server gets a fresh attempt after 2.5s
+    // instead of closing the turn. All attempts share eight seconds.
+    const deadline = AbortSignal.timeout(8_000);
+    for (let attempt = 1; ; attempt += 1) {
+      const signal = AbortSignal.any([deadline, AbortSignal.timeout(2_500)]);
+      try {
+        const data = readRecord(await awaitRelayDeadline(this.post(
+          `/reservations/${encodeURIComponent(c.prepare_id)}/execution-lease/renew`, body, signal,
+        ), signal));
+        if (typeof data.renewed !== "boolean") throw new Error("Native execution renewal response is invalid.");
+        return data.renewed;
+      } catch (error) {
+        if (deadline.aborted || attempt >= 3 || !(error instanceof Error && error.name === "TimeoutError")) throw error;
+      }
+    }
   }
 
   async markExecutionStarted(input: {
