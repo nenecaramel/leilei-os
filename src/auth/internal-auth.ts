@@ -10,17 +10,23 @@ function tokensMatch(actual: string, expected: string): boolean {
   );
 }
 
+export function bearerTokenMatches(
+  authorization: string | undefined,
+  expectedToken: string,
+): boolean {
+  const token = authorization?.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length)
+    : undefined;
+  return token !== undefined && token.length > 0
+    && tokensMatch(token, expectedToken);
+}
+
 export function createInternalAuthMiddleware(
   expectedToken: string,
   userId: string,
 ): RequestHandler {
   return (request, response, next) => {
-    const authorization = request.header("authorization");
-    const token = authorization?.startsWith("Bearer ")
-      ? authorization.slice("Bearer ".length)
-      : undefined;
-
-    if (!token || !tokensMatch(token, expectedToken)) {
+    if (!bearerTokenMatches(request.header("authorization"), expectedToken)) {
       response.status(401).json({
         success: false,
         error: {
