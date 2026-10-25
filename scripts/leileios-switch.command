@@ -7,11 +7,11 @@ case "$mode" in
 esac
 if [ "$#" -gt 2 ]; then echo '最多指定一个 session-id' >&2; exit 1; fi
 # Finder launches .command files with a minimal PATH; prefer the pinned
-# Homebrew Node 22 and fall back to whichever node is on PATH.
-node_bin=/opt/homebrew/opt/node@22/bin/node
+# Homebrew Node 24 and fall back to whichever node is on PATH.
+node_bin=/opt/homebrew/opt/node@24/bin/node
 if [ ! -x "$node_bin" ]; then
   node_bin="$(command -v node || true)"
-  if [ -z "$node_bin" ]; then echo '未找到 node；请安装 Node 22。' >&2; exit 1; fi
+  if [ -z "$node_bin" ]; then echo '未找到 node；请安装 Node 24。' >&2; exit 1; fi
 fi
 for repo in "$HOME/Developer/leilei-os-main"; do
   if [ -f "$repo/scripts/native-session-pick.mjs" ]; then

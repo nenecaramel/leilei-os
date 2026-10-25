@@ -3,11 +3,11 @@
   "comparison": "merge-base(origin/main, HEAD) plus staged, unstaged and untracked files; no automatic fetch",
   "node_versions": {
     "railway_server": {
-      "major": 22,
+      "major": 24,
       "source": "Dockerfile"
     },
     "mac_daemon": {
-      "major": 22,
+      "major": 24,
       "source": ".node-version",
       "note": "Preferred local server/runtime tooling version."
     },
@@ -753,7 +753,7 @@
       },
       "production_acceptance": {
         "required": true,
-        "instructions": "Check deployment readiness and the affected authenticated server contract. Server Docker remains Node 22."
+        "instructions": "Check deployment readiness and the affected authenticated server contract. Server Docker is Node 24."
       },
       "conflict_hotspots": [
         "src/app/process-runtime.ts",

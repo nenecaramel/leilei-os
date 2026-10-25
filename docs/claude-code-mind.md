@@ -13,7 +13,7 @@ See [Mind](mind.md) for product behavior and [Mind Memory API](mind-memory-api.m
 
 ## Install and configure
 
-Use the canonical Mac main checkout and Node 22+:
+Use the canonical Mac main checkout and Node 24:
 
 ```sh
 cd ~/Developer/leilei-os-main

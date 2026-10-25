@@ -16,10 +16,11 @@ pnpm runtime:native-live-mac-daemon:launchd status
   than 120 s resets the count. `restart`, `start` and `fresh` clear it.
 - **Configuration** comes from `.env` in the canonical checkout, not from the
   shell profile. `install` checks this with an empty environment and refuses
-  if, for example, the relay token is only exported in `~/.zshrc`. The Node 22
+  if, for example, the relay token is only exported in `~/.zshrc`. The Node 24
   and `PATH` in use at install time are pinned into the agent.
 - **Updating:** `pnpm runtime:native-live-mac-daemon:fresh` keeps its Git
-  guards and then restarts the launchd job. `fresh-current` on a feature
+  guards and then reinstalls the launchd job, re-pinning the current Node 24
+  and `PATH`. `fresh-current` on a feature
   branch of the canonical checkout restarts it on that branch; from any other
   checkout it refuses until you run `... :launchd stop`.
 - **Logs** (`~/.leileios/logs/`): `native-live-daemon.log` (daemon output,
