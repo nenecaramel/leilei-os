@@ -258,6 +258,7 @@ export interface NativeLiveMacDaemonRelayClient {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
     persistentSessions?: boolean;
+    resultOutboxIdle?: boolean;
   }): Promise<NativeLiveDaemonReservation | null>;
 
   checkTaskAdmission?(input: { listenerInstanceId:string;prepareId:string;providerSessionId:string }):Promise<boolean>;

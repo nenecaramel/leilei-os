@@ -110,9 +110,10 @@ export function reserveNextHandler(
     const userId = requireInternalUser(response, request.mcpUserId);
     if (!userId) return;
     const record = request.body;
-    const hasCapability = record && typeof record === "object" && Object.hasOwn(record, "persistent_sessions");
-    const { persistent_sessions: capability, ...listener } = record && typeof record === "object" && !Array.isArray(record) ? record : {};
-    const body = hasCapability && typeof capability !== "boolean" ? null : parseListenerBody(listener);
+    const has = (key: string) => record && typeof record === "object" && Object.hasOwn(record, key);
+    const { persistent_sessions: capability, result_outbox_idle: outboxIdle, ...listener } = record && typeof record === "object" && !Array.isArray(record) ? record : {};
+    const body = (has("persistent_sessions") && typeof capability !== "boolean")
+      || (has("result_outbox_idle") && typeof outboxIdle !== "boolean") ? null : parseListenerBody(listener);
     if (!body) {
       sendInvalid(response);
       return;
@@ -124,6 +125,7 @@ export function reserveNextHandler(
         listenerInstanceId: body.listener_instance_id,
         dispatchTarget: "claude_code",
         ...(capability === true ? { persistentSessions: true } : {}),
+        ...(outboxIdle === true ? { resultOutboxIdle: true } : {}),
       });
       if (reservation) {
         process.stdout.write(

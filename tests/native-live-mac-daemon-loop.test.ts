@@ -1481,6 +1481,24 @@ for (const persistentCommit of [false, true]) {
   });
 }
 
+// The server may retire an orphaned delivery_unknown row only when this Mac
+// owes no result for it: nothing pending and nothing quarantined.
+for (const state of ["no-outbox", "empty", "quarantined"] as const) test(`reserve reports an idle result outbox only when it is verifiably empty (${state})`, async t => {
+  const directory = mkdtempSync(join(tmpdir(), "leilei-outbox-idle-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const outbox = state === "no-outbox" ? null : new NativeLiveMacResultOutbox(directory);
+  if (state === "quarantined") {
+    const entry = { listenerInstanceId, reservationId: prepareId, result: success() };
+    await outbox!.save(entry); await outbox!.quarantine(entry);
+  }
+  const relay = new FakeRelay(); relay.reservation = null;
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, new FakeExecutor(), null, null, null, null, null, null, outbox);
+  await loop.runOnce();
+  const reserve = relay.calls.find(c => c.name === "reserveNext");
+  assert.ok(reserve);
+  assert.equal((reserve.input as { resultOutboxIdle?: boolean }).resultOutboxIdle, state === "empty" ? true : undefined);
+});
+
 test("one fresh listener lease covers background replay before ordinary dispatch", async () => {
   const relay = new FakeRelay(), executor = new FakeExecutor();
   const replay = { async flush() { relay.calls.push({ name: "backgroundReplay", input: null }); return 0; } };

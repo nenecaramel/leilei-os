@@ -555,3 +555,36 @@ test('relay supplies failed input receipts only for the exact canonical resume b
   assert.deepEqual(reserved.command.failed_user_message_uuids,[failedRetry.prepare_id,ids[0]]);
   assert.equal(reserved.command.parent_provider_session_id,session);assert.equal(reserved.command.parent_provider_checkpoint_id,checkpoint);
 });
+
+// The iPhone's turn wait retires a stale delivery_unknown turn it is watching.
+// A turn nobody watches is retired on reserve, but only when its owner's
+// result outbox is verifiably idle: a late result can no longer arrive.
+test('idle owner retires only its own long-orphaned delivery_unknown turns on reserve', {skip: !enabled}, async t => {
+  const database=createDatabase(process.env.DATABASE_URL!,{ssl:false});
+  const [user]=await database.db.insert(users).values({email:`orphaned-unknown-${crypto.randomUUID()}@example.com`,displayName:'Orphaned delivery unknown'}).returning();
+  t.after(async()=>{try{await database.db.delete(nativeLiveRuntimeListenerLeases).where(eq(nativeLiveRuntimeListenerLeases.userId,user.id));await database.db.delete(conversations).where(eq(conversations.userId,user.id));await database.db.delete(users).where(eq(users.id,user.id));}finally{await database.close();}});
+  const service=new NativeLiveConversationService(new DrizzleNativeLiveConversationRepository(database.db));
+  const conversation=await service.createConversation({userId:user.id,title:'Synthetic orphaned turn'});
+  const coordinator=new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(database.db));
+  const relay=new NativeLiveBackendRelayService(new DrizzleNativeLiveBackendRelayRepository(database.db),coordinator);
+  const listener=crypto.randomUUID();
+  async function unknown(owner:string, ageMs:number){
+    const result=await coordinator.prepare(user.id,{dispatch_target:'claude_code',request_id:crypto.randomUUID(),operation:'send',conversation_id:conversation.id,expected_head_message_id:null,text:'synthetic'});
+    assert.equal(result.ok,true);if(!result.ok)throw Error('prepare failed');
+    const at=new Date(Date.now()-ageMs);
+    await database.db.update(nativeLiveTurnPreparations).set({dispatchStatus:'delivery_unknown',reservedBy:owner,reservedAt:at,reservationExpiresAt:at,executionStartedAt:at,deliveryUnknownAt:at,dispatchErrorCode:'RESERVATION_EXPIRED_AFTER_EXECUTION'}).where(eq(nativeLiveTurnPreparations.id,result.command.prepare_id));
+    return result.command.prepare_id;
+  }
+  const orphan=await unknown(listener,86_400_000);
+  const recent=await unknown(listener,60_000);
+  const foreign=await unknown(crypto.randomUUID(),86_400_000);
+  const read=async(id:string)=>(await database.db.select({status:nativeLiveTurnPreparations.status,dispatchStatus:nativeLiveTurnPreparations.dispatchStatus,reservedBy:nativeLiveTurnPreparations.reservedBy,dispatchErrorCode:nativeLiveTurnPreparations.dispatchErrorCode}).from(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.id,id)))[0];
+  assert.equal(await relay.renewLease({userId:user.id,listenerInstanceId:listener,dispatchTarget:'claude_code'}),'acquired');
+  // Without the owner's word, ambiguity survives any outage.
+  assert.equal(await relay.reserveNext({userId:user.id,listenerInstanceId:listener,dispatchTarget:'claude_code'}),null);
+  assert.equal((await read(orphan))!.dispatchStatus,'delivery_unknown');
+  assert.equal(await relay.reserveNext({userId:user.id,listenerInstanceId:listener,dispatchTarget:'claude_code',resultOutboxIdle:true}),null);
+  assert.deepEqual(await read(orphan),{status:'prepared',dispatchStatus:'rejected',reservedBy:null,dispatchErrorCode:'RESULT_DELIVERY_UNKNOWN'});
+  assert.deepEqual(await read(recent),{status:'prepared',dispatchStatus:'delivery_unknown',reservedBy:listener,dispatchErrorCode:'RESERVATION_EXPIRED_AFTER_EXECUTION'});
+  assert.equal((await read(foreign))!.dispatchStatus,'delivery_unknown');
+});

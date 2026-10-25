@@ -35,6 +35,9 @@ type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 const LISTENER_LEASE_MS = NATIVE_LIVE_EXECUTION_LEASE_MS;
 const RESERVATION_LEASE_MS = NATIVE_LIVE_EXECUTION_LEASE_MS;
+// Far beyond one lease: a live writer renews every 20s, and the owner's
+// outbox replays a saved result before it reserves again.
+const ORPHANED_DELIVERY_UNKNOWN_MS = 10 * 60_000;
 
 type RelayMutationOutcome =
   | "applied"
@@ -61,6 +64,7 @@ export interface NativeLiveBackendRelayPort {
     userId: string;
     listenerInstanceId: string;
     persistentSessions?: boolean;
+    resultOutboxIdle?: boolean;
   }): Promise<NativeLivePreparedTurn | null>;
   markExecutionStarted(input: {
     userId: string;
@@ -339,6 +343,7 @@ implements NativeLiveBackendRelayPort {
     userId: string;
     listenerInstanceId: string;
     persistentSessions?: boolean;
+    resultOutboxIdle?: boolean;
   }): Promise<NativeLivePreparedTurn | null> {
     return this.db.transaction(async (transaction) => {
       const lease = await transaction.execute<{ user_id: string }>(sql`
@@ -369,6 +374,28 @@ implements NativeLiveBackendRelayPort {
           AND reservation_expires_at <= now()
           AND execution_started_at IS NOT NULL
       `);
+
+      // Only the owner's durable result outbox can still deliver a
+      // delivery_unknown turn. Once that outbox is verifiably idle, nothing
+      // will claim a long-orphaned turn; retire it as the turn wait would, or
+      // it reads as a running foreground turn and holds every wake forever.
+      if (input.resultOutboxIdle === true) {
+        await transaction.execute(sql`
+          UPDATE native_live_turn_preparations
+          SET dispatch_status = 'rejected',
+              reserved_by = NULL,
+              reserved_at = NULL,
+              reservation_expires_at = NULL,
+              execution_started_at = NULL,
+              dispatch_error_code = 'RESULT_DELIVERY_UNKNOWN',
+              updated_at = now()
+          WHERE user_id = ${input.userId}::uuid
+            AND status = 'prepared'
+            AND dispatch_status = 'delivery_unknown'
+            AND reserved_by = ${input.listenerInstanceId}::uuid
+            AND delivery_unknown_at <= now() - ${ORPHANED_DELIVERY_UNKNOWN_MS} * interval '1 millisecond'
+        `);
+      }
 
       await transaction.execute(sql`
         UPDATE native_live_turn_preparations
@@ -1049,12 +1076,14 @@ export class NativeLiveBackendRelayService {
     userId: string;
     listenerInstanceId: string;
     persistentSessions?: boolean;
+    resultOutboxIdle?: boolean;
     dispatchTarget: "claude_code";
   }): Promise<NativeLiveDaemonReservation | null> {
     const preparation = await this.repository.reserveNext({
       userId: input.userId,
       listenerInstanceId: input.listenerInstanceId,
       ...(input.persistentSessions === true ? { persistentSessions: true } : {}),
+      ...(input.resultOutboxIdle === true ? { resultOutboxIdle: true } : {}),
     });
     if (!preparation) return null;
     // A persisted checkpoint field marks a modern preparation, including a new
