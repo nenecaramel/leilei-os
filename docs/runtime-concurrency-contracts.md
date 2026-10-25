@@ -125,7 +125,8 @@ pnpm wake status
 ```
 
 This persistent local switch controls only the post-reply 2–5 minute and
-last-user-message 90–120 minute silence opportunities, and the
+post-reply 90–120 minute silence opportunities (both measured from the
+reply that ended the turn), and the
 [concern](native-live-concerns.md) wakes that share them. It does not change
 normal chat, Cron/Monitor/Bash jobs, Mind recall, or Railway configuration.
 The commands need no credentials. Default is ON; the private marker is

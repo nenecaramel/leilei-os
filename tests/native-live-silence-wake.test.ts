@@ -7,20 +7,21 @@ import {
   silenceWakeDeadlines,
 } from "../src/domains/bridge/turn/native-live-silence-wake.js";
 
-test("silence wake jitter is stable and stays inside both configured windows", () => {
+test("silence wake jitter is stable and both windows start when the reply completes", () => {
+  // A 30-minute turn: silence starts at the reply, not at the user's message.
+  const assistantCompletedAt = "2026-10-04T01:30:00.000Z";
   const input = {
     epochId: "44444444-4444-4444-8444-444444444444",
-    userActivityAt: "2026-10-04T01:00:00.000Z",
-    assistantCompletedAt: "2026-10-04T01:01:00.000Z",
+    assistantCompletedAt,
   };
   const first = silenceWakeDeadlines(input);
   const second = silenceWakeDeadlines(input);
   assert.deepEqual(first, second);
 
   const postDelay =
-    Date.parse(first.postTurnDueAt) - Date.parse(input.assistantCompletedAt);
+    Date.parse(first.postTurnDueAt) - Date.parse(assistantCompletedAt);
   const longDelay =
-    Date.parse(first.longIdleDueAt) - Date.parse(input.userActivityAt);
+    Date.parse(first.longIdleDueAt) - Date.parse(assistantCompletedAt);
   assert.ok(postDelay >= 2 * 60_000 && postDelay <= 5 * 60_000);
   assert.ok(longDelay >= 90 * 60_000 && longDelay <= 120 * 60_000);
 });
@@ -29,24 +30,24 @@ test("the post-reply wake lands 2–5 minutes after the reply for every epoch", 
   const delays = Array.from({ length: 64 }, (_, index) => {
     const epochId = `44444444-4444-4444-8444-${String(index).padStart(12, "0")}`;
     const { postTurnDueAt } = silenceWakeDeadlines({ epochId,
-      userActivityAt: "2026-10-04T01:00:00.000Z", assistantCompletedAt: "2026-10-04T01:01:00.000Z" });
+      assistantCompletedAt: "2026-10-04T01:01:00.000Z" });
     return Date.parse(postTurnDueAt) - Date.parse("2026-10-04T01:01:00.000Z");
   });
   for (const delay of delays) assert.ok(delay >= 2 * 60_000 && delay <= 5 * 60_000, String(delay));
   assert.ok(Math.min(...delays) < 3 * 60_000 && Math.max(...delays) > 4 * 60_000, "the jitter spans the window");
 });
 
-test("wake marker carries only elapsed silence, without the hook-provided date and clock", () => {
+test("wake marker carries only silence since the reply, without the hook-provided date and clock", () => {
   const marker = formatSilenceWakeMarker({
     now: new Date("2026-10-04T03:47:00.000Z"),
-    userActivityAt: new Date("2026-10-04T02:00:00.000Z"),
+    assistantCompletedAt: new Date("2026-10-04T02:00:00.000Z"),
   });
   assert.equal(marker, "[wake · +1h 47m · no reply]");
   assert.doesNotMatch(marker, /10-04|周日|11:47|2026/u);
   assert.equal(
     formatSilenceWakeMarker({
       now: new Date("2026-10-04T02:03:00.000Z"),
-      userActivityAt: new Date("2026-10-04T02:00:00.000Z"),
+      assistantCompletedAt: new Date("2026-10-04T02:00:00.000Z"),
     }),
     "[wake · +3m · no reply]",
   );

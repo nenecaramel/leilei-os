@@ -67,27 +67,27 @@ const POST_TURN_SPAN_MS = 3 * 60_000;
 const LONG_IDLE_MIN_MS = 90 * 60_000;
 const LONG_IDLE_SPAN_MS = 30 * 60_000;
 
+// Both windows measure the owner's silence from the reply that ended the turn;
+// time spent waiting for that reply is not silence.
 export function silenceWakeDeadlines(input: {
   epochId: string;
-  userActivityAt: string;
   assistantCompletedAt: string;
 }): {
   postTurnDueAt: string;
   longIdleDueAt: string;
 } {
-  const postBase = Date.parse(input.assistantCompletedAt);
-  const longBase = Date.parse(input.userActivityAt);
-  if (!Number.isFinite(postBase) || !Number.isFinite(longBase)) {
+  const base = Date.parse(input.assistantCompletedAt);
+  if (!Number.isFinite(base)) {
     throw new Error("Silence wake source timestamps are invalid.");
   }
   return {
     postTurnDueAt: new Date(
-      postBase
+      base
         + POST_TURN_MIN_MS
         + stableOffset(input.epochId, "post_turn_idle", POST_TURN_SPAN_MS),
     ).toISOString(),
     longIdleDueAt: new Date(
-      longBase
+      base
         + LONG_IDLE_MIN_MS
         + stableOffset(input.epochId, "long_idle", LONG_IDLE_SPAN_MS),
     ).toISOString(),
@@ -157,11 +157,11 @@ export function nextSilenceWakeDeadline(
 
 export function formatSilenceWakeMarker(input: {
   now: Date;
-  userActivityAt: Date;
+  assistantCompletedAt: Date;
 }): string {
   const elapsedMs = Math.max(
     0,
-    input.now.getTime() - input.userActivityAt.getTime(),
+    input.now.getTime() - input.assistantCompletedAt.getTime(),
   );
   const totalMinutes = Math.floor(elapsedMs / 60_000);
   const elapsed =
@@ -211,7 +211,6 @@ type SilenceWakeExecutor = SilenceWakeDatabase | SilenceWakeTransaction;
 type SilenceWakeSource = {
   conversationId: string;
   epochId: string;
-  userActivityAt: Date;
   assistantCompletedAt: Date;
   currentHeadMessageId: string;
   providerSessionId: string;
@@ -408,7 +407,7 @@ export class NativeLiveSilenceWakeService {
 
         const marker = formatSilenceWakeMarker({
           now: firedAt,
-          userActivityAt: source.userActivityAt,
+          assistantCompletedAt: source.assistantCompletedAt,
         });
         const prompt = carried.length > 0
           ? `${marker}\n${formatConcernWakeBlock(carried)}`
@@ -508,7 +507,6 @@ export class NativeLiveSilenceWakeService {
     const consumed = new Set(receipts.map((row) => row.slot));
     const deadlines = silenceWakeDeadlines({
       epochId: source.epochId,
-      userActivityAt: source.userActivityAt.toISOString(),
       assistantCompletedAt:
         source.assistantCompletedAt.toISOString(),
     });
@@ -565,7 +563,6 @@ export class NativeLiveSilenceWakeService {
     const rows = await executor.execute<{
       conversation_id: string;
       user_message_id: string;
-      user_activity_at: Date | string;
       assistant_completed_at: Date | string;
       current_head_message_id: string;
       provider_session_id: string;
@@ -580,8 +577,7 @@ export class NativeLiveSilenceWakeService {
       WITH RECURSIVE latest_user AS (
         SELECT
           message.conversation_id,
-          message.id AS user_message_id,
-          message.created_at AS user_activity_at
+          message.id AS user_message_id
         FROM conversation_messages AS message
         JOIN conversations AS conversation
           ON conversation.id = message.conversation_id
@@ -648,7 +644,6 @@ export class NativeLiveSilenceWakeService {
       SELECT
         source.conversation_id,
         source.user_message_id,
-        source.user_activity_at,
         reply.assistant_completed_at,
         path.current_head_message_id,
         checkpoint.provider_session_id,
@@ -685,10 +680,6 @@ export class NativeLiveSilenceWakeService {
       ? {
           conversationId: row.conversation_id,
           epochId: row.user_message_id,
-          userActivityAt: readDatabaseTimestamp(
-            row.user_activity_at,
-            "user_activity_at",
-          ),
           assistantCompletedAt: readDatabaseTimestamp(
             row.assistant_completed_at,
             "assistant_completed_at",
