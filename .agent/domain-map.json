@@ -737,7 +737,9 @@
         "tests/import-repository.integration.test.ts",
         "tests/dependency-security.test.ts",
         "src/auth/**",
-        "tests/*auth*.test.ts"
+        "tests/*auth*.test.ts",
+        ".railway/**",
+        "tests/railway-*.test.ts"
       ],
       "verification": [
         "root-typecheck",

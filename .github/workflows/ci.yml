@@ -92,7 +92,7 @@ jobs:
                   web/*)
                     web=true
                     ;;
-                  cmd/native-live-wake-broker/*|Dockerfile.wake-broker|railway.wake-broker.json)
+                  cmd/native-live-wake-broker/*|Dockerfile.wake-broker)
                     wake=true
                     ;;
                   ios/*|docs/*|*.md)

@@ -109,7 +109,7 @@ Normal application startup does not run migrations. Manual local or disposable-d
 
 - GitHub default branch and release trunk: `main`.
 - Railway Production source: `main`; the root `Dockerfile` builds the API/MCP service and the unified MCP Apps browser bundle step produces both Message Bridge and Thinking Block runtimes.
-- `railway.json` configures the compiled migration runner as pre-deploy work.
+- `.railway/railway.ts` (Railway Infrastructure as Code) configures the Dockerfile builds, the compiled migration runner as pre-deploy work and the readiness healthcheck.
 - Vercel Production Branch: `main`; Vercel builds `web/` and serves the SPA.
 - Production credentials and database URLs stay in platform secret stores.
 

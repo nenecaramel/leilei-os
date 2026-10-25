@@ -19,7 +19,7 @@ Railway builds the repository root `Dockerfile`. The build stage installs the pi
 node dist/app/index.js
 ```
 
-Before application promotion, `railway.json` runs:
+Before application promotion, the pre-deploy command in `.railway/railway.ts` runs:
 
 ```text
 node dist/database/migrate.js
