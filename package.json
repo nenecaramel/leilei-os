@@ -63,8 +63,9 @@
     "runtime:native-live-mac-daemon:fresh": "bash scripts/native-live-mac-daemon-fresh.sh",
     "agent:status": "node scripts/agent-status.mjs",
     "agent:verify": "node scripts/agent-verify.mjs",
-    "test:agent-workflow": "tsx --test tests/agent-workflow.test.ts tests/native-live-mac-daemon-fresh.test.ts",
+    "test:agent-workflow": "tsx --test tests/agent-workflow.test.ts tests/native-live-mac-daemon-fresh.test.ts tests/native-live-mac-daemon-launchd.test.ts",
     "runtime:native-live-mac-daemon:fresh-current": "bash scripts/native-live-mac-daemon-fresh.sh --current",
+    "runtime:native-live-mac-daemon:launchd": "bash scripts/native-live-mac-daemon-launchd.sh",
     "test:serial": "node scripts/run-tests.mjs --serial",
     "test:profile": "node scripts/run-tests.mjs --profile"
   },

@@ -137,7 +137,8 @@
         "tsx",
         "--test",
         "tests/agent-workflow.test.ts",
-        "tests/native-live-mac-daemon-fresh.test.ts"
+        "tests/native-live-mac-daemon-fresh.test.ts",
+        "tests/native-live-mac-daemon-launchd.test.ts"
       ],
       "cwd": "."
     },
@@ -474,7 +475,8 @@
         "src/domains/conversation/native-live-*"
       ],
       "exclude_paths": [
-        "tests/native-live-mac-daemon-fresh.test.ts"
+        "tests/native-live-mac-daemon-fresh.test.ts",
+        "tests/native-live-mac-daemon-launchd.test.ts"
       ],
       "verification": [
         "production-runtime",
@@ -733,7 +735,9 @@
         "pnpm-lock.yaml",
         ".github/workflows/**",
         "tests/import-repository.integration.test.ts",
-        "tests/dependency-security.test.ts"
+        "tests/dependency-security.test.ts",
+        "src/auth/**",
+        "tests/*auth*.test.ts"
       ],
       "verification": [
         "root-typecheck",
@@ -766,8 +770,11 @@
         ".agent/**",
         "scripts/agent-*.mjs",
         "scripts/native-live-mac-daemon-fresh.sh",
+        "scripts/native-live-mac-daemon-launchd.sh",
+        "scripts/native-live-mac-daemon-supervised.sh",
         "tests/agent-*.test.ts",
         "tests/native-live-mac-daemon-fresh.test.ts",
+        "tests/native-live-mac-daemon-launchd.test.ts",
         ".github/PULL_REQUEST_TEMPLATE.md",
         ".node-version",
         "package.json",
@@ -779,7 +786,8 @@
         "tests/generated-icons.test.ts",
         "tests/isolated-postgres-target.test.ts",
         "tests/isolated-postgres-target.integration.test.ts",
-        "docs/operations/historical-test-scope-checks.md"
+        "docs/operations/historical-test-scope-checks.md",
+        "docs/operations/mac-daemon-launchd.md"
       ],
       "verification": [
         "agent-workflow",
