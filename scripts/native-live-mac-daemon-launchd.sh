@@ -91,8 +91,8 @@ case "$command" in
   install)
     require_canonical
     node_version="$(node --version 2>/dev/null || true)"
-    if [[ "$node_version" != v22.* ]]; then
-      echo "[mac-daemon:launchd] Node 22 is required (found ${node_version:-none}); select Node 22 in PATH before installing" >&2
+    if [[ "$node_version" != v24.* ]]; then
+      echo "[mac-daemon:launchd] Node 24 is required (found ${node_version:-none}); select Node 24 in PATH before installing" >&2
       exit 1
     fi
     if [[ ! -f "$repo_root/node_modules/tsx/dist/cli.mjs" ]]; then

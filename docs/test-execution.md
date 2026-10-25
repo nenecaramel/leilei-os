@@ -1,6 +1,6 @@
 # Local test execution
 
-Root/daemon tooling uses Node 22. The complete mixed server/Web suite and Web
+Root/daemon tooling uses Node 24. The complete mixed server/Web suite and Web
 build use Node 24, matching Web's declared engine and CI. Install the locked
 root and Web dependencies before running component tests.
 

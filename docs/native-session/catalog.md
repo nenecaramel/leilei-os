@@ -10,12 +10,12 @@ For the original stage 1/2/3 investigations, source-projection invariants, offli
 
 ## Accepted manual commands
 
-Use Node 22 and authenticated Railway CLI on the owner's Mac, from the intended current checkout:
+Use Node 24 and authenticated Railway CLI on the owner's Mac, from the intended current checkout:
 
 ```sh
-/opt/homebrew/opt/node@22/bin/node scripts/native-session-local.mjs list
-/opt/homebrew/opt/node@22/bin/node scripts/native-session-local.mjs desktop SESSION_ID
-/opt/homebrew/opt/node@22/bin/node scripts/native-session-local.mjs leileios SESSION_ID
+/opt/homebrew/opt/node@24/bin/node scripts/native-session-local.mjs list
+/opt/homebrew/opt/node@24/bin/node scripts/native-session-local.mjs desktop SESSION_ID
+/opt/homebrew/opt/node@24/bin/node scripts/native-session-local.mjs leileios SESSION_ID
 ```
 
 `list` reads catalog data without obtaining relay credentials. For the two state-changing commands, the wrapper retrieves only the required relay credentials from the configured Railway project/environment/service **into process memory**. It must not print or persist credentials, change deployments, run migrations, restart the Mac daemon, or send a Claude prompt.

@@ -157,7 +157,7 @@ export function printStatus(status) {
     console.log(`  ${file.status} ${JSON.stringify(file.path)}${file.originalPath ? ' <- ' + JSON.stringify(file.originalPath) : ''}`);
   console.log(`Migration journal head: ${status.migrationJournalHead?.tag ?? 'none'} (idx ${status.migrationJournalHead?.idx ?? 'none'})`);
   console.log(`Node / pnpm: ${status.nodeVersion} / ${status.pnpmVersion}`);
-  console.log('Runtime Node: Railway/server 22; Mac preferred 22; Web 24; Claude bridge >=20; CI 24.');
+  console.log('Runtime Node: Railway/server 24; Mac 24; Web 24; Claude bridge >=20; CI 24.');
   console.log(`Changed surfaces: ${status.changedSurfaces.join(', ') || 'none'}`);
   console.log(`Conflict hotspots: ${status.conflictHotspots.join(', ') || 'none'}`);
   console.log('Recommended verification:');

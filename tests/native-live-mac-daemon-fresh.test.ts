@@ -31,7 +31,7 @@ function fixture(t: test.TestContext, canonical = true) {
   // Never reach the owner's real launchd job; default to "not installed".
   writeFileSync(join(bin, 'launchctl'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
   // Model the supported daemon runtime even when the test runner uses Node 24.
-  writeFileSync(join(bin, 'node'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo v22.23.3; exit 0; fi\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
+  writeFileSync(join(bin, 'node'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo v24.11.1; exit 0; fi\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
   const run = (...args: string[]) => spawnSync('bash', [script, ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, HOME: home, PATH: bin + ':' + process.env.PATH, TEST_EFFECTS: marker, TEST_PROCESSES: join(temp, "processes.txt") } });
   return { root, home, marker, run, temp, remote, bin };
 }
@@ -154,21 +154,24 @@ test('wrong Node major is rejected before stopping the owner daemon', (t) => {
   writeFileSync(join(f.bin, 'node'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo v26.5.0; exit 0; fi\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
   const result = f.run();
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Node 22/);
+  assert.match(result.stderr, /Node 24/);
   assert.equal(existsSync(f.marker), false);
 });
 
-test('fresh restarts the launchd-supervised daemon instead of starting a second copy', (t) => {
+test('fresh reinstalls the launchd agent instead of starting a second copy', (t) => {
   const f = fixture(t);
   writeFileSync(join(f.bin, 'launchctl'), '#!/bin/sh\necho "launchctl $*" >> "$TEST_EFFECTS"\nexit 0\n', { mode: 0o755 });
-  mkdirSync(join(f.home, '.leileios/supervisor'), { recursive: true });
-  writeFileSync(join(f.home, '.leileios/supervisor/quick-failures'), '4\n');
+  // Reinstalling re-pins the verified Node/PATH; the installer has its own tests.
+  mkdirSync(join(f.root, 'scripts'));
+  writeFileSync(join(f.root, 'scripts/native-live-mac-daemon-launchd.sh'), 'echo "launchd-script $*" >> "$TEST_EFFECTS"\n');
+  git(f.root, 'add', 'scripts');
+  git(f.root, 'commit', '-m', 'launchd control');
+  git(f.root, 'push', 'origin', 'main');
   const result = f.run();
   assert.equal(result.status, 0, result.stderr);
   const effects = readFileSync(f.marker, 'utf8');
-  assert.match(effects, /launchctl kickstart -k gui\/\d+\/com\.leileios\.native-live-mac-daemon/);
-  assert.doesNotMatch(effects, /pkill|pnpm/);
-  assert.equal(existsSync(join(f.home, '.leileios/supervisor/quick-failures')), false);
+  assert.match(effects, /launchd-script install\n/);
+  assert.doesNotMatch(effects, /pkill|pnpm|kickstart/);
 });
 
 test('fresh-current from another checkout refuses while launchd owns the daemon', (t) => {

@@ -1,4 +1,4 @@
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
@@ -20,7 +20,7 @@ RUN pnpm build
 # including stale Wake continuation. Rebuild after updating its test contract.
 RUN pnpm test:production-runtime-gate
 
-FROM node:22-alpine AS runtime
+FROM node:24-alpine AS runtime
 
 WORKDIR /app
 ENV NODE_ENV=production

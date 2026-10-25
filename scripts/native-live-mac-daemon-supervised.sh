@@ -54,7 +54,7 @@ if (( failures > 0 )); then
 fi
 
 node_version="$(node --version 2>/dev/null || true)"
-if [[ "$node_version" != v22.* ]]; then
+if [[ "$node_version" != v24.* ]]; then
   echo $((failures + 1)) > "$failures_file"
   record node_unavailable ",\"found\":\"${node_version:-none}\""
   exit 78

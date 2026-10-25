@@ -41,7 +41,7 @@ test("Docker build stage copies every repository file the production runtime gat
 
 test("Docker runtime gate installs the bridge's independent locked dependencies in the build stage", () => {
   const dockerfile = readFileSync("Dockerfile", "utf8");
-  const [build, runtime] = dockerfile.split(/FROM node:22-alpine AS runtime/);
+  const [build, runtime] = dockerfile.split(/FROM node:24-alpine AS runtime/);
   assert.ok(build && runtime);
   const bridgeCopy = build.indexOf("COPY tools/claude-bridge ./tools/claude-bridge");
   const bridgeInstall = build.indexOf("RUN pnpm --dir tools/claude-bridge install --frozen-lockfile");

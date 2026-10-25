@@ -7,7 +7,7 @@ import test from 'node:test';
 
 // Every process-control command is stubbed: these tests must never reach the
 // owner's real launchd job or daemon.
-function fixture(t: test.TestContext, { canonical = true, nodeVersion = 'v22.23.3' } = {}) {
+function fixture(t: test.TestContext, { canonical = true, nodeVersion = 'v24.11.1' } = {}) {
   const temp = mkdtempSync(join(tmpdir(), 'leilei-launchd-test-'));
   t.after(() => rmSync(temp, { recursive: true, force: true }));
   const home = join(temp, 'home');
@@ -68,11 +68,18 @@ test('install writes a crash-restarting agent for the canonical checkout and loa
   assert.ok(plist.includes(`<key>WorkingDirectory</key><string>${f.root}</string>`));
   assert.match(plist, /<key>KeepAlive<\/key>\s*<dict><key>SuccessfulExit<\/key><false\/><\/dict>/);
   assert.match(plist, /<key>RunAtLoad<\/key><true\/>/);
-  assert.ok(plist.includes(`<key>PATH</key><string>${f.bin}:`), 'PATH pins the Node 22 used at install');
+  assert.ok(plist.includes(`<key>PATH</key><string>${f.bin}:`), 'PATH pins the Node 24 used at install');
   const effects = f.read(f.effects);
   // Configuration was checked without the shell profile, then the job loaded.
   assert.match(effects, /tsx native-live-mac-daemon-check-config\.ts path=\S+ profile=\n/);
   assert.match(effects, /launchctl bootstrap gui\/\d+ \S+com\.leileios\.native-live-mac-daemon\.plist/);
+});
+
+test('reinstalling a loaded agent unloads it first so a new Node is picked up', (t) => {
+  const f = fixture(t);
+  const result = f.control(['install'], { TEST_LAUNCHD_LOADED: '0' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(f.read(f.effects), /launchctl bootout gui\/\d+\/com\.leileios\.native-live-mac-daemon\n[\s\S]*launchctl bootstrap /);
 });
 
 test('install refuses before writing anything when launchd could not run the daemon', (t) => {
@@ -80,7 +87,7 @@ test('install refuses before writing anything when launchd could not run the dae
   incomplete.incompleteConfig();
   const cases: Array<[ReturnType<typeof fixture>, RegExp]> = [
     [fixture(t, { canonical: false }), /canonical/],
-    [fixture(t, { nodeVersion: 'v24.1.0' }), /Node 22/],
+    [fixture(t, { nodeVersion: 'v22.23.3' }), /Node 24/],
     [incomplete, /\.env/],
   ];
   for (const [f, message] of cases) {
@@ -129,10 +136,10 @@ test('supervisor backs off after quick crashes and resets after a stable run', (
 });
 
 test('supervisor refuses a wrong Node without starting the daemon', (t) => {
-  const f = fixture(t, { nodeVersion: 'v24.1.0' });
+  const f = fixture(t, { nodeVersion: 'v22.23.3' });
   assert.equal(f.supervise().status, 78);
   assert.doesNotMatch(f.read(f.effects), /tsx/);
-  assert.match(f.read(f.supervisorLog), /"outcome":"node_unavailable","found":"v24\.1\.0"/);
+  assert.match(f.read(f.supervisorLog), /"outcome":"node_unavailable","found":"v22\.23\.3"/);
   assert.equal(f.read(f.failures).trim(), '1');
 });
 
