@@ -170,10 +170,16 @@ export class NativeLiveMacDaemonLoop {
         }
       }
 
+      // Every result is saved here before it is submitted. With nothing
+      // pending or quarantined, this Mac owes the server no late result.
+      const resultOutboxIdle = this.resultOutbox !== null
+        && (await this.resultOutbox.list()).length === 0
+        && (await this.resultOutbox.listQuarantined()).length === 0;
       const reservation = await this.relay.reserveNext({
         listenerInstanceId: this.listenerInstanceId,
         dispatchTarget: "claude_code",
         ...(this.persistentExecutor ? { persistentSessions: true } : {}),
+        ...(resultOutboxIdle ? { resultOutboxIdle: true } : {}),
       });
       if (!reservation) {
         if (semanticReservationId) {

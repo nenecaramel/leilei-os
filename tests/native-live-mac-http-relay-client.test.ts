@@ -1681,6 +1681,20 @@ test('task snapshots retry the same identity within the advisory event deadline'
  assert.deepEqual(JSON.parse(bodies[0]),{listener_instance_id:listenerId,provider_session_id:'synthetic-session',generation_id:conversationId,snapshot_sequence:7,tasks:[]});
 });
 
+test("reserve sends the idle result outbox flag only when asked", async () => {
+  const bodies: unknown[] = [];
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "synthetic-token", async (_url, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return new Response(JSON.stringify({ success: true, data: null }), { status: 200 });
+  });
+  await client.reserveNext({ listenerInstanceId: listenerId, dispatchTarget: "claude_code", persistentSessions: true, resultOutboxIdle: true });
+  await client.reserveNext({ listenerInstanceId: listenerId, dispatchTarget: "claude_code" });
+  assert.deepEqual(bodies, [
+    { listener_instance_id: listenerId, dispatch_target: "claude_code", persistent_sessions: true, result_outbox_idle: true },
+    { listener_instance_id: listenerId, dispatch_target: "claude_code" },
+  ]);
+});
+
 // A proxy can drop a reserve response after the server answered. The daemon's
 // main loop must get the call back and retry, not wait out fetch's 5 minutes.
 test("main-loop reserve calls release the daemon when a response never arrives", async () => {

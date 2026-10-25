@@ -639,11 +639,13 @@ implements NativeLiveMacDaemonRelayClient {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
     persistentSessions?: boolean;
+    resultOutboxIdle?: boolean;
   }): Promise<NativeLiveDaemonReservation | null> {
     const data = await this.reserve("/reserve", {
       listener_instance_id: input.listenerInstanceId,
       dispatch_target: input.dispatchTarget,
       ...(input.persistentSessions === true ? { persistent_sessions: true } : {}),
+      ...(input.resultOutboxIdle === true ? { result_outbox_idle: true } : {}),
     });
     if (data === null) return null;
     const record = readRecord(data);

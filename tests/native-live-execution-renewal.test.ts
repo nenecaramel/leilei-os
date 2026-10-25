@@ -33,6 +33,18 @@ test("only reserve accepts the explicit persistent-session capability; old reque
  });assert.equal(calls.length,2);assert.equal(calls[0].persistentSessions,undefined);assert.equal(calls[1].persistentSessions,true);
 });
 
+test("reserve accepts an explicit idle result outbox flag and nothing else in its place",async()=>{
+ const service=new FakeRelayService();const calls:any[]=[];service.reserveNext=async(input:any)=>{calls.push(input);return null;};
+ await withServer(app=>{app.use((req,_res,next)=>{req.mcpUserId=userId;next();});app.use("/relay",createNativeLiveRelayInternalRouter({relayService:service}));},async base=>{
+  const send=(path:string,value:any)=>fetch(`${base}/relay/${path}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(value)});
+  const old={listener_instance_id:listenerId,dispatch_target:"claude_code"};
+  assert.equal((await send("reserve",{...old,persistent_sessions:true,result_outbox_idle:true})).status,200);
+  assert.equal((await send("reserve",{...old,result_outbox_idle:false})).status,200);
+  assert.equal((await send("reserve",{...old,result_outbox_idle:"true"})).status,400);
+  assert.equal((await send("lease/renew",{...old,result_outbox_idle:true})).status,400);
+ });assert.equal(calls.length,2);assert.equal(calls[0].resultOutboxIdle,true);assert.equal(calls[0].persistentSessions,true);assert.equal(calls[1].resultOutboxIdle,undefined);
+});
+
 test("session lease renewal authenticates and never reacquires the listener",async()=>{
  const calls:any[]=[];const service=Object.assign(new FakeRelayService(),{async renewSessionLease(input:any){calls.push(input);return false;}});
  await withServer(app=>{app.use((req,_res,next)=>{req.mcpUserId=userId;next();});app.use("/relay",createNativeLiveRelayInternalRouter({relayService:service}));},async base=>{
