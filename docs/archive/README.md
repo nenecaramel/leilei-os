@@ -21,3 +21,16 @@ This directory is an **archive of dated design decisions, implementation plans a
 The branch-session implementation plan's original closeout says PR #908 was Draft, but [PR #908](https://github.com/nenecaramel/leilei-os/pull/908) **merged 2026-10-06**. Its production/device acceptance remains separate. Similar status wording in other historical plans must be checked against GitHub and current code, not automatically promoted to current truth.
 
 Keep these files for historical provenance and test reasoning, rather than copying their long checklists into `AGENTS.md` or current operational guides. Adding new/current instructions here creates ambiguity: update the authoritative document instead.
+
+## Dated verification and handoff records
+
+- [behavior-coverage-review](testing/2026-10-19-behavior-coverage-review.md)
+- [oauth-connector-refresh](testing/2026-10-19-oauth-connector-refresh.md)
+- [settings-hosted-acceptance](testing/2026-10-19-settings-hosted-acceptance.md)
+- [universe-settings-behavior](testing/2026-10-19-universe-settings-behavior.md)
+- [claude-code-handoff](testing/2026-10-20-claude-code-handoff.md)
+- [native-continuation-input-binding](testing/2026-10-20-native-continuation-input-binding.md)
+- [native-edit-execution-route](testing/2026-10-20-native-edit-execution-route.md)
+- [native-runtime-reliability](testing/2026-10-20-native-runtime-reliability.md)
+- [native-sdk-auth-failure-recovery](testing/2026-10-20-native-sdk-auth-failure-recovery.md)
+- [runtime-reliability-plan](testing/2026-10-20-runtime-reliability-plan.md)

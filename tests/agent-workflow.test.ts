@@ -223,8 +223,10 @@ test('canonical typecheck covers executable TypeScript scripts as well as server
 
 test('production runtime gate includes real daemon recovery and message surface regressions', () => {
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+  assert.equal(pkg.scripts['test:production-runtime-gate'], 'node scripts/run-suite.mjs production-runtime-gate');
+  const gate = JSON.parse(readFileSync('tests/suites.json', 'utf8'))['production-runtime-gate'];
   for (const path of ['tests/native-live-mac-wake-broker-fallback.test.ts', 'tests/native-live-message-surface-contract.test.ts']) {
-    assert.ok(pkg.scripts['test:production-runtime-gate'].split(/\s+/).includes(path), path);
+    assert.ok(gate.tsx.includes(path), path);
   }
 });
 

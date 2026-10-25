@@ -123,7 +123,7 @@ Short names used below:
 ## 2. Failure ledger (since #1109, 2026-10-16 01:18 +0800)
 
 Source: `git log --first-parent main a477f10d^..b79518d2`, the PR descriptions, and
-`docs/native-session/*.md` / `docs/testing/2026-10-20-*.md`. Features (#1109, #1124,
+`docs/native-session/*.md` / `docs/archive/testing/2026-10-20-*.md`. Features (#1109, #1124,
 #1129, #1179) and diagnostics-only PRs (#1117, #1181) are not counted as fixes.
 
 Category key:
