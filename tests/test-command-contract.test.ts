@@ -38,3 +38,21 @@ test("package scripts reference existing local executable and test files", () =>
     }
   }
 });
+
+test("named suites list existing, unique test files and keep the gate serial", async () => {
+  const { suitePlan } = await import("../scripts/run-suite.mjs");
+  const suites = JSON.parse(readFileSync(new URL("../tests/suites.json", import.meta.url), "utf8")) as Record<string, { serial: boolean; tsx: string[]; node: string[] }>;
+  for (const [name, suite] of Object.entries(suites)) {
+    const files = [...suite.tsx, ...suite.node];
+    assert.ok(files.length > 0, name);
+    assert.equal(new Set(files).size, files.length, `${name}: duplicate test file`);
+    for (const file of files) assert.ok(existsSync(resolve(file)), `${name}: missing ${file}`);
+  }
+  const root = resolve(".");
+  const [tsx, node] = suitePlan(root, "production-runtime-gate");
+  assert.deepEqual(tsx!.slice(1, 3), ["--test", "--test-concurrency=1"]);
+  assert.deepEqual(tsx!.slice(3), suites["production-runtime-gate"]!.tsx);
+  assert.deepEqual(node, ["--test", ...suites["production-runtime-gate"]!.node]);
+  assert.equal(suitePlan(root, "native-live-minimal").length, 1);
+  assert.throws(() => suitePlan(root, "toString"), /Unknown test suite/);
+});

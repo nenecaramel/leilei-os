@@ -13,6 +13,7 @@ COPY tools/claude-bridge ./tools/claude-bridge
 # Runtime-gate fixtures import the real adapter from this independent package.
 RUN pnpm --dir tools/claude-bridge install --frozen-lockfile
 COPY scripts/build-mcp-browser.mjs ./scripts/build-mcp-browser.mjs
+COPY scripts/run-suite.mjs ./scripts/run-suite.mjs
 # Read by tests/native-live-mac-wake-broker-fallback.test.ts in the runtime gate.
 COPY scripts/native-live-mac-daemon.ts ./scripts/native-live-mac-daemon.ts
 RUN pnpm build

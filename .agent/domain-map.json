@@ -789,7 +789,8 @@
         "tests/isolated-postgres-target.test.ts",
         "tests/isolated-postgres-target.integration.test.ts",
         "docs/operations/historical-test-scope-checks.md",
-        "docs/operations/mac-daemon-launchd.md"
+        "docs/operations/mac-daemon-launchd.md",
+        "docs/archive/**"
       ],
       "verification": [
         "agent-workflow",
@@ -819,6 +820,8 @@
       "name": "Runtime contracts / test execution",
       "paths": [
         "scripts/run-tests.mjs",
+        "scripts/run-suite.mjs",
+        "tests/suites.json",
         "scripts/test-timing-reporter.mjs",
         "tests/test-runner.test.ts",
         "tests/test-command-contract.test.ts",

@@ -4,7 +4,7 @@ This is a navigation map of current owners and fences, not a new runtime design.
 The [domain map](../.agent/domain-map.json) defines verification gates and device
 boundaries. Product and receipt semantics remain in
 [Claude Code Mind](claude-code-mind.md) and the
-[branch/session spec](superpowers/specs/2026-10-06-native-live-branch-session.md).
+[branch/session spec](archive/specs/2026-10-06-native-live-branch-session.md).
 
 | State / owner | Transitions and stale-operation guard | Behavior coverage |
 | --- | --- | --- |

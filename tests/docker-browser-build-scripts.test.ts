@@ -21,8 +21,8 @@ test("Docker build stage copies every browser builder referenced by root build",
 });
 
 test("Docker build stage copies every repository file the production runtime gate reads", () => {
-  const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { scripts?: Record<string, string> };
-  const gate = pkg.scripts?.["test:production-runtime-gate"] ?? "";
+  const suites = JSON.parse(readFileSync("tests/suites.json", "utf8")) as Record<string, { tsx: string[]; node: string[] }>;
+  const gate = [...suites["production-runtime-gate"]!.tsx, ...suites["production-runtime-gate"]!.node].join(" ");
   const dockerfile = readFileSync("Dockerfile", "utf8");
   // The image copies these trees whole; anything else a gate test reads must be copied explicitly.
   const copiedTrees = ["src/", "drizzle/", "tests/", "tools/claude-bridge/"];
