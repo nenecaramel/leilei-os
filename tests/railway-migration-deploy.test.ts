@@ -9,6 +9,7 @@ type RailwaySpec = {
     address: string;
     build?: { builder?: string; dockerfilePath?: string; watchPatterns?: string[] };
     deploy?: Record<string, unknown>;
+    variables?: Record<string, unknown>;
   }>;
 };
 
@@ -43,6 +44,7 @@ test("Railway IaC keeps the wake broker awake on its own Dockerfile", async () =
   assert.ok(broker);
   assert.equal(broker.build?.builder, "DOCKERFILE");
   assert.equal(broker.build?.dockerfilePath, "Dockerfile.wake-broker");
+  assert.deepEqual(broker.variables?.RAILWAY_DOCKERFILE_PATH, { type: "literal", value: "Dockerfile.wake-broker" });
   assert.equal(broker.deploy?.sleepApplication, false);
   assert.equal(broker.deploy?.restartPolicyType, "ALWAYS");
   assert.equal(broker.deploy?.healthcheckPath, "/health");

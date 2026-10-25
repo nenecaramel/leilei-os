@@ -21,7 +21,10 @@ export default defineRailway(() => {
     replicas: { "sfo": 1 },
     // The Mac daemon long-polls the broker for wakes; it must never sleep.
     deploy: { restartPolicyType: "ALWAYS", sleepApplication: false },
-    env: { WAKE_BROKER_TOKEN: preserve() },
+    // build.dockerfilePath alone was ignored once Config as Code stopped
+    // applying: the broker then built the server Dockerfile and failed its
+    // healthcheck. The documented variable pins the path for the builder.
+    env: { RAILWAY_DOCKERFILE_PATH: "Dockerfile.wake-broker", WAKE_BROKER_TOKEN: preserve() },
   });
 
   const leileiOsService = service("leilei-os", {
