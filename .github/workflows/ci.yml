@@ -27,7 +27,7 @@ jobs:
     outputs:
       postgres: ${{ steps.scope.outputs.postgres }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
@@ -116,12 +116,12 @@ jobs:
           echo "wake=$wake" >> "$GITHUB_OUTPUT"
           echo "postgres=$postgres" >> "$GITHUB_OUTPUT"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: steps.scope.outputs.core == 'true'
         with:
           version: 11.9.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.scope.outputs.core == 'true'
         with:
           node-version: 24
@@ -163,7 +163,7 @@ jobs:
         if: steps.scope.outputs.core == 'true'
         run: git diff --check
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.scope.outputs.web == 'true' && steps.scope.outputs.core != 'true'
         with:
           node-version: 24
@@ -182,11 +182,13 @@ jobs:
         if: steps.scope.outputs.web == 'true'
         run: cd web && npm run build
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         if: steps.scope.outputs.wake == 'true'
         with:
           go-version: "1.25.x"
-          cache-dependency-path: cmd/native-live-wake-broker/go.sum
+          # The broker has no module dependencies (no go.sum), so there is
+          # nothing to cache; pointing the cache at go.sum only failed restore.
+          cache: false
 
       - name: Build tiny wake broker
         if: steps.scope.outputs.wake == 'true'
@@ -213,7 +215,7 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/leileios_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
@@ -224,11 +226,11 @@ jobs:
           test "$actual" = "$expected"
           echo "Checked out exact event head: $actual"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.9.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
