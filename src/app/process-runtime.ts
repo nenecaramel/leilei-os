@@ -124,6 +124,7 @@ import {
   deleteExpiredNativeLiveAttachmentsBatch,
 } from "../domains/bridge/attachment/native-live-attachment-service.js";
 import {
+  probeNativeLiveAttachmentBucket,
   S3PresignedAttachmentObjectStore,
 } from "../domains/bridge/attachment/native-live-attachment-storage.js";
 import {
@@ -872,6 +873,12 @@ export function createProcessRuntime(
         nativeLiveMindFollowUpRecovery.runNow().catch(() => 0);
       void mindFollowUpStartupRecovery;
       void nativeLiveSemanticRecovery.runNow().catch(() => undefined);
+      if (nativeLiveS3AttachmentObjectStore) {
+        void probeNativeLiveAttachmentBucket(
+          nativeLiveS3AttachmentObjectStore,
+          logger,
+        );
+      }
     },
     stopBackgroundWork: () => {
       retentionCoordinator.stopScheduling();

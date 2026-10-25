@@ -5,6 +5,7 @@ import {
 import type {
   NativeLiveAttachmentStorageConfig,
 } from "../../../config/env.js";
+import type { SafeLogger } from "../../../observability/logger.js";
 
 export type NativeLiveAttachmentUploadSlot = {
   url: string;
@@ -270,6 +271,30 @@ implements NativeLiveAttachmentObjectStore {
       ),
       expiresAt,
     };
+  }
+}
+
+// A signed HEAD of a key that never exists answers 404 when the bucket accepts
+// the configured credentials. Stale credentials (for example after a bucket
+// credential reset) answer 403 on every presigned upload and download, which
+// otherwise surfaces only as attachments silently failing on devices.
+export async function probeNativeLiveAttachmentBucket(
+  store: Pick<NativeLiveAttachmentObjectStore, "headObject">,
+  logger: SafeLogger,
+): Promise<"ok" | "rejected" | "unreachable"> {
+  const event = "native_live_attachment_bucket_probe";
+  try {
+    await store.headObject({ objectKey: "diagnostics/credential-probe" });
+    logger.info(event, { state: "ok" });
+    return "ok";
+  } catch (error) {
+    const status = (error as { httpStatus?: unknown } | null)?.httpStatus;
+    if (typeof status === "number") {
+      logger.error(event, { state: "rejected", status });
+      return "rejected";
+    }
+    logger.error(event, { state: "unreachable" });
+    return "unreachable";
   }
 }
 

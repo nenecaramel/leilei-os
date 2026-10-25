@@ -4,18 +4,58 @@ import test from "node:test";
 
 const readRepoFile = (path: string): string => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("Railway config runs the compiled database migrator before deploy", () => {
-  const configUrl = new URL("../railway.json", import.meta.url);
-  assert.equal(existsSync(configUrl), true, "railway.json must exist");
+type RailwaySpec = {
+  resources: Array<{
+    address: string;
+    build?: { builder?: string; dockerfilePath?: string; watchPatterns?: string[] };
+    deploy?: Record<string, unknown>;
+    variables?: Record<string, unknown>;
+  }>;
+};
 
-  const config = JSON.parse(readFileSync(configUrl, "utf8")) as {
-    build?: { builder?: string; dockerfilePath?: string };
-    deploy?: { preDeployCommand?: string };
-  };
+async function railwaySpec(): Promise<RailwaySpec> {
+  const { default: define } = await import("../.railway/railway.ts");
+  return await (define as (ctx: unknown) => RailwaySpec | Promise<RailwaySpec>)({
+    command: "plan",
+    environment: "production",
+    environmentName: "production",
+    isEnvironment: (name: string) => name === "production",
+  });
+}
 
-  assert.equal(config.build?.builder, "DOCKERFILE");
-  assert.equal(config.build?.dockerfilePath, "Dockerfile");
-  assert.equal(config.deploy?.preDeployCommand, "node dist/database/migrate.js");
+test("Railway IaC keeps the Dockerfile build, migration pre-deploy and readiness gate", async () => {
+  // Config as Code stops being read on 2026-12-01; a leftover file would also
+  // block `railway config plan` from managing the service.
+  for (const legacy of ["railway.json", "railway.toml", "railway.wake-broker.json"]) {
+    assert.equal(existsSync(new URL(`../${legacy}`, import.meta.url)), false, `${legacy} must be retired`);
+  }
+  const spec = await railwaySpec();
+  const server = spec.resources.find((resource) => resource.address === "service.leilei-os");
+  assert.ok(server);
+  assert.equal(server.build?.builder, "DOCKERFILE");
+  assert.equal(server.build?.dockerfilePath, "Dockerfile");
+  assert.deepEqual(server.deploy?.preDeployCommand, ["node dist/database/migrate.js"]);
+  assert.equal(server.deploy?.healthcheckPath, "/ready");
+  assert.equal(server.deploy?.healthcheckTimeout, 30);
+});
+
+test("Railway IaC keeps the wake broker awake on its own Dockerfile", async () => {
+  const broker = (await railwaySpec()).resources.find((resource) => resource.address === "service.leilei-wake-broker");
+  assert.ok(broker);
+  assert.equal(broker.build?.builder, "DOCKERFILE");
+  assert.equal(broker.build?.dockerfilePath, "Dockerfile.wake-broker");
+  assert.deepEqual(broker.variables?.RAILWAY_DOCKERFILE_PATH, { type: "literal", value: "Dockerfile.wake-broker" });
+  assert.equal(broker.deploy?.sleepApplication, false);
+  assert.equal(broker.deploy?.restartPolicyType, "ALWAYS");
+  assert.equal(broker.deploy?.healthcheckPath, "/health");
+});
+
+test("Railway IaC declares every environment resource so apply cannot delete one", async () => {
+  const addresses = (await railwaySpec()).resources.map((resource) => resource.address).sort();
+  for (const expected of ["service.leilei-os", "service.leilei-wake-broker"]) assert.ok(addresses.includes(expected), expected);
+  assert.ok(addresses.some((address) => /postgres/i.test(address) && !/volume/.test(address)), "Postgres");
+  assert.ok(addresses.some((address) => address.includes("postgres-volume")), "Postgres volume");
+  assert.ok(addresses.some((address) => address.includes("leilei-native-live-attachments")), "attachment bucket");
 });
 
 test("runtime image contains checked-in Drizzle migrations", () => {

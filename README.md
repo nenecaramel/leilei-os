@@ -111,7 +111,7 @@ npm --prefix web run build
 ## Deployment topology
 
 - **GitHub:** `main` is the canonical integration and release trunk.
-- **Railway:** the API/MCP service is built from the root `Dockerfile`; `railway.json` runs `node dist/database/migrate.js` as the pre-deploy migration step, then the container starts `node dist/app/index.js`.
+- **Railway:** the API/MCP service is built from the root `Dockerfile`; `.railway/railway.ts` (Railway IaC) runs `node dist/database/migrate.js` as the pre-deploy migration step, then the container starts `node dist/app/index.js`.
 - **Vercel:** the `web/` SPA is built separately from `main` and served from `web/dist` with SPA route rewrites.
 
 Repository documentation describes the checked-in release path, not the live deployment SHA. Verify the platform-reported commit and `/health` during production acceptance.
