@@ -100,6 +100,21 @@ fi
 echo "[mac-daemon:fresh] Node: $node_version"
 echo "[mac-daemon:fresh] starting from: $(git rev-parse --short HEAD)"
 
+# Once installed with runtime:native-live-mac-daemon:launchd, launchd owns the
+# daemon: restart it there instead of starting a second, unsupervised copy.
+launchd_service="gui/$(id -u)/com.leileios.native-live-mac-daemon"
+if command -v launchctl >/dev/null 2>&1 && launchctl print "$launchd_service" >/dev/null 2>&1; then
+  if [[ "$repo_root" != "$(cd "$HOME/Developer/leilei-os-main" 2>/dev/null && pwd -P)" ]]; then
+    echo "[mac-daemon:fresh] the launchd daemon runs ~/Developer/leilei-os-main; run pnpm runtime:native-live-mac-daemon:launchd stop before starting another checkout" >&2
+    exit 1
+  fi
+  rm -f "$HOME/.leileios/supervisor/quick-failures"
+  echo "[mac-daemon:fresh] restarting the launchd-supervised daemon..."
+  launchctl kickstart -k "$launchd_service"
+  echo "[mac-daemon:fresh] restarted; logs: ~/.leileios/logs/native-live-daemon.log"
+  exit 0
+fi
+
 # tsx launches a separate Node process; stopping only its launcher leaves the
 # actual daemon alive and its single-instance lock correctly blocks restart.
 # Anchor the executable and script suffix so shell text/lookalikes do not match.

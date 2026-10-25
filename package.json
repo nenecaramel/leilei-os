@@ -63,8 +63,9 @@
     "runtime:native-live-mac-daemon:fresh": "bash scripts/native-live-mac-daemon-fresh.sh",
     "agent:status": "node scripts/agent-status.mjs",
     "agent:verify": "node scripts/agent-verify.mjs",
-    "test:agent-workflow": "tsx --test tests/agent-workflow.test.ts tests/native-live-mac-daemon-fresh.test.ts",
+    "test:agent-workflow": "tsx --test tests/agent-workflow.test.ts tests/native-live-mac-daemon-fresh.test.ts tests/native-live-mac-daemon-launchd.test.ts",
     "runtime:native-live-mac-daemon:fresh-current": "bash scripts/native-live-mac-daemon-fresh.sh --current",
+    "runtime:native-live-mac-daemon:launchd": "bash scripts/native-live-mac-daemon-launchd.sh",
     "test:serial": "node scripts/run-tests.mjs --serial",
     "test:profile": "node scripts/run-tests.mjs --profile"
   },
@@ -72,7 +73,6 @@
     "@js-temporal/polyfill": "^0.5.1",
     "@modelcontextprotocol/ext-apps": "1.7.5",
     "@modelcontextprotocol/sdk": "^1.31.0",
-    "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.1.0",
@@ -81,7 +81,6 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/jsdom": "^28.0.3",
     "@types/node": "^24.0.0",

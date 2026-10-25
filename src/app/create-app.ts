@@ -1,7 +1,7 @@
 import type { NativeLiveProviderSessionStoreInternalDependencies } from "../web-api/native-live-provider-session-store-internal-router.js";
 import { createMindRecallRouter } from "../web-api/mind-recall-internal-router.js";
 import express from "express";
-import { createInternalAuthMiddleware } from "../auth/internal-auth.js";
+import { bearerTokenMatches, createInternalAuthMiddleware } from "../auth/internal-auth.js";
 import {
   createAuth0JwtVerifier,
   type AccessTokenVerifier,
@@ -255,8 +255,10 @@ export function createApp(
       config.NATIVE_LIVE_RELAY_AUTH_TOKEN;
     const authenticatedInternal =
       Boolean(internalRelayToken)
-      && request.header("authorization")
-        === `Bearer ${internalRelayToken}`;
+      && bearerTokenMatches(
+        request.header("authorization"),
+        internalRelayToken!,
+      );
     const usesNativeLiveRelayParser =
       authenticatedInternal
       && (

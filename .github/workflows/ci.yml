@@ -143,6 +143,10 @@ jobs:
         if: steps.scope.outputs.core == 'true'
         run: pnpm test
 
+      - name: Run Claude Bridge suite
+        if: steps.scope.outputs.core == 'true'
+        run: pnpm --dir tools/claude-bridge test
+
       - name: Typecheck root
         if: steps.scope.outputs.core == 'true'
         run: pnpm typecheck
