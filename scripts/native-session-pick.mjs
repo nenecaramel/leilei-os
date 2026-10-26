@@ -39,7 +39,7 @@ export async function readSwitchCatalog({ relayUrl, relayToken, fetchImpl = fetc
 async function main() {
   const [mode, ...extra] = process.argv.slice(2);
   if (!['desktop', 'leileios'].includes(mode) || extra.length) throw new Error('INVALID_SWITCH_MODE');
-  if (Number(process.versions.node.split('.')[0]) !== 22) throw new Error('NODE_22_REQUIRED');
+  if (Number(process.versions.node.split('.')[0]) !== 24) throw new Error('NODE_24_REQUIRED');
   if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error('INTERACTIVE_TERMINAL_REQUIRED');
   // Refuse before the picker, so the owner quits Desktop (⌘Q) instead of choosing in vain.
   if (mode === 'leileios' && desktopAppRunning()) throw new Error('NATIVE_DESKTOP_STILL_RUNNING');
@@ -67,6 +67,6 @@ async function main() {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { await main(); } catch (error) {
-    console.error(/^[A-Z][A-Z_]+$/.test(error.message) ? error.message : 'NATIVE_SWITCH_FAILED'); process.exitCode = 1;
+    console.error(/^[A-Z][A-Z0-9_]+$/.test(error.message) ? error.message : 'NATIVE_SWITCH_FAILED'); process.exitCode = 1;
   }
 }
