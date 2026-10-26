@@ -261,6 +261,7 @@ export interface NativeLiveBackendTurnPort {
     userId: string;
     preparation: NativeLivePreparedTurn;
     providerSessionId: string | null;
+    failed?: boolean;
   }): Promise<"discarded" | "idempotent">;
 }
 
@@ -462,6 +463,7 @@ export class NativeLiveBackendTurnCoordinator {
             userId,
             preparation,
             providerSessionId,
+            failed: true,
           });
           return {
             ok: true,
@@ -500,6 +502,7 @@ export class NativeLiveBackendTurnCoordinator {
             userId,
             preparation,
             providerSessionId: result.provider_session_id,
+            failed: true,
           });
           return {
             ok: true,
@@ -665,6 +668,7 @@ export class NativeLiveBackendTurnCoordinator {
     userId: string;
     preparation: NativeLivePreparedTurn;
     providerSessionId: string | null;
+    failed?: boolean;
   }): Promise<"discarded" | "idempotent"> {
     if (!this.port.discardWake) {
       throw new Error("Silence wake discard port is unavailable.");

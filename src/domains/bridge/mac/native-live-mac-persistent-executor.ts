@@ -68,10 +68,16 @@ export class NativeLiveMacPersistentExecutor {
     if (this.shutDown) return false;
     let command: NativeLiveRuntimeCommand;
     try { command = parseNativeLiveRuntimeCommand(rawCommand); } catch { return false; }
+    if (command.failed_user_message_uuids?.length) {
+      // Any input a writer submitted and lost retires that writer, so a live
+      // writer at this checkpoint never holds these failed inputs and may
+      // continue past them. Only a fresh resume must not cover them.
+      const { failed_user_message_uuids: _failed, ...rest } = command;
+      return command.operation === "send" && this.routers.has(command.conversation_id) && this.canRoute(rest);
+    }
     const ordinary = ["send", "wake"].includes(command.operation) && ["new", "resume"].includes(command.runtime_mode);
     const replacement = isNativeReplacement(command);
-    if ((!ordinary && !replacement) || command.parent_provider_checkpoint_id === undefined
-      || command.failed_user_message_uuids?.length) return false;
+    if ((!ordinary && !replacement) || command.parent_provider_checkpoint_id === undefined) return false;
     if (command.attachments?.length && !this.input.attachmentMaterializer) return false;
     if (this.retiring.has(command.conversation_id) || this.suspended.has(command.conversation_id)) return false;
     const router = this.routers.get(command.conversation_id);
@@ -144,9 +150,11 @@ export class NativeLiveMacPersistentExecutor {
     questionHandler?: Handler;
     controlPump?: (controller: NativeLiveMacActiveTurnController, context: { signal: AbortSignal }) => Promise<void>;
   }): Promise<NativeLiveMacPersistentExecution> {
-    const command = parseNativeLiveRuntimeCommand(rawCommand);
-    this.assertAccepting(command.conversation_id);
-    if (!this.canRoute(command)) throw new Error("Command cannot use the persistent writer.");
+    const parsed = parseNativeLiveRuntimeCommand(rawCommand);
+    this.assertAccepting(parsed.conversation_id);
+    if (!this.canRoute(parsed)) throw new Error("Command cannot use the persistent writer.");
+    // canRoute admitted failed inputs only for a live writer that never held them.
+    const { failed_user_message_uuids: _failed, ...command } = parsed;
     let router = this.routers.get(command.conversation_id);
     if (!router) { router = this.input.createRouter(command.conversation_id); this.routers.set(command.conversation_id, router); }
     const outputs = createNativeLiveMacOutputAttachmentCollector({

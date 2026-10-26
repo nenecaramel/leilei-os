@@ -1686,7 +1686,9 @@ test("exact send with only earlier failed inputs and no live writer falls back t
   if (outcome.outcome === "completed") assert.equal(outcome.result.status, "success");
 });
 
-test("exact send with earlier failed inputs still refuses one-shot while a live writer exists", async t => {
+// Any input a writer submitted and lost retires that writer, so a live writer
+// at this checkpoint never holds the failed inputs: it continues past them.
+test("exact send with earlier failed inputs continues the live writer instead of one-shot", async t => {
   const { persistent, counts, failedSend } = await failedInputsFixture(t);
   const first = await persistent.execute({ ...command(), parent_provider_checkpoint_id: null },
     { async commit() { return { canonicalOutcome: "completed" }; } });
@@ -1696,9 +1698,11 @@ test("exact send with earlier failed inputs still refuses one-shot while a live 
   let legacy = 0;
   const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, { async execute() { legacy++; return success(); } },
     null, null, null, null, null, null, null, persistent);
+  const submitsBefore = counts.submits;
   const outcome = await loop.runOnce();
   assert.equal(legacy, 0, "a live writer is never replaced by one-shot");
-  assert.equal(counts.closes, 0);
+  assert.equal(counts.launches, 1, "the same writer, not a new resume over the failed inputs");
+  assert.equal(counts.submits, submitsBefore + 1);
   assert.equal(outcome.outcome, "completed");
-  if (outcome.outcome === "completed") assert.deepEqual([outcome.result.status, "error_code" in outcome.result && outcome.result.error_code], ["failure", "RUNTIME_UNAVAILABLE"]);
+  if (outcome.outcome === "completed") assert.equal(outcome.result.status, "success");
 });

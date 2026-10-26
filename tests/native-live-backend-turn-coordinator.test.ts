@@ -560,6 +560,7 @@ test("quiet silence wake is discarded without canonical assistant finalization",
   assert.equal(port.finalizeSuccessCalls.length, 0);
   assert.equal(port.finalizeFailureCalls.length, 0);
   assert.equal(port.discardWakeCalls.length, 1);
+  assert.equal((port.discardWakeCalls[0] as { failed?: boolean }).failed, undefined);
 });
 
 test("empty successful silence wake is also discarded without creating an assistant message", async () => {
@@ -644,6 +645,8 @@ test("failed silence wake is invisible and uses the same discard path", async ()
   });
   assert.equal(port.finalizeFailureCalls.length, 0);
   assert.equal(port.discardWakeCalls.length, 1);
+  // Its prompt may already be in the native transcript: record it as residue.
+  assert.equal((port.discardWakeCalls[0] as { failed?: boolean }).failed, true);
 });
 
 test("visible silence wake finalizes as a normal assistant continuation with no fake user message", async () => {
