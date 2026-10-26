@@ -10,6 +10,7 @@ import { createDatabase } from "../src/database/client.js";
 import {
   conversations,
   conversationMessages,
+  conversationProviderSessionCheckpoints,
   nativeLiveRuntimeListenerLeases,
   nativeLiveTurnPreparations,
   users,
@@ -24,6 +25,7 @@ import {
 import {
   DrizzleNativeLiveBackendTurnPort,
 } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
+import type { NativeLivePreparedTurn } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import {
   DrizzleNativeLiveConversationRepository,
 } from "../src/domains/conversation/native-live-conversation-repository.js";
@@ -587,4 +589,49 @@ test('idle owner retires only its own long-orphaned delivery_unknown turns on re
   assert.deepEqual(await read(orphan),{status:'prepared',dispatchStatus:'rejected',reservedBy:null,dispatchErrorCode:'RESULT_DELIVERY_UNKNOWN'});
   assert.deepEqual(await read(recent),{status:'prepared',dispatchStatus:'delivery_unknown',reservedBy:listener,dispatchErrorCode:'RESERVATION_EXPIRED_AFTER_EXECUTION'});
   assert.equal((await read(foreign))!.dispatchStatus,'delivery_unknown');
+});
+
+// A failed wake is discarded, yet its prompt may already be in the native
+// transcript under the wake's preparation id, right below the cursor it
+// resumed from. The next send from that cursor may skip only that input.
+test('relay lists a failed started wake input as residue for the next send from its cursor', {skip: !enabled}, async t => {
+  const database=createDatabase(process.env.DATABASE_URL!,{ssl:false});
+  const [user]=await database.db.insert(users).values({email:`failed-wake-tail-${crypto.randomUUID()}@example.com`,displayName:'Failed wake tail'}).returning();
+  t.after(async()=>{try{await database.db.delete(nativeLiveRuntimeListenerLeases).where(eq(nativeLiveRuntimeListenerLeases.userId,user.id));await database.db.delete(conversations).where(eq(conversations.userId,user.id));await database.db.delete(users).where(eq(users.id,user.id));}finally{await database.close();}});
+  const service=new NativeLiveConversationService(new DrizzleNativeLiveConversationRepository(database.db));
+  const conversation=await service.createConversation({userId:user.id,title:'Synthetic failed wake'});
+  const port=new DrizzleNativeLiveBackendTurnPort(database.db);
+  const coordinator=new NativeLiveBackendTurnCoordinator(port);
+  const relay=new NativeLiveBackendRelayService(new DrizzleNativeLiveBackendRelayRepository(database.db),coordinator);
+  const session=crypto.randomUUID(), base=crypto.randomUUID(), cursor=crypto.randomUUID(), listener=crypto.randomUUID(), cwd='/synthetic/failed-wake';
+  async function prepare(){const result=await coordinator.prepare(user.id,{dispatch_target:'claude_code',request_id:crypto.randomUUID(),operation:'send',conversation_id:conversation.id,expected_head_message_id:null,text:'synthetic'});assert.equal(result.ok,true);if(!result.ok)throw Error('prepare failed');return result.command;}
+  const epoch=await prepare();
+  // The checkpoint whose quiet-wake tail is the cursor the wakes resumed from.
+  await database.db.insert(conversationProviderSessionCheckpoints).values({userId:user.id,conversationId:conversation.id,canonicalMessageId:epoch.canonical_user_message_id!,provider:'claude_code',providerSessionId:session,effectiveWorkingDirectory:cwd,providerCheckpointId:base,
+    runtimeMetadata:{native_live_resume_tail:{checkpoint_id:cursor}}});
+  async function wake(started:boolean){const id=crypto.randomUUID();
+    await database.db.insert(nativeLiveTurnPreparations).values({id,userId:user.id,requestId:crypto.randomUUID(),conversationId:conversation.id,operation:'wake',requestHash:'b'.repeat(64),
+      wakeContext:{epoch_id:epoch.canonical_user_message_id},runtimeMode:'resume',parentProviderSessionId:session,parentProviderCheckpointId:cursor,expectedWorkingDirectory:cwd,prompt:'[wake]',
+      ...(started?{dispatchStatus:'executing' as const,reservedBy:listener,reservedAt:new Date(),reservationExpiresAt:new Date(Date.now()+60_000),executionStartedAt:new Date()}:{})});
+    return id;}
+  const failed=await wake(true), neverStarted=await wake(false), quiet=await wake(true);
+  const discard=(id:string,failed?:boolean)=>port.discardWake({userId:user.id,preparation:{prepareId:id} as NativeLivePreparedTurn,providerSessionId:session,...(failed?{failed:true}:{})});
+  assert.equal(await discard(failed,true),'discarded');
+  assert.equal(await discard(neverStarted,true),'discarded');
+  assert.equal(await discard(quiet),'discarded');
+  const current=await prepare();
+  await database.db.update(nativeLiveTurnPreparations).set({runtimeMode:'resume',parentProviderSessionId:session,parentProviderCheckpointId:cursor,expectedWorkingDirectory:cwd}).where(eq(nativeLiveTurnPreparations.id,current.prepare_id));
+  assert.equal(await relay.renewLease({userId:user.id,listenerInstanceId:listener,dispatchTarget:'claude_code'}),'acquired');
+  await relay.enqueuePreparation({userId:user.id,prepareId:current.prepare_id});
+  const reserved=await relay.reserveNext({userId:user.id,listenerInstanceId:listener,dispatchTarget:'claude_code'});
+  assert.ok(reserved);assert.equal(reserved.reservationId,current.prepare_id);
+  assert.deepEqual(reserved.command.failed_user_message_uuids,[failed]);
+  await database.db.delete(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.id,current.prepare_id));
+  // A send from the canonical base did not resume below that wake.
+  const other=await prepare();
+  await database.db.update(nativeLiveTurnPreparations).set({runtimeMode:'resume',parentProviderSessionId:session,parentProviderCheckpointId:base,expectedWorkingDirectory:cwd}).where(eq(nativeLiveTurnPreparations.id,other.prepare_id));
+  await relay.enqueuePreparation({userId:user.id,prepareId:other.prepare_id});
+  const fromBase=await relay.reserveNext({userId:user.id,listenerInstanceId:listener,dispatchTarget:'claude_code'});
+  assert.ok(fromBase);assert.equal(fromBase.reservationId,other.prepare_id);
+  assert.equal(fromBase.command.failed_user_message_uuids,undefined);
 });

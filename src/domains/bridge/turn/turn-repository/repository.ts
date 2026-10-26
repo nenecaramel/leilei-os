@@ -212,6 +212,7 @@ implements NativeLiveBackendTurnPort {
     userId: string;
     preparation: NativeLivePreparedTurn;
     providerSessionId: string | null;
+    failed?: boolean;
   }): Promise<"discarded" | "idempotent"> {
     return discardWake.call(this.context, input);
   }

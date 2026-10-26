@@ -999,7 +999,20 @@ implements NativeLiveBackendRelayPort {
         ORDER BY failed.created_at DESC, failed.id DESC
         LIMIT 64
       `);
-      const ids = [...new Set(failures.map(failure => failure.canonical_user_message_id))];
+      // A failed wake left its input below this same cursor; the server
+      // recorded it when discarding the wake (recordFailedWakeInputLocked).
+      const wakes = await executor.execute<{ input_id: string }>(sql`
+        SELECT failed_wake.entry->>'input_id' AS input_id
+        FROM conversation_provider_session_checkpoints AS cp
+        CROSS JOIN LATERAL jsonb_array_elements(coalesce(cp.runtime_metadata->'native_live_failed_wake_inputs', '[]'::jsonb))
+          AS failed_wake(entry)
+        WHERE cp.user_id = ${userId}::uuid AND cp.conversation_id = ${preparation.conversationId}::uuid
+          AND cp.provider = 'claude_code'
+          AND failed_wake.entry->>'provider_session_id' = ${preparation.parentProviderSessionId}
+          AND failed_wake.entry->>'parent_checkpoint_id' = ${preparation.parentProviderCheckpointId}
+          AND (failed_wake.entry->>'cwd') IS NOT DISTINCT FROM ${preparation.expectedWorkingDirectory}::text
+      `);
+      const ids = [...new Set([...failures.map(failure => failure.canonical_user_message_id), ...wakes.map(wake => wake.input_id)])];
       if (ids.length) preparation.failedUserMessageUuids = ids;
     }
     return preparation;
