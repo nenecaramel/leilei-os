@@ -79,7 +79,7 @@ export function runLocalSwitch(args, { execute = execFileSync, environment = pro
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    if (Number(process.versions.node.split('.')[0]) !== 22) throw new Error('NODE_22_REQUIRED');
+    if (Number(process.versions.node.split('.')[0]) !== 24) throw new Error('NODE_24_REQUIRED');
     runLocalSwitch(process.argv.slice(2));
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }
