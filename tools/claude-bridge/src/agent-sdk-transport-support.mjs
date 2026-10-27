@@ -199,6 +199,34 @@ export function sdkInterruptedTailStart(entries, approvedInputs, sessionId) {
   return start;
 }
 
+// A safety-classifier refusal ends the turn like an interruption: the SDK
+// closes it with a zero-token synthetic refusal record. Between the approved
+// input and that record, only this prompt's tool results and SDK meta notices
+// may appear as user records, so a later Desktop turn is never superseded.
+export function sdkRefusalTailStart(entries, approvedInputs, sessionId) {
+  const end = entries.at(-1);
+  const message = end?.message;
+  if (end?.type !== "assistant" || end.isApiErrorMessage !== true
+    || message?.role !== "assistant" || message.model !== "<synthetic>" || message.stop_reason !== "refusal"
+    || !["input_tokens", "output_tokens"].every(key => message.usage?.[key] === 0)) return null;
+  const start = entries.findLastIndex(entry => entry.type === "user" && approvedInputs.has(entry.uuid));
+  if (start < 0 || !nonblankString(entries[start].promptId)) return null;
+  const promptId = entries[start].promptId;
+  for (const [index, entry] of entries.slice(start).entries()) {
+    if (entry.entrypoint !== "sdk-ts" || entry.sessionId !== sessionId || entry.isSidechain === true) return null;
+    if (entry.type === "user") {
+      if (entry.promptId !== promptId) return null;
+      const content = entry.message?.content;
+      if (index > 0 && !(entry.isMeta === true && typeof content === "string")
+        && !(Array.isArray(content) && content.length > 0
+          && content.every(block => block?.type === "tool_result"))) return null;
+    } else if (entry.type === "system") {
+      if (!["informational", "model_refusal_no_fallback"].includes(entry.subtype)) return null;
+    } else if (!["assistant", "attachment"].includes(entry.type)) return null;
+  }
+  return start;
+}
+
 // Authentication rejection is SDK-generated output, not a model reply. Only
 // closed, zero-token SDK segments for server-confirmed failed inputs qualify.
 export function sdkAuthenticationFailureTailStart(entries, failedInputs, sessionId) {
