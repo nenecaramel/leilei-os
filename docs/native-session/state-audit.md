@@ -163,6 +163,7 @@ Category key:
 | F25 | Admission denied or 39 events dropped on HTTP 200 with a lost body | A wrapped `RELAY_RESPONSE_BODY_UNAVAILABLE` was treated as permanent. | transport vs admission retry policy | #1183 | L |
 | F26 | Slow start before provider (two serial lease renewals per dispatch) | The background-replay helper and the dispatcher each renewed the lease. | M6 duplicate renewers | #1184 | L |
 | F27 | Unexplained `RUNTIME_UNAVAILABLE` / "Persistent session admission denied" | Not established; only diagnostics were added. | unknown | #1117, #1181 (open) | — |
+| F28 | After a safety-classifier refusal, the next send was rejected as unsynchronized history | The refused turn had already run tool calls, then the SDK closed it with a meta notice and a zero-token synthetic refusal record; only text-only failed replies were superseded. | native file tail vs server cursor; **missing transition** "failed input, refused after tools" | this PR | K |
 
 Counts:
 

@@ -24,6 +24,7 @@ import {
   createDefaultSendFileMcpServer,
   nonblankString,
   sdkInterruptedTailStart,
+  sdkRefusalTailStart,
   sdkAuthenticationFailureTailStart,
   sdkFailedReplyTailStart,
   sdkResultFailed,
@@ -493,8 +494,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     let sameCanonicalTurn = false;
     let failedInputOnly = false;
     const orderedSuffix = suffix.reverse();
-    const interruptedStart = sdkInterruptedTailStart(orderedSuffix,
-      new Set([...failedInputs, ...(userMessageUuid ? [userMessageUuid] : [])]), sessionId)
+    const approvedInputs = new Set([...failedInputs, ...(userMessageUuid ? [userMessageUuid] : [])]);
+    const interruptedStart = sdkInterruptedTailStart(orderedSuffix, approvedInputs, sessionId)
+      ?? sdkRefusalTailStart(orderedSuffix, approvedInputs, sessionId)
       ?? sdkAuthenticationFailureTailStart(orderedSuffix, failedInputs, sessionId)
       ?? sdkFailedReplyTailStart(orderedSuffix, failedInputs, sessionId);
     // Keep validating any earlier residue. Only the proven closed SDK segment

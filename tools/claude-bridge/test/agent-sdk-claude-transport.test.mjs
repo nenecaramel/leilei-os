@@ -2986,3 +2986,59 @@ test("local resume supersedes a failed input's text-only reply", async t => {
     else{await assert.rejects(run,error=>error.runtimeCode==="PROVIDER_SESSION_CONFLICT");assert.equal(queries,0);assert.deepEqual(entries,original);}
   });
 });
+
+// A safety-classifier refusal can stop a turn after its tool calls ran. The
+// SDK closes that turn with its own notice and a zero-token refusal record.
+test("local resume supersedes a proven SDK refusal tail after tool calls", async t => {
+  const sessionId="00000000-0000-4000-8000-000000000181", cp="00000000-0000-4000-8000-000000000182";
+  const failed="00000000-0000-4000-8000-000000000183", user="00000000-0000-4000-8000-000000000184", child="00000000-0000-4000-8000-000000000185";
+  const promptId="refused-prompt";
+  const makeTail=()=>[
+    {type:"user",uuid:failed,parentUuid:cp,promptId,message:{role:"user",content:[{type:"text",text:"synthetic input"}]}},
+    {type:"attachment",uuid:"context",parentUuid:failed},
+    {type:"assistant",uuid:"tool",parentUuid:"context",message:{role:"assistant",model:"real-model",stop_reason:"tool_use",content:[{type:"tool_use",id:"call",name:"mcp__synthetic__see",input:{}}]}},
+    {type:"user",uuid:"tool-result",parentUuid:"tool",promptId,message:{role:"user",content:[{type:"tool_result",tool_use_id:"call",content:"synthetic result"}]}},
+    {type:"user",uuid:"image-meta",parentUuid:"tool-result",promptId,isMeta:true,message:{role:"user",content:"[Image: synthetic]"}},
+    {type:"system",uuid:"notice",parentUuid:"image-meta",subtype:"informational",level:"notice",content:"synthetic safeguard notice"},
+    {type:"user",uuid:"refusal-note",parentUuid:"notice",promptId,isMeta:true,message:{role:"user",content:"synthetic classifier note"}},
+    {type:"system",uuid:"no-fallback",parentUuid:"refusal-note",subtype:"model_refusal_no_fallback",level:"warning",content:""},
+    {type:"assistant",uuid:"refusal",parentUuid:"no-fallback",isApiErrorMessage:true,error:"invalid_request",
+      message:{role:"assistant",model:"<synthetic>",stop_reason:"refusal",usage:{input_tokens:0,output_tokens:0,cache_creation_input_tokens:0,cache_read_input_tokens:0},content:[{type:"text",text:"synthetic refusal"}]}},
+  ].map(row=>({entrypoint:"sdk-ts",sessionId,...row}));
+  const cases=[
+    ["confirmed failed input refused after tools",tail=>tail,[failed],true],
+    ["same canonical user re-delivery",tail=>tail,[],true,true],
+    ["no server failure evidence",tail=>tail,[],false],
+    ["Desktop refusal record",tail=>{tail.at(-1).entrypoint="claude-desktop";return tail;},[failed],false],
+    ["Desktop output inside tail",tail=>{tail[2].entrypoint="claude-desktop";return tail;},[failed],false],
+    ["foreign session",tail=>{tail[2].sessionId="another";return tail;},[failed],false],
+    ["model-authored refusal",tail=>{tail.at(-1).message.model="real-model";return tail;},[failed],false],
+    ["nonzero refusal output",tail=>{tail.at(-1).message.usage.output_tokens=1;return tail;},[failed],false],
+    ["not an API error record",tail=>{delete tail.at(-1).isApiErrorMessage;return tail;},[failed],false],
+    ["different stop reason",tail=>{tail.at(-1).message.stop_reason="stop_sequence";return tail;},[failed],false],
+    ["no closing refusal",tail=>tail.slice(0,-1),[failed],false],
+    ["non-meta user text inside tail",tail=>{delete tail[6].isMeta;return tail;},[failed],false],
+    ["user record from another prompt",tail=>{tail[3].promptId="other";return tail;},[failed],false],
+    ["compaction in tail",tail=>{tail[5].subtype="compact_boundary";return tail;},[failed],false],
+    ["real later user turn",tail=>[...tail,{type:"user",uuid:"desktop",parentUuid:"refusal",entrypoint:"claude-desktop",sessionId,message:{content:"new turn"}}],[failed],false],
+  ];
+  for(const [name,mutate,evidence,allowed,redelivery] of cases) await t.test(name,async()=>{
+    const sendUuid=redelivery?failed:user;
+    const entries=[{type:"assistant",uuid:cp,parentUuid:null},...mutate(makeTail())];
+    const original=structuredClone(entries);let queries=0;
+    const transport=new AgentSdkClaudeTransport({environment:{},cwd:"/synthetic/refusal",
+      sessionMessagesImpl:async()=>[{type:"assistant"}],importSessionToStoreImpl:async(_id,store)=>store.append({},entries),
+      queryImpl:input=>{queries++;assert.equal(input.options.resume,sessionId);assert.equal(input.options.resumeSessionAt,cp);assert.notEqual(input.options.forkSession,true);
+        return{close(){},async *[Symbol.asyncIterator](){
+          yield successFixture(sessionId)[0];const prompt=await input.prompt[Symbol.asyncIterator]().next();assert.equal(prompt.value.uuid,sendUuid);
+          assert.deepEqual(entries,original,"recovery must not edit original history");
+          entries.push({type:"user",uuid:sendUuid,parentUuid:cp},{type:"assistant",uuid:child,parentUuid:sendUuid});
+          yield successFixture(sessionId)[1];yield successFixture(sessionId)[2];
+        }};
+      }});
+    const run=transport.executeTurn("synthetic send",{mode:"resume",parentProviderSessionId:sessionId,parentProviderCheckpointId:cp,
+      requireProviderCheckpoint:true,userMessageUuid:sendUuid,failedUserMessageUuids:evidence});
+    if(allowed){const result=await run;assert.equal(result.providerCheckpointId,child);assert.equal(queries,1);}
+    else{await assert.rejects(run,error=>error.runtimeCode==="PROVIDER_SESSION_CONFLICT");assert.equal(queries,0);assert.deepEqual(entries,original);}
+  });
+});
