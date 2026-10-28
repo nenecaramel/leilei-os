@@ -56,6 +56,8 @@ export type FixedWakeWindow = {
   longIdleDueAt: string;
   postTurnConsumed: boolean;
   longIdleConsumed: boolean;
+  midIdleDueAt?: string | null;
+  midIdleConsumed?: boolean;
 };
 
 /**
@@ -103,10 +105,16 @@ function pendingFixedDeadlines(fixed: FixedWakeWindow): number[] {
   const longDue = Date.parse(fixed.longIdleDueAt);
   const postDue = Date.parse(fixed.postTurnDueAt);
   const deadlines: number[] = [];
+  const midDue = fixed.midIdleDueAt ? Date.parse(fixed.midIdleDueAt) : Number.NaN;
   if (Number.isFinite(longDue)) deadlines.push(longDue);
-  // A short slot later than the long slot never fires; see silence wake.
-  if (!fixed.postTurnConsumed && Number.isFinite(postDue)
-    && (!Number.isFinite(longDue) || postDue < longDue)) {
+  // A shorter slot later than a longer slot never fires; see silence wake.
+  if (!fixed.midIdleConsumed && Number.isFinite(midDue)
+    && (!Number.isFinite(longDue) || midDue < longDue)) {
+    deadlines.push(midDue);
+  }
+  if (!fixed.postTurnConsumed && !fixed.midIdleConsumed && Number.isFinite(postDue)
+    && (!Number.isFinite(longDue) || postDue < longDue)
+    && (!Number.isFinite(midDue) || postDue < midDue)) {
     deadlines.push(postDue);
   }
   return deadlines;

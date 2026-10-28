@@ -66,6 +66,18 @@ export function parseSilenceWakeSchedule(
     || !Number.isFinite(Date.parse(record.postTurnDueAt))
     || !Number.isFinite(Date.parse(record.longIdleDueAt))
     || !(
+      record.midIdleDueAt === undefined
+      || record.midIdleDueAt === null
+      || (
+        typeof record.midIdleDueAt === "string"
+        && Number.isFinite(Date.parse(record.midIdleDueAt))
+      )
+    )
+    || !(
+      record.midIdleConsumed === undefined
+      || typeof record.midIdleConsumed === "boolean"
+    )
+    || !(
       record.concernDueAt === undefined
       || record.concernDueAt === null
       || (
@@ -85,6 +97,12 @@ export function parseSilenceWakeSchedule(
     longIdleDueAt: record.longIdleDueAt,
     postTurnConsumed: record.postTurnConsumed,
     longIdleConsumed: record.longIdleConsumed,
+    // An older server schedules no mid slot.
+    midIdleDueAt:
+      typeof record.midIdleDueAt === "string"
+        ? record.midIdleDueAt
+        : null,
+    midIdleConsumed: record.midIdleConsumed === true,
     concernDueAt:
       typeof record.concernDueAt === "string"
         ? record.concernDueAt

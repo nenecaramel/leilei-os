@@ -11,6 +11,7 @@ import { users } from "./users.js";
 
 export type NativeLiveSilenceWakeSlot =
   | "post_turn_idle"
+  | "mid_idle"
   | "long_idle";
 
 // Concern wakes share the epoch receipt ledger; each slot is one bounded,
@@ -47,7 +48,7 @@ export const nativeLiveSilenceWakeReceipts = pgTable(
     }),
     check(
       "native_live_silence_wake_receipts_slot_allowed",
-      sql`${table.slot} IN ('post_turn_idle', 'long_idle', 'concern_1', 'concern_2', 'concern_3')`,
+      sql`${table.slot} IN ('post_turn_idle', 'mid_idle', 'long_idle', 'concern_1', 'concern_2', 'concern_3')`,
     ),
   ],
 );

@@ -592,9 +592,12 @@ test("Mac HTTP relay client reads and fires silence wake without sending user id
     fakeFetch,
   );
 
-  // An older server omits concernDueAt; the Mac reads that as no concern.
+  // An older server omits concernDueAt and the mid slot; the Mac reads
+  // that as no concern and no mid wake.
   assert.deepEqual(await client.readSilenceWakeSchedule(), {
     ...schedule,
+    midIdleDueAt: null,
+    midIdleConsumed: false,
     concernDueAt: null,
   });
   assert.deepEqual(
@@ -607,6 +610,8 @@ test("Mac HTTP relay client reads and fires silence wake without sending user id
       schedule: {
         ...schedule,
         postTurnConsumed: true,
+        midIdleDueAt: null,
+        midIdleConsumed: false,
         concernDueAt: null,
       },
     },
@@ -654,10 +659,11 @@ test("Mac HTTP relay client carries the concern deadline and fires the concern s
     });
   };
   const client = new NativeLiveMacHttpRelayClient("https://relay.example", "secret-token", fakeFetch);
-  assert.deepEqual(await client.readSilenceWakeSchedule(), schedule);
+  const legacyMid = { midIdleDueAt: null, midIdleConsumed: false };
+  assert.deepEqual(await client.readSilenceWakeSchedule(), { ...schedule, ...legacyMid });
   assert.deepEqual(
     await client.fireSilenceWake({ epochId: userMessageId, slot: "concern" }),
-    { outcome: "queued", schedule: { ...schedule, concernDueAt: null } },
+    { outcome: "queued", schedule: { ...schedule, ...legacyMid, concernDueAt: null } },
   );
   assert.deepEqual(calls[1], { epoch_id: userMessageId, slot: "concern" });
   await assert.rejects(client.readSilenceWakeSchedule(), /silence wake schedule is invalid/u);

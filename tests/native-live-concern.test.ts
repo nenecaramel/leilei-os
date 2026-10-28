@@ -162,3 +162,25 @@ test("concern wake block hands Claude content, reason, progress and the fence", 
   assert.match(block, /update_concern/u);
   assert.match(block, /<quiet \/>/u);
 });
+
+test("a concern the mid-silence wake will carry gets no wake of its own", () => {
+  const fixed = { ...fixedConsumed, longIdleConsumed: false, midIdleDueAt: at(35).toISOString(), midIdleConsumed: false };
+  assert.equal(
+    concernWakeDueAt({
+      pending: [{ considerAt: at(20), expiresAt: at(2000) }],
+      receipts: [],
+      fixed,
+      assistantCompletedAt: completedAt,
+    }),
+    null,
+  );
+  assert.deepEqual(
+    concernWakeDueAt({
+      pending: [{ considerAt: at(20), expiresAt: at(2000) }],
+      receipts: [{ slot: "mid_idle", consumedAt: at(35) }],
+      fixed: { ...fixed, midIdleConsumed: true },
+      assistantCompletedAt: completedAt,
+    }),
+    at(35 + CONCERN_LIMITS.cooldownMs / minute),
+  );
+});

@@ -236,7 +236,51 @@ test(
       await silence.readSchedule({ userId: user.id });
     assert.ok(afterQuietSchedule);
     assert.equal(afterQuietSchedule.postTurnConsumed, true);
+    assert.equal(afterQuietSchedule.midIdleConsumed, false);
     assert.equal(afterQuietSchedule.longIdleConsumed, false);
+
+    // The 30–40 minute slot is its own receipt between the short and long slots.
+    assert.ok(afterQuietSchedule.midIdleDueAt);
+    now = new Date(afterQuietSchedule.midIdleDueAt);
+    const mid = await silence.fire({
+      userId: user.id,
+      epochId: afterQuietSchedule.epochId,
+      slot: "mid_idle",
+    });
+    assert.equal(mid.outcome, "queued");
+    assert.equal(mid.schedule?.midIdleConsumed, true);
+    assert.equal(mid.schedule?.longIdleConsumed, false);
+    const midPrepareId = silenceWakePreparationId(
+      afterQuietSchedule.epochId,
+      "mid_idle",
+    );
+    const midPreparation = await port.getPreparation({
+      userId: user.id,
+      prepareId: midPrepareId,
+    });
+    assert.ok(midPreparation);
+    assert.equal(midPreparation.operation, "wake");
+    assert.match(midPreparation.prompt, /^\[wake · \+\d+m · no reply\]$/u);
+    const midQuiet = await coordinator.finalize(user.id, {
+      protocol_version: 4,
+      prepare_id: midPrepareId,
+      request_id: midPreparation.requestId,
+      conversation_id: conversation.id,
+      status: "success",
+      provider_session_id: "provider-wake-quiet",
+      provider_checkpoint_id: midPrepareId,
+      normalized_events: [
+        { type: "text", payload: { text: "<quiet />" } },
+        { type: "result", payload: { status: "success", final_text: "<quiet />" } },
+      ],
+    });
+    assert.equal(midQuiet.ok && midQuiet.outcome, "wake_quiet");
+    const afterMid = await silence.fire({
+      userId: user.id,
+      epochId: afterQuietSchedule.epochId,
+      slot: "mid_idle",
+    });
+    assert.equal(afterMid.outcome, "ignored");
 
     now = new Date(afterQuietSchedule.longIdleDueAt);
     const long = await silence.fire({
@@ -332,7 +376,7 @@ test(
       .where(eq(nativeLiveSilenceWakeReceipts.userId, user.id));
     assert.deepEqual(
       receipts.map((row) => row.slot).sort(),
-      ["long_idle", "post_turn_idle"],
+      ["long_idle", "mid_idle", "post_turn_idle"],
     );
 
     const nextRequestId = crypto.randomUUID();
