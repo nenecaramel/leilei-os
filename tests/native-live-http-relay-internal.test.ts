@@ -613,6 +613,20 @@ test("internal relay silence wake endpoints use authenticated user scope and rej
       );
       assert.equal(concrete.status, 400);
       assert.equal(calls.length, 3);
+
+      const mid = await fetch(
+        `${baseUrl}/internal/native-live-relay/silence-wake/fire`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ epoch_id: epochId, slot: "mid_idle" }),
+        },
+      );
+      assert.equal(mid.status, 200);
+      assert.deepEqual(calls[3], {
+        name: "fire",
+        input: { userId, epochId, slot: "mid_idle" },
+      });
     },
   );
 });

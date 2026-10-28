@@ -467,7 +467,7 @@ export function createProcessRuntime(
           async fire(_input: {
             userId: string;
             epochId: string;
-            slot: "post_turn_idle" | "long_idle" | "concern";
+            slot: "post_turn_idle" | "mid_idle" | "long_idle" | "concern";
           }) {
             return {
               outcome: "ignored" as const,

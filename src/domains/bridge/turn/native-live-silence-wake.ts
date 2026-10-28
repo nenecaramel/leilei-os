@@ -26,6 +26,7 @@ import type {
 
 export type NativeLiveSilenceWakeSlot =
   | "post_turn_idle"
+  | "mid_idle"
   | "long_idle";
 
 // What the Mac may ask to fire; the server maps "concern" to a bounded slot.
@@ -40,6 +41,9 @@ export type NativeLiveSilenceWakeSchedule = {
   longIdleDueAt: string;
   postTurnConsumed: boolean;
   longIdleConsumed: boolean;
+  // Absent from older servers, which schedule no mid slot.
+  midIdleDueAt?: string | null;
+  midIdleConsumed?: boolean;
   // Absent from older servers; null when no concern wake is pending.
   concernDueAt?: string | null;
 };
@@ -64,16 +68,20 @@ export type NativeLiveSilenceWakeFireResult =
 // Post-reply wake: 2–5 minutes after the reply (owner's choice, 10/22).
 const POST_TURN_MIN_MS = 2 * 60_000;
 const POST_TURN_SPAN_MS = 3 * 60_000;
+// Mid-silence wake: 30–40 minutes after the reply (owner's choice, 10/28).
+const MID_IDLE_MIN_MS = 30 * 60_000;
+const MID_IDLE_SPAN_MS = 10 * 60_000;
 const LONG_IDLE_MIN_MS = 90 * 60_000;
 const LONG_IDLE_SPAN_MS = 30 * 60_000;
 
-// Both windows measure the owner's silence from the reply that ended the turn;
+// Every window measures the owner's silence from the reply that ended the turn;
 // time spent waiting for that reply is not silence.
 export function silenceWakeDeadlines(input: {
   epochId: string;
   assistantCompletedAt: string;
 }): {
   postTurnDueAt: string;
+  midIdleDueAt: string;
   longIdleDueAt: string;
 } {
   const base = Date.parse(input.assistantCompletedAt);
@@ -85,6 +93,11 @@ export function silenceWakeDeadlines(input: {
       base
         + POST_TURN_MIN_MS
         + stableOffset(input.epochId, "post_turn_idle", POST_TURN_SPAN_MS),
+    ).toISOString(),
+    midIdleDueAt: new Date(
+      base
+        + MID_IDLE_MIN_MS
+        + stableOffset(input.epochId, "mid_idle", MID_IDLE_SPAN_MS),
     ).toISOString(),
     longIdleDueAt: new Date(
       base
@@ -100,12 +113,16 @@ export function chooseDueSilenceWakeSlot(
 ): NativeLiveSilenceWakeSlot | null {
   if (!schedule || schedule.longIdleConsumed) return null;
   const longDue = Date.parse(schedule.longIdleDueAt);
+  const midDue = schedule.midIdleDueAt ? Date.parse(schedule.midIdleDueAt) : Number.NaN;
   const postDue = Date.parse(schedule.postTurnDueAt);
 
-  // A resumed Mac never catches up both opportunities. Once the long slot is
-  // due it owns the silence epoch and the shorter missed opportunity is stale.
+  // A resumed Mac never catches up several opportunities. The latest due slot
+  // owns the silence epoch and every shorter missed opportunity is stale.
   if (Number.isFinite(longDue) && nowMs >= longDue) {
     return "long_idle";
+  }
+  if (Number.isFinite(midDue) && nowMs >= midDue) {
+    return schedule.midIdleConsumed ? null : "mid_idle";
   }
   if (
     !schedule.postTurnConsumed
@@ -143,7 +160,11 @@ export function nextSilenceWakeDeadline(
   if (!schedule.longIdleConsumed) {
     const longDue = Date.parse(schedule.longIdleDueAt);
     if (Number.isFinite(longDue)) candidates.push(longDue);
-    if (!schedule.postTurnConsumed) {
+    if (!schedule.midIdleConsumed && schedule.midIdleDueAt) {
+      const midDue = Date.parse(schedule.midIdleDueAt);
+      if (Number.isFinite(midDue)) candidates.push(midDue);
+    }
+    if (!schedule.postTurnConsumed && !schedule.midIdleConsumed) {
       const postDue = Date.parse(schedule.postTurnDueAt);
       if (Number.isFinite(postDue)) candidates.push(postDue);
     }
@@ -513,6 +534,7 @@ export class NativeLiveSilenceWakeService {
     const fixed = {
       ...deadlines,
       postTurnConsumed: consumed.has("post_turn_idle"),
+      midIdleConsumed: consumed.has("mid_idle"),
       longIdleConsumed: consumed.has("long_idle"),
     };
     const pending = handedOff(source)
@@ -726,6 +748,7 @@ const RECEIPT_SLOT_CODES: Record<NativeLiveWakeReceiptSlot, number> = {
   concern_1: 0x03,
   concern_2: 0x04,
   concern_3: 0x05,
+  mid_idle: 0x06,
 };
 
 export function silenceWakePreparationId(
@@ -763,6 +786,7 @@ export function silenceWakeReceiptCandidatesForPreparationId(
 }> {
   return ([
     "post_turn_idle",
+    "mid_idle",
     "long_idle",
     ...CONCERN_WAKE_SLOTS,
   ] as const).map((slot) => ({
@@ -785,6 +809,8 @@ function markConsumed(
     ...schedule,
     ...(slot === "post_turn_idle"
       ? { postTurnConsumed: true }
-      : { longIdleConsumed: true }),
+      : slot === "mid_idle"
+        ? { midIdleConsumed: true }
+        : { longIdleConsumed: true }),
   };
 }
