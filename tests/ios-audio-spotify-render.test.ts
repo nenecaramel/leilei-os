@@ -27,7 +27,8 @@ function approvedSource(file: keyof typeof approvedRenderSources) {
 // renderer/projector closure to main 452bd750: a font/node/layout change must fail
 // the oracle guard instead of silently changing both sides of the comparison.
 const sharedPlaintextSources = {
-  'NativeLiveMediaPresentation.swift': '360ba0da3476e4cbea3aa1f4c53e08a96e6ca2cd875df3acea3ca65c8023d4d5',
+  // Owner-approved 10/29: a single image takes one grid tile, not the whole row.
+  'NativeLiveMediaPresentation.swift': '491411b00b143cc90a9fbc419fa9f3a67d2d27763e490e8a8354439697061e2d',
   'NativeLiveMessageBlocks.swift': '1190df2287766f4dadcd58b8acc22fa29819f3aec80dec49330b71b9f07ed543',
   'NativeLiveVisualRendererRegistry.swift': '1a7a6b22630ab26e68a5c54a96c6182b4471c43e250901a18be30793665724a1',
   'ChatMarkdown.swift': '743e9b3352bdeea78857349b90b78bbb88578dace50ac04e78d7817b9cfa8714',
@@ -71,7 +72,11 @@ test('voice/audio approved renderers and helpers have immutable source provenanc
   // the immutable presentation/visual subtrees against the historical fixture
   // instead of freezing the entire Swift file (which gained iMessage paint).
   const original=readFileSync('tests/fixtures/message-rows-main-72a67f44/NativeLiveMessageBlocks.swift','utf8');
-  const current=readFileSync(media+'NativeLiveMessageBlocks.swift','utf8');
+  // Owner-approved 10/29: an assistant image takes one grid tile's width.
+  const tiled='            if let input = node.attachment {\n                if input.mediaKind == .bitmap && !input.isMemeSticker {\n                    NativeLiveMediaTileWidth { NativeLiveMediaCard(input:input) }\n                } else { NativeLiveMediaCard(input:input,stickerImage:input.isMemeSticker) }\n            }\n';
+  const tiledSource=readFileSync(media+'NativeLiveMessageBlocks.swift','utf8');
+  assert.ok(tiledSource.includes(tiled),'Expected the assistant image tile width');
+  const current=tiledSource.replace(tiled,'            if let input = node.attachment { NativeLiveMediaCard(input:input,stickerImage:input.isMemeSticker) }\n');
   const view=(source:string,name:string)=>{
     const start=source.indexOf('struct '+name+': View {');
     assert.ok(start>=0,'Missing shared renderer: '+name);

@@ -45,8 +45,14 @@ import CoreGraphics
             precondition(layout.visibleCount == min(count,4) && layout.columns == (count == 1 ? 1 : 2))
             precondition(layout.tileWidth > 0 && layout.tileWidth <= 196 && layout.tileHeight <= 196)
         }
-        precondition(NativeLiveMediaLayout(count:1,availableWidth:360,aspectRatio:0.001).tileHeight <= 360)
-        precondition(NativeLiveMediaLayout(count:1,availableWidth:360,aspectRatio:1000).tileHeight >= 120)
+        // One image is one tile of the two-column grid, not the whole row; the
+        // grid then occupies only that tile so the message alignment places it.
+        for width in [196.0, 360.0] {
+            let single = NativeLiveMediaLayout(count:1,availableWidth:width)
+            let pair = NativeLiveMediaLayout(count:2,availableWidth:width)
+            precondition(single.tileWidth == pair.tileWidth && single.tileHeight == pair.tileHeight)
+            precondition(single.occupiedWidth == single.tileWidth && pair.occupiedWidth == width)
+        }
         let cache = NativeLiveAttachmentBytesCache(limit:1024)
         let counter = Counter()
         let key = try input.cacheKey(scope:"account")

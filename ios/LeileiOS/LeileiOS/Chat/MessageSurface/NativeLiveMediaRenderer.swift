@@ -99,7 +99,7 @@ struct NativeLiveMediaGrid: Layout {
         let width = proposal.width ?? 320
         let policy = NativeLiveMediaLayout(count:count,availableWidth:width)
         let rows = ceil(Double(policy.visibleCount)/Double(policy.columns))
-        return .init(width:width,height:rows*policy.tileHeight + max(0,rows-1)*6)
+        return .init(width:policy.occupiedWidth,height:rows*policy.tileHeight + max(0,rows-1)*6)
     }
     func placeSubviews(in bounds:CGRect,proposal:ProposedViewSize,subviews:Subviews,cache:inout ()) {
         let policy = NativeLiveMediaLayout(count:count,availableWidth:bounds.width)
@@ -107,6 +107,21 @@ struct NativeLiveMediaGrid: Layout {
             view.place(at:.init(x:bounds.minX+Double(index%policy.columns)*(policy.tileWidth+6),
                                 y:bounds.minY+Double(index/policy.columns)*(policy.tileHeight+6)),anchor:.topLeading,
                        proposal:.init(width:policy.tileWidth,height:policy.tileHeight))
+        }
+    }
+}
+
+// An assistant image outside a grid takes one grid tile's width; its height
+// stays the card's own, so failure and retry rows still fit below the image.
+struct NativeLiveMediaTileWidth: Layout {
+    func sizeThatFits(proposal:ProposedViewSize,subviews:Subviews,cache:inout ()) -> CGSize {
+        let width = NativeLiveMediaLayout(count:1,availableWidth:proposal.width ?? 320).tileWidth
+        let height = subviews.map { $0.sizeThatFits(.init(width:width,height:nil)).height }.max() ?? 0
+        return .init(width:width,height:height)
+    }
+    func placeSubviews(in bounds:CGRect,proposal:ProposedViewSize,subviews:Subviews,cache:inout ()) {
+        for view in subviews {
+            view.place(at:.init(x:bounds.minX,y:bounds.minY),anchor:.topLeading,proposal:.init(width:bounds.width,height:nil))
         }
     }
 }
