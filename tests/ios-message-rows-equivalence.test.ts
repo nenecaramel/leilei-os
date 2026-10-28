@@ -84,7 +84,11 @@ test('Assistant organization conserves activity bindings, refresh owner, indicat
   'Theme-aware user row must preserve edit and copy callback routing');
 });
 test('Inner renderer remains unchanged and wrong retry target is rejected by conservation',()=>{
- const baseline=old('NativeLiveMessageBlocks.swift'),current=read('NativeLiveMessageBlocks.swift');
+ // Owner-approved 10/29: an assistant image takes one grid tile's width.
+ const tiled='if input.mediaKind == .bitmap && !input.isMemeSticker {\n                    NativeLiveMediaTileWidth { NativeLiveMediaCard(input:input) }\n                } else { NativeLiveMediaCard(input:input,stickerImage:input.isMemeSticker) }';
+ const source=read('NativeLiveMessageBlocks.swift');
+ assert.ok(source.includes(tiled),'Expected the assistant image tile width');
+ const baseline=old('NativeLiveMessageBlocks.swift'),current=source.replace(tiled,'NativeLiveMediaCard(input:input,stickerImage:input.isMemeSticker)');
  for(const name of ['NativeLiveMessagePresentationView','NativeLiveVisualNodesView','NativeLiveVisualNodeView']) {
   equal(block(current,'struct '+name+':'),block(baseline,'struct '+name+':'),name);
  }

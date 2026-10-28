@@ -78,18 +78,20 @@ extension NativeLiveAttachmentPresentationInput {
 }
 
 // Geometry is shared by all source phases; only available width and image count vary.
+// A single image is one tile of the two-column grid, not the whole row.
 struct NativeLiveMediaLayout {
     let visibleCount: Int
     let columns: Int
     let tileWidth: Double
     let tileHeight: Double
-    init(count: Int, availableWidth: Double, aspectRatio: Double = 1) {
+    let occupiedWidth: Double
+    init(count: Int, availableWidth: Double) {
         visibleCount = min(max(count,0),4)
         columns = count == 1 ? 1 : 2
         let width = max(1, availableWidth.isFinite ? availableWidth : 1)
-        tileWidth = max(1,(width - Double(columns-1)*6)/Double(columns))
-        let ratio = aspectRatio.isFinite && aspectRatio > 0 ? min(3,max(0.75,aspectRatio)) : 1
-        tileHeight = count == 1 ? min(width,max(min(120,width),tileWidth/ratio)) : tileWidth
+        tileWidth = max(1,(width - 6)/2)
+        tileHeight = tileWidth
+        occupiedWidth = columns == 1 ? tileWidth : width
     }
 }
 
