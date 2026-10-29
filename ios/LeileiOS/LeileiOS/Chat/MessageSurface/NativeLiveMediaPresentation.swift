@@ -93,6 +93,11 @@ struct NativeLiveMediaLayout {
         tileHeight = tileWidth
         occupiedWidth = columns == 1 ? tileWidth : width
     }
+    // Placement only sees the occupied width; recover the row it was measured in.
+    init(count: Int, placedWidth: Double) {
+        let width = max(1, placedWidth.isFinite ? placedWidth : 1)
+        self.init(count:count,availableWidth:count == 1 ? width*2 + 6 : width)
+    }
 }
 
 extension NativeLiveMessagePresentation {

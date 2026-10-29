@@ -54,8 +54,10 @@ test('presentation seams preserve ordinary cards, tool permission order, project
   // that width), and an assistant image is held to the same tile width.
   const tileWidth="// An assistant image outside a grid takes one grid tile's width; its height\n// stays the card's own, so failure and retry rows still fit below the image.\nstruct NativeLiveMediaTileWidth: Layout {\n    func sizeThatFits(proposal:ProposedViewSize,subviews:Subviews,cache:inout ()) -> CGSize {\n        let width = NativeLiveMediaLayout(count:1,availableWidth:proposal.width ?? 320).tileWidth\n        let height = subviews.map { $0.sizeThatFits(.init(width:width,height:nil)).height }.max() ?? 0\n        return .init(width:width,height:height)\n    }\n    func placeSubviews(in bounds:CGRect,proposal:ProposedViewSize,subviews:Subviews,cache:inout ()) {\n        for view in subviews {\n            view.place(at:.init(x:bounds.minX,y:bounds.minY),anchor:.topLeading,proposal:.init(width:bounds.width,height:nil))\n        }\n    }\n}\n\n";
   const singleTile=readFileSync(media+'NativeLiveMediaRenderer.swift','utf8');
-  assert.ok(singleTile.includes(tileWidth) && singleTile.includes('return .init(width:policy.occupiedWidth,height:'));
-  const renderer=singleTile.replace(tileWidth,'').replace('return .init(width:policy.occupiedWidth,height:','return .init(width:width,height:');
+  assert.ok(singleTile.includes(tileWidth) && singleTile.includes('return .init(width:policy.occupiedWidth,height:')
+    && singleTile.includes('NativeLiveMediaLayout(count:count,placedWidth:bounds.width)'));
+  const renderer=singleTile.replace(tileWidth,'').replace('return .init(width:policy.occupiedWidth,height:','return .init(width:width,height:')
+    .replace('NativeLiveMediaLayout(count:count,placedWidth:bounds.width)','NativeLiveMediaLayout(count:count,availableWidth:bounds.width)');
   const previous=baseline(media+'NativeLiveMediaRenderer.swift');
   const legacyRender=renderer.replace(/    @ViewBuilder var body: some View \{\n        if input.mediaKind == \.audio \{ NativeLiveAudioAttachmentBubble\(input: input\) \}\n        else \{ ordinaryBody \}\n    \}\n\n    private var ordinaryBody: some View \{/, '    var body: some View {');
   const currentPaintStart=legacyRender.indexOf('    // Ordinary files reuse rich-content glass;');
