@@ -37,10 +37,14 @@ async function fixture(t: test.TestContext) {
   const result = { protocol_version: 4, prepare_id: prepareId, request_id: wake.requestId, conversation_id: conversation.id, status: "success", provider_session_id: "synthetic-session", provider_checkpoint_id: next, effective_working_directory: "/synthetic", normalized_events: [{ type: "text", payload: { text: "<quiet />" } }] };
   const send = () => coordinator.prepare(user.id, { dispatch_target: "claude_code", request_id: crypto.randomUUID(), operation: "send", conversation_id: conversation.id, expected_head_message_id: source.assistantMessageId, text: "next synthetic" });
   const visibleCount = async () => (await database.db.select({ count: sql<number>`count(*)::int` }).from(conversationMessages).where(eq(conversationMessages.conversationId, conversation.id)))[0]!.count;
+  // The recurring wake rides the long slot; each fire moves its due time, so
+  // read it back and address the numbered receipt it creates.
+  let recurring = 0;
   const longWake = async () => {
-    now = new Date(schedule.longIdleDueAt);
+    const current = await silence.readSchedule({ userId: user.id }); assert.ok(current);
+    now = new Date(current.longIdleDueAt);
     assert.equal((await silence.fire({ userId: user.id, epochId: schedule.epochId, slot: "long_idle" })).outcome, "queued");
-    const id = silenceWakePreparationId(schedule.epochId, "long_idle");
+    const id = silenceWakePreparationId(schedule.epochId, `idle_${++recurring}`);
     await database.db.update(nativeLiveTurnPreparations).set({ runtimeMode: "resume" }).where(eq(nativeLiveTurnPreparations.id, id));
     const second = await port.getPreparation({ userId: user.id, prepareId: id }); assert.ok(second); return second;
   };

@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   nativeLiveProviderSessionCleanups,
   nativeLiveSilenceWakeReceipts,
@@ -139,33 +139,37 @@ export async function hasDiscardedWakeReceipt(
 ): Promise<boolean> {
   const candidates =
     silenceWakeReceiptCandidatesForPreparationId(preparationId);
-  for (const candidate of candidates) {
-    const [receipt] = await executor
-      .select({ epochId: nativeLiveSilenceWakeReceipts.epochId })
-      .from(nativeLiveSilenceWakeReceipts)
-      .where(
-        and(
-          eq(nativeLiveSilenceWakeReceipts.userId, userId),
-          eq(nativeLiveSilenceWakeReceipts.epochId, candidate.epochId),
-          eq(nativeLiveSilenceWakeReceipts.slot, candidate.slot),
+  // One read for every slot this id could belong to (recurring wakes included).
+  const receipts = await executor
+    .select({
+      epochId: nativeLiveSilenceWakeReceipts.epochId,
+      slot: nativeLiveSilenceWakeReceipts.slot,
+    })
+    .from(nativeLiveSilenceWakeReceipts)
+    .where(
+      and(
+        eq(nativeLiveSilenceWakeReceipts.userId, userId),
+        inArray(
+          nativeLiveSilenceWakeReceipts.epochId,
+          [...new Set(candidates.map((candidate) => candidate.epochId))],
         ),
-      )
-      .limit(1);
-    if (!receipt) continue;
-
-    const [preparation] = await executor
-      .select({ id: nativeLiveTurnPreparations.id })
-      .from(nativeLiveTurnPreparations)
-      .where(
-        and(
-          eq(nativeLiveTurnPreparations.userId, userId),
-          eq(nativeLiveTurnPreparations.id, preparationId),
-        ),
-      )
-      .limit(1);
-    if (!preparation) return true;
+      ),
+    );
+  if (!receipts.some((receipt) => candidates.some((candidate) =>
+    candidate.epochId === receipt.epochId && candidate.slot === receipt.slot))) {
+    return false;
   }
-  return false;
+  const [preparation] = await executor
+    .select({ id: nativeLiveTurnPreparations.id })
+    .from(nativeLiveTurnPreparations)
+    .where(
+      and(
+        eq(nativeLiveTurnPreparations.userId, userId),
+        eq(nativeLiveTurnPreparations.id, preparationId),
+      ),
+    )
+    .limit(1);
+  return !preparation;
 }
 
 export type NativeLiveDiscardWakePort = Pick<
