@@ -28,7 +28,7 @@ function approvedSource(file: keyof typeof approvedRenderSources) {
 // the oracle guard instead of silently changing both sides of the comparison.
 const sharedPlaintextSources = {
   // Owner-approved 10/29: a single image takes one grid tile, not the whole row.
-  'NativeLiveMediaPresentation.swift': '1c0b36ed81bbb8d9a90951dfea2e268159e777660f2b1528c23d8190242a80ad',
+  'NativeLiveMediaPresentation.swift': '24a4ccd627ed2e975298161a4a8f55a60d37fe82d6432e63e6a73f1cdc90abc4',
   'NativeLiveMessageBlocks.swift': '1190df2287766f4dadcd58b8acc22fa29819f3aec80dec49330b71b9f07ed543',
   'NativeLiveVisualRendererRegistry.swift': '1a7a6b22630ab26e68a5c54a96c6182b4471c43e250901a18be30793665724a1',
   'ChatMarkdown.swift': '743e9b3352bdeea78857349b90b78bbb88578dace50ac04e78d7817b9cfa8714',
@@ -73,7 +73,7 @@ test('voice/audio approved renderers and helpers have immutable source provenanc
   // instead of freezing the entire Swift file (which gained iMessage paint).
   const original=readFileSync('tests/fixtures/message-rows-main-72a67f44/NativeLiveMessageBlocks.swift','utf8');
   // Owner-approved 10/29: an assistant image takes one grid tile's width.
-  const tiled='            if let input = node.attachment {\n                if input.mediaKind == .bitmap && !input.isMemeSticker {\n                    NativeLiveMediaTileWidth { NativeLiveMediaCard(input:input) }\n                } else { NativeLiveMediaCard(input:input,stickerImage:input.isMemeSticker) }\n            }\n';
+  const tiled='            if let input = node.attachment {\n                if input.mediaKind == .bitmap && !input.isMemeSticker {\n                    NativeLiveAssistantImageTile(input:input)\n                } else { NativeLiveMediaCard(input:input,stickerImage:input.isMemeSticker) }\n            }\n';
   const tiledSource=readFileSync(media+'NativeLiveMessageBlocks.swift','utf8');
   assert.ok(tiledSource.includes(tiled),'Expected the assistant image tile width');
   const current=tiledSource.replace(tiled,'            if let input = node.attachment { NativeLiveMediaCard(input:input,stickerImage:input.isMemeSticker) }\n');

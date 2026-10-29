@@ -85,10 +85,12 @@ struct NativeLiveMediaLayout {
     let tileWidth: Double
     let tileHeight: Double
     let occupiedWidth: Double
-    init(count: Int, availableWidth: Double) {
+    // An assistant image passes the user row's leading clearance so both sides'
+    // tiles come out of the same width.
+    init(count: Int, availableWidth: Double, leadingClearance: Double = 0) {
         visibleCount = min(max(count,0),4)
         columns = count == 1 ? 1 : 2
-        let width = max(1, availableWidth.isFinite ? availableWidth : 1)
+        let width = max(1, availableWidth.isFinite ? availableWidth - max(0,leadingClearance) : 1)
         tileWidth = max(1,(width - 6)/2)
         tileHeight = tileWidth
         occupiedWidth = columns == 1 ? tileWidth : width

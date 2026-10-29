@@ -54,6 +54,13 @@ import CoreGraphics
             precondition(single.occupiedWidth == single.tileWidth && pair.occupiedWidth == width)
             // Placement receives only the occupied width back; it must keep the
             // measured tile instead of halving the single image a second time.
+            // An assistant image in the same row matches the user's tile: the
+            // user's row reserves its leading clearance before the grid.
+            for clearance in [48.0, 70.0] {
+                let user = NativeLiveMediaLayout(count:1,availableWidth:width - clearance)
+                let assistant = NativeLiveMediaLayout(count:1,availableWidth:width,leadingClearance:clearance)
+                precondition(assistant.tileWidth == user.tileWidth && assistant.tileHeight == user.tileHeight)
+            }
             for layout in [single, pair] {
                 let placed = NativeLiveMediaLayout(count:layout.visibleCount,placedWidth:layout.occupiedWidth)
                 precondition(placed.tileWidth == layout.tileWidth && placed.tileHeight == layout.tileHeight)
