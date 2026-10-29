@@ -111,17 +111,30 @@ struct NativeLiveMediaGrid: Layout {
     }
 }
 
-// An assistant image outside a grid takes one grid tile's width; its height
+// An assistant image outside a grid takes the user's grid tile width; its height
 // stays the card's own, so failure and retry rows still fit below the image.
 struct NativeLiveMediaTileWidth: Layout {
+    let leadingClearance: Double
     func sizeThatFits(proposal:ProposedViewSize,subviews:Subviews,cache:inout ()) -> CGSize {
-        let width = NativeLiveMediaLayout(count:1,availableWidth:proposal.width ?? 320).tileWidth
+        let width = NativeLiveMediaLayout(count:1,availableWidth:proposal.width ?? 320,leadingClearance:leadingClearance).tileWidth
         let height = subviews.map { $0.sizeThatFits(.init(width:width,height:nil)).height }.max() ?? 0
         return .init(width:width,height:height)
     }
     func placeSubviews(in bounds:CGRect,proposal:ProposedViewSize,subviews:Subviews,cache:inout ()) {
         for view in subviews {
             view.place(at:.init(x:bounds.minX,y:bounds.minY),anchor:.topLeading,proposal:.init(width:bounds.width,height:nil))
+        }
+    }
+}
+
+// The tile matches the user's grid in the same theme: same row, same clearance.
+struct NativeLiveAssistantImageTile: View {
+    @Environment(\.chatTheme) private var chatTheme
+    let input: NativeLiveAttachmentPresentationInput
+    var body: some View {
+        NativeLiveMediaTileWidth(leadingClearance:chatTheme == .iMessage
+            ? ChatPresentationLayout.iMessageUserLeadingClearance : ChatPresentationLayout.userLeadingClearance) {
+            NativeLiveMediaCard(input:input)
         }
     }
 }

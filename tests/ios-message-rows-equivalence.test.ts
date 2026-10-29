@@ -85,7 +85,7 @@ test('Assistant organization conserves activity bindings, refresh owner, indicat
 });
 test('Inner renderer remains unchanged and wrong retry target is rejected by conservation',()=>{
  // Owner-approved 10/29: an assistant image takes one grid tile's width.
- const tiled='if input.mediaKind == .bitmap && !input.isMemeSticker {\n                    NativeLiveMediaTileWidth { NativeLiveMediaCard(input:input) }\n                } else { NativeLiveMediaCard(input:input,stickerImage:input.isMemeSticker) }';
+ const tiled='if input.mediaKind == .bitmap && !input.isMemeSticker {\n                    NativeLiveAssistantImageTile(input:input)\n                } else { NativeLiveMediaCard(input:input,stickerImage:input.isMemeSticker) }';
  const source=read('NativeLiveMessageBlocks.swift');
  assert.ok(source.includes(tiled),'Expected the assistant image tile width');
  const baseline=old('NativeLiveMessageBlocks.swift'),current=source.replace(tiled,'NativeLiveMediaCard(input:input,stickerImage:input.isMemeSticker)');

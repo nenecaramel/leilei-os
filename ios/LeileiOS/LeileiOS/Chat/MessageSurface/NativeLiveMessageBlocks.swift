@@ -79,7 +79,7 @@ struct NativeLiveVisualNodeView: View {
         case .attachment:
             if let input = node.attachment {
                 if input.mediaKind == .bitmap && !input.isMemeSticker {
-                    NativeLiveMediaTileWidth { NativeLiveMediaCard(input:input) }
+                    NativeLiveAssistantImageTile(input:input)
                 } else { NativeLiveMediaCard(input:input,stickerImage:input.isMemeSticker) }
             }
             else { NativeLiveVisualFallbackView(fallback:node.fallback) }
