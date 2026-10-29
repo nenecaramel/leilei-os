@@ -7,6 +7,7 @@ import type { createDatabase } from "../../../database/client.js";
 import {
   nativeLiveSilenceWakeReceipts,
   nativeLiveTurnPreparations,
+  type NativeLiveRecurringIdleSlot,
   type NativeLiveWakeReceiptSlot,
 } from "../../../database/schema.js";
 import {
@@ -34,6 +35,9 @@ export type NativeLiveWakeFireSlot =
   | NativeLiveSilenceWakeSlot
   | "concern";
 
+// On the wire the long slot carries the next recurring wake, so a Mac that
+// already knows the long slot fires every recurring wake without an update;
+// longIdleConsumed means the recurring safety limit was reached.
 export type NativeLiveSilenceWakeSchedule = {
   epochId: string;
   conversationId: string;
@@ -41,7 +45,7 @@ export type NativeLiveSilenceWakeSchedule = {
   longIdleDueAt: string;
   postTurnConsumed: boolean;
   longIdleConsumed: boolean;
-  // Absent from older servers, which schedule no mid slot.
+  // Retired; servers since the recurring wake send null.
   midIdleDueAt?: string | null;
   midIdleConsumed?: boolean;
   // Absent from older servers; null when no concern wake is pending.
@@ -68,21 +72,20 @@ export type NativeLiveSilenceWakeFireResult =
 // Post-reply wake: 2–5 minutes after the reply (owner's choice, 10/22).
 const POST_TURN_MIN_MS = 2 * 60_000;
 const POST_TURN_SPAN_MS = 3 * 60_000;
-// Mid-silence wake: 30–40 minutes after the reply (owner's choice, 10/28).
-const MID_IDLE_MIN_MS = 30 * 60_000;
-const MID_IDLE_SPAN_MS = 10 * 60_000;
-const LONG_IDLE_MIN_MS = 90 * 60_000;
-const LONG_IDLE_SPAN_MS = 30 * 60_000;
+// Recurring wake (owner's choice, 10/29): every 30–40 minutes after the later of
+// Claude's last message and the last wake, so the prompt cache stays warm, until
+// she replies. The owner turns Wake off at night; the limit is only a backstop.
+const RECURRING_IDLE_MIN_MS = 30 * 60_000;
+const RECURRING_IDLE_SPAN_MS = 10 * 60_000;
+export const RECURRING_IDLE_LIMIT = 64;
 
-// Every window measures the owner's silence from the reply that ended the turn;
-// time spent waiting for that reply is not silence.
+// The post-reply window measures the owner's silence from the reply that ended
+// the turn; time spent waiting for that reply is not silence.
 export function silenceWakeDeadlines(input: {
   epochId: string;
   assistantCompletedAt: string;
 }): {
   postTurnDueAt: string;
-  midIdleDueAt: string;
-  longIdleDueAt: string;
 } {
   const base = Date.parse(input.assistantCompletedAt);
   if (!Number.isFinite(base)) {
@@ -94,17 +97,44 @@ export function silenceWakeDeadlines(input: {
         + POST_TURN_MIN_MS
         + stableOffset(input.epochId, "post_turn_idle", POST_TURN_SPAN_MS),
     ).toISOString(),
-    midIdleDueAt: new Date(
-      base
-        + MID_IDLE_MIN_MS
-        + stableOffset(input.epochId, "mid_idle", MID_IDLE_SPAN_MS),
-    ).toISOString(),
-    longIdleDueAt: new Date(
-      base
-        + LONG_IDLE_MIN_MS
-        + stableOffset(input.epochId, "long_idle", LONG_IDLE_SPAN_MS),
-    ).toISOString(),
   };
+}
+
+export function recurringIdleDueAt(input: {
+  epochId: string;
+  sequence: number;
+  lastActivityAt: Date;
+}): Date {
+  return new Date(
+    input.lastActivityAt.getTime()
+      + RECURRING_IDLE_MIN_MS
+      + stableOffset(input.epochId, `idle_${input.sequence}`, RECURRING_IDLE_SPAN_MS),
+  );
+}
+
+// Any wake, quiet or visible, refreshed the cache as much as Claude's last message.
+export function recurringIdleAnchor(input: {
+  lastAssistantCompletedAt: Date;
+  receipts: readonly ConcernWakeReceipt[];
+}): Date {
+  return new Date(Math.max(
+    input.lastAssistantCompletedAt.getTime(),
+    ...input.receipts.map((receipt) => receipt.consumedAt.getTime()),
+  ));
+}
+
+export function nextRecurringIdleSlot(
+  receipts: readonly ConcernWakeReceipt[],
+): NativeLiveRecurringIdleSlot | null {
+  const used = receipts.filter((receipt) => isRecurringIdleSlot(receipt.slot)).length;
+  return used < RECURRING_IDLE_LIMIT ? `idle_${used + 1}` : null;
+}
+
+export function isRecurringIdleSlot(
+  slot: string,
+): slot is NativeLiveRecurringIdleSlot {
+  const match = /^idle_([1-9][0-9]?)$/u.exec(slot);
+  return match !== null && Number(match[1]) <= RECURRING_IDLE_LIMIT;
 }
 
 export function chooseDueSilenceWakeSlot(
@@ -211,7 +241,7 @@ export function silenceWakeDeterministicUuid(key: string): string {
 
 function stableOffset(
   epochId: string,
-  slot: NativeLiveSilenceWakeSlot,
+  slot: NativeLiveSilenceWakeSlot | NativeLiveRecurringIdleSlot,
   spanMs: number,
 ): number {
   const digest = createHash("sha256")
@@ -233,6 +263,7 @@ type SilenceWakeSource = {
   conversationId: string;
   epochId: string;
   assistantCompletedAt: Date;
+  lastAssistantCompletedAt: Date;
   currentHeadMessageId: string;
   providerSessionId: string;
   effectiveWorkingDirectory: string | null;
@@ -315,7 +346,15 @@ export class NativeLiveSilenceWakeService {
                   source.epochId,
                 ),
               )
-            : input.slot;
+            : input.slot === "long_idle"
+              ? nextRecurringIdleSlot(
+                  await this.readReceipts(
+                    transaction as SilenceWakeTransaction,
+                    input.userId,
+                    source.epochId,
+                  ),
+                )
+              : input.slot;
         if (dueSlot !== input.slot || !receiptSlot) {
           return {
             outcome: "ignored" as const,
@@ -416,13 +455,13 @@ export class NativeLiveSilenceWakeService {
           if (existing?.status === "prepared") {
             return {
               outcome: "queued" as const,
-              schedule: markConsumed(schedule, receiptSlot),
+              schedule: await this.consumedSchedule(transaction as SilenceWakeTransaction, input.userId, source, schedule, receiptSlot),
             };
           }
           return {
             outcome: "ignored" as const,
             reason: "already_consumed" as const,
-            schedule: markConsumed(schedule, receiptSlot),
+            schedule: await this.consumedSchedule(transaction as SilenceWakeTransaction, input.userId, source, schedule, receiptSlot),
           };
         }
 
@@ -531,11 +570,21 @@ export class NativeLiveSilenceWakeService {
       assistantCompletedAt:
         source.assistantCompletedAt.toISOString(),
     });
+    const nextIdle = nextRecurringIdleSlot(receipts);
     const fixed = {
       ...deadlines,
       postTurnConsumed: consumed.has("post_turn_idle"),
-      midIdleConsumed: consumed.has("mid_idle"),
-      longIdleConsumed: consumed.has("long_idle"),
+      longIdleDueAt: recurringIdleDueAt({
+        epochId: source.epochId,
+        sequence: nextIdle ? Number(nextIdle.slice("idle_".length)) : RECURRING_IDLE_LIMIT,
+        lastActivityAt: recurringIdleAnchor({
+          lastAssistantCompletedAt: source.lastAssistantCompletedAt,
+          receipts,
+        }),
+      }).toISOString(),
+      longIdleConsumed: nextIdle === null,
+      midIdleDueAt: null,
+      midIdleConsumed: false,
     };
     const pending = handedOff(source)
       ? []
@@ -557,6 +606,19 @@ export class NativeLiveSilenceWakeService {
       ...fixed,
       concernDueAt: concernDueAt?.toISOString() ?? null,
     };
+  }
+
+  // A recurring receipt moves the next due time, so read it back instead.
+  private async consumedSchedule(
+    executor: SilenceWakeExecutor,
+    userId: string,
+    source: SilenceWakeSource,
+    schedule: NativeLiveSilenceWakeSchedule,
+    slot: NativeLiveWakeReceiptSlot,
+  ): Promise<NativeLiveSilenceWakeSchedule> {
+    return isRecurringIdleSlot(slot)
+      ? this.scheduleForSource(executor, userId, source)
+      : markConsumed(schedule, slot);
   }
 
   private async readReceipts(
@@ -586,6 +648,7 @@ export class NativeLiveSilenceWakeService {
       conversation_id: string;
       user_message_id: string;
       assistant_completed_at: Date | string;
+      head_completed_at: Date | string;
       current_head_message_id: string;
       provider_session_id: string;
       effective_working_directory: string | null;
@@ -668,6 +731,7 @@ export class NativeLiveSilenceWakeService {
         source.user_message_id,
         reply.assistant_completed_at,
         path.current_head_message_id,
+        path.completed_at AS head_completed_at,
         checkpoint.provider_session_id,
         checkpoint.effective_working_directory,
         ${nativeResumeCheckpointSql("checkpoint", "tail_surface")} AS provider_checkpoint_id,
@@ -706,6 +770,11 @@ export class NativeLiveSilenceWakeService {
             row.assistant_completed_at,
             "assistant_completed_at",
           ),
+          // The head is Claude's latest completed message, a visible wake included.
+          lastAssistantCompletedAt: readDatabaseTimestamp(
+            row.head_completed_at,
+            "head_completed_at",
+          ),
           currentHeadMessageId: row.current_head_message_id,
           providerSessionId: row.provider_session_id,
           effectiveWorkingDirectory: row.effective_working_directory,
@@ -742,7 +811,7 @@ function readDatabaseTimestamp(
   return date;
 }
 
-const RECEIPT_SLOT_CODES: Record<NativeLiveWakeReceiptSlot, number> = {
+const RECEIPT_SLOT_CODES: Record<Exclude<NativeLiveWakeReceiptSlot, NativeLiveRecurringIdleSlot>, number> = {
   post_turn_idle: 0x01,
   long_idle: 0x02,
   concern_1: 0x03,
@@ -750,6 +819,13 @@ const RECEIPT_SLOT_CODES: Record<NativeLiveWakeReceiptSlot, number> = {
   concern_3: 0x05,
   mid_idle: 0x06,
 };
+
+// Recurring wakes take 0x41..0x80, clear of the fixed and concern codes.
+function receiptSlotCode(slot: NativeLiveWakeReceiptSlot): number {
+  return isRecurringIdleSlot(slot)
+    ? 0x40 + Number(slot.slice("idle_".length))
+    : RECEIPT_SLOT_CODES[slot];
+}
 
 export function silenceWakePreparationId(
   epochId: string,
@@ -760,7 +836,7 @@ export function silenceWakePreparationId(
     throw new Error("Silence wake epoch id must be a UUID.");
   }
   const bytes = Buffer.from(compact, "hex");
-  bytes[15] = (bytes[15] ?? 0) ^ RECEIPT_SLOT_CODES[slot];
+  bytes[15] = (bytes[15] ?? 0) ^ receiptSlotCode(slot);
   const hex = bytes.toString("hex");
   return [
     hex.slice(0, 8),
@@ -789,6 +865,7 @@ export function silenceWakeReceiptCandidatesForPreparationId(
     "mid_idle",
     "long_idle",
     ...CONCERN_WAKE_SLOTS,
+    ...Array.from({ length: RECURRING_IDLE_LIMIT }, (_, index) => `idle_${index + 1}` as const),
   ] as const).map((slot) => ({
     epochId: silenceWakeEpochFromPreparationId(preparationId, slot),
     slot,

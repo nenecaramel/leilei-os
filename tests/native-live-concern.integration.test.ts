@@ -21,6 +21,8 @@ import {
 } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 import {
   NativeLiveSilenceWakeService,
+  chooseDueWakeFireSlot,
+  nextSilenceWakeDeadline,
   silenceWakePreparationId,
 } from "../src/domains/bridge/turn/native-live-silence-wake.js";
 import {
@@ -139,7 +141,7 @@ async function harness(t: TestContext) {
 }
 
 test(
-  "a due concern wakes the same session once, survives a visible reply and can be postponed",
+  "a due concern rides the recurring wake once, survives a visible reply and can be postponed",
   { skip: !enabled },
   async (t) => {
     const h = await harness(t);
@@ -175,51 +177,48 @@ test(
       h.clock.now.getTime() + 180 * minute,
     );
 
-    // Both fixed slots fire first and neither carries the not-yet-due concern.
-    for (const slot of ["post_turn_idle", "long_idle"] as const) {
+    // Owner's choice (10/29): wakes recur every 30–40 minutes, so a due concern
+    // never gets a wake of its own: the recurring wake due next carries it, and
+    // the wakes before it leave the not-yet-due concern out.
+    let idle = 0;
+    const wakeNext = async () => {
       const current = await h.silence.readSchedule({ userId: h.user.id });
       assert.ok(current);
-      h.clock.now = new Date(slot === "post_turn_idle" ? current.postTurnDueAt : current.longIdleDueAt);
+      const at = nextSilenceWakeDeadline(current, h.clock.now.getTime());
+      assert.ok(at !== null);
+      const slot = chooseDueWakeFireSlot(current, at);
+      assert.ok(slot === "post_turn_idle" || slot === "long_idle", `unexpected ${slot}`);
+      h.clock.now = new Date(at - 1_000);
+      assert.equal(
+        (await h.silence.fire({ userId: h.user.id, epochId: current.epochId, slot })).outcome,
+        "ignored",
+        "an early fire is rejected by the server clock",
+      );
+      h.clock.now = new Date(at);
       const fired = await h.silence.fire({ userId: h.user.id, epochId: current.epochId, slot });
       assert.equal(fired.outcome, "queued");
-      const prepareId = silenceWakePreparationId(current.epochId, slot);
+      const duplicate = await h.silence.fire({ userId: h.user.id, epochId: current.epochId, slot });
+      assert.equal(duplicate.outcome, "ignored", "a repeated fire event never queues a second wake");
+      const prepareId = silenceWakePreparationId(current.epochId, slot === "post_turn_idle" ? slot : `idle_${++idle}`);
       const preparation = await h.port.getPreparation({ userId: h.user.id, prepareId });
       assert.ok(preparation);
-      assert.doesNotMatch(preparation.prompt, /concern/u);
-      const quiet = await h.finalizeText({
-        prepareId, requestId: preparation.requestId, conversationId: conversation.id,
-        providerSessionId: `provider-quiet-${slot}`, text: "<quiet />",
-      });
-      assert.equal(quiet.outcome, "wake_quiet");
-    }
+      return { prepareId, preparation };
+    };
+    const wakeUntilCarried = async (sessionLabel: string) => {
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const wake = await wakeNext();
+        if (/\[concern · id=/u.test(wake.preparation.prompt)) return wake;
+        const quiet = await h.finalizeText({
+          prepareId: wake.prepareId, requestId: wake.preparation.requestId, conversationId: conversation.id,
+          providerSessionId: `provider-quiet-${sessionLabel}-${attempt}`, text: "<quiet />",
+        });
+        assert.equal(quiet.outcome, "wake_quiet");
+      }
+      throw new Error("the concern was never carried");
+    };
 
-    const beforeConcern = await h.silence.readSchedule({ userId: h.user.id });
-    assert.ok(beforeConcern?.concernDueAt);
-    h.clock.now = new Date(Date.parse(beforeConcern.concernDueAt) - 1_000);
-    assert.equal(
-      (await h.silence.fire({ userId: h.user.id, epochId: beforeConcern.epochId, slot: "concern" })).outcome,
-      "ignored",
-      "an early concern fire is rejected by the server clock",
-    );
-    h.clock.now = new Date(beforeConcern.concernDueAt);
-    const fired = await h.silence.fire({
-      userId: h.user.id, epochId: beforeConcern.epochId, slot: "concern",
-    });
-    assert.equal(fired.outcome, "queued");
-    assert.equal(fired.schedule?.concernDueAt, null);
-
-    const duplicate = await h.silence.fire({
-      userId: h.user.id, epochId: beforeConcern.epochId, slot: "concern",
-    });
-    assert.deepEqual(
-      { outcome: duplicate.outcome, reason: "reason" in duplicate ? duplicate.reason : null },
-      { outcome: "ignored", reason: "slot_not_due" },
-      "a repeated fire event never queues a second wake",
-    );
-
-    const prepareId = silenceWakePreparationId(beforeConcern.epochId, "concern_1");
-    const preparation = await h.port.getPreparation({ userId: h.user.id, prepareId });
-    assert.ok(preparation);
+    const { prepareId, preparation } = await wakeUntilCarried("first");
+    assert.ok(h.clock.now.getTime() >= Date.parse(schedule.concernDueAt), "carried only once due");
     assert.equal(preparation.operation, "wake");
     assert.equal(
       preparation.parentProviderSessionId,
@@ -229,7 +228,7 @@ test(
     assert.match(preparation.prompt, /^\[wake · \+\d+h \d+m · no reply\]\n\[concern · id=/u);
     assert.match(preparation.prompt, new RegExp(`id=${concernId} · expected_revision=1 · woken 1/3`, "u"));
     assert.match(preparation.prompt, /惦记他今天面试的结果\nreason: 他下午两点面试/u);
-    assert.equal(preparation.wakeContext?.slot, "concern_1");
+    assert.match(String(preparation.wakeContext?.slot), /^idle_\d+$/u);
     assert.deepEqual(preparation.wakeContext?.concerns, [{ id: concernId, revision: 1 }]);
 
     const [row] = await h.database.db.select().from(nativeLiveConcerns)
@@ -252,24 +251,20 @@ test(
     });
     assert.equal(checkpoint?.providerSessionId, "provider-concern-visible");
 
-    // Claude postpones: the moved time is eligible again after the cooldown.
+    // Claude postpones: the recurring wake after the moved time carries it again.
     const postponed = await h.concerns.update({
       userId: h.user.id, concernId, expectedRevision: 1,
       considerInMinutes: 60, progress: "已经问过一次",
     });
     assert.equal(postponed.revision, 2);
-    const afterPostpone = await h.silence.readSchedule({ userId: h.user.id });
-    assert.equal(afterPostpone?.concernDueAt, new Date(h.clock.now.getTime() + 60 * minute).toISOString());
-    h.clock.now = new Date(afterPostpone!.concernDueAt!);
-    const second = await h.silence.fire({ userId: h.user.id, epochId: beforeConcern.epochId, slot: "concern" });
-    assert.equal(second.outcome, "queued");
-    const secondPreparation = await h.port.getPreparation({
-      userId: h.user.id, prepareId: silenceWakePreparationId(beforeConcern.epochId, "concern_2"),
-    });
-    assert.match(secondPreparation?.prompt ?? "", /progress: 已经问过一次/u);
-    assert.equal(secondPreparation?.parentProviderSessionId, "provider-concern-visible");
+    const postponedAt = h.clock.now.getTime();
+    const { preparation: secondPreparation } = await wakeUntilCarried("second");
+    assert.ok(h.clock.now.getTime() >= postponedAt + 60 * minute, "the moved time is respected");
+    assert.match(secondPreparation.prompt, /progress: 已经问过一次/u);
+    assert.match(secondPreparation.prompt, /woken 2\/3/u);
+    assert.equal(secondPreparation.parentProviderSessionId, "provider-concern-visible");
     await h.finalizeText({
-      prepareId: secondPreparation!.prepareId, requestId: secondPreparation!.requestId,
+      prepareId: secondPreparation.prepareId, requestId: secondPreparation.requestId,
       conversationId: conversation.id, providerSessionId: "provider-concern-quiet", text: "<quiet />",
     });
 
@@ -317,11 +312,14 @@ test(
       providerSessionId: "provider-short", text: "<quiet />",
     });
 
-    h.clock.now = new Date(schedule.longIdleDueAt);
+    // The short wake moved the recurring wake; it fires from the fresh schedule.
+    const afterShort = await h.silence.readSchedule({ userId: h.user.id });
+    assert.ok(afterShort);
+    h.clock.now = new Date(afterShort.longIdleDueAt);
     const long = await h.silence.fire({ userId: h.user.id, epochId: schedule.epochId, slot: "long_idle" });
     assert.equal(long.outcome, "queued");
     const longPreparation = await h.port.getPreparation({
-      userId: h.user.id, prepareId: silenceWakePreparationId(schedule.epochId, "long_idle"),
+      userId: h.user.id, prepareId: silenceWakePreparationId(schedule.epochId, "idle_1"),
     });
     assert.doesNotMatch(longPreparation?.prompt ?? "", /concern/u);
     assert.equal(long.schedule?.concernDueAt, null);
@@ -544,7 +542,7 @@ test(
     const fired = await h.silence.fire({ userId: h.user.id, epochId: schedule.epochId, slot: "long_idle" });
     assert.equal(fired.outcome, "queued");
     const preparation = await h.port.getPreparation({
-      userId: h.user.id, prepareId: silenceWakePreparationId(schedule.epochId, "long_idle"),
+      userId: h.user.id, prepareId: silenceWakePreparationId(schedule.epochId, "idle_1"),
     });
     assert.deepEqual(
       (preparation?.wakeContext?.concerns as Array<{ id: string }>).map((concern) => concern.id),

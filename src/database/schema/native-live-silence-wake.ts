@@ -21,9 +21,13 @@ export type NativeLiveConcernWakeSlot =
   | "concern_2"
   | "concern_3";
 
+// Recurring silence wakes, numbered per epoch (bounded by RECURRING_IDLE_LIMIT).
+export type NativeLiveRecurringIdleSlot = `idle_${number}`;
+
 export type NativeLiveWakeReceiptSlot =
   | NativeLiveSilenceWakeSlot
-  | NativeLiveConcernWakeSlot;
+  | NativeLiveConcernWakeSlot
+  | NativeLiveRecurringIdleSlot;
 
 export const nativeLiveSilenceWakeReceipts = pgTable(
   "native_live_silence_wake_receipts",
@@ -48,7 +52,7 @@ export const nativeLiveSilenceWakeReceipts = pgTable(
     }),
     check(
       "native_live_silence_wake_receipts_slot_allowed",
-      sql`${table.slot} IN ('post_turn_idle', 'mid_idle', 'long_idle', 'concern_1', 'concern_2', 'concern_3')`,
+      sql`${table.slot} IN ('post_turn_idle', 'mid_idle', 'long_idle', 'concern_1', 'concern_2', 'concern_3') OR ${table.slot} ~ '^idle_([1-9]|[1-5][0-9]|6[0-4])$'`,
     ),
   ],
 );

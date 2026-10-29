@@ -792,6 +792,13 @@
       "when": 1793160000000,
       "tag": "0112_native_live_mid_idle_wake",
       "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1793246400000,
+      "tag": "0113_native_live_recurring_idle_wake",
+      "breakpoints": true
     }
   ]
 }
