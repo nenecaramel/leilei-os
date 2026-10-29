@@ -28,7 +28,7 @@ function approvedSource(file: keyof typeof approvedRenderSources) {
 // the oracle guard instead of silently changing both sides of the comparison.
 const sharedPlaintextSources = {
   // Owner-approved 10/29: a single image takes one grid tile, not the whole row.
-  'NativeLiveMediaPresentation.swift': '491411b00b143cc90a9fbc419fa9f3a67d2d27763e490e8a8354439697061e2d',
+  'NativeLiveMediaPresentation.swift': '1c0b36ed81bbb8d9a90951dfea2e268159e777660f2b1528c23d8190242a80ad',
   'NativeLiveMessageBlocks.swift': '1190df2287766f4dadcd58b8acc22fa29819f3aec80dec49330b71b9f07ed543',
   'NativeLiveVisualRendererRegistry.swift': '1a7a6b22630ab26e68a5c54a96c6182b4471c43e250901a18be30793665724a1',
   'ChatMarkdown.swift': '743e9b3352bdeea78857349b90b78bbb88578dace50ac04e78d7817b9cfa8714',

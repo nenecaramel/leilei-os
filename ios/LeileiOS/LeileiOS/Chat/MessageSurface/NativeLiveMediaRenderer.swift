@@ -102,7 +102,7 @@ struct NativeLiveMediaGrid: Layout {
         return .init(width:policy.occupiedWidth,height:rows*policy.tileHeight + max(0,rows-1)*6)
     }
     func placeSubviews(in bounds:CGRect,proposal:ProposedViewSize,subviews:Subviews,cache:inout ()) {
-        let policy = NativeLiveMediaLayout(count:count,availableWidth:bounds.width)
+        let policy = NativeLiveMediaLayout(count:count,placedWidth:bounds.width)
         for (index,view) in subviews.enumerated() {
             view.place(at:.init(x:bounds.minX+Double(index%policy.columns)*(policy.tileWidth+6),
                                 y:bounds.minY+Double(index/policy.columns)*(policy.tileHeight+6)),anchor:.topLeading,

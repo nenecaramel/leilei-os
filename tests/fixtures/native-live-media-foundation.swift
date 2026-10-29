@@ -52,6 +52,12 @@ import CoreGraphics
             let pair = NativeLiveMediaLayout(count:2,availableWidth:width)
             precondition(single.tileWidth == pair.tileWidth && single.tileHeight == pair.tileHeight)
             precondition(single.occupiedWidth == single.tileWidth && pair.occupiedWidth == width)
+            // Placement receives only the occupied width back; it must keep the
+            // measured tile instead of halving the single image a second time.
+            for layout in [single, pair] {
+                let placed = NativeLiveMediaLayout(count:layout.visibleCount,placedWidth:layout.occupiedWidth)
+                precondition(placed.tileWidth == layout.tileWidth && placed.tileHeight == layout.tileHeight)
+            }
         }
         let cache = NativeLiveAttachmentBytesCache(limit:1024)
         let counter = Counter()
