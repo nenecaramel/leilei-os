@@ -77,14 +77,6 @@ export function parseSilenceWakeSchedule(
       record.midIdleConsumed === undefined
       || typeof record.midIdleConsumed === "boolean"
     )
-    || !(
-      record.concernDueAt === undefined
-      || record.concernDueAt === null
-      || (
-        typeof record.concernDueAt === "string"
-        && Number.isFinite(Date.parse(record.concernDueAt))
-      )
-    )
   ) {
     throw new Error(
       "Native live silence wake schedule is invalid.",
@@ -103,10 +95,6 @@ export function parseSilenceWakeSchedule(
         ? record.midIdleDueAt
         : null,
     midIdleConsumed: record.midIdleConsumed === true,
-    concernDueAt:
-      typeof record.concernDueAt === "string"
-        ? record.concernDueAt
-        : null,
   };
 }
 

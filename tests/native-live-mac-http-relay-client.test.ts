@@ -592,13 +592,11 @@ test("Mac HTTP relay client reads and fires silence wake without sending user id
     fakeFetch,
   );
 
-  // An older server omits concernDueAt and the mid slot; the Mac reads
-  // that as no concern and no mid wake.
+  // An older server omits the mid slot; the Mac reads that as no mid wake.
   assert.deepEqual(await client.readSilenceWakeSchedule(), {
     ...schedule,
     midIdleDueAt: null,
     midIdleConsumed: false,
-    concernDueAt: null,
   });
   assert.deepEqual(
     await client.fireSilenceWake({
@@ -612,7 +610,6 @@ test("Mac HTTP relay client reads and fires silence wake without sending user id
         postTurnConsumed: true,
         midIdleDueAt: null,
         midIdleConsumed: false,
-        concernDueAt: null,
       },
     },
   );
@@ -635,8 +632,7 @@ test("Mac HTTP relay client reads and fires silence wake without sending user id
   assert.equal(JSON.stringify(calls).includes("userId"), false);
 });
 
-test("Mac HTTP relay client carries the concern deadline and fires the concern slot", async () => {
-  const calls: unknown[] = [];
+test("Mac HTTP relay client drops the retired concern deadline an older server sends", async () => {
   const schedule = {
     epochId: userMessageId,
     conversationId,
@@ -644,29 +640,15 @@ test("Mac HTTP relay client carries the concern deadline and fires the concern s
     longIdleDueAt: "2026-10-04T02:40:00.000Z",
     postTurnConsumed: true,
     longIdleConsumed: true,
-    concernDueAt: "2026-10-04T05:00:00.000Z",
   };
-  const responses = [
-    { success: true, data: schedule },
-    { success: true, data: { outcome: "queued", schedule: { ...schedule, concernDueAt: null } } },
-    { success: true, data: { ...schedule, concernDueAt: "not a date" } },
-  ];
-  const fakeFetch: typeof fetch = async (_input, init) => {
-    calls.push(init?.body ? JSON.parse(String(init.body)) : null);
-    return new Response(JSON.stringify(responses.shift()), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  };
-  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "secret-token", fakeFetch);
-  const legacyMid = { midIdleDueAt: null, midIdleConsumed: false };
-  assert.deepEqual(await client.readSilenceWakeSchedule(), { ...schedule, ...legacyMid });
-  assert.deepEqual(
-    await client.fireSilenceWake({ epochId: userMessageId, slot: "concern" }),
-    { outcome: "queued", schedule: { ...schedule, ...legacyMid, concernDueAt: null } },
+  const fakeFetch: typeof fetch = async () => new Response(
+    JSON.stringify({ success: true, data: { ...schedule, concernDueAt: "2026-10-04T05:00:00.000Z" } }),
+    { status: 200, headers: { "content-type": "application/json" } },
   );
-  assert.deepEqual(calls[1], { epoch_id: userMessageId, slot: "concern" });
-  await assert.rejects(client.readSilenceWakeSchedule(), /silence wake schedule is invalid/u);
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "secret-token", fakeFetch);
+  assert.deepEqual(await client.readSilenceWakeSchedule(), {
+    ...schedule, midIdleDueAt: null, midIdleConsumed: false,
+  });
 });
 
 test("Mac HTTP relay client round-trips a durable permission interaction", async () => {

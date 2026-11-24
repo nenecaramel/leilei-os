@@ -22,10 +22,6 @@ import { registerNoteCardResource } from "../tools/render-thinking-block/resourc
 import { registerGetHealthTool } from "../tools/get-health/register.js";
 import { registerGetCurrentTimeTool } from "../tools/get-current-time/register.js";
 import {
-  registerUpdateConcernTool,
-  type UpdateConcernToolDependencies,
-} from "../tools/update-concern/register.js";
-import {
   DEFAULT_INTERNAL_MCP_TOOL_PROFILES,
   DEFAULT_PUBLIC_MCP_TOOL_PROFILES,
   mcpToolSurfaceEnabled,
@@ -50,8 +46,6 @@ export function createProductionMcpSessionServerFactory(input: {
   todoService: TodoService;
   universeService: UniverseService;
   healthService: HealthService;
-  // Native Live only: concerns bind to the active Native Live conversation.
-  concernService?: UpdateConcernToolDependencies["concernService"];
   publicToolProfiles?: readonly McpToolProfileName[];
   internalToolProfiles?: readonly McpToolProfileName[];
 }): McpSessionServerFactory {
@@ -147,12 +141,6 @@ export function createProductionMcpSessionServerFactory(input: {
     if (mcpToolSurfaceEnabled(toolExposure, "ui")) {
       registerNoteCardResource(server);
       registerRenderNoteCardTool(server);
-    }
-    if (namespace === "internal" && input.concernService) {
-      registerUpdateConcernTool(server, {
-        concernService: input.concernService,
-        requireActiveUser: activeUserAuthorization,
-      });
     }
     return server;
   };

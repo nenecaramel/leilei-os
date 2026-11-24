@@ -144,7 +144,6 @@ test("production internal MCP defaults expose current advanced maintenance inven
     "read_memory_day",
     "update_memory",
     "replace_todo_paper",
-    "update_concern",
   ]) {
     assert.equal(
       names.includes(required),
@@ -165,11 +164,12 @@ test("production internal MCP defaults expose current advanced maintenance inven
     "inspect_conversation_restore_candidates",
     "inspect_conversation_restore_path",
     "restore_conversation_exclusion",
+    "update_concern",
   ]) {
     assert.equal(
       names.includes(retired),
       false,
-      `retired Sentinel tool must stay absent: ${retired}`,
+      `retired tool must stay absent: ${retired}`,
     );
   }
 });

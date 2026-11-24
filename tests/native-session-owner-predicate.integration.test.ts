@@ -92,14 +92,6 @@ const cases:Record<string,(f:F,owner:'desktop'|'releasing')=>Promise<void>>={
   async 'background prepare'(f,owner){await f.setOwner(owner);await assert.rejects(f.relay.prepareBackgroundResult(f.background),{code:'BACKGROUND_CONFLICT'});},
   async 'background submit'(f,owner){await f.relay.prepareBackgroundResult(f.background);await f.setOwner(owner);
     assert.equal((await f.relay.submitBackgroundResult({...f.background,result:f.backgroundResult})).outcome,'stale');},
-  async 'Wake source concerns'(f,owner){
-    const {NativeLiveConcernService}=await import('../src/domains/bridge/concern/native-live-concern.js');
-    await new NativeLiveConcernService(f.db).create({userId:f.user.id,content:'synthetic concern',considerInMinutes:300,
-      expiresAt:new Date(Date.now()+172800000).toISOString()});
-    const service=new NativeLiveSilenceWakeService(f.db);
-    assert.ok((await service.readSchedule({userId:f.user.id}))?.concernDueAt);
-    await f.setOwner(owner);assert.equal((await service.readSchedule({userId:f.user.id}))?.concernDueAt,null);
-  },
   async 'Wake admission'(f,owner){const w=await f.wake();const input={userId:f.user.id,listenerInstanceId:f.listener,reservationId:w.prepareId,
     requestId:w.requestId,conversationId:f.conversation.id,runtimeMode:'resume' as const,canonicalUserMessageId:null,
     parentProviderSessionId:w.parentProviderSessionId,parentProviderCheckpointId:w.parentProviderCheckpointId!};
