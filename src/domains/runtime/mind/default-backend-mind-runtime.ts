@@ -51,7 +51,7 @@ export const DEFAULT_MIND_LOOP_CONFIG: MindLoopConfig = {
   contextTimeZone: DEFAULT_NATIVE_LIVE_CONTEXT_TIME_ZONE,
   ruleVersion: "mind-v2",
   processVersion: "subject-write-v2",
-  breathLimit: 4,
+  breathLimit: 2,
   breathCooldownHours: 0,
   breathSalienceWeight: DEFAULT_BREATH_SALIENCE_WEIGHT,
   breathRecallSalienceBoost: DEFAULT_BREATH_RECALL_SALIENCE_BOOST,

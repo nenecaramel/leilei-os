@@ -28,7 +28,7 @@ Server deployment must support the current signed-receipt endpoints and existing
 
 ## On-demand keyword recall
 
-Claude Code recall uses the original keyword scorer, ranking, four-Memory limit,
+Claude Code recall uses the original keyword scorer, ranking, two-Memory limit,
 and existing optional E5 model. PostgreSQL first filters a superset of keyword
 matches using the same Chinese bigrams/trigrams and English token normalization;
 SQL excludes `hidden_system`; the canonical scorer applies lifecycle, diversity
