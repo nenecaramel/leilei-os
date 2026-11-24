@@ -14,8 +14,7 @@ export type NativeLiveSilenceWakeSlot =
   | "mid_idle"
   | "long_idle";
 
-// Concern wakes share the epoch receipt ledger; each slot is one bounded,
-// program-owned opportunity per unanswered user message.
+// Retired with the concern feature; only stored receipts still carry these.
 export type NativeLiveConcernWakeSlot =
   | "concern_1"
   | "concern_2"

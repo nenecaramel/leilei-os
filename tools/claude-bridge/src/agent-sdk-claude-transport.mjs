@@ -1,3 +1,4 @@
+import { SDK_DISALLOWED_TOOLS } from "./agent-sdk-disallowed-tools.mjs";
 import { openAgentSdkPersistentSession } from "./agent-sdk-persistent-session.mjs";
 import { executeAgentSdkTurn } from "./agent-sdk-foreground-execution.mjs";
 import { durableCheckpointPrefix, checkpointForkSessionStore } from "./provider-checkpoint-prefix.mjs";
@@ -1074,6 +1075,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         canUseTool: createAgentSdkPermissionCallback({ toolPermissionPolicy: this.toolPermissionPolicy }),
       } : {}),
       ...(this.chromeEnabled ? { extraArgs: { chrome: null } } : {}),
+      disallowedTools: [...SDK_DISALLOWED_TOOLS],
       settingSources: ["user", "project", "local"],
       ...(this.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
       verbatimPrompts,

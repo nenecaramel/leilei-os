@@ -16,6 +16,8 @@ export type NativeLiveConcernReleaseReason = "resolved" | "dropped";
 
 // Short-lived things Claude chose to keep in mind. Permanent facts stay in
 // Memory; these rows are bounded, expire on their own and are pruned.
+// Retired: nothing reads or writes this table. It stays until the owner
+// authorizes a migration that drops it.
 export const nativeLiveConcerns = pgTable(
   "native_live_concerns",
   {

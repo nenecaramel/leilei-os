@@ -1,3 +1,4 @@
+import { SDK_DISALLOWED_TOOLS } from "./agent-sdk-disallowed-tools.mjs";
 import { isNativeSessionMirror } from "./native-session-mirror.mjs";
 import { checkpointForkSessionStore } from "./provider-checkpoint-prefix.mjs";
 import { createAgentSdkTurnHandle } from "./agent-sdk-turn-handle.mjs";
@@ -167,6 +168,7 @@ export async function executeAgentSdkTurn(owner, checkpoints,
         ...(owner.toolPermissionPolicy === "auto_allow" ? { permissionMode: "default" } : {}),
         ...(owner.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
         ...(owner.chromeEnabled ? { extraArgs: { chrome: null } } : {}),
+        disallowedTools: [...SDK_DISALLOWED_TOOLS],
         verbatimPrompts: !nativeScheduleCommand,
         ...executionOptions,
         // Newer Claude models default to omitted thinking (empty text + signature).

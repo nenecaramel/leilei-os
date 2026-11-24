@@ -1,9 +1,9 @@
 import {
-  chooseDueWakeFireSlot,
+  chooseDueSilenceWakeSlot,
   nextSilenceWakeDeadline,
   type NativeLiveSilenceWakeIgnoredReason,
   type NativeLiveSilenceWakeSchedule,
-  type NativeLiveWakeFireSlot,
+  type NativeLiveSilenceWakeSlot,
 } from "../turn/native-live-silence-wake.js";
 
 export interface NativeLiveMacSilenceWakeClient {
@@ -12,7 +12,7 @@ export interface NativeLiveMacSilenceWakeClient {
   >;
   fireSilenceWake(input: {
     epochId: string;
-    slot: NativeLiveWakeFireSlot;
+    slot: NativeLiveSilenceWakeSlot;
   }): Promise<{
     outcome: "queued" | "ignored";
     schedule: NativeLiveSilenceWakeSchedule | null;
@@ -29,7 +29,7 @@ export class NativeLiveMacSilenceWakeScheduler {
   private retryNotBefore = 0;
   private firePromise: Promise<{
     outcome: "queued" | "ignored" | "not_due";
-    slot?: NativeLiveWakeFireSlot;
+    slot?: NativeLiveSilenceWakeSlot;
     reason?: NativeLiveSilenceWakeIgnoredReason;
   }> | null = null;
 
@@ -56,7 +56,7 @@ export class NativeLiveMacSilenceWakeScheduler {
 
   fireDue(): Promise<{
     outcome: "queued" | "ignored" | "not_due";
-    slot?: NativeLiveWakeFireSlot;
+    slot?: NativeLiveSilenceWakeSlot;
     reason?: NativeLiveSilenceWakeIgnoredReason;
   }> {
     if (this.firePromise) return this.firePromise;
@@ -69,12 +69,12 @@ export class NativeLiveMacSilenceWakeScheduler {
 
   private async fireDueOnce(): Promise<{
     outcome: "queued" | "ignored" | "not_due";
-    slot?: NativeLiveWakeFireSlot;
+    slot?: NativeLiveSilenceWakeSlot;
     reason?: NativeLiveSilenceWakeIgnoredReason;
   }> {
     if(this.control && !this.control.isEnabled())return {outcome:"not_due"};
     if (this.now() < this.retryNotBefore) return { outcome: "not_due" };
-    const slot = chooseDueWakeFireSlot(this.schedule, this.now());
+    const slot = chooseDueSilenceWakeSlot(this.schedule, this.now());
     if (!slot || !this.schedule) return { outcome: "not_due" };
 
     const epochId = this.schedule.epochId;
@@ -82,7 +82,7 @@ export class NativeLiveMacSilenceWakeScheduler {
     this.schedule = result.schedule;
     this.retryNotBefore =
       result.outcome === "ignored"
-      && chooseDueWakeFireSlot(result.schedule, this.now()) !== null
+      && chooseDueSilenceWakeSlot(result.schedule, this.now()) !== null
         ? this.now() + IGNORED_STILL_DUE_BACKOFF_MS
         : 0;
     return {

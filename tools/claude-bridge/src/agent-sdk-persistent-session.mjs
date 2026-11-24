@@ -1,3 +1,4 @@
+import { SDK_DISALLOWED_TOOLS } from "./agent-sdk-disallowed-tools.mjs";
 import { recoverCompletedNativeTurn } from "./completed-turn-recovery.mjs";
 import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
@@ -143,6 +144,7 @@ export async function openAgentSdkPersistentSession(owner, checkpoints, options 
             ? { thinking: { type: "adaptive", display: "summarized" } }
             : {}),
           ...(owner.chromeEnabled ? { extraArgs: { chrome: null } } : {}),
+          disallowedTools: [...SDK_DISALLOWED_TOOLS],
           ...(owner.artifactEnabled ? { settings: { enableArtifact: true } } : {}),
           ...leileiosMcpQueryOptions(owner.mcpServerConfig, sendFileServer),
           ...(owner.sessionStore ? { sessionStore: owner.sessionStore } : {}),

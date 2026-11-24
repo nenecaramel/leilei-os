@@ -49,8 +49,6 @@
       "tests/native-live-mac-wake-broker-fallback.test.ts",
       "tests/native-live-mac-silence-wake-scheduler.test.ts",
       "tests/native-live-silence-wake.test.ts",
-      "tests/native-live-concern.test.ts",
-      "tests/native-live-concern-mcp-tool.test.ts",
       "tests/native-live-message-surface-contract.test.ts",
       "tests/mcp-session-recovery.test.ts",
       "tests/native-live-runtime-interaction-orphan.test.ts",

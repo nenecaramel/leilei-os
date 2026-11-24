@@ -43,7 +43,7 @@ import {
 import type {
   NativeLiveSilenceWakeIgnoredReason,
   NativeLiveSilenceWakeSchedule,
-  NativeLiveWakeFireSlot,
+  NativeLiveSilenceWakeSlot,
 } from "../turn/native-live-silence-wake.js";
 
 type FetchLike = typeof fetch;
@@ -545,7 +545,7 @@ implements NativeLiveMacDaemonRelayClient {
 
   async fireSilenceWake(input: {
     epochId: string;
-    slot: NativeLiveWakeFireSlot;
+    slot: NativeLiveSilenceWakeSlot;
   }): Promise<{
     outcome: "queued" | "ignored";
     schedule: NativeLiveSilenceWakeSchedule | null;

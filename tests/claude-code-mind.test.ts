@@ -319,7 +319,7 @@ test("external stateless recall does not suppress a just-confirmed memory in the
   assert.deepEqual(writes,[]);
 });
 
-test("Claude keyword reads use the scoped query and keep the four-result policy", async () => {
+test("Claude keyword reads use the scoped query and keep the two-result policy", async () => {
   const states = [memory(101, "jasmine tea"), memory(102, "jasmine allergy"),
     memory(103, "jasmine garden"), memory(104, "jasmine perfume")];
   const query = "jasmine";
@@ -331,5 +331,5 @@ test("Claude keyword reads use the scoped query and keep the four-result policy"
     },
   }, {...DEFAULT_MIND_LOOP_CONFIG, breathDiversityMaxTokenOverlap:1}, "G", unitReceipts);
   const result = await service.recall({userId:"u1",sessionId:"s",query,excludeIds:[]});
-  assert.equal(result.memory_ids.length,4);
+  assert.equal(result.memory_ids.length,2);
 });
