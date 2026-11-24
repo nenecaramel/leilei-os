@@ -212,6 +212,19 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
+      postgres-coverage:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: leileios_native_session_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d leileios_native_session_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/leileios_test
     steps:
@@ -275,6 +288,14 @@ jobs:
           RUN_ISOLATED_POSTGRES_REGRESSIONS: "1"
           ISOLATED_POSTGRES_CONTAINER_ID: ${{ job.services.postgres.id }}
         run: pnpm test:isolated-postgres-regressions
+
+      - name: Run remaining opt-in PostgreSQL tests
+        if: ${{ !cancelled() && steps.migrate.outcome == 'success' && steps.ledger.outcome == 'success' }}
+        env:
+          RUN_ISOLATED_POSTGRES_REGRESSIONS: "1"
+          ISOLATED_POSTGRES_CONTAINER_ID: ${{ job.services.postgres-coverage.id }}
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/leileios_native_session_test
+        run: pnpm test:isolated-postgres-coverage
 
       - name: Run retention PostgreSQL regression
         if: ${{ !cancelled() && steps.migrate.outcome == 'success' && steps.ledger.outcome == 'success' }}

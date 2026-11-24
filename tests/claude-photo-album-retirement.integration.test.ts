@@ -53,9 +53,11 @@ async function assertRetired(sql: ReturnType<typeof postgres>) {
   assert.equal(artifacts[0].count, 0, "dedicated indexes are removed with the table");
 }
 
-async function snapshot(sql: ReturnType<typeof postgres>) {
-  const tables = await sql`select tablename from pg_tables where schemaname = 'public'
-    and tablename not in ('claude_album_photos', 'leilei_schema_migrations') order by tablename`;
+// Pass the earlier snapshot to ignore tables that later migrations add.
+async function snapshot(sql: ReturnType<typeof postgres>, only?: Record<string, unknown>) {
+  const tables = (await sql`select tablename from pg_tables where schemaname = 'public'
+    and tablename not in ('claude_album_photos', 'leilei_schema_migrations') order by tablename`)
+    .filter(({ tablename }) => !only || tablename in only);
   const result: Record<string, unknown> = {};
   for (const { tablename } of tables) {
     const rows = await sql.unsafe(`select to_jsonb(t)::text as row from public."${tablename}" t order by to_jsonb(t)::text`);
@@ -118,11 +120,11 @@ test("album retirement upgrades populated 0104 through the official runner witho
       const before = await snapshot(sql);
       officialRunner(url);
       await assertRetired(sql);
-      assert.deepEqual(await snapshot(sql), before, "every non-album table and row stays identical");
+      assert.deepEqual(await snapshot(sql, before), before, "every non-album table and row stays identical");
       const rows = await sql`select created_at::text as created_at from public.leilei_schema_migrations order by created_at`;
       assert.deepEqual(rows.map(row => row.created_at), journal.entries.slice(retirementIndex - 1).map((entry: { when: number }) => String(entry.when)));
       officialRunner(url);
-      assert.deepEqual(await snapshot(sql), before);
+      assert.deepEqual(await snapshot(sql, before), before);
       assert.equal((await sql`select count(*)::int as count from public.leilei_schema_migrations`)[0].count, journal.entries.length - retirementIndex + 1);
     });
   } finally { rmSync(folder, { recursive: true, force: true }); }
