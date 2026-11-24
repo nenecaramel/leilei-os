@@ -1,3 +1,4 @@
+import { SDK_DISALLOWED_TOOLS } from "../src/agent-sdk-disallowed-tools.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -148,6 +149,7 @@ test("sendNew omits the Claude Code preset and preserves normalized event parity
         CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
         CLAUDE_CODE_ENTRYPOINT: "sdk-ts",
       },
+      disallowedTools: [...SDK_DISALLOWED_TOOLS],
       settingSources: ["user", "project", "local"],
       verbatimPrompts: true,
     },
