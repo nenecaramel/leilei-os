@@ -134,9 +134,6 @@ test("production internal MCP defaults expose current advanced maintenance inven
 
   for (const required of [
     "global_search",
-    "create_notion_page",
-    "write_notion_page",
-    "get_notion_connection",
     "create_diary",
     "write_memory",
     "search_memory",
@@ -174,71 +171,13 @@ test("production internal MCP defaults expose current advanced maintenance inven
   }
 });
 
-test("production public Notion profile exposes typed facade but hides raw advanced tools", async () => {
-  const process = runtime({
-    publicProfiles: "core,device,notion",
-  });
+test("no profile exposes a Notion tool", async () => {
+  const process = runtime({ publicProfiles: "full", internalProfiles: "full" });
   const factory = process.appDependencies.createMcpSessionServer;
   assert.ok(factory);
-
-  const names = await listTools(
-    factory(
-      "11111111-1111-4111-8111-111111111111",
-      "public",
-    ),
-  );
-
-  for (const required of [
-    "search_notion",
-    "read_notion_page",
-    "create_notion_page",
-    "update_notion_page_properties",
-    "append_notion_page_content",
-    "replace_notion_page_content",
-    "add_notion_comment",
-    "reply_notion_comment",
-  ]) {
-    assert.equal(names.includes(required), true, `typed Notion profile must expose ${required}`);
+  for (const namespace of ["public", "internal"] as const) {
+    const names = await listTools(factory("11111111-1111-4111-8111-111111111111", namespace));
+    assert.ok(names.includes("get_diary"));
+    assert.deepEqual(names.filter((name) => name.includes("notion")), []);
   }
-  for (const hidden of [
-    "get_notion_connection",
-    "read_notion_database",
-    "read_notion_data_source",
-    "query_notion_data_source",
-    "write_notion_page",
-    "write_notion_comment",
-    "sentinel_get_state",
-  ]) {
-    assert.equal(names.includes(hidden), false, `typed Notion profile must hide ${hidden}`);
-  }
-});
-
-test("production public notion_advanced profile includes typed and explicit advanced Notion surfaces", async () => {
-  const process = runtime({
-    publicProfiles: "core,device,notion_advanced",
-  });
-  const factory = process.appDependencies.createMcpSessionServer;
-  assert.ok(factory);
-
-  const names = await listTools(
-    factory(
-      "11111111-1111-4111-8111-111111111111",
-      "public",
-    ),
-  );
-
-  for (const required of [
-    "search_notion",
-    "read_notion_page",
-    "create_notion_page",
-    "get_notion_connection",
-    "read_notion_database",
-    "read_notion_data_source",
-    "query_notion_data_source",
-    "write_notion_page",
-    "write_notion_comment",
-  ]) {
-    assert.equal(names.includes(required), true, `advanced Notion profile must expose ${required}`);
-  }
-  assert.equal(names.includes("sentinel_get_state"), false);
 });

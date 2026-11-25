@@ -1,9 +1,10 @@
+// Reads the lineage state the live writers stored for a message path.
 import { sql } from "drizzle-orm";
-import type { createDatabase } from "../../../database/client.js";
+import type { createDatabase } from "../../src/database/client.js";
 import {
   normalizeContextLineageState,
   type ContextLineageState,
-} from "../../runtime/context/context-lineage.js";
+} from "../../src/domains/runtime/context/context-lineage.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 

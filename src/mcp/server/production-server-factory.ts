@@ -15,8 +15,6 @@ import {
   createMcpServer,
   type McpServerDependencies,
 } from "./create-server.js";
-import { registerProductionNotionExplicitWriteTools } from "./register-notion-explicit-writes.js";
-import { registerProductionNotionTypedWriteTools } from "./register-notion-typed-writes.js";
 import { registerRenderNoteCardTool } from "../tools/render-thinking-block/register.js";
 import { registerNoteCardResource } from "../tools/render-thinking-block/resource.js";
 import { registerGetHealthTool } from "../tools/get-health/register.js";
@@ -115,20 +113,6 @@ export function createProductionMcpSessionServerFactory(input: {
       userId,
       toolExposure,
     );
-    if (mcpToolSurfaceEnabled(toolExposure, "notion")) {
-      registerProductionNotionTypedWriteTools(
-        server,
-        userId,
-        activeUserAuthorization,
-      );
-    }
-    if (mcpToolSurfaceEnabled(toolExposure, "notion_advanced")) {
-      registerProductionNotionExplicitWriteTools(
-        server,
-        userId,
-        activeUserAuthorization,
-      );
-    }
     if (mcpToolSurfaceEnabled(toolExposure, "device")) {
       registerGetHealthTool(server, {
         healthService: input.healthService,

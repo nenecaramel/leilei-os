@@ -19,7 +19,7 @@ import {
 } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 import {
   DrizzleNativeLiveContextLineageReader,
-} from "../src/domains/bridge/turn/native-live-context-lineage-repository.js";
+} from "./helpers/context-lineage-reader.js";
 import {
   NativeLiveManualCompactService,
 } from "../src/domains/bridge/turn/native-live-manual-compact.js";

@@ -14,7 +14,6 @@ The current codebase includes:
 - **Global Search** — authenticated search across Diary, Todo, Universe and Memory, with deep links.
 - **Settings** — Account, Status, Data (Summary / Export / Restore), and About surfaces.
 - **Health v2** — owner-scoped daily summaries with optional iPhone Shortcut sync and MCP reads.
-- **Notion integration** — optional MCP tools, off in the default public tool profile.
 - **PWA Web runtime** — Vite PWA assets, service-worker registration, update prompts, and online/update status UI.
 - **MCP Apps surface** — a user-visible Note Card (`render_note_card`).
 
@@ -33,8 +32,6 @@ Domain services
       │ validation, ownership, lifecycle, concurrency
       ▼
 Repositories ─────────────► PostgreSQL
-      │
-      └───────────────────► Notion API
 ```
 
 The Web API and MCP tools share domain services and repositories. Authenticated clients do not select a database user ID; ownership is resolved server-side before domain code accesses persisted data.
@@ -44,10 +41,6 @@ The public MCP endpoint is `/mcp`. An optional `/internal/mcp` path is available
 ## MCP Apps
 
 `render_note_card` displays supplied user-visible text in a card. It does not expose hidden reasoning and stores nothing. The standard resource is `ui://widget/leileios-note-card-v2.html`; ChatGPT's `openai/outputTemplate` pointer uses `ui://widget/leileios-note-card-chatgpt-v2.html`, and both serve the same HTML. Change the URI for a material UI change, because hosts cache resources by URI. Its files still live in `src/mcp/tools/render-thinking-block/`, the name of the tool it replaced.
-
-## Notion MCP surface
-
-Notion tools are registered only when a tool profile includes them (`src/mcp/server/tool-profiles.ts`; `MCP_PUBLIC_TOOL_PROFILES` / `MCP_INTERNAL_TOOL_PROFILES`). They use server-side authorization and do not expose the configured PAT to clients. `read_notion_page` accepts exactly one of `page_id` or `page_url`; invalid or ambiguous references return a structured `INVALID_PAGE_REFERENCE` error. Explicit page/comment writes use fresh-read and readback verification. Destructive Notion delete/archive operations are not exposed.
 
 ## Local development
 
@@ -101,7 +94,7 @@ Repository documentation describes the checked-in release path, not the live dep
 - Public MCP access validates OAuth issuer, audience, signature, scope, and allowed subject server-side.
 - The optional local authorization adapter preserves Auth0 as the identity/token issuer and restricts dynamic client metadata resolution to configured HTTPS clients.
 - Web access uses its own Auth0 audience/scope and an explicit allowed origin.
-- `DATABASE_URL`, OAuth credentials, MCP tokens, bridge keys, and `NOTION_PAT` are server-side secrets and must not be logged or committed.
+- `DATABASE_URL`, OAuth credentials, MCP tokens, and bridge keys are server-side secrets and must not be logged or committed.
 - Database migrations, imports, and other durable production writes require explicit operational ownership.
 
 ## Authoritative documentation

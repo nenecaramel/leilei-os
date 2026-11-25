@@ -10,9 +10,6 @@ import { registerReadTodoDayTool } from "../src/mcp/tools/read-todo-day/register
 import { registerGlobalSearchTool } from "../src/mcp/tools/global-search/register.js";
 import { registerListUniverseNodesTool } from "../src/mcp/tools/list-universe-nodes/register.js";
 import { registerGetUniverseNodeTool } from "../src/mcp/tools/get-universe-node/register.js";
-import { registerSearchNotionTool } from "../src/mcp/tools/search-notion/register.js";
-import { registerReadNotionPageTool } from "../src/mcp/tools/read-notion-page/register.js";
-import { registerWriteNotionPageTool } from "../src/mcp/tools/write-notion-page/register.js";
 import { registerGetUniverseRelationsTool } from "../src/mcp/tools/get-universe-relations/register.js";
 import { registerGetUniverseDiarySourcesTool } from "../src/mcp/tools/get-universe-diary-sources/register.js";
 import { assertContentIncludes, contentText } from "./helpers/mcp-content-only.js";
@@ -22,7 +19,6 @@ const DIARY_ID = "00000000-0000-4000-8000-000000000301";
 const DATE = "2026-09-05";
 const DIARY_BODY = "Diary body visible to a content-only client.";
 const NODE_ID = "node-content-only";
-const NOTION_PAGE_ID = "00000000-0000-4000-8000-000000000304";
 
 async function connect(register: (server: McpServer) => void) {
   const server = new McpServer({ name: "mcp-content-only-compatibility", version: "1.0.0" });
@@ -142,7 +138,7 @@ test("Todo day content exposes entries and explicitly identifies an empty day", 
   assertContentIncludes(dates, DATE);
 });
 
-test("Global, Universe, and Notion discovery/detail content exposes identifiers and bodies", async (t) => {
+test("Global and Universe discovery/detail content exposes identifiers and bodies", async (t) => {
   const now = "2026-09-05T01:00:00.000Z";
   const pair = await connect((server) => {
     const globalSearchService = {
@@ -175,23 +171,9 @@ test("Global, Universe, and Notion discovery/detail content exposes identifiers 
         return { node: { id: NODE_ID, title: "Universe node", summary: "Universe summary", content: "Universe body", type: "concept", tags: [], galaxies: [], position: { x: 1, y: 2 }, createdAt: now, updatedAt: now }, version: 4 };
       },
     };
-    const notionService = {
-      async searchPages() {
-        return { results: [{ id: NOTION_PAGE_ID, title: "Notion page", url: "https://notion.so/page", last_edited_time: now }], metadata: { count: 1, has_more: false, next_cursor: null } };
-      },
-      async readPage() {
-        return { page: { id: NOTION_PAGE_ID, title: "Notion page", url: "https://notion.so/page", last_edited_time: now }, content: "Notion page body", block_count: 1, truncated: false };
-      },
-      async createPage() {
-        return { object: "page", id: NOTION_PAGE_ID, last_edited_time: now, properties: { Secret: "structured-only" } };
-      },
-    };
     registerGlobalSearchTool(server, { globalSearchService, getAuthenticatedUserId: () => USER_ID } as never);
     registerListUniverseNodesTool(server, { universeService, getAuthenticatedUserId: () => USER_ID } as never);
     registerGetUniverseNodeTool(server, { universeService, getAuthenticatedUserId: () => USER_ID } as never);
-    registerSearchNotionTool(server, { notionService, getAuthenticatedUserId: () => USER_ID } as never);
-    registerReadNotionPageTool(server, { notionService, getAuthenticatedUserId: () => USER_ID } as never);
-    registerWriteNotionPageTool(server, { notionService, getAuthenticatedUserId: () => USER_ID } as never);
   });
   t.after(async () => { await pair.client.close(); await pair.server.close(); });
 
@@ -203,15 +185,6 @@ test("Global, Universe, and Notion discovery/detail content exposes identifiers 
   assertContentIncludes(listed, NODE_ID, "Universe node", "get_universe_node");
   const node = await pair.client.callTool({ name: "get_universe_node", arguments: { id: NODE_ID } });
   assertContentIncludes(node, NODE_ID, "Universe node", "Universe body");
-
-  const search = await pair.client.callTool({ name: "search_notion", arguments: { query: "page" } });
-  assertContentIncludes(search, NOTION_PAGE_ID, "Notion page", "read_notion_page");
-  const page = await pair.client.callTool({ name: "read_notion_page", arguments: { page_id: NOTION_PAGE_ID } });
-  assertContentIncludes(page, NOTION_PAGE_ID, "Notion page", "Notion page body");
-
-  const write = await pair.client.callTool({ name: "write_notion_page", arguments: { action: "create", body: { properties: {} } } });
-  assertContentIncludes(write, NOTION_PAGE_ID, "last_edited_time");
-  assert.equal(contentText(write).includes("structured-only"), false);
 });
 
 test("Universe neighborhood and provenance content exposes decision-critical values", async (t) => {

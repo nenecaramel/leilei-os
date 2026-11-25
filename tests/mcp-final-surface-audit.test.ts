@@ -163,9 +163,10 @@ test("default production public surface stays compact and reports final inventor
     "default public inventory must stay exact",
   );
   assert.equal(tools.length, 40);
-  assert.ok(
-    tools.length < fullTools.length,
-    "default public surface must be smaller than internal full",
+  assert.deepEqual(
+    fullTools.map((tool) => tool.name).sort(),
+    expectedPublicNames.filter((name) => name !== "render_note_card"),
+    "internal default is the public inventory without the UI card",
   );
   for (const tool of tools) {
     assert.ok(

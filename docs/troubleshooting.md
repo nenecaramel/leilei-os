@@ -53,7 +53,7 @@ If local build succeeds but Docker/Railway fails, compare the Docker dependency/
 
 For tools whose public schema must expose named fields, verify that the registered input schema remains representable by the MCP SDK's `tools/list` conversion.
 
-`read_notion_page` intentionally registers a plain strict object with optional `page_id` and `page_url`; the exactly-one-reference rule is enforced inside the handler. If its surfaced schema regresses, test the actual `tools/list` result rather than relying only on TypeScript/Zod types.
+If a surfaced schema regresses, test the actual `tools/list` result rather than relying only on TypeScript/Zod types.
 
 ## Migration head disagreement
 

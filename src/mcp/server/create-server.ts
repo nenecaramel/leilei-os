@@ -1,9 +1,6 @@
 import { registerMemoryTools, type MemoryToolDependencies } from "../tools/memory/register.js";
 import { registerWriteMemoryTool, type WriteMemoryDependencies } from "../tools/write-memory/register.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { env } from "../../config/env.js";
-import { NotionReadClient } from "../../domains/notion/notion-read-client.js";
-import { NotionIntegration } from "../../domains/notion/notion-read-integration.js";
 import {
   registerCreateDiaryTool,
   WriteDiaryAuthenticationError,
@@ -34,32 +31,6 @@ import {
   type ToyCommandToolDependencies,
 } from "../tools/toy-command/register.js";
 import { GlobalSearchAuthenticationError, registerGlobalSearchTool, type GlobalSearchToolDependencies } from "../tools/global-search/register.js";
-import {
-  registerSearchNotionTool,
-  SearchNotionAuthenticationError,
-  type SearchNotionToolDependencies,
-} from "../tools/search-notion/register.js";
-import {
-  registerReadNotionPageTool,
-  type ReadNotionPageToolDependencies,
-} from "../tools/read-notion-page/register.js";
-import {
-  NotionAdvancedAuthenticationError,
-  registerGetNotionConnectionTool,
-  type GetNotionConnectionToolDependencies,
-} from "../tools/get-notion-connection/register.js";
-import {
-  registerReadNotionDatabaseTool,
-  type ReadNotionDatabaseToolDependencies,
-} from "../tools/read-notion-database/register.js";
-import {
-  registerReadNotionDataSourceTool,
-  type ReadNotionDataSourceToolDependencies,
-} from "../tools/read-notion-data-source/register.js";
-import {
-  registerQueryNotionDataSourceTool,
-  type QueryNotionDataSourceToolDependencies,
-} from "../tools/query-notion-data-source/register.js";
 import { UniverseServiceError } from "../../domains/universe/universe-service.js";
 import {
   registerReadTodoDayTool,
@@ -105,9 +76,6 @@ import {
   type ActiveUserRepository,
 } from "../../domains/require-active-user.js";
 
-let defaultNotionReadClient: NotionReadClient | undefined;
-let defaultNotionIntegration: NotionIntegration | undefined;
-
 export function createActiveUserAuthorizer(
   repository: ActiveUserRepository,
   authenticatedUserId: string | undefined,
@@ -134,21 +102,6 @@ function createMissingActiveUserAuthorizer(
     return missingDatabaseService();
   };
 }
-
-function getDefaultNotionReadClient(): NotionReadClient {
-  if (!defaultNotionReadClient) {
-    defaultNotionReadClient = new NotionReadClient(env.NOTION_PAT);
-  }
-  return defaultNotionReadClient;
-}
-
-function getDefaultNotionIntegration(): NotionIntegration {
-  if (!defaultNotionIntegration) {
-    defaultNotionIntegration = new NotionIntegration(env.NOTION_PAT);
-  }
-  return defaultNotionIntegration;
-}
-
 
 const productionWriteDiaryDependencies: WriteDiaryToolDependencies = {
   diaryService: {
@@ -234,12 +187,6 @@ const productionUniverseService: GetUniverseNodeToolDependencies["universeServic
   deleteUniverseDiarySource: (userId, nodeId, diaryId, expectedVersion) => missingDatabaseService(),
 };
 
-const productionNotionService: SearchNotionToolDependencies["notionService"] &
-  ReadNotionPageToolDependencies["notionService"] = {
-  searchPages: (input) => getDefaultNotionReadClient().searchPages(input),
-  readPage: (pageId) => getDefaultNotionReadClient().readPage(pageId),
-};
-
 const productionTodoService = {
   readDay: (userId: string, date: string) => missingDatabaseService(),
   listDates: (userId: string) => missingDatabaseService(),
@@ -269,18 +216,6 @@ type TodoToolsDependencies = {
     SearchTodoToolDependencies["todoService"];
   getAuthenticatedUserId: () => string;
 };
-
-type NotionToolsDependencies = {
-  notionService: SearchNotionToolDependencies["notionService"] &
-    ReadNotionPageToolDependencies["notionService"];
-  getAuthenticatedUserId: () => string;
-};
-
-type NotionReadDependencies =
-  GetNotionConnectionToolDependencies &
-  ReadNotionDatabaseToolDependencies &
-  ReadNotionDataSourceToolDependencies &
-  QueryNotionDataSourceToolDependencies;
 
 type UniverseToolsDependencies = {
   universeService: GetUniverseNodeToolDependencies["universeService"] & Partial<ListUniverseNodesToolDependencies["universeService"]> & GetUniverseRelationsToolDependencies["universeService"];
@@ -319,8 +254,6 @@ export type McpServerDependencies = {
   toyCommand?: ToyCommandToolDependencies;
   globalSearch?: GlobalSearchToolDependencies;
   todoTools?: TodoToolsDependencies;
-  notionTools?: NotionToolsDependencies;
-  notionRead?: NotionReadDependencies;
   universeTools?: UniverseToolsDependencies;
   universeWriteTools?: UniverseWriteToolsDependencies;
   universeProvenanceTools?: UniverseProvenanceToolsDependencies;
@@ -479,42 +412,6 @@ export function createMcpServer(
   registerGetUniverseDiarySourcesTool(server, { sourceService: universeProvenanceTools.sourceService, getAuthenticatedUserId: universeProvenanceTools.getAuthenticatedUserId });
   registerAddUniverseDiarySourceTool(server, { sourceService: universeProvenanceTools.sourceService, getAuthenticatedUserId: universeProvenanceTools.getAuthenticatedUserId });
   registerDeleteUniverseDiarySourceTool(server, { sourceService: universeProvenanceTools.sourceService, getAuthenticatedUserId: universeProvenanceTools.getAuthenticatedUserId });
-  }
-
-  if (mcpToolSurfaceEnabled(toolExposure, "notion")) {
-  const notionTools = dependencies.notionTools
-    ? (dependencies.activeUserAuthorization || authenticatedUserId !== undefined)
-      ? { ...dependencies.notionTools, requireActiveUser: activeUserAuthorization }
-      : dependencies.notionTools
-    : {
-        notionService: productionNotionService,
-        getAuthenticatedUserId: () => {
-          if (!authenticatedUserId) throw new SearchNotionAuthenticationError();
-          return authenticatedUserId;
-        },
-        requireActiveUser: activeUserAuthorization,
-      };
-  registerSearchNotionTool(server, notionTools);
-  registerReadNotionPageTool(server, notionTools);
-  }
-
-  if (mcpToolSurfaceEnabled(toolExposure, "notion_advanced")) {
-  const notionRead = dependencies.notionRead
-    ? (dependencies.activeUserAuthorization || authenticatedUserId !== undefined)
-      ? { ...dependencies.notionRead, requireActiveUser: activeUserAuthorization }
-      : dependencies.notionRead
-    : {
-        notionIntegration: getDefaultNotionIntegration(),
-        getAuthenticatedUserId: () => {
-          if (!authenticatedUserId) throw new NotionAdvancedAuthenticationError();
-          return authenticatedUserId;
-        },
-        requireActiveUser: activeUserAuthorization,
-      } satisfies NotionReadDependencies;
-  registerGetNotionConnectionTool(server, notionRead);
-  registerReadNotionDatabaseTool(server, notionRead);
-  registerReadNotionDataSourceTool(server, notionRead);
-  registerQueryNotionDataSourceTool(server, notionRead);
   }
 
   if (mcpToolSurfaceEnabled(toolExposure, "core")) {

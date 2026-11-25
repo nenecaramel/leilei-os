@@ -28,8 +28,6 @@ Domain services
           │ validation, ownership, lifecycle, concurrency
           ▼
 Repositories ───────────────► PostgreSQL
-          │
-          └──────────────► Notion API (server-only PAT, explicit MCP tools)
 ```
 
 The Web API and MCP tools share domain services and repositories. Tool handlers do not select a database user ID supplied by a client. User identity is resolved from authenticated server context before domain code accesses persisted data.
@@ -61,9 +59,7 @@ The PWA build emits the manifest and service worker from `web/`. Vercel serves t
 
 ## MCP surface
 
-The authenticated production MCP router registers the current LeileiOS tool surface, including personal workspace reads/writes, Global Search and Universe operations, Toy operations when configured, the Note Card resource, and, only when a tool profile enables them, Notion reads/writes. Profiles live in `src/mcp/server/tool-profiles.ts`; a Native Live SDK session sees fewer tools still (`tools/claude-bridge/src/agent-sdk-disallowed-tools.mjs`), which does not change the server.
-
-Notion tools use server-side authorization. `read_notion_page` exposes a plain schema with optional `page_id` and `page_url` fields and enforces exactly one reference inside the handler, returning `INVALID_PAGE_REFERENCE` for missing or ambiguous references. Explicit Notion page/comment writes use fresh-read and readback verification. Destructive Notion delete/archive operations are not exposed.
+The authenticated production MCP router registers the current LeileiOS tool surface, including personal workspace reads/writes, Global Search and Universe operations, Toy operations when configured, and the Note Card resource. Profiles live in `src/mcp/server/tool-profiles.ts`; a Native Live SDK session sees fewer tools still (`tools/claude-bridge/src/agent-sdk-disallowed-tools.mjs`), which does not change the server.
 
 MCP schemas are Zod-validated. Safe error mappings distinguish invalid input, missing resources, authorization failures, conflicts, unavailable providers, and service failures without exposing credentials, connection strings, SQL, or stack traces.
 
@@ -99,6 +95,5 @@ Repository architecture describes code/configuration on `main`. It must not be u
 
 - OAuth issuer, audience, signature, scope, subject, and Web origin checks are enforced server-side.
 - Authenticated ownership is applied in domain services and repositories.
-- `DATABASE_URL`, OAuth credentials, MCP tokens, bridge keys, and `NOTION_PAT` are server-only and must never be logged, returned, or committed.
-- Notion access is limited by the configured PAT's permissions; Leilei OS does not silently synchronize Notion into canonical application domains.
+- `DATABASE_URL`, OAuth credentials, MCP tokens, and bridge keys are server-only and must never be logged, returned, or committed.
 - Database migrations, imports, and other durable writes require explicit release/operation ownership; no production mutation is hidden in a read path.
