@@ -8,7 +8,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { createHash } from "node:crypto";
 import { runHook, writtenMemoryId } from "../tools/claude-code-mind/hook.mjs";
 import { configureHooks, install } from "../tools/claude-code-mind/install.mjs";
-import { isMindHookPaused, setMindHookPaused } from "../tools/claude-code-mind/toggle.mjs";
+import { isMindComparisonOn, isMindHookPaused, setMindComparison, setMindHookPaused } from "../tools/claude-code-mind/toggle.mjs";
 import { startMindRecallSemanticServer } from "../src/domains/bridge/mac/native-live-mac-mind-recall-server.js";
 
 const ID = "11111111-1111-4111-8111-111111111111";
@@ -425,4 +425,80 @@ test("retired local index routes are unavailable and never invoke scoring", asyn
     assert.equal(status, 404);
   }
   assert.equal(scored, 0);
+});
+
+async function compareSocket(t, f, options: {hang?: boolean} = {}) {
+  const socket = join(f.home, "compare.sock");
+  const offers = [];
+  const server = createServer(async (req, res) => {
+    const chunks = []; for await (const chunk of req) chunks.push(chunk);
+    if (req.url !== "/compare") { res.writeHead(503).end(); return; }
+    offers.push(JSON.parse(Buffer.concat(chunks).toString()));
+    if (!options.hang) res.writeHead(202).end();
+  });
+  await new Promise<void>(done => server.listen(socket, () => done()));
+  t.after(() => new Promise<void>(done => { server.closeAllConnections(); server.close(() => done()); }));
+  f.config.semantic_socket = socket;
+  await writeFile(join(f.home, "mind.env"), envContent(f.config), {mode: 0o600});
+  return offers;
+}
+
+test("comparison is off by default and its switch survives reinstall", async t => {
+  const f = await fixture(t);
+  const offers = await compareSocket(t, f);
+  await runHook(prompt(), async () => undefined);
+  assert.equal(offers.length, 0);
+  assert.equal(await isMindComparisonOn(f.home), false);
+  assert.equal(await setMindComparison(true, f.home), true);
+  assert.equal(await setMindComparison(true, f.home), true);
+  await runHook({hook_event_name: "SessionStart", session_id: "s", source: "compact"});
+  await runHook(prompt(), async () => undefined);
+  assert.equal(offers.length, 1);
+  assert.equal(await isMindHookPaused(f.home), false, "comparison never touches the recall switch");
+  assert.equal(await setMindComparison(false, f.home), false);
+  assert.equal(await setMindComparison(false, f.home), false);
+});
+
+test("comparison receives what was really delivered, after delivery, with the session hashed", async t => {
+  const f = await fixture(t);
+  const offers = await compareSocket(t, f);
+  await setMindComparison(true, f.home);
+  let output = "", offeredBeforeOutput = -1;
+  await runHook(prompt(), async s => { offeredBeforeOutput = offers.length; output += s; });
+  assert.equal(output, `${CONTEXT}\n`);
+  assert.equal(offeredBeforeOutput, 0);
+  const [sent] = offers;
+  assert.equal(sent.query, "tea");
+  assert.equal(sent.outcome, "delivered");
+  assert.deepEqual(sent.current_ids, [ID]);
+  assert.deepEqual(sent.exclude_ids, []);
+  assert.match(sent.session, /^[a-f0-9]{64}$/);
+  assert.ok(Number.isInteger(sent.current_ms) && sent.current_ms >= 0);
+  assert.deepEqual(Object.keys(sent).sort(), ["current_ids", "current_ms", "exclude_ids", "outcome", "query", "session"]);
+});
+
+test("comparison also hears about empty and failed real recalls; failures still surface as before", async t => {
+  let fail = false;
+  const f = await fixture(t, (_body, res) => fail ? res.writeHead(503).end()
+    : res.end(JSON.stringify({success: true, data: {context: "", memory_ids: [], semantic_candidates: []}})));
+  const offers = await compareSocket(t, f);
+  await setMindComparison(true, f.home);
+  await runHook(prompt(), async () => assert.fail("nothing to deliver"));
+  fail = true;
+  await assert.rejects(runHook(prompt(), async () => assert.fail("nothing to deliver")));
+  assert.deepEqual(offers.map(o => [o.outcome, o.current_ids]), [["empty", []], ["failed", []]]);
+});
+
+test("a hung or missing comparison listener neither changes nor noticeably delays the real recall", async t => {
+  const f = await fixture(t);
+  await compareSocket(t, f, {hang: true});
+  await setMindComparison(true, f.home);
+  const started = Date.now();
+  const hung = await childHook(f.home, prompt());
+  assert.equal(hung.status, 0); assert.equal(hung.stdout, `${CONTEXT}\n`); assert.equal(hung.stderr, "");
+  assert.ok(Date.now() - started < 1500);
+  f.config.semantic_socket = join(f.home, "gone.sock");
+  await writeFile(join(f.home, "mind.env"), envContent(f.config), {mode: 0o600});
+  const missing = await childHook(f.home, {...prompt(), session_id: "s2"});
+  assert.equal(missing.status, 0); assert.equal(missing.stdout, `${CONTEXT}\n`);
 });

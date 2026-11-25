@@ -20,6 +20,7 @@ export type LocalE5Options = {
   dtype?: "q8" | "fp16" | "fp32";
   progressCallback?: (info: unknown) => void;
   device?: "cpu";
+  passageCacheLimit?: number;
 };
 
 export class LocalE5ProviderError extends Error {
@@ -154,7 +155,7 @@ export class LocalE5BreathSemanticScorer implements BreathSemanticScorer {
   private rememberPassage(key: string, vector: number[]): void {
     this.passageVectors.delete(key);
     this.passageVectors.set(key, vector);
-    if (this.passageVectors.size > PASSAGE_CACHE_LIMIT) {
+    if (this.passageVectors.size > (this.options.passageCacheLimit ?? PASSAGE_CACHE_LIMIT)) {
       const oldest = this.passageVectors.keys().next().value;
       if (oldest !== undefined) this.passageVectors.delete(oldest);
     }
