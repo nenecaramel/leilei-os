@@ -126,7 +126,7 @@ export class ToyCommandService {
   async ack(id: string, input: unknown): Promise<ToyCommandRecord> {
     const bound = this.requireBoundUser();
     await requireActiveUser(this.repository, bound);
-    const commandId = z.string().uuid().safeParse(id);
+    const commandId = z.guid().safeParse(id);
     const parsed = ackSchema.safeParse(input);
     if (!commandId.success || !parsed.success) {
       throw new ToyDomainError("INVALID_INPUT", "The acknowledgement is invalid.");

@@ -28,7 +28,7 @@ const oauthStaticClientSchema = z.object({
   if (client.token_endpoint_auth_method !== "private_key_jwt") return;
   if (!client.jwks_uri) {
     context.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ["jwks_uri"],
       message: "private_key_jwt clients require jwks_uri.",
     });
@@ -38,7 +38,7 @@ const oauthStaticClientSchema = z.object({
     client.token_endpoint_auth_signing_alg !== "RS256"
   ) {
     context.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ["token_endpoint_auth_signing_alg"],
       message: "Only RS256 client assertion signing is supported.",
     });
@@ -55,7 +55,7 @@ const baseEnvSchema = z.object({
   NATIVE_LIVE_WAKE_BROKER_URL: httpsUrl.optional(),
   NATIVE_LIVE_WAKE_BROKER_AUTH_TOKEN: z.string().min(32).optional(),
   NATIVE_LIVE_SILENCE_WAKE_ENABLED: booleanEnv.optional(),
-  MCP_USER_ID: z.string().uuid().optional(),
+  MCP_USER_ID: z.guid().optional(),
   MCP_SERVER_URL: httpsUrl.optional(),
   AUTH0_ISSUER: httpsUrl.optional(),
   AUTH0_AUDIENCE: httpsUrl.optional(),
@@ -73,9 +73,9 @@ const baseEnvSchema = z.object({
   OAUTH_CIMD_FETCH_TIMEOUT_MS: z.coerce.number().int().positive().max(30_000).optional(),
   OAUTH_STATIC_CLIENTS_JSON: z.string().optional(),
   LEILEI_TOY_BRIDGE_KEY: z.string().min(32).optional(),
-  LEILEI_TOY_BRIDGE_USER_ID: z.string().uuid().optional(),
+  LEILEI_TOY_BRIDGE_USER_ID: z.guid().optional(),
   LEILEI_HEALTH_SYNC_KEY: z.string().min(32).optional(),
-  LEILEI_HEALTH_SYNC_USER_ID: z.string().uuid().optional(),
+  LEILEI_HEALTH_SYNC_USER_ID: z.guid().optional(),
   ELEVENLABS_API_KEY: z.string().trim().min(1).optional(),
   ELEVENLABS_VOICE_ID: z.string().regex(/^[A-Za-z0-9]{10,80}$/u).optional(),
   MCP_SESSION_IDLE_TTL_SECONDS: z.coerce.number().int().positive().default(7_200),
@@ -122,14 +122,14 @@ const mcpGovernanceEnvSchema = z.object({
 }).superRefine((value, context) => {
   if (value.MCP_SESSION_ABSOLUTE_TTL_SECONDS < value.MCP_SESSION_IDLE_TTL_SECONDS) {
     context.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ["MCP_SESSION_ABSOLUTE_TTL_SECONDS"],
       message: "Absolute session TTL must be greater than or equal to idle TTL.",
     });
   }
   if (value.MCP_SESSION_MAX_TOTAL < value.MCP_SESSION_MAX_PER_USER) {
     context.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ["MCP_SESSION_MAX_TOTAL"],
       message: "Total MCP session capacity must be greater than or equal to per-user capacity.",
     });
@@ -150,7 +150,7 @@ const webApiEnvSchema = baseEnvSchema
   .superRefine((config, context) => {
     if (!config.AUTH0_ISSUER.endsWith("/")) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["AUTH0_ISSUER"],
         message: "AUTH0_ISSUER must end with a slash.",
       });
@@ -159,7 +159,7 @@ const webApiEnvSchema = baseEnvSchema
 
 const oauthEnvSchema = baseEnvSchema
   .extend({
-    MCP_USER_ID: z.string().uuid(),
+    MCP_USER_ID: z.guid(),
     MCP_SERVER_URL: httpsUrl,
     AUTH0_ISSUER: httpsUrl,
     AUTH0_AUDIENCE: httpsUrl,
@@ -172,7 +172,7 @@ const oauthEnvSchema = baseEnvSchema
     const resourceUrl = new URL("/mcp", config.MCP_SERVER_URL).toString();
     if (config.AUTH0_AUDIENCE !== resourceUrl) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["AUTH0_AUDIENCE"],
         message: `AUTH0_AUDIENCE must equal the public MCP resource URL (${resourceUrl}).`,
       });
@@ -180,7 +180,7 @@ const oauthEnvSchema = baseEnvSchema
 
     if (!config.AUTH0_ISSUER.endsWith("/")) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["AUTH0_ISSUER"],
         message: "AUTH0_ISSUER must end with a slash.",
       });

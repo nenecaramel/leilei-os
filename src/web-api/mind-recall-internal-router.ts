@@ -2,18 +2,18 @@ import { Router } from "express";
 import { z } from "zod";
 import type { ClaudeCodeMindRecallService } from "../domains/runtime/mind/claude-code-mind-recall.js";
 
-const candidate = z.object({stateId: z.string().uuid(), kind: z.literal("memory"), text: z.string().max(2000)}).strict();
+const candidate = z.object({stateId: z.guid(), kind: z.literal("memory"), text: z.string().max(2000)}).strict();
 const inputSchema = z.object({
   session_id: z.string().min(1).max(256),
   query: z.string().trim().min(1).max(16000),
-  exclude_ids: z.array(z.string().uuid()).max(20000),
+  exclude_ids: z.array(z.guid()).max(20000),
   caller: z.literal("claude_code"),
   context_epoch: z.number().int().min(0).max(2147483647).optional().default(0),
   semantic_candidates: z.array(candidate).max(256).optional(),
-  semantic_scores: z.record(z.string().uuid(), z.number().min(0).max(1)).optional(),
+  semantic_scores: z.record(z.guid(), z.number().min(0).max(1)).optional(),
   receipt_mode: z.literal("signed_v1").optional(),
   semantic_snapshot_version: z.string().regex(/^[a-f0-9]{64}$/).optional(),
-  snapshot_scores: z.record(z.string().uuid(), z.number().min(0).max(1)).optional(),
+  snapshot_scores: z.record(z.guid(), z.number().min(0).max(1)).optional(),
 }).strict();
 
 export function createMindRecallRouter(dependencies: {
@@ -67,12 +67,12 @@ export function createMindRecallRouter(dependencies: {
     if (!request.mcpUserId) { response.status(401).json({success: false}); return; }
     const input = z.union([
       z.object({
-        recall_id: z.string().uuid(),
+        recall_id: z.guid(),
         caller: z.literal("claude_code"),
         context_sha256: z.string().regex(/^[a-f0-9]{64}$/),
       }).strict(),
       z.object({
-        recall_id: z.string().uuid(),
+        recall_id: z.guid(),
         recall_token: z.string().min(80).max(4096),
         caller: z.literal("claude_code"),
         context_sha256: z.string().regex(/^[a-f0-9]{64}$/),

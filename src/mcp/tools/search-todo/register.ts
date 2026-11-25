@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { optionalWithDefault } from "../../../shared/zod-formats.js";
 import { MCP_CONTENT_AUTHOR_DESCRIPTION, TODO_DOMAIN_BOUNDARY } from "../model-language.js";
 import { TodoServiceError } from "../../../domains/todo/todo-service.js";
 import type { TodoSearchResult } from "../../../domains/todo/todo-types.js";
@@ -21,7 +22,7 @@ const inputSchema = z.object({
   kind: kindSchema.optional().describe("Optional entry kind filter."),
   date_from: dateSchema.optional().describe("Inclusive business-date lower bound."),
   date_to: dateSchema.optional().describe("Inclusive business-date upper bound."),
-  limit: z.number().int().min(1).max(50).default(50).optional().describe("Maximum compact entries to return. Defaults to 50."),
+  limit: optionalWithDefault(z.number().int().min(1).max(50), 50).describe("Maximum compact entries to return. Defaults to 50."),
   cursor: z.string().min(1).max(2_048).optional().describe("Opaque continuation cursor returned by the previous search_todo call."),
 }).strict();
 

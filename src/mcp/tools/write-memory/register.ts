@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { isoDateTime } from "../../../shared/zod-formats.js";
 import { createMindState } from "../../../domains/runtime/mind/mind-writer.js";
 import type { DrizzleMindProductRepository } from "../../../domains/runtime/mind/mind-product-repository.js";
 import { hashMcpWriteRequest, normalizeMcpIdempotencyKey } from "../../../domains/mcp-write/mcp-write-idempotency.js";
@@ -21,13 +22,13 @@ export function registerWriteMemoryTool(server: McpServer, dependencies: WriteMe
     description: "Save a lasting fact or preference in LeileiOS Mind, globally confirmed without branch dependence. Avoid temporary task progress. Reuse idempotency_key only for the identical request.",
     inputSchema: z.object({
       text: z.string().trim().min(1).max(20000).describe("The memory to retain."),
-      occurred_at: z.string().datetime({offset: true}).nullable().optional().describe("When the remembered event happened, if known; do not invent a date."),
+      occurred_at: isoDateTime({ offset: true }).nullable().optional().describe("When the remembered event happened, if known; do not invent a date."),
       note: z.string().trim().max(10000).nullable().optional().describe("Optional provenance note."),
       idempotency_key: mcpIdempotencyKeySchema,
     }).strict(),
     outputSchema: z.object({
       success: z.boolean(),
-      data: z.object({memory_id: z.string().uuid(), ...mcpMutationReceiptFields}).strict().optional(),
+      data: z.object({memory_id: z.guid(), ...mcpMutationReceiptFields}).strict().optional(),
       error: mcpToolErrorDetailsSchema.optional(),
     }).strict(),
     annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false},

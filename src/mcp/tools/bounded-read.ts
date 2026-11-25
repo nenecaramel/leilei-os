@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { codePointLength, sliceCodePoints } from "../../shared/unicode.js";
+import { optionalWithDefault } from "../../shared/zod-formats.js";
 
 export const DEFAULT_MCP_BOUNDED_READ_CHARS = 12_000;
 export const MAX_MCP_BOUNDED_READ_CHARS = 30_000;
@@ -28,9 +29,7 @@ export class McpBoundedReadCursorError extends Error {
 }
 
 export const boundedReadInputSchemaFields = {
-  max_chars: z.number().int().min(1).max(MAX_MCP_BOUNDED_READ_CHARS)
-    .default(DEFAULT_MCP_BOUNDED_READ_CHARS)
-    .optional()
+  max_chars: optionalWithDefault(z.number().int().min(1).max(MAX_MCP_BOUNDED_READ_CHARS), DEFAULT_MCP_BOUNDED_READ_CHARS)
     .describe(
       `Maximum body characters to return. Default ${DEFAULT_MCP_BOUNDED_READ_CHARS}; max ${MAX_MCP_BOUNDED_READ_CHARS}.`,
     ),

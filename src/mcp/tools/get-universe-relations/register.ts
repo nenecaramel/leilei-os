@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { isoDateTime } from "../../../shared/zod-formats.js";
 import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { UniverseServiceError } from "../../../domains/universe/universe-service.js";
@@ -10,7 +11,7 @@ import { joinMcpContentLines } from "../content-contract.js";
 const relationSchema = z.object({
   id: z.string().min(1).max(256), source: z.string().min(1).max(256), target: z.string().min(1).max(256),
   relation_type: z.enum(["related_to", "supports", "contradicts", "extends", "part_of", "raises"]),
-  strength: z.number().finite(), created_at: z.string().datetime(),
+  strength: z.number().finite(), created_at: isoDateTime(),
 }).strict();
 const outputSchema = z.object({
   success: z.boolean(),

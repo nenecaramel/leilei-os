@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { isoDateTime } from "../../../shared/zod-formats.js";
 import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { invokeMcpWrite } from "../write-context.js";
@@ -12,8 +13,8 @@ const nodeOutputSchema = z.object({
   id: z.string().min(1).max(256),
   title: z.string(),
   type: z.string(),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
+  created_at: isoDateTime(),
+  updated_at: isoDateTime(),
 }).strict();
 
 const successDataSchema = z.object({

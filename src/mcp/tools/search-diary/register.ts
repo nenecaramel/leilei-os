@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { isoDateTime, optionalWithDefault } from "../../../shared/zod-formats.js";
 import { DIARY_DOMAIN_BOUNDARY, MCP_CONTENT_AUTHOR_DESCRIPTION } from "../model-language.js";
 import {
   DiaryDomainError,
@@ -34,7 +35,7 @@ const searchDiaryInputSchema = z
     author: contentAuthorSchema.optional().describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
     date_from: dateSchema.optional(),
     date_to: dateSchema.optional(),
-    limit: z.number().int().min(1).max(50).default(50).optional(),
+    limit: optionalWithDefault(z.number().int().min(1).max(50), 50),
     cursor: z.string().min(1).max(2_048).optional(),
   })
   .strict();
@@ -47,8 +48,8 @@ const searchDiaryDataSchema = z.object({
       date: dateSchema,
       tags: z.array(z.string()),
       mood: z.string().nullable(),
-      created_at: z.string().datetime(),
-      updated_at: z.string().datetime(),
+      created_at: isoDateTime(),
+      updated_at: isoDateTime(),
       author: contentAuthorSchema.nullable(),
       snippet: z.string().nullable(),
       detail_tool: z.literal("get_diary"),
