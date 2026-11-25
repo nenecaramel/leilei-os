@@ -18,12 +18,17 @@
 ## Workspace and closeout
 
 The owner's Mac has **exactly one long-lived LeileiOS checkout**:
-`~/Developer/leilei-os-main`. Use Git branches in that checkout for ordinary work.
-There is no permanent UI/feature clone, including `leilei-os-ui`,
+`~/Developer/leilei-os-main`. The launchd Mac daemon runs from it and restarts
+after a crash, so a half-edited branch there can reach the owner's live chat. Keep it on
+`main` and edit code in a disposable worktree; small documentation edits may use a
+branch there. There is no permanent UI/feature clone, including `leilei-os-ui`,
 `leilei-os-ios-elevenlabs` or `leilei-os-ios-thinking`.
 
-When isolation is essential, create a **disposable** worktree under
-`${TMPDIR:-/tmp}` only; remove it at task closeout. Do not create another
+Create a **disposable** worktree under `${TMPDIR:-/tmp}` only; remove it at task
+closeout. Install its dependencies for real (`pnpm install --frozen-lockfile`, the
+same in `tools/claude-bridge`, `npm ci` in `web`; under a minute). Do not symlink
+another checkout's `node_modules`: pnpm refuses it, and Web tests fail without
+`web/node_modules`. Do not create another
 persistent clone/worktree under `~/Developer`, `~/Documents`, Desktop, iCloud
 Drive, Dropbox, OneDrive or another sync-provider folder. Do not move the live
 Mac daemon's working directory under it or remove a worktree in use by a running
@@ -65,3 +70,9 @@ opt-ins force serial execution; use `pnpm test:serial` for an explicit baseline
 and `pnpm test:profile` for metadata-only timing output. Keep database/device
 acceptance isolated and the production runtime gate serial. See
 [test execution](docs/test-execution.md) for limits and commands.
+
+With dependencies installed the full suite has no expected failures. Treat a
+failure as real until you have compared names, not counts, with unmodified `main`.
+
+Source-text assertions still exist in many tests. When a change forces you to edit
+one, replace it with a behavior test or a wiring check; do not sweep the rest.

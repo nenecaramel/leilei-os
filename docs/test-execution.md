@@ -33,6 +33,14 @@ ordering. No tests are discarded for speed. Shared persistent fixtures need an
 explicit serial opt-in or temporary per-test isolation. New external-resource
 settings must be added to the runner's serial policy and behavior tests.
 
+## Local databases for opt-in tests
+
+A throwaway PostgreSQL needs `LC_ALL=en_US.UTF-8` on macOS; without it the server
+exits with "postmaster became multithreaded during startup". Use two databases:
+`leileios_test` for `pnpm test:isolated-postgres-regressions` and
+`leileios_native_session_test` for `pnpm test:isolated-postgres-coverage`. Tests
+that fail in a whole file at once usually mean the wrong database name.
+
 ## Behavior instead of source matching
 
 Login regressions compile and mount the actual Web components. Only network SDK
