@@ -56,14 +56,14 @@ test("external native ownership survives deletion of the last projection/checkpo
   assert.equal(await canClean(db), false);
 }));
 
-test("preservation is sticky through status updates and cancels a pending cleanup", { skip: !enabled }, async () => fixture(async db => {
+test("preservation keeps the recorded state and cancels a pending cleanup", { skip: !enabled }, async () => fixture(async db => {
   const repository = new DrizzleNativeLiveProviderSessionStoreRepository(db);
-  await repository.setStatus({ userId: user, sessionId: session, state: "complete" });
+  await db.execute(sql`INSERT INTO native_live_provider_session_store_status (user_id,provider_session_id,state) VALUES (${user}::uuid,${session},'complete')`);
   await db.execute(sql`INSERT INTO native_live_provider_session_entries VALUES (${user}::uuid,${session},'')`);
   await db.execute(sql`INSERT INTO native_live_provider_session_cleanups (user_id,provider_session_id,status) VALUES (${user}::uuid,${session},'pending')`);
   await repository.preserveExternalSession({ userId: user, sessionId: session });
-  assert.equal(await repository.getStatus({ userId: user, sessionId: session }), "complete");
-  await repository.setStatus({ userId: user, sessionId: session, state: "incomplete" });
+  const [marked] = await db.execute<{ state: string }>(sql`SELECT state FROM native_live_provider_session_store_status WHERE user_id=${user}::uuid`);
+  assert.equal(marked!.state, "complete", "preservation keeps the recorded state");
   assert.equal(await canClean(db), false);
   const jobs = await db.execute<{ status: string; last_error_code: string }>(sql`SELECT status,last_error_code FROM native_live_provider_session_cleanups`);
   assert.equal(jobs[0]!.status, "failed");
@@ -101,14 +101,11 @@ test("a reserved destructive cleanup blocks import preservation instead of racin
   assert.equal(markers[0]!.count, 0);
 }));
 
-test("a shared native UUID is protected across aliases while cached tenant data stays isolated", { skip: !enabled }, async () => fixture(async db => {
-  const repository = new DrizzleNativeLiveProviderSessionStoreRepository(db);
+test("a shared native UUID is protected across aliases", { skip: !enabled }, async () => fixture(async db => {
   assert.equal(await canClean(db), true);
   await db.execute(sql`INSERT INTO native_live_provider_session_store_status (user_id,provider_session_id,state,preserve_external_session) VALUES (${otherUser}::uuid,${session},'complete',true)`);
-  await repository.setStatus({ userId: user, sessionId: session, state: "complete" });
+  await db.execute(sql`INSERT INTO native_live_provider_session_store_status (user_id,provider_session_id,state) VALUES (${user}::uuid,${session},'complete')`);
   assert.equal(await canClean(db), false);
-  assert.equal(await repository.getStatus({ userId: user, sessionId: session }), "complete");
-  assert.equal(await repository.getStatus({ userId: otherUser, sessionId: session }), "complete");
 }));
 
 test("preservation migration keeps existing session state and defaults legacy sessions to unmarked", { skip: !enabled }, async () => fixture(async db => {

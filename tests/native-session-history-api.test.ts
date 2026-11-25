@@ -111,3 +111,10 @@ test('failed native continuation recovery accepts only authenticated UUID metada
   assert.equal((await send('continuation-release',value)).status,400);assert.equal(calls,1);
  });
 });
+
+test("only the session listings remain of the full-history module, and only preservation of the store", async () => {
+  const history = await import("../src/domains/conversation/native-session-history-repository.js");
+  assert.deepEqual(Object.keys(history).sort(), ["listNativeSessionSwitchChoices", "listReferencedNativeSessions"]);
+  const { DrizzleNativeLiveProviderSessionStoreRepository } = await import("../src/domains/bridge/provider-session/native-live-provider-session-store.js");
+  assert.deepEqual(Object.getOwnPropertyNames(DrizzleNativeLiveProviderSessionStoreRepository.prototype).sort(), ["constructor", "preserveExternalSession"]);
+});

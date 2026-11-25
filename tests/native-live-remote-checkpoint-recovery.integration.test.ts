@@ -5,7 +5,6 @@ import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import { users, conversations, conversationMessages } from "../src/database/schema.js";
 import { AgentSdkClaudeTransport } from "../tools/claude-bridge/src/agent-sdk-claude-transport.mjs";
-import { DrizzleNativeLiveProviderSessionStoreRepository } from "../src/domains/bridge/provider-session/native-live-provider-session-store.js";
 import { NativeLiveBackendTurnCoordinator } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 import { NativeLiveConversationService } from "../src/domains/conversation/native-live-conversation-service.js";
@@ -23,15 +22,15 @@ test("failed remote resume then checkpoint recovery commits one canonical assist
   const userId = user!.id;
   const coordinator = new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(database.db));
   const conversation = await new NativeLiveConversationService(new DrizzleNativeLiveConversationRepository(database.db)).createConversation({ userId, title: "Recovery" });
-  const remote = new DrizzleNativeLiveProviderSessionStoreRepository(database.db);
   const sessionId = randomUUID(), checkpoint = randomUUID(), initialUser = randomUUID(), nextCheckpoint = randomUUID();
+  const stored: Array<Record<string, unknown>> = [];
+  let status: string | null = null;
   const makeStore = () => ({
-    append: (key: { sessionId: string }, entries: Array<{ type: string }>) =>
-      remote.append({ userId, key: { sessionId: key.sessionId }, entries, appendBatchId: randomUUID() }),
-    load: (key: { sessionId: string }) => remote.load({ userId, key: { sessionId: key.sessionId } }),
-    getStatus: (sessionId: string) => remote.getStatus({ userId, sessionId }),
-    markIncomplete: (sessionId: string) => remote.setStatus({ userId, sessionId, state: "incomplete" }),
-    markComplete: (sessionId: string) => remote.setStatus({ userId, sessionId, state: "complete" }),
+    async append(_key: unknown, entries: Array<Record<string, unknown>>) { stored.push(...entries); },
+    async load() { return stored.length ? [...stored] : null; },
+    async getStatus(_sessionId: string) { return status; },
+    async markIncomplete(_sessionId: string) { status = "incomplete"; },
+    async markComplete(_sessionId: string) { status = "complete"; },
   });
   const key = { projectKey: "/local", sessionId };
   const prefix = [{ type: "user", uuid: initialUser, parentUuid: null, sessionId }, { type: "assistant", uuid: checkpoint, parentUuid: initialUser, sessionId }];
@@ -90,7 +89,7 @@ test("failed remote resume then checkpoint recovery commits one canonical assist
   assert.equal(messages.filter(message => message.role === "assistant").length, 2, "initial assistant plus exactly one recovery assistant");
   assert.equal(queryCalls, 2, "one failed query, one explicitly requested recovery query; no hidden retries");
   assert.equal(await makeStore().getStatus(sessionId), "incomplete");
-  const entries = await makeStore().load(key);
+  const entries = await makeStore().load();
   assert.equal(entries!.filter(entry => entry.uuid === nextCheckpoint).length, 1);
   assert.equal(entries!.length, 4, "canonical prefix, retained failed tail and one new checkpoint");
 });

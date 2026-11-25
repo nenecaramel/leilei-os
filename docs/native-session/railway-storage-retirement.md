@@ -18,14 +18,13 @@ asset-stage internal routes return HTTP 410. The old external history
 snapshot read API also returns HTTP 410; snapshot uploads are rejected.
 LeileiOS no longer fetches the 813-message display projection or offers
 its JSONL history-upload picker. The authenticated remote SessionStore HTTP API (append, load, status, delete and listings) is removed.
-The lower-level store remains available for isolated legacy recovery tests;
+The lower-level store and the full-history restore/release writers are removed too;
+only the preservation marker is still written;
 ordinary session transcripts and new canonical messages are untouched.
 
 The runtime's default persistent Mac session registry has no remote
-SessionStore configured, but an explicit old full-history restore can
-still use old stored snapshots. A production cleanup therefore requires
-source-level retirement of those endpoints and dependent readers before
-deleting any rows.
+SessionStore configured, and no code reads the old stored snapshots any more.
+Deleting the rows still needs the audited allowlist above.
 
 Run scripts/db/native-history-assets-audit.sql read-only to obtain exact
 identity and dependency facts. The SQL shows checkpoint and bootstrap

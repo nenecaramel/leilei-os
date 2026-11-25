@@ -158,8 +158,7 @@ depends on the slot never being empty.
 | `cancel_release` releasing→leileios | `owner_revision` equals the `begin_release` value. Idempotent. |
 | `attach` desktop\|releasing\|leileios→leileios | As today (`changeOwner(...,'leileios')`). |
 
-The legacy full-history restore/release writers refuse while the row owner is
-`releasing`; they cannot bypass a switch in progress. Owner/revision mirroring
+The legacy full-history restore/release writers are removed. Owner/revision mirroring
 preserves `releasing` and never changes the turn slot or writer generation.
 
 **Execution guard.** Only `owner = 'leileios'` may prepare, admit, renew, bind

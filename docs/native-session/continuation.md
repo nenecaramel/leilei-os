@@ -62,8 +62,8 @@ observed local release, not an atomic lock enforced by the official client.
 
 The JSONL itself remains necessary for native execution. This is not a cross-Mac
 restore feature, an archive extraction feature or a guarantee that Desktop will
-render pre-compact messages. Old full-history imports remain available explicitly
-and reject continuation bindings instead of converting/reimporting them implicitly.
+render pre-compact messages. Full-history import is removed; conversations
+it imported stay readable and resumable.
 
 ## Offline verification (2026-10-16)
 
