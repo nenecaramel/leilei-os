@@ -162,10 +162,16 @@ test("every recurring wake has its own preparation id and receipt", () => {
   assert.equal(new Set(slots.map(slot => silenceWakePreparationId(epochId, slot))).size, slots.length);
   const idle = silenceWakePreparationId(epochId, "idle_17");
   assert.deepEqual(silenceWakeReceiptCandidatesForPreparationId(idle).find(row => row.epochId === epochId), { epochId, slot: "idle_17" });
-  const schema = fs.readFileSync("src/database/schema/native-live-silence-wake.ts", "utf8");
-  assert.match(schema, /idle_/u);
-  const migration = fs.readdirSync("drizzle").filter(name => name.endsWith(".sql")).sort().at(-1)!;
-  assert.match(fs.readFileSync(`drizzle/${migration}`, "utf8"), /idle_\(\[1-9\]\|\[1-5\]\[0-9\]\|6\[0-4\]\)/u);
+  // The last migration that sets the slot CHECK decides which receipts Postgres accepts.
+  const migration = fs.readdirSync("drizzle").filter(name => name.endsWith(".sql")).sort()
+    .map(name => fs.readFileSync(`drizzle/${name}`, "utf8"))
+    .filter(text => text.includes('ADD CONSTRAINT "native_live_silence_wake_receipts_slot_allowed"')).at(-1)!;
+  const check = migration.match(/"slot" IN \(([^)]*)\) OR "slot" ~ '([^']+)'/u)!;
+  const listed = new Set([...check[1]!.matchAll(/'([^']+)'/gu)].map(match => match[1]!));
+  const numbered = new RegExp(check[2]!, "u");
+  const allowed = (slot: string) => listed.has(slot) || numbered.test(slot);
+  assert.deepEqual(slots.filter(slot => !allowed(slot)), []);
+  for (const slot of ["idle_0", "idle_65", "idle_01", "concern_4"]) assert.equal(allowed(slot), false, slot);
 });
 
 test("the Mac fires the recurring wake through the long slot it already knows", () => {

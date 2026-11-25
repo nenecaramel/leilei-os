@@ -105,33 +105,6 @@ export const conversations = pgTable(
   ],
 );
 
-export const conversationDeletedBranches = pgTable(
-  "conversation_deleted_branches",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id").notNull(),
-    conversationId: uuid("conversation_id").notNull(),
-    provider: varchar("provider", { length: 32 }).$type<ConversationProvider>().notNull(),
-    sourceConversationId: text("source_conversation_id").notNull(),
-    sourceNodeId: text("source_node_id").notNull(),
-    deletedAt: timestamp("deleted_at", { withTimezone: true }).defaultNow().notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    unique("conversation_deleted_branches_id_user_unique").on(table.id, table.userId),
-    uniqueIndex("conversation_deleted_branches_unit_uidx").on(table.userId, table.conversationId, table.sourceNodeId),
-    index("conversation_deleted_branches_user_deleted_idx").on(table.userId, table.deletedAt.desc(), table.id.desc()),
-    foreignKey({
-      columns: [table.conversationId, table.userId],
-      foreignColumns: [conversations.id, conversations.userId],
-      name: "conversation_deleted_branches_conversation_user_fk",
-    }).onDelete("cascade").onUpdate("cascade"),
-    check("conversation_deleted_branches_provider_allowed", sql`${table.provider} IN ('chatgpt', 'claude')`),
-    check("conversation_deleted_branches_source_conversation_not_blank", sql`char_length(btrim(${table.sourceConversationId})) > 0`),
-    check("conversation_deleted_branches_source_node_not_blank", sql`char_length(btrim(${table.sourceNodeId})) > 0`),
-  ],
-);
-
 export const conversationMessages = pgTable(
   "conversation_messages",
   {
@@ -306,33 +279,5 @@ export const conversationProviderSessionCheckpoints = pgTable(
       "conversation_provider_checkpoints_directory_not_blank",
       sql`${table.effectiveWorkingDirectory} IS NULL OR char_length(btrim(${table.effectiveWorkingDirectory})) > 0`,
     ),
-  ],
-);
-
-export const conversationMessageVersions = pgTable(
-  "conversation_message_versions",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id").notNull(),
-    messageId: uuid("message_id").notNull(),
-    previousFingerprint: varchar("previous_fingerprint", { length: 64 }).notNull(),
-    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
-    replacedByImportId: uuid("replaced_by_import_id").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    foreignKey({
-      columns: [table.messageId, table.userId],
-      foreignColumns: [conversationMessages.id, conversationMessages.userId],
-      name: "conversation_message_versions_message_user_fk",
-    }).onDelete("cascade").onUpdate("cascade"),
-    foreignKey({
-      columns: [table.replacedByImportId, table.userId],
-      foreignColumns: [conversationImportRuns.id, conversationImportRuns.userId],
-      name: "conversation_message_versions_import_user_fk",
-    }).onDelete("restrict").onUpdate("cascade"),
-    index("conversation_message_versions_message_created_idx").on(table.messageId, table.createdAt.desc(), table.id.desc()),
-    check("conversation_message_versions_fingerprint_format", sql`${table.previousFingerprint} ~ '^[0-9a-f]{64}$'`),
-    check("conversation_message_versions_snapshot_object", sql`jsonb_typeof(${table.snapshot}) = 'object'`),
   ],
 );

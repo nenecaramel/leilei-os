@@ -44,6 +44,7 @@ const env = {
   RUN_NATIVE_LIVE_RELAY_DATABASE_TEST: "1",
   RUN_NATIVE_LIVE_PROVIDER_SESSION_STORE_DATABASE_TEST: "1",
   RUN_RETIRE_WORKSPACE_DATABASE_TEST: "1",
+  RUN_DROP_UNUSED_TABLES_MIGRATION_TEST: "1",
   RUN_NATIVE_LIVE_EXTERNAL_HISTORY_DATABASE_TEST: "1",
   RUN_CLAUDE_ACCOUNT_USAGE_DATABASE_TEST: "1",
 };
@@ -96,6 +97,7 @@ run([
   "tests/mind-memory-migration.integration.test.ts",
   "tests/native-live-background-job-retention.integration.test.ts",
   "tests/retire-product-workspace-migration.test.ts",
+  "tests/drop-empty-unused-tables-migration.test.ts",
   "tests/retire-product-workspace-schema.integration.test.ts",
   "tests/native-live-external-history.integration.test.ts",
   "tests/claude-account-usage.integration.test.ts",

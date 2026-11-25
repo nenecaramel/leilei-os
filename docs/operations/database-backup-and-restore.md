@@ -29,8 +29,9 @@ Confirmed:
   `drizzle.__drizzle_migrations` ledger during bootstrap.
 - Historical verified-production snapshot (recorded 2026-09-06): `0033_health_v2_daily_summaries`. This is not a claim about the current production migration head; obtain that value from approved live release verification.
 
-Railway platform backups/PITR are not assumed to be available. Persistent
-volume storage is not itself a verified backup.
+Railway platform backups/PITR are not available: as of 2026-11-25 the Hobby plan
+can restore an existing snapshot but not create one. One snapshot exists, about a
+month old on that date, from a volume resize. Persistent volume storage is not itself a verified backup.
 
 ## Backup layers
 
@@ -198,6 +199,22 @@ Required order:
 13. only then may the destructive PR become eligible for merge/deploy;
 14. after production deployment, verify the production migration head and
    service health again.
+
+### Exception: dropping empty, unused tables
+
+Added by the owner's decision on 2026-11-25. Steps 3–7 (backup and restored copy)
+are not required, and steps 9–12 run on a disposable database built from migrations, when the migration itself proves there is nothing to lose. All of
+these must hold; otherwise the full gate applies:
+
+- no code reads or writes the tables;
+- in one transaction the migration locks them with `ACCESS EXCLUSIVE`, raises an
+  error if any holds a row, and only then drops them, without `CASCADE`;
+- the compiled migration runner was tested on a disposable PostgreSQL of the same
+  major version: a row stops it and changes nothing, empty tables are dropped, and
+  a second run is a no-op;
+- the owner has looked at the production tables and says to merge this drop.
+
+`0114_drop_empty_unused_tables` is the first use.
 
 Any unexpected dependency, count mismatch, ledger anomaly, restore failure, or
 migration-runner discrepancy is a stop condition. Never use `CASCADE` or an
