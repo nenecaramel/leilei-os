@@ -5,14 +5,13 @@ import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import { users, conversations, conversationMessages } from "../src/database/schema.js";
 import { AgentSdkClaudeTransport } from "../tools/claude-bridge/src/agent-sdk-claude-transport.mjs";
-import { NativeLiveMacProviderSessionStore } from "../src/domains/bridge/mac/native-live-mac-provider-session-store.js";
-import { NativeLiveProviderSessionStoreService, DrizzleNativeLiveProviderSessionStoreRepository } from "../src/domains/bridge/provider-session/native-live-provider-session-store.js";
+import { DrizzleNativeLiveProviderSessionStoreRepository } from "../src/domains/bridge/provider-session/native-live-provider-session-store.js";
 import { NativeLiveBackendTurnCoordinator } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 import { NativeLiveConversationService } from "../src/domains/conversation/native-live-conversation-service.js";
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
 
-test("failed remote resume then checkpoint recovery commits one canonical assistant with the real SessionStore adapter", { skip: process.env.RUN_NATIVE_LIVE_TURN_DATABASE_TEST !== "1" }, async (t) => {
+test("failed remote resume then checkpoint recovery commits one canonical assistant through a SessionStore", { skip: process.env.RUN_NATIVE_LIVE_TURN_DATABASE_TEST !== "1" }, async (t) => {
   const database = createDatabase(process.env.DATABASE_URL!, { ssl: false });
   const [user] = await database.db.insert(users).values({ email: `remote-checkpoint-${randomUUID()}@example.com`, displayName: "Checkpoint recovery" }).returning();
   t.after(async () => {
@@ -24,24 +23,16 @@ test("failed remote resume then checkpoint recovery commits one canonical assist
   const userId = user!.id;
   const coordinator = new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(database.db));
   const conversation = await new NativeLiveConversationService(new DrizzleNativeLiveConversationRepository(database.db)).createConversation({ userId, title: "Recovery" });
-  const remote = new NativeLiveProviderSessionStoreService(new DrizzleNativeLiveProviderSessionStoreRepository(database.db));
+  const remote = new DrizzleNativeLiveProviderSessionStoreRepository(database.db);
   const sessionId = randomUUID(), checkpoint = randomUUID(), initialUser = randomUUID(), nextCheckpoint = randomUUID();
-  const fetchImpl: typeof fetch = async (url, init) => {
-    const body = JSON.parse(String(init?.body));
-    const key = body.key ? { sessionId: body.key.session_id } : null;
-    const path = String(url).split("/").at(-1);
-    let data: unknown;
-    switch (path) {
-      case "load": data = { entries: await remote.load({ userId, key: key! }) }; break;
-      case "append": await remote.append({ userId, key: key!, entries: body.entries, appendBatchId: body.append_batch_id }); data = null; break;
-      case "status": data = { state: await remote.getStatus({ userId, sessionId: body.session_id }) }; break;
-      case "mark-incomplete": await remote.markIncomplete({ userId, sessionId: body.session_id }); data = { state: "incomplete" }; break;
-      case "mark-complete": await remote.markComplete({ userId, sessionId: body.session_id }); data = { state: "complete" }; break;
-      default: throw new Error(`unexpected fixture operation: ${path}`);
-    }
-    return new Response(JSON.stringify({ success: true, data }));
-  };
-  const makeStore = () => new NativeLiveMacProviderSessionStore("https://local.fixture", "local-only", fetchImpl);
+  const makeStore = () => ({
+    append: (key: { sessionId: string }, entries: Array<{ type: string }>) =>
+      remote.append({ userId, key: { sessionId: key.sessionId }, entries, appendBatchId: randomUUID() }),
+    load: (key: { sessionId: string }) => remote.load({ userId, key: { sessionId: key.sessionId } }),
+    getStatus: (sessionId: string) => remote.getStatus({ userId, sessionId }),
+    markIncomplete: (sessionId: string) => remote.setStatus({ userId, sessionId, state: "incomplete" }),
+    markComplete: (sessionId: string) => remote.setStatus({ userId, sessionId, state: "complete" }),
+  });
   const key = { projectKey: "/local", sessionId };
   const prefix = [{ type: "user", uuid: initialUser, parentUuid: null, sessionId }, { type: "assistant", uuid: checkpoint, parentUuid: initialUser, sessionId }];
   await makeStore().append(key, prefix);

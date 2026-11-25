@@ -61,9 +61,6 @@ import {
 import {
   createNativeLiveProviderSessionStoreInternalRouter,
 } from "../web-api/native-live-provider-session-store-internal-router.js";
-import type {
-  NativeLiveProviderSessionStoreService,
-} from "../domains/bridge/provider-session/native-live-provider-session-store.js";
 import {
   createHealthSyncRouter,
   type HealthSyncApiDependencies,
@@ -105,10 +102,7 @@ export type NativeLiveProductionDependencies = {
       | "externalSessionBridgeService"
       | "attachmentService"
     >
-    & {
-      providerSessionStoreService:
-        NativeLiveProviderSessionStoreService;
-    } & Pick<NativeLiveProviderSessionStoreInternalDependencies, "beginNativeContinuationRelease" | "cancelNativeContinuationRelease" | "attachNativeContinuation" | "releaseNativeContinuation" | "readNativeContinuationState" | "listReferencedNativeSessions" | "listNativeHistoryChoices">;
+    & Pick<NativeLiveProviderSessionStoreInternalDependencies, "beginNativeContinuationRelease" | "cancelNativeContinuationRelease" | "attachNativeContinuation" | "releaseNativeContinuation" | "readNativeContinuationState" | "listReferencedNativeSessions" | "listNativeHistoryChoices">;
 };
 
 export type AppDependencies = {
@@ -524,9 +518,6 @@ export function createApp(
       databaseReadinessMiddleware,
       express.json({ limit: "32mb" }),
       createNativeLiveProviderSessionStoreInternalRouter({
-        providerSessionStoreService:
-          dependencies.nativeLiveProduction.internal
-            .providerSessionStoreService,
         beginNativeContinuationRelease: dependencies.nativeLiveProduction.internal.beginNativeContinuationRelease,
         cancelNativeContinuationRelease: dependencies.nativeLiveProduction.internal.cancelNativeContinuationRelease,
         attachNativeContinuation: dependencies.nativeLiveProduction.internal.attachNativeContinuation,

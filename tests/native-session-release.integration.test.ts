@@ -187,8 +187,7 @@ test('begin and cancel HTTP endpoints enforce auth, shape, CAS and return the ro
  const f=await releaseFixture(t);const {withServer}=await import('./helpers/native-live-http-relay-fixtures.js');
  const {createNativeLiveProviderSessionStoreInternalRouter}=await import('../src/web-api/native-live-provider-session-store-internal-router.js');
  await withServer(app=>{app.use((req,_res,next)=>{if(req.headers['x-test-auth']==='yes')req.mcpUserId=f.user.id;next();});app.use('/store',createNativeLiveProviderSessionStoreInternalRouter({
-  beginNativeContinuationRelease:input=>continuation.beginNativeContinuationRelease(f.db,input),cancelNativeContinuationRelease:input=>continuation.cancelNativeContinuationRelease(f.db,input),
-  providerSessionStoreService:{} as any}));},async base=>{
+  beginNativeContinuationRelease:input=>continuation.beginNativeContinuationRelease(f.db,input),cancelNativeContinuationRelease:input=>continuation.cancelNativeContinuationRelease(f.db,input),}));},async base=>{
   const post=(op:string,body:unknown,auth=true)=>fetch(base+'/store/native-history/continuation-release-'+op,{method:'POST',headers:{'content-type':'application/json',...(auth?{'x-test-auth':'yes'}:{})},body:JSON.stringify(body)});
   const {userId,...body}=f.beginInput;
   assert.equal((await post('begin',body,false)).status,401);assert.equal((await post('begin',{...body,extra:true})).status,400);

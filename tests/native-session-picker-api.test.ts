@@ -8,7 +8,7 @@ test('switch catalog is authenticated, owner-scoped, read-only and never exposes
     let calls = 0;
     await withServer(app => {
       if (authenticated) app.use((req, _res, next) => { req.mcpUserId = userId; next(); });
-      app.use('/store', createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any,
+      app.use('/store', createNativeLiveProviderSessionStoreInternalRouter({
         listNativeHistoryChoices: async (input: any) => { calls++; assert.deepEqual(input, { userId }); return { conversations: [], truncated: false }; },
       } as any));
     }, async url => {
@@ -28,7 +28,7 @@ test('switch catalog is authenticated, owner-scoped, read-only and never exposes
 test('unavailable catalog fails closed without leaking database diagnostics', async () => {
   await withServer(app => {
     app.use((req, _res, next) => { req.mcpUserId = userId; next(); });
-    app.use('/store', createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any,
+    app.use('/store', createNativeLiveProviderSessionStoreInternalRouter({
       listNativeHistoryChoices: async () => { throw new Error('PRIVATE_SQL'); },
     } as any));
   }, async url => {
