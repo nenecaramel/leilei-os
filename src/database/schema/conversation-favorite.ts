@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
   check,
-  foreignKey,
   index,
   integer,
   jsonb,
@@ -10,7 +9,6 @@ import {
   text,
   timestamp,
   unique,
-  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -20,9 +18,6 @@ import {
 import {
   type ConversationProvider,
 } from "./conversation-import.js";
-import {
-  type ConversationMessageRole,
-} from "./conversation.js";
 
 export type ConversationFavoriteView = "default" | "all";
 
@@ -63,39 +58,5 @@ export const conversationFavorites = pgTable(
     check("conversation_favorites_title_bounds", sql`${table.title} IS NULL OR char_length(${table.title}) <= 200`),
     check("conversation_favorites_note_bounds", sql`${table.note} IS NULL OR char_length(${table.note}) <= 4000`),
     check("conversation_favorites_tags_array", sql`jsonb_typeof(${table.tags}) = 'array'`),
-  ],
-);
-
-export const conversationFavoriteMessages = pgTable(
-  "conversation_favorite_messages",
-  {
-    favoriteId: uuid("favorite_id").notNull(),
-    userId: uuid("user_id").notNull(),
-    ordinal: integer("ordinal").notNull(),
-    messageId: uuid("message_id").notNull(),
-    sourceNodeId: text("source_node_id").notNull(),
-    sourceMessageId: text("source_message_id"),
-    role: varchar("role", { length: 32 }).$type<ConversationMessageRole>().notNull(),
-    model: text("model"),
-    sourceCreatedAt: timestamp("source_created_at", { withTimezone: true }),
-    displayText: text("display_text").default("").notNull(),
-    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.favoriteId, table.ordinal], name: "conversation_favorite_messages_pk" }),
-    foreignKey({
-      columns: [table.favoriteId, table.userId],
-      foreignColumns: [conversationFavorites.id, conversationFavorites.userId],
-      name: "conversation_favorite_messages_favorite_user_fk",
-    }).onDelete("cascade").onUpdate("cascade"),
-    uniqueIndex("conversation_favorite_messages_favorite_message_uidx").on(table.favoriteId, table.messageId),
-    index("conversation_favorite_messages_user_message_idx").on(table.userId, table.messageId),
-    check("conversation_favorite_messages_ordinal_nonnegative", sql`${table.ordinal} >= 0`),
-    check("conversation_favorite_messages_source_node_not_blank", sql`char_length(btrim(${table.sourceNodeId})) > 0`),
-    check(
-      "conversation_favorite_messages_role_allowed",
-      sql`${table.role} IN ('user', 'assistant', 'system', 'tool', 'reasoning', 'unknown')`,
-    ),
-    check("conversation_favorite_messages_snapshot_object", sql`jsonb_typeof(${table.snapshot}) = 'object'`),
   ],
 );

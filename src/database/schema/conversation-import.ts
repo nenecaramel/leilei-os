@@ -18,12 +18,8 @@ import {
 import {
   users,
 } from "./users.js";
-import {
-  bytea,
-} from "./shared.js";
 
 export type ConversationProvider = "chatgpt" | "claude";
-export type ConversationExclusionScope = "conversation" | "branch";
 export type ConversationImportRunStatus = "processing" | "executed" | "failed";
 
 export const conversationImportSources = pgTable(
@@ -53,29 +49,6 @@ export const conversationImportSources = pgTable(
       "conversation_import_sources_storage_pair",
       sql`(${table.storageKind} IS NULL AND ${table.storageKey} IS NULL) OR (${table.storageKind} IS NOT NULL AND ${table.storageKey} IS NOT NULL)`,
     ),
-  ],
-);
-
-export const conversationImportBlobs = pgTable(
-  "conversation_import_blobs",
-  {
-    sourceId: uuid("source_id").primaryKey(),
-    userId: uuid("user_id").notNull(),
-    encoding: varchar("encoding", { length: 16 }).$type<"raw" | "gzip">().notNull(),
-    originalBytes: bigint("original_bytes", { mode: "number" }).notNull(),
-    storedBytes: bigint("stored_bytes", { mode: "number" }).notNull(),
-    data: bytea("data").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    foreignKey({
-      columns: [table.sourceId, table.userId],
-      foreignColumns: [conversationImportSources.id, conversationImportSources.userId],
-      name: "conversation_import_blobs_source_user_fk",
-    }).onDelete("cascade").onUpdate("cascade"),
-    check("conversation_import_blobs_encoding_allowed", sql`${table.encoding} IN ('raw', 'gzip')`),
-    check("conversation_import_blobs_original_bytes_nonnegative", sql`${table.originalBytes} >= 0`),
-    check("conversation_import_blobs_stored_bytes_nonnegative", sql`${table.storedBytes} >= 0`),
   ],
 );
 
@@ -119,38 +92,6 @@ export const conversationImportRuns = pgTable(
     check(
       "conversation_import_runs_completion_consistency",
       sql`(${table.status} = 'processing' AND ${table.completedAt} IS NULL) OR (${table.status} IN ('executed', 'failed') AND ${table.completedAt} IS NOT NULL)`,
-    ),
-  ],
-);
-
-export const conversationExclusions = pgTable(
-  "conversation_exclusions",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
-    provider: varchar("provider", { length: 32 }).$type<ConversationProvider>().notNull(),
-    scope: varchar("scope", { length: 32 }).$type<ConversationExclusionScope>().notNull(),
-    sourceConversationId: text("source_conversation_id").notNull(),
-    sourceNodeId: text("source_node_id"),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    uniqueIndex("conversation_exclusions_conversation_uidx")
-      .on(table.userId, table.provider, table.sourceConversationId)
-      .where(sql`${table.scope} = 'conversation'`),
-    uniqueIndex("conversation_exclusions_branch_uidx")
-      .on(table.userId, table.provider, table.sourceConversationId, table.sourceNodeId)
-      .where(sql`${table.scope} = 'branch' AND ${table.sourceNodeId} IS NOT NULL`),
-    index("conversation_exclusions_user_provider_idx")
-      .on(table.userId, table.provider, table.sourceConversationId),
-    check("conversation_exclusions_provider_allowed", sql`${table.provider} IN ('chatgpt', 'claude')`),
-    check("conversation_exclusions_scope_allowed", sql`${table.scope} IN ('conversation', 'branch')`),
-    check("conversation_exclusions_source_conversation_not_blank", sql`char_length(btrim(${table.sourceConversationId})) > 0`),
-    check(
-      "conversation_exclusions_scope_node_consistency",
-      sql`(${table.scope} = 'conversation' AND ${table.sourceNodeId} IS NULL) OR (${table.scope} = 'branch' AND ${table.sourceNodeId} IS NOT NULL AND char_length(btrim(${table.sourceNodeId})) > 0)`,
     ),
   ],
 );
