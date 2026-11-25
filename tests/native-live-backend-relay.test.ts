@@ -459,3 +459,18 @@ test("execution admission is separate from late-result ownership and never mutat
   assert.deepEqual(port.calls.map(c => c.name), ["checkExecutionAdmission"]);
   assert.deepEqual(port.calls[0]!.input, input); assert.equal(coordinator.calls.length, 0); assert.equal(wake.calls.length, 0);
 });
+
+test("a signed-out Claude is a terminal callback that closes the reservation", async () => {
+  const { port, coordinator, service } = setup();
+  coordinator.result = { ok: false, prepareId, requestId, conversationId, code: "CLAUDE_LOGIN_REQUIRED" };
+  const finalized = await service.submitResult({
+    userId,
+    listenerInstanceId,
+    reservationId: prepareId,
+    result: { ...failureResult(), error_code: "CLAUDE_LOGIN_REQUIRED" },
+  });
+  assert.equal(finalized.ok, false);
+  if (finalized.ok) throw new Error("expected runtime failure result");
+  assert.equal(finalized.code, "CLAUDE_LOGIN_REQUIRED");
+  assert.equal(port.calls.filter((entry) => entry.name === "markCompleted").length, 1);
+});

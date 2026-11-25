@@ -42,6 +42,8 @@ export type NativeLiveRuntimeCommand = {
 
 export type NativeLiveRuntimeFailureCode =
   | "CLAUDE_PROCESS_FAILED"
+  // The Mac's Claude is signed out; resending cannot help until it signs in.
+  | "CLAUDE_LOGIN_REQUIRED"
   | "MALFORMED_STREAM"
   | "ABORTED"
   | "INTERRUPTED"

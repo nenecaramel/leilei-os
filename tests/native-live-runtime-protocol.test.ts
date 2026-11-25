@@ -1093,3 +1093,15 @@ test('checkpoint-addressed wake can resume the same session without a fabricated
  assert.doesNotThrow(()=>assertRuntimeResultMatchesCommand(command,result));
  assert.throws(()=>assertRuntimeResultMatchesCommand(command,{...result,provider_session_id:'foreign'}),/session identity/);
 });
+
+test("a signed-out Claude is its own failure code", () => {
+  const result = {
+    protocol_version: 4 as const,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "failure" as const,
+    error_code: "CLAUDE_LOGIN_REQUIRED",
+  };
+  assert.deepEqual(parseNativeLiveRuntimeExecutionResult(result), result);
+});

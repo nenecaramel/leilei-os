@@ -457,3 +457,17 @@ test("unknown runtime exceptions collapse to RUNTIME_UNAVAILABLE", async () => {
   if (result.status !== "failure") throw new Error("expected failure");
   assert.equal(result.error_code, "RUNTIME_UNAVAILABLE");
 });
+
+test("the Mac executor reports a signed-out Claude with its own failure code", async () => {
+  const runtime: NativeLiveClaudeRuntime = {
+    async sendNew() {
+      throw Object.assign(new Error("Claude Agent SDK turn failed."), { runtimeCode: "CLAUDE_LOGIN_REQUIRED" });
+    },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+  };
+  const result = await new NativeLiveMacRuntimeExecutor(runtime).execute(command({ protocol_version: 4 }));
+  assert.equal(result.status, "failure");
+  if (result.status !== "failure") throw new Error("expected failure");
+  assert.equal(result.error_code, "CLAUDE_LOGIN_REQUIRED");
+});

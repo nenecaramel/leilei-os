@@ -285,6 +285,16 @@ export function sdkResultFailed(message) {
   return typeof message.subtype === "string" && message.subtype !== "success";
 }
 
+// Only the main turn's own synthetic reply counts; a subagent's does not.
+// Login is its own code so the app can say what to do about it.
+export function sdkTurnFailureCode(messages) {
+  return messages.some((message) => message?.type === "assistant"
+    && message.error === "authentication_failed"
+    && (message.parent_tool_use_id ?? null) === null)
+    ? "CLAUDE_LOGIN_REQUIRED"
+    : "CLAUDE_PROCESS_FAILED";
+}
+
 export function sdkMirrorFailed(message) {
   return message?.subtype === "mirror_error";
 }

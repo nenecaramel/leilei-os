@@ -389,3 +389,23 @@ test('a rejected background acknowledgement is distinct from an SDK stream failu
  assert.equal(diagnostics[0]?.reasonCode,'BACKGROUND_ACK_FAILED');assert.equal(f.closed,1);
  assert.doesNotMatch(JSON.stringify(diagnostics),/PRIVATE_COMMIT_FAILURE/);
 });
+
+// Shapes observed from the Agent SDK while signed out.
+const signedOut=uuid=>({type:'assistant',session_id:'s',parent_tool_use_id:null,error:'authentication_failed',user_message_uuid:uuid,
+  message:{role:'assistant',model:'<synthetic>',stop_reason:'stop_sequence',content:[{type:'text',text:'Not logged in · Please run /login'}]}});
+test('a signed-out Claude rejects the turn as a login problem',async t=>{
+  const f=await fixture();t.after(()=>f.host.close());
+  const turn=f.host.submit('hi',{id:'one'});
+  const rejected=assert.rejects(turn,error=>error.runtimeCode==='CLAUDE_LOGIN_REQUIRED');
+  await f.event(signedOut('one'));
+  await f.event({...result(),is_error:true,user_message_uuid:'one'});
+  await rejected;
+});
+test('other failed turns stay process failures, even after a background login error',async t=>{
+  const f=await fixture();t.after(()=>f.host.close());
+  const turn=f.host.submit('hi',{id:'one'});
+  const rejected=assert.rejects(turn,error=>error.runtimeCode==='CLAUDE_PROCESS_FAILED');
+  await f.event({...signedOut('one'),parent_tool_use_id:'subagent'});
+  await f.event({...result(),is_error:true,user_message_uuid:'one'});
+  await rejected;
+});

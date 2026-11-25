@@ -188,6 +188,9 @@ enum NativeLiveSendError: LocalizedError {
         case .interrupted:
             return "Turn interrupted."
         case .failed(let code):
+            if code == "CLAUDE_LOGIN_REQUIRED" {
+                return "Claude is signed out on the Mac. Run “claude auth login” there, then send again."
+            }
             return code ?? "Failed"
         case .completionUnknown:
             return "Turn completion is unknown."

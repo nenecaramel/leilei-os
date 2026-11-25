@@ -295,6 +295,7 @@
         "tests/ios-native-live-current-path-idle.test.ts",
         "tests/ios-native-live-media-foundation.test.ts",
         "tests/ios-native-live-older-pagination.test.ts",
+        "tests/ios-native-live-send-error.test.ts",
         "tests/ios-native-live-turn-lifecycle.test.ts",
         "tests/ios-pr793-ui-polish.test.ts",
         "tests/ios-runtime-activity-render-equivalence.test.ts",
