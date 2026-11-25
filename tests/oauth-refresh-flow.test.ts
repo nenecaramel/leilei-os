@@ -87,7 +87,7 @@ test("wrong client, binding changes, tamper, expiry and key replacement cannot r
     for (const extra of [{ client_id: "other-client" }, { resource: "https://elsewhere.test" }, { audience: "other" }, { scope: "mcp:access admin" }]) {
       assert.equal((await refresh(base, token, extra)).status, 400);
     }
-    assert.equal((await refresh(base, "A" + token.slice(1))).status, 400);
+    assert.equal((await refresh(base, (token[0] === "A" ? "B" : "A") + token.slice(1))).status, 400);
     s.advance(30 * 86400_000);
     assert.equal((await refresh(base, token)).status, 400);
     assert.deepEqual(s.refreshInputs, []);
