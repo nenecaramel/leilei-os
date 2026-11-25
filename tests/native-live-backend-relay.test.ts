@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { NATIVE_LIVE_RUNTIME_FAILURE_CODES } from "../src/domains/bridge/protocol/runtime-protocol/types.js";
 import {
   NativeLiveBackendRelayError,
   NativeLiveBackendRelayService,
@@ -473,4 +474,22 @@ test("a signed-out Claude is a terminal callback that closes the reservation", a
   if (finalized.ok) throw new Error("expected runtime failure result");
   assert.equal(finalized.code, "CLAUDE_LOGIN_REQUIRED");
   assert.equal(port.calls.filter((entry) => entry.name === "markCompleted").length, 1);
+});
+
+test("every runtime failure code is a terminal callback that closes the reservation", async (t) => {
+  assert.ok(NATIVE_LIVE_RUNTIME_FAILURE_CODES.includes("ATTACHMENT_UNAVAILABLE"));
+  for (const code of NATIVE_LIVE_RUNTIME_FAILURE_CODES) {
+    await t.test(code, async () => {
+      const { port, coordinator, service } = setup();
+      coordinator.result = { ok: false, prepareId, requestId, conversationId, code };
+      const finalized = await service.submitResult({
+        userId,
+        listenerInstanceId,
+        reservationId: prepareId,
+        result: { ...failureResult(), error_code: code },
+      });
+      assert.equal(!finalized.ok && finalized.code, code);
+      assert.equal(port.calls.filter((entry) => entry.name === "markCompleted").length, 1);
+    });
+  }
 });

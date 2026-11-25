@@ -40,19 +40,31 @@ export type NativeLiveRuntimeCommand = {
   prompt: string;
 };
 
-export type NativeLiveRuntimeFailureCode =
-  | "CLAUDE_PROCESS_FAILED"
+// The only list of codes a Mac runtime may report for a failed turn. The
+// result parser, the Mac executor and the relay's terminal check all read it.
+export const NATIVE_LIVE_RUNTIME_FAILURE_CODES = [
+  "CLAUDE_PROCESS_FAILED",
   // The Mac's Claude is signed out; resending cannot help until it signs in.
-  | "CLAUDE_LOGIN_REQUIRED"
-  | "MALFORMED_STREAM"
-  | "ABORTED"
-  | "INTERRUPTED"
-  | "NO_PROVIDER_SESSION"
-  | "PROVIDER_SESSION_CONFLICT"
-  | "WORKING_DIRECTORY_UNAVAILABLE"
-  | "WORKING_DIRECTORY_MISMATCH"
-  | "ATTACHMENT_UNAVAILABLE"
-  | "RUNTIME_UNAVAILABLE";
+  "CLAUDE_LOGIN_REQUIRED",
+  "MALFORMED_STREAM",
+  "ABORTED",
+  "INTERRUPTED",
+  "NO_PROVIDER_SESSION",
+  "PROVIDER_SESSION_CONFLICT",
+  "WORKING_DIRECTORY_UNAVAILABLE",
+  "WORKING_DIRECTORY_MISMATCH",
+  "ATTACHMENT_UNAVAILABLE",
+  "RUNTIME_UNAVAILABLE",
+] as const;
+
+export type NativeLiveRuntimeFailureCode =
+  (typeof NATIVE_LIVE_RUNTIME_FAILURE_CODES)[number];
+
+export function isNativeLiveRuntimeFailureCode(
+  value: unknown,
+): value is NativeLiveRuntimeFailureCode {
+  return (NATIVE_LIVE_RUNTIME_FAILURE_CODES as readonly unknown[]).includes(value);
+}
 
 export type NativeLiveRuntimeContextUsageCategory = {
   name: string | null;
