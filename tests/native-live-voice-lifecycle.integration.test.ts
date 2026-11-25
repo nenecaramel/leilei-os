@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
-import { users, conversations, nativeLiveProviderSessionCleanups, nativeLiveBackgroundModelJobs } from "../src/database/schema.js";
+import { users, conversations, nativeLiveProviderSessionCleanups } from "../src/database/schema.js";
 import { NativeLiveBackendTurnCoordinator } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
@@ -14,7 +14,7 @@ test("canonical voice survives retry, keyboard edit becomes text, and idempotenc
   assert.ok(process.env.DATABASE_URL);
   const database=createDatabase(process.env.DATABASE_URL,{ssl:false});
   const [user]=await database.db.insert(users).values({email:`voice-${crypto.randomUUID()}@example.com`,displayName:"Voice regression"}).returning();
-  t.after(async()=>{try{await database.db.delete(nativeLiveBackgroundModelJobs).where(eq(nativeLiveBackgroundModelJobs.userId,user.id));await database.db.delete(nativeLiveProviderSessionCleanups).where(eq(nativeLiveProviderSessionCleanups.userId,user.id));await database.db.delete(conversations).where(eq(conversations.userId,user.id));await database.db.delete(users).where(eq(users.id,user.id));}finally{await database.close();}});
+  t.after(async()=>{try{await database.db.delete(nativeLiveProviderSessionCleanups).where(eq(nativeLiveProviderSessionCleanups.userId,user.id));await database.db.delete(conversations).where(eq(conversations.userId,user.id));await database.db.delete(users).where(eq(users.id,user.id));}finally{await database.close();}});
   const service=new NativeLiveConversationService(new DrizzleNativeLiveConversationRepository(database.db));
   const conversation=await service.createConversation({userId:user.id,title:"Voice regression"});
   const port=new DrizzleNativeLiveBackendTurnPort(database.db);

@@ -157,13 +157,6 @@ export function planExclusiveProviderSessionCleanup(input: {
   ];
 }
 
-export function workflowReferencesAnyId(
-  payload: Record<string, unknown> | null,
-  ids: ReadonlySet<string>,
-): boolean {
-  return Boolean(payload) && structuredValueReferencesAnyId(payload, ids);
-}
-
 function collectDescendants(
   messages: readonly NativeLiveMessage[],
   roots: readonly string[],

@@ -58,52 +58,6 @@ export async function deleteExpiredRuntimeOperationalRecordsBatch(
     if (remaining > 0) {
       const rows = await transaction.execute<{ id: string }>(sql`
         WITH victims AS (
-          SELECT id
-          FROM runtime_effects
-          WHERE updated_at < ${cutoff.toISOString()}::timestamptz
-            AND (
-              status = 'observed'
-              OR (status = 'failed' AND retryable = false)
-            )
-          ORDER BY updated_at ASC, id ASC
-          LIMIT ${remaining}
-          FOR UPDATE SKIP LOCKED
-        )
-        DELETE FROM runtime_effects AS effect
-        USING victims
-        WHERE effect.id = victims.id
-        RETURNING effect.id
-      `);
-      consume(rows.length);
-    }
-
-    if (remaining > 0) {
-      const rows = await transaction.execute<{ id: string }>(sql`
-        WITH victims AS (
-          SELECT wake.id
-          FROM runtime_proactivity_wakes AS wake
-          WHERE wake.status = 'decided'
-            AND wake.decided_at < ${cutoff.toISOString()}::timestamptz
-            AND NOT EXISTS (
-              SELECT 1
-              FROM runtime_effects AS effect
-              WHERE effect.source_wake_id = wake.id
-            )
-          ORDER BY wake.decided_at ASC, wake.id ASC
-          LIMIT ${remaining}
-          FOR UPDATE SKIP LOCKED
-        )
-        DELETE FROM runtime_proactivity_wakes AS wake
-        USING victims
-        WHERE wake.id = victims.id
-        RETURNING wake.id
-      `);
-      consume(rows.length);
-    }
-
-    if (remaining > 0) {
-      const rows = await transaction.execute<{ id: string }>(sql`
-        WITH victims AS (
           SELECT preparation.id
           FROM native_live_turn_preparations AS preparation
           WHERE preparation.updated_at

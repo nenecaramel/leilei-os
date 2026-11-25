@@ -7,13 +7,10 @@ import {
   conversationMessages,
   conversationProviderSessionCheckpoints,
   conversations,
-  nativeLiveBackgroundModelJobs,
   nativeLiveProviderSessionCleanups,
   nativeLiveRuntimeEvents,
   nativeLiveRuntimeInteractions,
   nativeLiveTurnPreparations,
-  runtimeEffects,
-  runtimeProactivityWakes,
   runtimeSubjectStates,
   users,
 } from "../src/database/schema.js";
@@ -481,17 +478,8 @@ test(
       try {
         if (userId) {
           await database.db
-            .delete(nativeLiveBackgroundModelJobs)
-            .where(eq(nativeLiveBackgroundModelJobs.userId, userId));
-          await database.db
             .delete(nativeLiveProviderSessionCleanups)
             .where(eq(nativeLiveProviderSessionCleanups.userId, userId));
-          await database.db
-            .delete(runtimeEffects)
-            .where(eq(runtimeEffects.userId, userId));
-          await database.db
-            .delete(runtimeProactivityWakes)
-            .where(eq(runtimeProactivityWakes.userId, userId));
           await database.db
             .delete(runtimeSubjectStates)
             .where(eq(runtimeSubjectStates.userId, userId));
@@ -746,84 +734,6 @@ test(
       },
     ]);
 
-    // Retired features left rows behind; deletion must still clear them.
-    const wakeId = crypto.randomUUID();
-    await database.db.insert(runtimeProactivityWakes).values({
-      id: wakeId,
-      userId,
-      subjectId: "G",
-      status: "created",
-      gate: {
-        wakeId,
-        userId,
-        subjectId: "G",
-        offeredAt: "2026-09-27T06:45:00.000Z",
-        mode: "live",
-        enabled: true,
-        foregroundActive: false,
-        outstandingEffectStatus: null,
-        quietUntil: null,
-        nextEligibleAt: null,
-      },
-      contactTarget: null,
-      contextSnapshot: {
-        version: 1,
-        contextManifestId: null,
-        capsule: "deleted conversation context",
-        sourceConversationId: deletedConversation.id,
-        sourceHeadMessageId: secondAssistant.message.id,
-        sourceActivityAt: "2026-09-27T06:40:00.000Z",
-      },
-    });
-
-    const proactivityJobId = crypto.randomUUID();
-    await database.db.insert(nativeLiveBackgroundModelJobs).values({
-      id: proactivityJobId,
-      userId,
-      subjectId: "G",
-      workflowKind: "proactivity_wake",
-      workflowRunId: wakeId,
-      workflowPayload: { version: 1, wake_id: wakeId },
-      taskKind: "proactivity_deliberate",
-      promptContractVersion: "delete-test-v1",
-      prompt: "proactivity snapshot that must disappear",
-      status: "pending",
-    });
-
-    const effectId = crypto.randomUUID();
-    await database.db.insert(runtimeEffects).values({
-      id: effectId,
-      userId,
-      subjectId: "G",
-      sourceWakeId: wakeId,
-      decisionId: "archive-delete-effect",
-      idempotencyKey: "d".repeat(64),
-      effectType: "message_send",
-      target: `conversation:${deletedConversation.id}`,
-      payload: { text: "pending proactive message" },
-      payloadHash: "e".repeat(64),
-      status: "pending",
-      attempt: 0,
-      retryable: true,
-    });
-
-    const backgroundJobId = crypto.randomUUID();
-    await database.db.insert(nativeLiveBackgroundModelJobs).values({
-      id: backgroundJobId,
-      userId,
-      subjectId: "G",
-      workflowKind: "distillation",
-      workflowRunId: crypto.randomUUID(),
-      workflowPayload: {
-        conversation_id: deletedConversation.id,
-        source_head_message_id: secondUser.id,
-      },
-      taskKind: "distillation",
-      promptContractVersion: "delete-test-v1",
-      prompt: "transcript snapshot that must disappear",
-      status: "pending",
-    });
-
     const archived = await service.archiveConversation({
       userId,
       conversationId: deletedConversation.id,
@@ -917,30 +827,6 @@ test(
         deletedConversation.id,
       ));
     assert.equal(deletedCheckpoints.length, 0);
-
-    const background = await database.db
-      .select({ id: nativeLiveBackgroundModelJobs.id })
-      .from(nativeLiveBackgroundModelJobs)
-      .where(eq(nativeLiveBackgroundModelJobs.id, backgroundJobId));
-    assert.equal(background.length, 0);
-
-    const deletedEffect = await database.db
-      .select({ id: runtimeEffects.id })
-      .from(runtimeEffects)
-      .where(eq(runtimeEffects.id, effectId));
-    assert.equal(deletedEffect.length, 0);
-
-    const deletedWake = await database.db
-      .select({ id: runtimeProactivityWakes.id })
-      .from(runtimeProactivityWakes)
-      .where(eq(runtimeProactivityWakes.id, wakeId));
-    assert.equal(deletedWake.length, 0);
-
-    const deletedProactivityJob = await database.db
-      .select({ id: nativeLiveBackgroundModelJobs.id })
-      .from(nativeLiveBackgroundModelJobs)
-      .where(eq(nativeLiveBackgroundModelJobs.id, proactivityJobId));
-    assert.equal(deletedProactivityJob.length, 0);
 
     const cleanups = await database.db
       .select({

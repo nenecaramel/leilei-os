@@ -1,10 +1,8 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DbExecutor } from "./native-live-conversation-db.js";
 import type { NativeLiveConversationArchiveResult, NativeLiveConversationRestoreResult, NativeLiveConversationDeleteResult } from "./native-live-conversation-repository.js";
-import { conversations, conversationMessages, conversationFavorites, nativeLiveTurnPreparations, nativeLiveBackgroundModelJobs, runtimeProactivityWakes, runtimeEffects, runtimeDistillationWatermarks } from "../../database/schema.js";
+import { conversations, nativeLiveTurnPreparations, runtimeDistillationWatermarks } from "../../database/schema.js";
 import { providerSessionUnreferenced } from "../bridge/provider-session/native-live-provider-session-references.js";
-import { workflowReferencesAnyId } from "../bridge/turn/native-live-replacement-purge.js";
-import { structuredValueReferencesAnyId } from "../runtime/lifecycle/persistent-reference-scan.js";
 
 // Each operation owns its original serializable transaction, including all locks and cleanup.
 export async function archiveConversation(db: DbExecutor, input: {
@@ -164,17 +162,6 @@ export async function deleteConversation(db: DbExecutor, input: {
         .limit(1);
       if (activeTurns.length > 0) return { outcome: "busy" as const };
 
-      const messages = await transaction
-        .select({ id: conversationMessages.id })
-        .from(conversationMessages)
-        .where(and(
-          eq(conversationMessages.userId, input.userId),
-          eq(conversationMessages.conversationId, input.conversationId),
-        ));
-      const purgeMessageIds = new Set(
-        messages.map((message) => message.id),
-      );
-
       await transaction.execute(sql`
         INSERT INTO native_live_provider_session_cleanups (
           user_id, provider, provider_session_id
@@ -194,120 +181,12 @@ export async function deleteConversation(db: DbExecutor, input: {
         DO NOTHING
       `);
 
-      const wakes = await transaction
-        .select({
-          id: runtimeProactivityWakes.id,
-          gate: runtimeProactivityWakes.gate,
-          contactTarget: runtimeProactivityWakes.contactTarget,
-          contextSnapshot: runtimeProactivityWakes.contextSnapshot,
-          decision: runtimeProactivityWakes.decision,
-        })
-        .from(runtimeProactivityWakes)
-        .where(eq(runtimeProactivityWakes.userId, input.userId))
-        .for("update");
-      const target = "conversation:" + input.conversationId;
-      const workflowRootIds = new Set<string>([
-        input.conversationId,
-        ...purgeMessageIds,
-      ]);
-      const purgeWakeIds = wakes
-        .filter((wake) =>
-          wake.contactTarget === target
-          || structuredValueReferencesAnyId(wake.gate, workflowRootIds)
-          || structuredValueReferencesAnyId(
-            wake.contextSnapshot,
-            workflowRootIds,
-          )
-          || structuredValueReferencesAnyId(
-            wake.decision,
-            workflowRootIds,
-          )
-        )
-        .map((wake) => wake.id);
-      const workflowCausalIds = new Set<string>([
-        input.conversationId,
-        ...purgeMessageIds,
-        ...purgeWakeIds,
-      ]);
-
-      const backgroundJobs = await transaction
-        .select({
-          id: nativeLiveBackgroundModelJobs.id,
-          workflowKind: nativeLiveBackgroundModelJobs.workflowKind,
-          workflowRunId: nativeLiveBackgroundModelJobs.workflowRunId,
-          workflowPayload: nativeLiveBackgroundModelJobs.workflowPayload,
-        })
-        .from(nativeLiveBackgroundModelJobs)
-        .where(eq(nativeLiveBackgroundModelJobs.userId, input.userId));
-      const purgeBackgroundJobIds = backgroundJobs
-        .filter((job) =>
-          (
-            job.workflowKind === "distillation"
-            && job.workflowPayload?.conversation_id
-              === input.conversationId
-          )
-          || (
-            job.workflowRunId !== null
-            && purgeWakeIds.includes(job.workflowRunId)
-          )
-          || workflowReferencesAnyId(
-            job.workflowPayload,
-            workflowCausalIds,
-          )
-        )
-        .map((job) => job.id);
-
-      if (purgeBackgroundJobIds.length > 0) {
-        await transaction
-          .delete(nativeLiveBackgroundModelJobs)
-          .where(and(
-            eq(nativeLiveBackgroundModelJobs.userId, input.userId),
-            inArray(
-              nativeLiveBackgroundModelJobs.id,
-              purgeBackgroundJobIds,
-            ),
-          ));
-      }
-
-      if (purgeWakeIds.length > 0) {
-        await transaction
-          .delete(runtimeEffects)
-          .where(and(
-            eq(runtimeEffects.userId, input.userId),
-            inArray(runtimeEffects.sourceWakeId, purgeWakeIds),
-          ));
-      }
-      await transaction
-        .delete(runtimeEffects)
-        .where(and(
-          eq(runtimeEffects.userId, input.userId),
-          eq(runtimeEffects.target, target),
-        ));
-      if (purgeWakeIds.length > 0) {
-        await transaction
-          .delete(runtimeProactivityWakes)
-          .where(and(
-            eq(runtimeProactivityWakes.userId, input.userId),
-            inArray(runtimeProactivityWakes.id, purgeWakeIds),
-          ));
-      }
-
       await transaction
         .delete(runtimeDistillationWatermarks)
         .where(and(
           eq(runtimeDistillationWatermarks.userId, input.userId),
           eq(
             runtimeDistillationWatermarks.conversationId,
-            input.conversationId,
-          ),
-        ));
-
-      await transaction
-        .delete(conversationFavorites)
-        .where(and(
-          eq(conversationFavorites.userId, input.userId),
-          eq(
-            conversationFavorites.conversationId,
             input.conversationId,
           ),
         ));
