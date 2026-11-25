@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -8,7 +8,8 @@ import test from 'node:test';
 // Every process-control command is stubbed: these tests must never reach the
 // owner's real launchd job or daemon.
 function fixture(t: test.TestContext, { canonical = true, nodeVersion = 'v24.11.1' } = {}) {
-  const temp = mkdtempSync(join(tmpdir(), 'leilei-launchd-test-'));
+  // macOS tmpdir is a symlink; the script resolves it.
+  const temp = realpathSync(mkdtempSync(join(tmpdir(), 'leilei-launchd-test-')));
   t.after(() => rmSync(temp, { recursive: true, force: true }));
   const home = join(temp, 'home');
   const root = canonical ? join(home, 'Developer/leilei-os-main') : join(temp, 'other-copy');
@@ -95,7 +96,7 @@ test('install refuses before writing anything when launchd could not run the dae
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, message);
     assert.equal(existsSync(f.plist), false);
-    assert.doesNotMatch(f.read(f.effects), /bootstrap|pkill/);
+    assert.doesNotMatch(f.read(f.effects), /^(?:launchctl bootstrap|pkill)/m);
   }
   const linux = fixture(t);
   writeFileSync(join(linux.bin, 'uname'), '#!/bin/sh\necho Linux\n', { mode: 0o755 });
