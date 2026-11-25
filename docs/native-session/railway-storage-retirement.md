@@ -23,8 +23,11 @@ only the preservation marker is still written;
 ordinary session transcripts and new canonical messages are untouched.
 
 The runtime's default persistent Mac session registry has no remote
-SessionStore configured, and no code reads the old stored snapshots any more.
-Deleting the rows still needs the audited allowlist above.
+SessionStore configured, and the full-history restore that used the stored
+snapshots is removed. **The rows are still read:** the thinking shown for
+earlier imported messages comes from `native_live_provider_session_entries`
+(`native-live-native-history-thinking.ts`). Deleting rows would hide it, and
+still needs the audited allowlist above.
 
 Run scripts/db/native-history-assets-audit.sql read-only to obtain exact
 identity and dependency facts. The SQL shows checkpoint and bootstrap
