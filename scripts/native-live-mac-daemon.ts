@@ -3,6 +3,7 @@ import { NativeLiveMacSilenceWakeSwitch } from "../src/domains/bridge/mac/native
 import { NativeLiveMacPersistentRuntime } from "../src/domains/bridge/mac/native-live-mac-persistent-runtime.js";
 import { createNativeSessionDrainServer } from "../tools/claude-bridge/src/native-session-daemon-drain.mjs";
 import { startMindRecallSemanticServer } from "../src/domains/bridge/mac/native-live-mac-mind-recall-server.js";
+import { NativeLiveMacMindComparison } from "../src/domains/bridge/mac/native-live-mac-mind-comparison.js";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -195,8 +196,15 @@ const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);
 // Both Native Live and the optional Hook use the existing E5 scorer on demand.
 // No startup Memory download, snapshot timer or hybrid model worker.
-const semanticScorer = new LocalE5BreathSemanticScorer();
-const closeMindRecallServer = await startMindRecallSemanticServer(semanticScorer).catch(() => null);
+// The cache also has room for the comparison's whole library, so it cannot evict /score.
+const semanticScorer = new LocalE5BreathSemanticScorer({ passageCacheLimit: 4096 });
+// Trial only: idle until the Hook's local comparison switch offers a finished recall.
+const mindComparison = new NativeLiveMacMindComparison({
+  baseUrl: relayBaseUrl, token: relayToken, scorer: semanticScorer,
+});
+const closeMindRecallServer = await startMindRecallSemanticServer(
+  semanticScorer, undefined, mindComparison,
+).catch(() => null);
 const loop = new NativeLiveMacDaemonLoop(
   listenerInstanceId,
   relay,
@@ -664,4 +672,5 @@ while (!stopping) {
 await closeHandoffServer();
 await persistentRuntime.closeAll();
 await closeMindRecallServer?.();
+await mindComparison.close();
 daemonLock.release();

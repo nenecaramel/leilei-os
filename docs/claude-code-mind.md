@@ -52,12 +52,34 @@ source does not terminate an already-running old worker. The retired ritrieve
 model runtime, offline comparison/install scripts, local snapshot synchronizer
 and indexed/hybrid socket routes have been removed. `LEILEI_MIND_RECALL_MODE`
 no longer selects a different Hook retrieval path; an old value uses the current
-keyword/E5 path. The local semantic socket serves only `/score`.
+keyword/E5 path. The local semantic socket serves `/score` and,
+for the optional trial below, `/compare`.
 
 The server-side signed snapshot API and its freshness/visibility validation stay
 for previously installed clients. They do not start a poller or load a local
 model. Their compatibility tests remain; this cleanup does not change Stop
 confirmation, receipt signing, MCP writes or stored Memory data.
+
+## Local comparison trial (off by default)
+
+```sh
+node ~/.claude/leileios-mind/toggle.mjs compare-on
+node ~/.claude/leileios-mind/toggle.mjs compare-off
+pnpm mind:comparison-report
+```
+
+With the `compare` marker present, the Hook hands each **finished** prompt recall to
+the Mac daemon over the private socket (at most 150 ms, all errors ignored). The real
+recall, its output, receipts and deadline are unchanged; pausing the Mind Hook also
+pauses the trial. About four seconds later the daemon scores the whole library with
+the existing E5 model and appends one line to `~/.leileios/mind-comparison/log.jsonl`
+(directory 0700, file 0600, 8 MiB, then it stops). The line holds the prompt text,
+record IDs, scores and timings, never memory text. Nothing is sent to Claude.
+
+The library is downloaded through the existing authenticated snapshot route on the
+first offer and refreshed after a comparison once it is ten minutes old. There is no
+startup download, timer or polling. One comparison runs at a time; the rest are
+counted as dropped. The report prints counts and timings only.
 
 ## Pause or resume without changing Railway
 
