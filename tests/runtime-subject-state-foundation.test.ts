@@ -5,11 +5,6 @@ import {
   assertContextManifestSafe,
   subjectStateToContextItem,
 } from "../src/domains/runtime/context/context-assembly-contract.js";
-import {
-  assertEffectDispatchAllowed,
-  assertEffectTransition,
-  type DurableEffect,
-} from "../src/domains/runtime/effects/effect-protocol.js";
 import { isConsolidationEligible } from "../src/domains/runtime/subject-state/runtime-status-axes.js";
 import {
   SubjectStateContractError,
@@ -185,49 +180,4 @@ test("Context Manifest keeps subject state as typed data, never promoted instruc
       items: [{ ...item, authority: "instruction" as const }],
     }),
   );
-});
-
-test("Effect protocol forbids replay dispatch and blind retry from unknown delivery", () => {
-  const effect: DurableEffect = {
-    effectId: "effect-1",
-    userId: "user-1",
-    subjectId: "G",
-    decisionId: "decision-1",
-    idempotencyKey: "effect-1:send",
-    effectType: "message_send",
-    target: "chat",
-    payloadHash: "abc",
-    status: "reserved",
-    attempt: 0,
-    retryable: true,
-    reservedBy: "33333333-3333-4333-8333-333333333333",
-    reservedAt: "2026-09-22T08:00:01.000Z",
-    reservationExpiresAt: "2026-09-22T08:01:01.000Z",
-    createdAt: "2026-09-22T08:00:00.000Z",
-    updatedAt: "2026-09-22T08:00:01.000Z",
-  };
-  assert.doesNotThrow(() =>
-    assertEffectDispatchAllowed({ mode: "live", effect }),
-  );
-  assert.throws(() =>
-    assertEffectDispatchAllowed({ mode: "replay", effect }),
-  );
-  assert.throws(() =>
-    assertEffectDispatchAllowed({
-      mode: "live",
-      effect: {
-        ...effect,
-        status: "unknown",
-        reservedBy: null,
-        reservedAt: null,
-        reservationExpiresAt: null,
-        dispatchStartedAt: "2026-09-22T08:00:02.000Z",
-        attempt: 1,
-        retryable: false,
-        failureCode: "DELIVERY_UNKNOWN",
-      },
-    }),
-  );
-  assert.doesNotThrow(() => assertEffectTransition("unknown", "observed"));
-  assert.throws(() => assertEffectTransition("unknown", "pending"));
 });

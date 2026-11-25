@@ -27,11 +27,6 @@ export const DEFAULT_BACKGROUND_TARGET_PLANS = {
     priority: "maintenance",
     cost: 1,
   },
-  proactivityWake: {
-    kind: "proactivity_wake",
-    priority: "reflection",
-    cost: 1,
-  },
 } as const satisfies Record<
   string,
   BackgroundOpportunityTargetPlan
@@ -42,8 +37,6 @@ export const DEFAULT_BACKGROUND_TARGET_PLANS = {
  *
  * This policy answers one narrow question only: which Subject State
  * maintenance jobs are eligible when Companion offers a timed opportunity.
- * Proactivity and effect recovery already have explicit producers and do not
- * need a second routing policy.
  */
 export class BackgroundOpportunityPolicy {
   constructor(

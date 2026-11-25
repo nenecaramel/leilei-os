@@ -578,10 +578,6 @@ export function createApp(
                 reason: event.reason,
                 maintenanceKindCount:
                   event.maintenanceKindCount,
-                effectDeliveryScheduled:
-                  event.effectDeliveryScheduled,
-                proactivityScheduled:
-                  event.proactivityScheduled,
                 failureCount: event.failureCount,
               },
             );

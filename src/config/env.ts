@@ -95,11 +95,6 @@ const baseEnvSchema = z.object({
     z.coerce.number().min(0).max(1).optional(),
   NATIVE_LIVE_MEMORY_DECAY_ARCHIVE_THRESHOLD:
     z.coerce.number().min(0).max(1).optional(),
-  NATIVE_LIVE_PROACTIVITY_ENABLED: booleanEnv.optional(),
-  NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS:
-    z.coerce.number().int().positive().optional(),
-  NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS:
-    z.coerce.number().int().positive().optional(),
   NATIVE_LIVE_SEND_FILE_ENABLED: booleanEnv.optional(),
   NATIVE_LIVE_ATTACHMENT_BUCKET: z.string().trim().min(1).optional(),
   NATIVE_LIVE_ATTACHMENT_ENDPOINT: httpsUrl.optional(),
@@ -397,43 +392,6 @@ export function getBreathRankingConfig(
     );
   }
   return { salienceWeight };
-}
-
-export function getProactivityWakeOpportunityConfig(
-  environment: Pick<
-    RuntimeEnv,
-    | "NATIVE_LIVE_PROACTIVITY_ENABLED"
-    | "NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS"
-    | "NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS"
-  >,
-): ProactivityWakeOpportunityConfig | undefined {
-  const enabled = environment.NATIVE_LIVE_PROACTIVITY_ENABLED;
-  const values = [
-    environment.NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS,
-    environment.NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS,
-  ];
-
-  if (enabled !== true) {
-    if (values.some((value) => value !== undefined)) {
-      throw new Error(
-        "NATIVE_LIVE_PROACTIVITY_ENABLED=true is required when Proactivity policy values are configured.",
-      );
-    }
-    return undefined;
-  }
-
-  if (values.some((value) => value === undefined)) {
-    throw new Error(
-      "NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS and NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS are required when Proactivity is enabled.",
-    );
-  }
-
-  return {
-    minIdleMs:
-      environment.NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS! * 1_000,
-    cooldownMs:
-      environment.NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS! * 1_000,
-  };
 }
 
 export function getMemoryDecayConfig(

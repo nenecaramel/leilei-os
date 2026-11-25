@@ -1,7 +1,6 @@
 import type { NativeLiveBackendRelayService } from "../../domains/bridge/relay/native-live-backend-relay.js";
 import type { NativeLiveSemanticHandshakeService } from "../../domains/bridge/mind/native-live-semantic-handshake.js";
 import type { NativeLiveBackgroundModelQueueService } from "../../domains/bridge/background/native-live-background-model-queue.js";
-import type { NativeLiveBackgroundWorkflowCoordinator } from "../../domains/bridge/background/native-live-background-workflow-coordinator.js";
 import type { NativeLiveRuntimeEventService } from "../../domains/bridge/runtime-interaction/native-live-runtime-event-stream.js";
 import type { NativeLiveRuntimeInteractionService } from "../../domains/bridge/runtime-interaction/native-live-runtime-interaction.js";
 import type { NativeLiveRuntimeControlService } from "../../domains/bridge/runtime-interaction/native-live-runtime-control.js";
@@ -31,10 +30,6 @@ export type NativeLiveRelayInternalDependencies = {
     NativeLiveBackgroundModelQueueService,
     "reserveNext" | "submitResult"
   >;
-  backgroundModelCoordinator?: Pick<
-    NativeLiveBackgroundWorkflowCoordinator,
-    "advanceNextForUser"
-  >;
   runtimeEventService?: Pick<
     NativeLiveRuntimeEventService,
     "appendBatch"
@@ -59,8 +54,6 @@ export type NativeLiveRelayInternalDependencies = {
     outcome: "offered" | "failed";
     reason: "startup" | "dirty" | "due";
     maintenanceKindCount: number;
-    effectDeliveryScheduled: boolean;
-    proactivityScheduled: boolean;
     failureCount: number;
   }) => void;
   workWaitService?: Pick<NativeLiveWorkWaitService, "wait">;

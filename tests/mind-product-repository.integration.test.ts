@@ -26,7 +26,6 @@ import {
   MindProductServiceError,
 } from "../src/domains/runtime/mind/mind-product-service.js";
 
-import { DrizzleProactivityWakeOpportunitySource } from "../src/domains/runtime/proactivity/proactivity-wake-opportunity.js";
 import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state/subject-state-runtime-repository.js";
 import { createDefaultBackendMindRuntime } from "../src/domains/runtime/mind/default-backend-mind-runtime.js";
 import { NativeLiveBackendTurnCoordinator } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
@@ -473,21 +472,6 @@ test("live Mind excludes legacy storage kinds without changing stored rows", { s
   await t.test("foreground runtime reads only memory", async () => {
     const rows = await new DrizzleSubjectStateRuntimePort(db).list({ userId, subjectId: "G", conversationId: conversation.id });
     assert.deepEqual(rows.map(({ id }) => id).sort(), current.map(({ id }) => id).sort());
-  });
-  await t.test("existing live background capsule excludes legacy kinds", async () => {
-    const source = new DrizzleProactivityWakeOpportunitySource(db, { minIdleMs: 0, cooldownMs: 0 });
-    // Exercise the real model-input builder against Postgres; opportunity
-    // scheduling and its separate activity-timestamp handling are out of scope.
-    const capsuleText = await source["buildCapsule"]({
-      userId, subjectId: "G", conversationId: conversation.id, headMessageId: assistant.message.id,
-    });
-    const capsule = JSON.parse(capsuleText);
-    // Memories without lifecycle_v1 remain ineligible; legacy kinds never reach the model.
-    assert.deepEqual(
-      capsule.subject_state.map((row: { state_id: string }) => row.state_id),
-      [],
-    );
-    for (const row of legacy) assert.equal(capsuleText.includes(row.text), false);
   });
   await t.test("live Context prepares without errors or legacy exposure", async () => {
     const coordinator = new NativeLiveBackendTurnCoordinator(
