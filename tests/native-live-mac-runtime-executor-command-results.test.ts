@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { NATIVE_LIVE_RUNTIME_FAILURE_CODES } from "../src/domains/bridge/protocol/runtime-protocol/types.js";
 import {
   NativeLiveMacRuntimeExecutor,
 } from "../src/domains/bridge/mac/native-live-mac-runtime-executor.js";
@@ -470,4 +471,19 @@ test("the Mac executor reports a signed-out Claude with its own failure code", a
   assert.equal(result.status, "failure");
   if (result.status !== "failure") throw new Error("expected failure");
   assert.equal(result.error_code, "CLAUDE_LOGIN_REQUIRED");
+});
+
+test("the Mac executor keeps every runtime failure code and maps unknown ones to unavailable", async () => {
+  for (const [thrown, reported] of [
+    ...NATIVE_LIVE_RUNTIME_FAILURE_CODES.map((code) => [code, code]),
+    ["SOMETHING_NEW", "RUNTIME_UNAVAILABLE"],
+  ]) {
+    const runtime: NativeLiveClaudeRuntime = {
+      async sendNew() { throw Object.assign(new Error("synthetic"), { runtimeCode: thrown }); },
+      async resume() { throw new Error("unused"); },
+      async fork() { throw new Error("unused"); },
+    };
+    const result = await new NativeLiveMacRuntimeExecutor(runtime).execute(command({ protocol_version: 4 }));
+    assert.equal(result.status === "failure" && result.error_code, reported, thrown);
+  }
 });

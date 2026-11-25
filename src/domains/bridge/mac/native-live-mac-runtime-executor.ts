@@ -113,6 +113,7 @@ import {
   type NativeLiveRuntimeContextUsage,
   type NativeLiveRuntimeExecutionReadback,
   type NativeLiveRuntimeExecutionResult,
+  isNativeLiveRuntimeFailureCode,
   type NativeLiveRuntimeFailureCode,
   type NativeLiveRuntimeMetadata,
   type NativeLiveRuntimeSessionStoreHealth,
@@ -903,29 +904,11 @@ export function runtimeFailureCode(error: unknown): NativeLiveRuntimeFailureCode
     typeof error === "object"
     && error !== null
     && "runtimeCode" in error
-    && isRuntimeFailureCode((error as { runtimeCode?: unknown }).runtimeCode)
+    && isNativeLiveRuntimeFailureCode((error as { runtimeCode?: unknown }).runtimeCode)
   ) {
     return (error as { runtimeCode: NativeLiveRuntimeFailureCode }).runtimeCode;
   }
   return "RUNTIME_UNAVAILABLE";
-}
-
-function isRuntimeFailureCode(
-  value: unknown,
-): value is NativeLiveRuntimeFailureCode {
-  return (
-    value === "CLAUDE_PROCESS_FAILED"
-    || value === "CLAUDE_LOGIN_REQUIRED"
-    || value === "MALFORMED_STREAM"
-    || value === "ABORTED"
-    || value === "INTERRUPTED"
-    || value === "NO_PROVIDER_SESSION"
-    || value === "PROVIDER_SESSION_CONFLICT"
-    || value === "WORKING_DIRECTORY_UNAVAILABLE"
-    || value === "WORKING_DIRECTORY_MISMATCH"
-    || value === "ATTACHMENT_UNAVAILABLE"
-    || value === "RUNTIME_UNAVAILABLE"
-  );
 }
 
 export function buildNativeLiveRuntimeMetadata(runtimeResult: Pick<NativeLiveForegroundRuntimeResult, "normalizedEvents" | "contextUsage" | "executionReadback" | "executionReadbackError" | "sessionStoreObservability">): NativeLiveRuntimeMetadata | null {

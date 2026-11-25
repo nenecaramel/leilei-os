@@ -4,7 +4,7 @@ import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   type NativeLiveRuntimeCommand,
   type NativeLiveRuntimeMetadata,
-  type NativeLiveRuntimeFailureCode,
+  isNativeLiveRuntimeFailureCode,
   type NativeLiveRuntimeOutputAttachmentMetadata,
 } from "./types.js";
 import {
@@ -148,7 +148,7 @@ export function parseNativeLiveRuntimeExecutionResult(
     const protocolVersion = parseProtocolVersion(
       body.protocol_version,
     );
-    if (!isFailureCode(body.error_code)) {
+    if (!isNativeLiveRuntimeFailureCode(body.error_code)) {
       throw new NativeLiveRuntimeProtocolError("Runtime failure code is invalid.");
     }
 
@@ -363,20 +363,4 @@ function parseRuntimeMetadata(
                 ),
         }),
   };
-}
-
-function isFailureCode(value: unknown): value is NativeLiveRuntimeFailureCode {
-  return (
-    value === "CLAUDE_PROCESS_FAILED"
-    || value === "CLAUDE_LOGIN_REQUIRED"
-    || value === "MALFORMED_STREAM"
-    || value === "ABORTED"
-    || value === "INTERRUPTED"
-    || value === "NO_PROVIDER_SESSION"
-    || value === "PROVIDER_SESSION_CONFLICT"
-    || value === "WORKING_DIRECTORY_UNAVAILABLE"
-    || value === "WORKING_DIRECTORY_MISMATCH"
-    || value === "ATTACHMENT_UNAVAILABLE"
-    || value === "RUNTIME_UNAVAILABLE"
-  );
 }

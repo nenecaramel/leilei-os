@@ -3,6 +3,7 @@ export { NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION } from "./runtime-proto
 export type { NativeLiveRuntimeMode } from "./runtime-protocol/types.js";
 export type { NativeLiveRuntimeAttachment } from "./runtime-protocol/types.js";
 export type { NativeLiveRuntimeCommand } from "./runtime-protocol/types.js";
+export { isNativeLiveRuntimeFailureCode, NATIVE_LIVE_RUNTIME_FAILURE_CODES } from "./runtime-protocol/types.js";
 export type { NativeLiveRuntimeFailureCode } from "./runtime-protocol/types.js";
 export type { NativeLiveRuntimeContextUsageCategory } from "./runtime-protocol/types.js";
 export type { NativeLiveRuntimeContextUsage } from "./runtime-protocol/types.js";

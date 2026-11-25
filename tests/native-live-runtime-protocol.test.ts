@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { NATIVE_LIVE_RUNTIME_FAILURE_CODES } from "../src/domains/bridge/protocol/runtime-protocol/types.js";
 import {
   NativeLiveRuntimeProtocolError,
   assertRuntimeResultMatchesCommand,
@@ -1104,4 +1105,17 @@ test("a signed-out Claude is its own failure code", () => {
     error_code: "CLAUDE_LOGIN_REQUIRED",
   };
   assert.deepEqual(parseNativeLiveRuntimeExecutionResult(result), result);
+});
+
+test("every runtime failure code parses; unknown codes do not", () => {
+  const result = (error_code: string) => ({
+    protocol_version: 4 as const, prepare_id: prepareId, request_id: requestId,
+    conversation_id: conversationId, status: "failure" as const, error_code,
+  });
+  for (const code of NATIVE_LIVE_RUNTIME_FAILURE_CODES) {
+    assert.deepEqual(parseNativeLiveRuntimeExecutionResult(result(code)), result(code));
+  }
+  for (const code of ["", "RUNTIME_PROTOCOL_ERROR", "claude_login_required"]) {
+    assert.throws(() => parseNativeLiveRuntimeExecutionResult(result(code)), code);
+  }
 });

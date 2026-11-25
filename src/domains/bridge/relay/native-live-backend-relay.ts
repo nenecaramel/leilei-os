@@ -26,6 +26,7 @@ import type {
 import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   type NativeLiveRuntimeExecutionResult,
+  isNativeLiveRuntimeFailureCode,
 } from "../protocol/native-live-runtime-protocol.js";
 import { parseNativeLiveExecutionSelection } from "../turn/native-live-execution-selection.js";
 import { hasDiscardedWakeReceipt } from "../turn/turn-repository/discard-wake.js";
@@ -1023,19 +1024,8 @@ function isAcceptedTerminalFinalize(
   result: NativeLiveFinalizeResult,
 ): boolean {
   if (result.ok) return true;
-  return (
-    result.code === "CLAUDE_PROCESS_FAILED"
-    || result.code === "CLAUDE_LOGIN_REQUIRED"
-    || result.code === "MALFORMED_STREAM"
-    || result.code === "ABORTED"
-    || result.code === "INTERRUPTED"
-    || result.code === "NO_PROVIDER_SESSION"
-    || result.code === "PROVIDER_SESSION_CONFLICT"
-    || result.code === "WORKING_DIRECTORY_UNAVAILABLE"
-    || result.code === "WORKING_DIRECTORY_MISMATCH"
-    || result.code === "RUNTIME_UNAVAILABLE"
-    || result.code === "RUNTIME_PROTOCOL_ERROR"
-  );
+  return isNativeLiveRuntimeFailureCode(result.code)
+    || result.code === "RUNTIME_PROTOCOL_ERROR";
 }
 
 export class NativeLiveBackendRelayService {

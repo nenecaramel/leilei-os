@@ -6,10 +6,10 @@ import * as protocol from "../src/domains/bridge/protocol/native-live-runtime-pr
 test("runtime protocol facade retains its exact runtime export surface", () => {
   assert.deepEqual(Object.keys(protocol).sort(), [
   "NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION",
-  "NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION",
+  "NATIVE_LIVE_RUNTIME_FAILURE_CODES", "NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION",
   "NativeLiveRuntimeProtocolError",
   "assertRuntimeResultMatchesCommand",
-  "nativeInputId",
+  "isNativeLiveRuntimeFailureCode", "nativeInputId",
   "parseNativeLiveRuntimeCommand",
   "parseNativeLiveRuntimeEnvironment",
   "parseNativeLiveRuntimeExecutionResult",
