@@ -89,7 +89,7 @@ async function readRecoverableFailedTurn(db: Pick<Database,'execute'>,input:{use
       AND o.owner='leileios' AND o.turn_prepare_id=p.id
       AND o.turn_anchor_message_id IS NOT DISTINCT FROM c.current_head_message_id
       AND p.operation='send' AND p.runtime_mode='resume' AND p.status='finalized_failure' AND p.dispatch_status='completed'
-      AND p.failure_code IN ('RUNTIME_UNAVAILABLE','CLAUDE_PROCESS_FAILED') AND p.result_hash IS NOT NULL AND p.finalized_at IS NOT NULL
+      AND p.failure_code IN ('RUNTIME_UNAVAILABLE','CLAUDE_PROCESS_FAILED','CLAUDE_LOGIN_REQUIRED') AND p.result_hash IS NOT NULL AND p.finalized_at IS NOT NULL
       AND p.assistant_message_id IS NULL AND p.canonical_user_message_id IS NOT NULL
       AND p.parent_provider_session_id=${input.sessionId} AND p.parent_provider_checkpoint_id=${state.providerCheckpointId}
       AND p.expected_working_directory IS NOT DISTINCT FROM ${state.effectiveWorkingDirectory}::text LIMIT 1`);

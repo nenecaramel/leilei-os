@@ -302,7 +302,7 @@ export class NativeLiveMacPersistentTurnRouter {
       // Never reinterpret a real SDK failure/interruption, handoff or replacement.
       const code = (error as {runtimeCode?: string})?.runtimeCode;
       if (!terminalSubmissionStarted && sdkSubmissionAttempted && this.binding
-        && !["INTERRUPTED", "CLAUDE_PROCESS_FAILED"].includes(code ?? "")
+        && !["INTERRUPTED", "CLAUDE_PROCESS_FAILED", "CLAUDE_LOGIN_REQUIRED"].includes(code ?? "")
         && (!this.closeReason || ["CONTROL_RECEIPT_TIMEOUT", "EXECUTION_LEASE_REVOKED", "SESSION_LEASE_REVOKED", "TURN_FAILED"].includes(this.closeReason))
         && !this.recoveryFenced && !this.suspended && !this.input.hasUnpublishedDeferred?.(command.conversation_id, this.generationId!)) {
         const session = this.binding.session;

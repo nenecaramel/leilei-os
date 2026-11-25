@@ -2,6 +2,7 @@ import { observeNativeSessionStartup } from "./native-session-startup-identity.m
 import { isNativeSessionMirror } from "./native-session-mirror.mjs";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { sdkTurnFailureCode } from "./agent-sdk-transport-support.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import { createToolImageForwarder } from "./tool-images.mjs";
 import {
@@ -876,7 +877,7 @@ export class AgentSdkTurnHandle {
             cause instanceof Error ? cause.message : String(cause)
           }`,
           {
-            runtimeCode: "CLAUDE_PROCESS_FAILED",
+            runtimeCode: sdkTurnFailureCode(parsedEvents),
             cause,
             providerSessionId: this.providerSessionId,
             events: parsedEvents,
@@ -928,7 +929,7 @@ export class AgentSdkTurnHandle {
       throw runtimeError(
         "Claude Agent SDK turn failed.",
         {
-          runtimeCode: "CLAUDE_PROCESS_FAILED",
+          runtimeCode: sdkTurnFailureCode(parsedEvents),
           providerSessionId: this.providerSessionId,
           result: terminalFailure,
           events: parsedEvents,

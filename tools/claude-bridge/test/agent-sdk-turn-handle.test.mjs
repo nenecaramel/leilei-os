@@ -1571,3 +1571,29 @@ test('pre-init execution cannot be disguised as a queue acknowledgement', async 
     await assert.rejects(f.handle.start(), e => e.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
   }
 });
+
+// Shapes observed from the Agent SDK while signed out: the one-shot process
+// also exits nonzero, so the iterator throws after its result.
+for (const throws of [true, false]) {
+  for (const [error, runtimeCode] of [["authentication_failed", "CLAUDE_LOGIN_REQUIRED"], ["server_error", "CLAUDE_PROCESS_FAILED"]]) {
+    test(`turn handle reports ${error} as ${runtimeCode}${throws ? " when the process also exits" : ""}`, async () => {
+      const handle = await createAgentSdkTurnHandle({
+        prompt: "hi",
+        environment: {},
+        queryImpl: () => ({
+          close() {},
+          async *[Symbol.asyncIterator]() {
+            yield { type: "system", subtype: "init", session_id: "provider-login" };
+            yield {
+              type: "assistant", session_id: "provider-login", parent_tool_use_id: null, error,
+              message: { role: "assistant", model: "<synthetic>", content: [{ type: "text", text: "synthetic" }] },
+            };
+            yield { type: "result", subtype: "success", is_error: true, session_id: "provider-login", result: "synthetic" };
+            if (throws) throw new Error("Claude Code returned an error result: synthetic");
+          },
+        }),
+      });
+      await assert.rejects(handle.start(), failure => failure.runtimeCode === runtimeCode);
+    });
+  }
+}

@@ -915,6 +915,7 @@ function isRuntimeFailureCode(
 ): value is NativeLiveRuntimeFailureCode {
   return (
     value === "CLAUDE_PROCESS_FAILED"
+    || value === "CLAUDE_LOGIN_REQUIRED"
     || value === "MALFORMED_STREAM"
     || value === "ABORTED"
     || value === "INTERRUPTED"

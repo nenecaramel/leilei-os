@@ -1025,6 +1025,7 @@ function isAcceptedTerminalFinalize(
   if (result.ok) return true;
   return (
     result.code === "CLAUDE_PROCESS_FAILED"
+    || result.code === "CLAUDE_LOGIN_REQUIRED"
     || result.code === "MALFORMED_STREAM"
     || result.code === "ABORTED"
     || result.code === "INTERRUPTED"

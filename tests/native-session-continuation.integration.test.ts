@@ -291,12 +291,12 @@ test('an ordinary new conversation admits and renews its first send while the he
   assert.equal(await checkNativeLiveExecutionAdmission(f.db, { ...admission, canonicalUserMessageId: randomUUID() }), false);
 }));
 
-test('explicit continuation can recover only the current closed failed native input without importing or rewriting messages', {skip:!enabled},async()=>fixture(async f=>{
+for(const errorCode of ['RUNTIME_UNAVAILABLE','CLAUDE_LOGIN_REQUIRED'] as const)test(`explicit continuation can recover only the current closed failed native input (${errorCode}) without importing or rewriting messages`, {skip:!enabled},async()=>fixture(async f=>{
  await f.attach();const coordinator=new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.db));
  const prepared=await coordinator.prepare(f.input.userId,{dispatch_target:'claude_code',request_id:randomUUID(),operation:'send',conversation_id:f.input.conversationId,expected_head_message_id:null,text:'synthetic failed input'});
  assert.ok(prepared.ok);const cmd=prepared.command;
  await f.db.update(nativeLiveTurnPreparations).set({dispatchStatus:'executing',executionStartedAt:new Date(),reservedBy:randomUUID(),reservedAt:new Date(),reservationExpiresAt:new Date(Date.now()+60000)}).where(eq(nativeLiveTurnPreparations.id,cmd.prepare_id));
- const failed=await coordinator.finalize(f.input.userId,{protocol_version:4,prepare_id:cmd.prepare_id,request_id:cmd.request_id,conversation_id:cmd.conversation_id,status:'failure',error_code:'RUNTIME_UNAVAILABLE'});assert.equal(failed.ok,false);assert.equal(failed.code,'RUNTIME_UNAVAILABLE');
+ const failed=await coordinator.finalize(f.input.userId,{protocol_version:4,prepare_id:cmd.prepare_id,request_id:cmd.request_id,conversation_id:cmd.conversation_id,status:'failure',error_code:errorCode});assert.equal(failed.ok,false);assert.equal(failed.code,errorCode);
  await f.db.update(nativeLiveTurnPreparations).set({dispatchStatus:'completed'}).where(eq(nativeLiveTurnPreparations.id,cmd.prepare_id));
  const state=await f.state();assert.deepEqual(state.recoverableFailedTurn,{prepareId:cmd.prepare_id,userMessageId:cmd.canonical_user_message_id});
  const cp=randomUUID(),request={checkpointId:cp,revision:rev(52),expectedRevision:state.expectedRevision,checkpointIds:[cp,cmd.canonical_user_message_id,f.input.checkpointId],completedTurnCheckpointIds:[cp],recoveredFailedTurnId:cmd.prepare_id};

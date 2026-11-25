@@ -5,6 +5,7 @@ import { ClaudeEventNormalizer } from './normalized-events.mjs';
 import { createToolImageForwarder } from './tool-images.mjs';
 import { AgentSdkTaskState } from './agent-sdk-task-state.mjs';
 import { readAgentSdkTaskOutput } from './agent-sdk-task-output.mjs';
+import { sdkTurnFailureCode } from './agent-sdk-transport-support.mjs';
 import { isNativeLoopInput } from './agent-sdk-scheduled-input.mjs';
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
@@ -405,7 +406,7 @@ class SessionHost {
           if (this.state === 'failed') throw this.failure;
           this.finishing = null;
           if (message.subtype !== 'success' || message.is_error) turn.reject(Object.assign(new Error(turn.interruptRequested ? 'SDK turn interrupted.' : 'SDK turn failed.'), {
-            runtimeCode: turn.interruptRequested ? 'INTERRUPTED' : 'CLAUDE_PROCESS_FAILED', ...(turn.interruptReceipt ? { interruptReceipt: turn.interruptReceipt } : {}),
+            runtimeCode: turn.interruptRequested ? 'INTERRUPTED' : sdkTurnFailureCode(events), ...(turn.interruptReceipt ? { interruptReceipt: turn.interruptReceipt } : {}),
           }));
           else turn.resolve({ providerSessionId: this.sessionId, inputId: turn.id, result: message, events, normalizedEvents });
           this.pump();
