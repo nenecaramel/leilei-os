@@ -24,8 +24,6 @@ import {
   DrizzleNativeLiveBackgroundModelQueueRepository,
   NativeLiveBackgroundModelQueueService,
 } from "../src/domains/bridge/background/native-live-background-model-queue.js";
-import { DrizzleProactivityWakeRepository } from "../src/domains/runtime/proactivity/proactivity-wake-repository.js";
-import { DrizzleRuntimeEffectRepository } from "../src/domains/runtime/effects/runtime-effect-repository.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_CONVERSATION_DATABASE_TEST === "1";
@@ -752,11 +750,13 @@ test(
       },
     ]);
 
-    const proactivity = new DrizzleProactivityWakeRepository(
-      database.db,
-    );
+    // Retired features left rows behind; deletion must still clear them.
     const wakeId = crypto.randomUUID();
-    await proactivity.createOrGet({
+    await database.db.insert(runtimeProactivityWakes).values({
+      id: wakeId,
+      userId,
+      subjectId: "G",
+      status: "created",
       gate: {
         wakeId,
         userId,
@@ -770,7 +770,7 @@ test(
         nextEligibleAt: null,
       },
       contactTarget: null,
-      context: {
+      contextSnapshot: {
         version: 1,
         contextManifestId: null,
         capsule: "deleted conversation context",
@@ -804,35 +804,21 @@ test(
       },
     });
 
-    const effects = new DrizzleRuntimeEffectRepository(
-      database.db,
-    );
     const effectId = crypto.randomUUID();
-    const effectWorkerId = crypto.randomUUID();
-    await effects.createOrGet({
+    await database.db.insert(runtimeEffects).values({
+      id: effectId,
+      userId,
+      subjectId: "G",
       sourceWakeId: wakeId,
-      effect: {
-        effectId,
-        userId,
-        subjectId: "G",
-        decisionId: "archive-delete-effect",
-        idempotencyKey: "d".repeat(64),
-        effectType: "message_send",
-        target: `conversation:${deletedConversation.id}`,
-        payloadHash: "e".repeat(64),
-        status: "pending",
-        attempt: 0,
-        retryable: true,
-        createdAt: "2026-09-27T06:46:00.000Z",
-        updatedAt: "2026-09-27T06:46:00.000Z",
-        reservedBy: null,
-        reservedAt: null,
-        reservationExpiresAt: null,
-        dispatchStartedAt: null,
-        observedAt: null,
-        failureCode: null,
-      },
+      decisionId: "archive-delete-effect",
+      idempotencyKey: "d".repeat(64),
+      effectType: "message_send",
+      target: `conversation:${deletedConversation.id}`,
       payload: { text: "pending proactive message" },
+      payloadHash: "e".repeat(64),
+      status: "pending",
+      attempt: 0,
+      retryable: true,
     });
 
     const backgroundJobId = crypto.randomUUID();
@@ -859,14 +845,6 @@ test(
     assert.equal(archived.outcome, "archived");
 
     await assert.rejects(
-      proactivity.markWaitingModel({
-        userId,
-        wakeId,
-        modelTaskId: proactivityJobId,
-      }),
-      /SourceConversationInactive/,
-    );
-    await assert.rejects(
       backgroundQueue.stage({
         userId,
         subjectId: "G",
@@ -887,15 +865,6 @@ test(
         },
       }),
       /BackgroundWorkflowSourceInactive/,
-    );
-
-    assert.equal(
-      await effects.reserveNext({
-        userId,
-        workerInstanceId: effectWorkerId,
-      }),
-      null,
-      "Archive must pause a pending effect targeted at the conversation",
     );
 
     const activePage = await service.listConversationPage({
@@ -939,18 +908,6 @@ test(
       }))?.lifecycleStatus,
       "active",
     );
-
-    const resumedEffect = await effects.reserveNext({
-      userId,
-      workerInstanceId: effectWorkerId,
-    });
-    assert.ok(resumedEffect);
-    assert.equal(resumedEffect.effectId, effectId);
-    await effects.releaseReservation({
-      userId,
-      effectId,
-      workerInstanceId: effectWorkerId,
-    });
 
     assert.equal(
       (await service.archiveConversation({
@@ -1118,34 +1075,6 @@ test(
       preservedById.get(scopedMindStateId)?.scopeConversationId,
       deletedConversation.id,
       "Mind keeps historical source/scope ids even after the source window is deleted",
-    );
-
-    const postDeleteWakeId = crypto.randomUUID();
-    await assert.rejects(
-      proactivity.createOrGet({
-        gate: {
-          wakeId: postDeleteWakeId,
-          userId,
-          subjectId: "G",
-          offeredAt: "2026-09-27T08:00:00.000Z",
-          mode: "live",
-          enabled: true,
-          foregroundActive: false,
-          outstandingEffectStatus: null,
-          quietUntil: null,
-          nextEligibleAt: null,
-        },
-        contactTarget: null,
-        context: {
-          version: 1,
-          contextManifestId: null,
-          capsule: "must not recreate deleted conversation work",
-          sourceConversationId: deletedConversation.id,
-          sourceHeadMessageId: secondAssistant.message.id,
-          sourceActivityAt: "2026-09-27T07:00:00.000Z",
-        },
-      }),
-      /SourceConversationInactive/,
     );
 
     assert.equal(

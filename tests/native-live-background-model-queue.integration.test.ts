@@ -10,9 +10,6 @@ import {
   users,
 } from "../src/database/schema.js";
 import {
-  DrizzleProactivityWakeRepository,
-} from "../src/domains/runtime/proactivity/proactivity-wake-repository.js";
-import {
   DrizzleNativeLiveConversationRepository,
 } from "../src/domains/conversation/native-live-conversation-repository.js";
 import {
@@ -242,7 +239,11 @@ test(
 
     const firstTaskId = crypto.randomUUID();
     const wakeId = crypto.randomUUID();
-    await new DrizzleProactivityWakeRepository(database.db).createOrGet({
+    await database.db.insert(runtimeProactivityWakes).values({
+      id: wakeId,
+      userId,
+      subjectId: "G",
+      status: "created",
       gate: {
         wakeId,
         userId,
@@ -256,7 +257,7 @@ test(
         nextEligibleAt: null,
       },
       contactTarget: null,
-      context: {
+      contextSnapshot: {
         version: 1,
         contextManifestId: null,
         capsule: "archive fence source",

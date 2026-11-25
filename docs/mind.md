@@ -74,8 +74,8 @@ compatibility. They do not drive current Mind behavior.
 
 ## Unchanged limitations
 
-Recall quality still needs a labelled evaluation set before tuning. Proactivity remains
-disabled by default and runs in a separate model session. Historical drive satisfaction,
+Recall quality still needs a labelled evaluation set before tuning. Proactivity v1
+and its effect delivery are removed; their stored rows remain. Historical drive satisfaction,
 curiosity resolution, distillation watermark and semantic grouping tables remain retained.
 
 

@@ -12,7 +12,6 @@ import {
   getNativeLiveAttachmentStorageConfig,
   getNativeLiveWakeBrokerConfig,
   getMemoryDecayConfig,
-  getProactivityWakeOpportunityConfig,
   type RuntimeEnv,
 } from "../config/env.js";
 import { createDatabase } from "../database/client.js";
@@ -56,38 +55,7 @@ import {
 } from "../domains/runtime/background/companion-background-opportunity.js";
 import {
   BackgroundOpportunityPolicy,
-  DEFAULT_BACKGROUND_TARGET_PLANS,
 } from "../domains/runtime/background/background-opportunity-policy.js";
-import {
-  NativeLiveBackgroundWorkflowCoordinator,
-  type NativeLiveBackgroundWorkflowAdvancer,
-} from "../domains/bridge/background/native-live-background-workflow-coordinator.js";
-import {
-  ProactivityWakeCrossDeviceCoordinator,
-} from "../domains/runtime/proactivity/proactivity-wake-cross-device-coordinator.js";
-import {
-  DrizzleProactivityWakeRepository,
-} from "../domains/runtime/proactivity/proactivity-wake-repository.js";
-import {
-  DrizzleRuntimeEffectRepository,
-} from "../domains/runtime/effects/runtime-effect-repository.js";
-import {
-  ProactivityEffectMaterializer,
-} from "../domains/runtime/effects/proactivity-effect-materializer.js";
-import {
-  DrizzleRuntimeEffectForegroundGuard,
-  RuntimeEffectDeliveryCoordinator,
-} from "../domains/runtime/effects/runtime-effect-delivery-coordinator.js";
-import {
-  RuntimeMessageEffectDeliveryAdapter,
-} from "../domains/runtime/effects/runtime-message-effect-delivery-adapter.js";
-import {
-  RuntimeEffectDeliveryWorker,
-} from "../domains/runtime/effects/runtime-effect-delivery-worker.js";
-import {
-  DrizzleProactivityWakeOpportunitySource,
-  ProactivityWakeOpportunityProducer,
-} from "../domains/runtime/proactivity/proactivity-wake-opportunity.js";
 import {
   DrizzleNativeLiveConversationRepository,
 } from "../domains/conversation/native-live-conversation-repository.js";
@@ -205,58 +173,6 @@ import {
 
 type DatabaseResource = ReturnType<typeof createDatabase>;
 
-type BackgroundWorkflowKind = "proactivity_wake";
-
-function observeBackgroundWorkflowAdvancer(
-  workflowKind: BackgroundWorkflowKind,
-  advancer: NativeLiveBackgroundWorkflowAdvancer,
-  logger: SafeLogger,
-): NativeLiveBackgroundWorkflowAdvancer {
-  return {
-    async advanceNextForUser(input) {
-      try {
-        const result = await advancer.advanceNextForUser(input);
-        const outcome =
-          result
-          && typeof result === "object"
-          && "outcome" in result
-          && typeof (result as { outcome?: unknown }).outcome === "string"
-            ? (result as { outcome: string }).outcome
-            : "unknown";
-        logger.info("native_live_background_workflow_advance", {
-          workflowKind,
-          outcome,
-        });
-        return result;
-      } catch (error) {
-        logger.warn("native_live_background_workflow_advance_failed", {
-          workflowKind,
-          errorName:
-            error instanceof Error ? error.name : "UnknownError",
-        });
-        throw error;
-      }
-    },
-  };
-}
-
-function lazyBackgroundWorkflowAdvancer(
-  workflowKind: BackgroundWorkflowKind,
-  createAdvancer: () => NativeLiveBackgroundWorkflowAdvancer,
-  logger: SafeLogger,
-): NativeLiveBackgroundWorkflowAdvancer {
-  let advancer: NativeLiveBackgroundWorkflowAdvancer | null = null;
-  return observeBackgroundWorkflowAdvancer(
-    workflowKind,
-    {
-      advanceNextForUser(input) {
-        advancer ??= createAdvancer();
-        return advancer.advanceNextForUser(input);
-      },
-    },
-    logger,
-  );
-}
 export type ProcessRuntime = {
   appDependencies: AppDependencies;
   mcpSessionRegistry: McpSessionRegistry;
@@ -410,12 +326,6 @@ export function createProcessRuntime(
         : {}),
     });
   });
-  // Legacy Proactivity v1 is intentionally retired while v2 is redesigned.
-  // Keep historical wake/job/effect rows readable, but do not create,
-  // execute, advance, or deliver any new v1 proactive work.
-  const legacyProactivityV1Enabled = false;
-  const proactivityWakeOpportunityConfig =
-    getProactivityWakeOpportunityConfig(runtimeEnv);
   const backgroundOpportunityPolicy = new BackgroundOpportunityPolicy({
     decayEnabled: Boolean(memoryDecayConfig),
   });
@@ -424,25 +334,24 @@ export function createProcessRuntime(
       new DrizzleNativeLiveBackgroundModelQueueRepository(db),
       nativeLiveWorkWakePublisher,
     );
-  const nativeLiveBackgroundModelRelayService =
-    legacyProactivityV1Enabled
-      ? nativeLiveBackgroundModelService
-      : {
-          async reserveNext(
-            _input: Parameters<
-              NativeLiveBackgroundModelQueueService["reserveNext"]
-            >[0],
-          ) {
-            return null;
-          },
-          submitResult(
-            input: Parameters<
-              NativeLiveBackgroundModelQueueService["submitResult"]
-            >[0],
-          ) {
-            return nativeLiveBackgroundModelService.submitResult(input);
-          },
-        };
+  // The queue's only producer is retired. The Mac may still poll and
+  // deliver a stored result, but no new work is handed out.
+  const nativeLiveBackgroundModelRelayService = {
+    async reserveNext(
+      _input: Parameters<
+        NativeLiveBackgroundModelQueueService["reserveNext"]
+      >[0],
+    ) {
+      return null;
+    },
+    submitResult(
+      input: Parameters<
+        NativeLiveBackgroundModelQueueService["submitResult"]
+      >[0],
+    ) {
+      return nativeLiveBackgroundModelService.submitResult(input);
+    },
+  };
 
   const subjectStateBackgroundMaintenance =
     createDefaultSubjectStateBackgroundMaintenance(
@@ -550,100 +459,10 @@ export function createProcessRuntime(
       nativeLiveWorkWakePublisher,
       nativeLiveWorkWakeBroker,
     );
-  const runtimeEffectRepository =
-    new DrizzleRuntimeEffectRepository(db);
-  const runtimeEffectDeliveryCoordinator =
-    new RuntimeEffectDeliveryCoordinator(
-      runtimeEffectRepository,
-      new DrizzleRuntimeEffectForegroundGuard(db),
-    );
-  const runtimeMessageEffectDeliveryAdapter =
-    new RuntimeMessageEffectDeliveryAdapter(db);
-  const runtimeEffectDeliveryWorker =
-    new RuntimeEffectDeliveryWorker(
-      backgroundLoopOrchestrator,
-      runtimeEffectRepository,
-      runtimeEffectDeliveryCoordinator,
-      runtimeMessageEffectDeliveryAdapter,
-      randomUUID(),
-      (event) => {
-        const { name, ...fields } = event;
-        if (
-          name === "runtime_effect_delivery_unknown"
-          || name === "runtime_effect_delivery_failed"
-        ) {
-          logger.warn(name, fields);
-          return;
-        }
-        logger.info(name, fields);
-      },
-    );
-
-  const proactivityWakeOpportunitySource =
-    legacyProactivityV1Enabled
-      && proactivityWakeOpportunityConfig
-      ? new DrizzleProactivityWakeOpportunitySource(
-          db,
-          proactivityWakeOpportunityConfig,
-        )
-      : null;
-  let proactivityWakeCrossDeviceCoordinator:
-    ProactivityWakeCrossDeviceCoordinator | null = null;
-  const getProactivityWakeCrossDeviceCoordinator = () =>
-    proactivityWakeCrossDeviceCoordinator ??=
-      new ProactivityWakeCrossDeviceCoordinator(
-        nativeLiveBackgroundModelService,
-        new DrizzleProactivityWakeRepository(db),
-        proactivityWakeOpportunitySource,
-        undefined,
-        undefined,
-        new ProactivityEffectMaterializer(runtimeEffectRepository),
-        proactivityWakeOpportunityConfig
-          ? runtimeEffectDeliveryWorker
-          : null,
-      );
-  const proactivityWakePlan =
-    legacyProactivityV1Enabled
-      && proactivityWakeOpportunityConfig
-      ? DEFAULT_BACKGROUND_TARGET_PLANS.proactivityWake
-      : null;
-  const proactivityWakeOpportunityProducer =
-    proactivityWakeOpportunityConfig
-      && proactivityWakeOpportunitySource
-      && proactivityWakePlan
-      ? new ProactivityWakeOpportunityProducer(
-          backgroundLoopOrchestrator,
-          proactivityWakeOpportunitySource,
-          getProactivityWakeCrossDeviceCoordinator(),
-          DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-          proactivityWakePlan,
-        )
-      : null;
-
-  const nativeLiveBackgroundWorkflowCoordinator =
-    new NativeLiveBackgroundWorkflowCoordinator(
-      legacyProactivityV1Enabled
-        ? [
-            lazyBackgroundWorkflowAdvancer(
-              "proactivity_wake",
-              getProactivityWakeCrossDeviceCoordinator,
-              logger,
-            ),
-          ]
-        : [],
-    );
   const companionBackgroundOpportunity =
     new CompanionBackgroundOpportunityService(
       subjectStateBackgroundMaintenance,
       backgroundOpportunityPolicy,
-      legacyProactivityV1Enabled
-        ? runtimeEffectDeliveryWorker
-        : null,
-      legacyProactivityV1Enabled
-        ? proactivityWakeOpportunityProducer
-        : null,
-      legacyProactivityV1Enabled
-        && Boolean(proactivityWakeOpportunityConfig),
     );
   const nativeLiveSemanticService = new NativeLiveSemanticHandshakeService(
     new DrizzleNativeLiveSemanticScoringRepository(db),
@@ -837,8 +656,6 @@ export function createProcessRuntime(
           semanticService: nativeLiveSemanticService,
           backgroundModelService:
             nativeLiveBackgroundModelRelayService,
-          backgroundModelCoordinator:
-            nativeLiveBackgroundWorkflowCoordinator,
           runtimeEventService:
             nativeLiveRuntimeEventService,
           runtimeInteractionService:

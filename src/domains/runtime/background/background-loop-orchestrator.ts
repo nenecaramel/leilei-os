@@ -1,8 +1,5 @@
 
-export type BackgroundLoopKind =
-  | "decay"
-  | "proactivity_wake"
-  | "effect_delivery";
+export type BackgroundLoopKind = "decay";
 
 export type BackgroundLoopPriority =
   | "consolidation"

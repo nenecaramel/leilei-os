@@ -15,10 +15,7 @@ test("background opportunity policy owns only Companion timed maintenance", () =
     ["decay"],
   );
   assert.equal(DEFAULT_BACKGROUND_TARGET_PLANS.decay.priority, "maintenance");
-  assert.equal(
-    DEFAULT_BACKGROUND_TARGET_PLANS.proactivityWake.priority,
-    "reflection",
-  );
+  assert.deepEqual(Object.keys(DEFAULT_BACKGROUND_TARGET_PLANS), ["decay"]);
 });
 
 test("Decay is opt-in; Breath, Proactivity and retired loops are not schedulable Companion targets", () => {

@@ -5,12 +5,6 @@ import type {
   SubjectStateBackgroundMaintenance,
   SubjectStateMaintenanceKind,
 } from "./subject-state-background-maintenance.js";
-import type {
-  ProactivityWakeOpportunityProducer,
-} from "../proactivity/proactivity-wake-opportunity.js";
-import type {
-  RuntimeEffectDeliveryWorker,
-} from "../effects/runtime-effect-delivery-worker.js";
 
 export type CompanionBackgroundOpportunityReason =
   | "startup"
@@ -20,13 +14,7 @@ export type CompanionBackgroundOpportunityReason =
 export type CompanionBackgroundOpportunityResult = {
   reason: CompanionBackgroundOpportunityReason;
   maintenanceKinds: SubjectStateMaintenanceKind[];
-  effectDeliveryScheduled: boolean;
-  proactivityScheduled: boolean;
-  failures: Array<
-    "subject_state"
-    | "effect_delivery"
-    | "proactivity"
-  >;
+  failures: Array<"subject_state">;
 };
 
 /**
@@ -46,15 +34,6 @@ export class CompanionBackgroundOpportunityService {
       BackgroundOpportunityPolicy,
       "decide"
     >,
-    private readonly effectDelivery: Pick<
-      RuntimeEffectDeliveryWorker,
-      "scheduleUser"
-    > | null,
-    private readonly proactivity: Pick<
-      ProactivityWakeOpportunityProducer,
-      "scheduleUser"
-    > | null,
-    private readonly effectDeliveryOnDirty: boolean = true,
   ) {}
 
   async offer(input: {
@@ -95,40 +74,9 @@ export class CompanionBackgroundOpportunityService {
       }
     }
 
-    // Timed opportunities always get a chance to drain durable historical
-    // effects. Dirty opportunities only do that when an active producer
-    // (currently Proactivity) can create new effects between timed cadences.
-    let effectDeliveryScheduled = false;
-    if (
-      this.effectDelivery
-      && (
-        input.reason !== "dirty"
-        || this.effectDeliveryOnDirty
-      )
-    ) {
-      try {
-        this.effectDelivery.scheduleUser(userId);
-        effectDeliveryScheduled = true;
-      } catch {
-        failures.push("effect_delivery");
-      }
-    }
-
-    let proactivityScheduled = false;
-    if (runsTimedMaintenance && this.proactivity) {
-      try {
-        proactivityScheduled =
-          (await this.proactivity.scheduleUser(userId)) > 0;
-      } catch {
-        failures.push("proactivity");
-      }
-    }
-
     return {
       reason: input.reason,
       maintenanceKinds,
-      effectDeliveryScheduled,
-      proactivityScheduled,
       failures,
     };
   }

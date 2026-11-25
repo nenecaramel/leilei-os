@@ -41,8 +41,6 @@ export function companionBackgroundOpportunityHandler(
           outcome: "offered",
           reason: body.reason,
           maintenanceKindCount: result.maintenanceKinds.length,
-          effectDeliveryScheduled: result.effectDeliveryScheduled,
-          proactivityScheduled: result.proactivityScheduled,
           failureCount: result.failures.length,
         },
       );
@@ -57,8 +55,6 @@ export function companionBackgroundOpportunityHandler(
           outcome: "failed",
           reason: body.reason,
           maintenanceKindCount: 0,
-          effectDeliveryScheduled: false,
-          proactivityScheduled: false,
           failureCount: 1,
         },
       );
@@ -104,10 +100,6 @@ export function reserveBackgroundModelHandler(
     }
 
     try {
-      await bestEffortAdvanceBackgroundWorkflow(
-        dependencies,
-        userId,
-      );
       const reservation =
         await dependencies.backgroundModelService.reserveNext({
           userId,
@@ -144,10 +136,6 @@ export function submitBackgroundModelResultHandler(
         taskId: reservationId,
         result: body.result,
       });
-      await bestEffortAdvanceBackgroundWorkflow(
-        dependencies,
-        userId,
-      );
       response.json({
         success: true,
         data: { accepted: true },
@@ -215,20 +203,6 @@ function parseBackgroundModelResultBody(
     };
   } catch {
     return null;
-  }
-}
-
-async function bestEffortAdvanceBackgroundWorkflow(
-  dependencies: NativeLiveRelayInternalDependencies,
-  userId: string,
-): Promise<void> {
-  try {
-    await dependencies.backgroundModelCoordinator?.advanceNextForUser({
-      userId,
-    });
-  } catch {
-    // A terminal result is already durable. Recovery happens on the next
-    // reserve call; workflow advancement must not turn delivery into failure.
   }
 }
 

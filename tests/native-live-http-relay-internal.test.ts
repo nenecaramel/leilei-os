@@ -417,8 +417,6 @@ test("internal relay companion background opportunity uses authenticated user sc
       return {
         reason: "startup" as const,
         maintenanceKinds: ["decay"],
-        effectDeliveryScheduled: true,
-        proactivityScheduled: false,
         failures: [],
       };
     },
@@ -467,8 +465,6 @@ test("internal relay companion background opportunity uses authenticated user sc
         outcome: "offered",
         reason: "startup",
         maintenanceKindCount: 1,
-        effectDeliveryScheduled: true,
-        proactivityScheduled: false,
         failureCount: 0,
       }]);
 

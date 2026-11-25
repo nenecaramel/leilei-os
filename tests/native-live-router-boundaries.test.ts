@@ -152,7 +152,7 @@ test("Native Live public handlers have feature boundaries behind the existing fa
 test("Native Live internal route methods and registration order remain stable", async () => {
   const {createNativeLiveRelayInternalRouter} = await import("../src/web-api/native-live-relay-internal-router.js");
   const dependencies = {
-    relayService: {}, semanticService: {}, backgroundModelService: {}, backgroundModelCoordinator: {},
+    relayService: {}, semanticService: {}, backgroundModelService: {},
     runtimeEventService: {}, runtimeInteractionService: {}, runtimeControlService: { readTaskForUser() {}, waitTaskForListener() {}, checkTaskAdmission() {} },
     companionBackgroundOpportunity: {}, workWaitService: {}, providerSessionCleanupService: {},
     manualCompactService: {}, externalSessionBridgeService: {}, attachmentService: {},

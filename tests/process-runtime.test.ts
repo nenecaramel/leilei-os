@@ -1,6 +1,6 @@
 import { env } from "../src/config/env.js";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const createAppSource = readFileSync("src/app/create-app.ts", "utf8");
@@ -177,23 +177,11 @@ test("successful listen emits service_started before starting retention work", (
 });
 
 
-test("legacy Proactivity v1 is hard-disabled at process wiring", () => {
-  assert.match(
-    processRuntimeSource,
-    /const legacyProactivityV1Enabled = false;/,
-  );
-  assert.match(
-    processRuntimeSource,
-    /legacyProactivityV1Enabled\s*\? runtimeEffectDeliveryWorker\s*:\s*null/,
-  );
-  assert.match(
-    processRuntimeSource,
-    /legacyProactivityV1Enabled\s*\? proactivityWakeOpportunityProducer\s*:\s*null/,
-  );
-  assert.match(
-    processRuntimeSource,
-    /legacyProactivityV1Enabled\s*\? \[\s*lazyBackgroundWorkflowAdvancer\([\s\S]*?\]\s*:\s*\[\]/,
-  );
+test("retired Proactivity v1 and effect delivery are gone; the model relay hands out no work", () => {
+  assert.doesNotMatch(processRuntimeSource, /proactivity|RuntimeEffect|WorkflowCoordinator/iu);
+  for (const path of ["src/domains/runtime/proactivity", "src/domains/runtime/effects"]) {
+    assert.equal(existsSync(path), false, path);
+  }
   assert.match(
     processRuntimeSource,
     /const nativeLiveBackgroundModelRelayService =[\s\S]*?async reserveNext\([\s\S]*?return null;/,
