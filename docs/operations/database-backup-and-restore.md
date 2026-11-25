@@ -214,7 +214,7 @@ these must hold; otherwise the full gate applies:
   a second run is a no-op;
 - the owner has looked at the production tables and says to merge this drop.
 
-`0114_drop_empty_unused_tables` is the first use.
+Used by `0114_drop_empty_unused_tables` and `0115_drop_empty_retired_queue_tables`.
 
 Any unexpected dependency, count mismatch, ledger anomaly, restore failure, or
 migration-runner discrepancy is a stop condition. Never use `CASCADE` or an
