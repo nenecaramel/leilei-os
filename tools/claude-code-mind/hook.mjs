@@ -5,12 +5,13 @@ import { join } from "node:path";
 import { request as httpRequest } from "node:http";
 import { pathToFileURL } from "node:url";
 import { parseEnv } from "node:util";
-import { isMindHookPaused } from "./toggle.mjs";
+import { isMindComparisonOn, isMindHookPaused } from "./toggle.mjs";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_SEEN = 20000;
 export const HOOK_DEADLINE_MS = 3800;
 const DELIVERY_RESERVE_MS = 400;
+const COMPARISON_CAP_MS = 150;
 const SIGNED_TOKEN = /^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 const validSignedToken = token => typeof token === "string" && token.length >= 80 && token.length <= 4096 && SIGNED_TOKEN.test(token);
 const root = () => process.env.LEILEI_MIND_HOME || join(homedir(), ".claude", "leileios-mind");
@@ -518,8 +519,24 @@ async function readResponse(response, maxBytes) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
+const localSocket = config => config.semantic_socket || join(homedir(), ".leileios", "claude-code-mind", "semantic.sock");
+
+// Trial record for the Mac daemon, sent only after the real recall has finished.
+// Best effort within a short cap: it can neither change nor fail that recall.
+async function offerComparison(config, offer) {
+  if (!await isMindComparisonOn()) return;
+  await new Promise((resolve, reject) => {
+    const request = httpRequest({socketPath: localSocket(config), path: "/compare", method: "POST",
+      signal: AbortSignal.timeout(COMPARISON_CAP_MS), headers: {"content-type": "application/json"}}, response => {
+      response.resume(); resolve();
+    });
+    request.on("error", reject);
+    request.end(JSON.stringify(offer));
+  });
+}
+
 async function semanticScores(config, query, candidates) {
-  const socketPath = config.semantic_socket || join(homedir(), ".leileios", "claude-code-mind", "semantic.sock");
+  const socketPath = localSocket(config);
   return new Promise((resolve, reject) => {
     const request = httpRequest({socketPath, path: "/score", method: "POST", signal: AbortSignal.timeout(800), headers: {"content-type": "application/json"}}, response => {
       const chunks = []; let size = 0;
@@ -600,6 +617,61 @@ async function commitRecallContext(config, input, snapshot, data, exclude, outpu
   });
 }
 
+async function recallForPrompt(config, input, invocationStarted, output, observed) {
+  const snapshot = await withState(config, input.session_id, async (state, save) => {
+    // Rewind/resend needs no event detection: dedupe is recomputed from the active
+    // transcript chain each prompt, so local state never accumulates injections.
+    state.active_turn = randomUUID(); state.pending_recalls = []; state.injected_ids = []; delete state.chain_anchor;
+    await save(state); return structuredClone(state);
+  });
+  // Memories whose delivered context is provably still on the active chain.
+  const chain = await chainExclusions(config, input, invocationStarted, snapshot.active_turn);
+  const chainIds = chain.ids;
+  // Keep existing written IDs first; the server accepts at most MAX_SEEN.
+  // If the chain contributes too many IDs, dropping the tail only weakens dedupe.
+  const exclude = [...new Set([...snapshot.written_ids, ...chainIds])].slice(0, MAX_SEEN);
+  observed.exclude_ids = exclude;
+  const body = {
+    session_id: input.session_id,
+    query: input.prompt,
+    exclude_ids: exclude,
+    caller: "claude_code",
+    context_epoch: snapshot.context_epoch,
+    receipt_mode: "signed_v1",
+  };
+  // Stop accounting never consumes this invocation's retrieval budget.
+  const firstTimeout = Math.min(2500, HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted));
+  if (firstTimeout <= 0) return;
+  let data = await recall(config, body, firstTimeout);
+  // Preserve the 3.8s process deadline. Semantic scoring is opportunistic:
+  // if the first cross-Pacific recall consumed too much of the budget, emit its
+  // lexical result instead of risking a second request that suppresses all recall.
+  if (!Array.isArray(data.semantic_candidates) || data.semantic_candidates.length === 0) {
+    await recordDiagnostic(config, "UserPromptSubmit", "semantic_no_candidates");
+  } else if (data.semantic_candidates.length > 256 || Date.now() - invocationStarted >= 1500) {
+    await recordDiagnostic(config, "UserPromptSubmit", "semantic_skipped_budget");
+  } else {
+    try {
+      const scores = await semanticScores(config, input.prompt, data.semantic_candidates);
+      if (HOOK_DEADLINE_MS - (Date.now() - invocationStarted) > 1200 + DELIVERY_RESERVE_MS) {
+        data = await recall(config, {...body, semantic_candidates: data.semantic_candidates, semantic_scores: scores}, 1200);
+        await recordDiagnostic(config, "UserPromptSubmit", "semantic_scored");
+      } else {
+        await recordDiagnostic(config, "UserPromptSubmit", "semantic_skipped_budget");
+      }
+    } catch {
+      await recordDiagnostic(config, "UserPromptSubmit", "semantic_rerank_failed");
+      // Keep existing canonical lexical recall on scoring or HTTP failure.
+    }
+  }
+  if (!data.context || data.memory_ids.some(id => exclude.includes(id))) { observed.outcome = "empty"; return; }
+  await commitRecallContext(config, input, snapshot, data, exclude, async text => {
+    await output(text);
+    observed.outcome = "delivered"; observed.current_ids = data.memory_ids;
+  });
+  if (observed.outcome !== "delivered") observed.outcome = "empty";
+}
+
 export async function runHook(input, output = text => new Promise((resolve, reject) => process.stdout.write(text, error => error ? reject(error) : resolve()))) {
   const invocationStarted = Date.now();
   if (process.env.LEILEI_MIND_HOOK_DISABLED === "1" ||
@@ -635,53 +707,13 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     return;
   }
   if (input.hook_event_name !== "UserPromptSubmit" || typeof input.prompt !== "string" || !input.prompt.trim() || input.prompt.length > 16000) return;
-  const snapshot = await withState(config, input.session_id, async (state, save) => {
-    // Rewind/resend needs no event detection: dedupe is recomputed from the active
-    // transcript chain each prompt, so local state never accumulates injections.
-    state.active_turn = randomUUID(); state.pending_recalls = []; state.injected_ids = []; delete state.chain_anchor;
-    await save(state); return structuredClone(state);
-  });
-  // Memories whose delivered context is provably still on the active chain.
-  const chain = await chainExclusions(config, input, invocationStarted, snapshot.active_turn);
-  const chainIds = chain.ids;
-  // Keep existing written IDs first; the server accepts at most MAX_SEEN.
-  // If the chain contributes too many IDs, dropping the tail only weakens dedupe.
-  const exclude = [...new Set([...snapshot.written_ids, ...chainIds])].slice(0, MAX_SEEN);
-  const body = {
-    session_id: input.session_id,
-    query: input.prompt,
-    exclude_ids: exclude,
-    caller: "claude_code",
-    context_epoch: snapshot.context_epoch,
-    receipt_mode: "signed_v1",
-  };
-  // Stop accounting never consumes this invocation's retrieval budget.
-  const firstTimeout = Math.min(2500, HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted));
-  if (firstTimeout <= 0) return;
-  let data = await recall(config, body, firstTimeout);
-  // Preserve the 3.8s process deadline. Semantic scoring is opportunistic:
-  // if the first cross-Pacific recall consumed too much of the budget, emit its
-  // lexical result instead of risking a second request that suppresses all recall.
-  if (!Array.isArray(data.semantic_candidates) || data.semantic_candidates.length === 0) {
-    await recordDiagnostic(config, "UserPromptSubmit", "semantic_no_candidates");
-  } else if (data.semantic_candidates.length > 256 || Date.now() - invocationStarted >= 1500) {
-    await recordDiagnostic(config, "UserPromptSubmit", "semantic_skipped_budget");
-  } else {
-    try {
-      const scores = await semanticScores(config, input.prompt, data.semantic_candidates);
-      if (HOOK_DEADLINE_MS - (Date.now() - invocationStarted) > 1200 + DELIVERY_RESERVE_MS) {
-        data = await recall(config, {...body, semantic_candidates: data.semantic_candidates, semantic_scores: scores}, 1200);
-        await recordDiagnostic(config, "UserPromptSubmit", "semantic_scored");
-      } else {
-        await recordDiagnostic(config, "UserPromptSubmit", "semantic_skipped_budget");
-      }
-    } catch {
-      await recordDiagnostic(config, "UserPromptSubmit", "semantic_rerank_failed");
-      // Keep existing canonical lexical recall on scoring or HTTP failure.
-    }
+  const observed = {outcome: "failed", current_ids: [], exclude_ids: []};
+  try {
+    await recallForPrompt(config, input, invocationStarted, output, observed);
+  } finally {
+    await offerComparison(config, {session: hash(input.session_id), query: input.prompt, ...observed,
+      current_ms: Date.now() - invocationStarted}).catch(() => undefined);
   }
-  if (!data.context || data.memory_ids.some(id => exclude.includes(id))) return;
-  await commitRecallContext(config, input, snapshot, data, exclude, output);
 }
 
 async function main() {
