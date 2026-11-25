@@ -450,10 +450,7 @@ test("large detail reads expose one bounded continuation contract", async () => 
   const tools = await listTools(createMcpServer({} as never));
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
-  for (const name of [
-    "get_diary",
-    "read_notion_page",
-  ] as const) {
+  for (const name of ["get_diary"] as const) {
     const tool = byName.get(name);
     assert.ok(tool, `${name} must stay registered`);
     assert.equal(property(tool, "max_chars").default, 12_000);

@@ -49,6 +49,6 @@ test("device Health and time tools are present once in public and internal MCP",
     publicNames.filter((name) =>
       name !== "render_thinking_block" && name !== "render_note_card"
     ),
-    internalNames.filter((name) => !name.includes("notion")),
+    internalNames,
   );
 });

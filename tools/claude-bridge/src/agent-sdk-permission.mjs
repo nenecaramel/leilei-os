@@ -166,8 +166,6 @@ const TRUSTED_LEILEIOS_READ_TOOLS = new Set([
   "search_todo", "list_todo_dates", "read_todo_day",
   "list_universe_galaxies", "list_universe_nodes", "get_universe_node",
   "get_universe_relations", "get_universe_diary_sources",
-  "search_notion", "read_notion_page", "get_notion_connection",
-  "read_notion_database", "read_notion_data_source",
 ].map((name) => `mcp__leileios__${name}`));
 
 export function trustedNativeLiveToolPolicy(

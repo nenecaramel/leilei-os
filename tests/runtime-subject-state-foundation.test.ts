@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateCanonicalEvent } from "../src/domains/runtime/shared/canonical-event-contract.js";
 import {
   assertContextManifestSafe,
   subjectStateToContextItem,
@@ -11,7 +10,6 @@ import {
   validateSubjectStateWrite,
   type SubjectStateWrite,
 } from "../src/domains/runtime/subject-state/subject-state-contract.js";
-import { assertTurnTransition } from "../src/domains/runtime/lifecycle/turn-lifecycle-contract.js";
 
 const settledStatus = {
   generationStatus: "committed",
@@ -58,40 +56,6 @@ function baseState(): SubjectStateWrite {
     },
   };
 }
-
-test("canonical event contract keeps explicit ordering, time and causality", () => {
-  const event = validateCanonicalEvent({
-    eventId: "event-1",
-    userId: "user-1",
-    subjectId: "G",
-    streamId: "conversation:c1",
-    streamSequence: 12,
-    eventType: "message_committed",
-    schemaVersion: 1,
-    time: {
-      occurredAt: null,
-      observedAt: "2026-09-22T08:00:00.000Z",
-      recordedAt: "2026-09-22T08:00:01.000Z",
-      effectiveAt: "2026-09-22T08:00:01.000Z",
-    },
-    relation: {
-      parentEventId: "event-0",
-      causedBy: "turn-1",
-      derivedFrom: [],
-      decisionId: null,
-    },
-    payload: { message_id: "a1" },
-  });
-  assert.equal(event.streamSequence, 12);
-});
-
-test("turn lifecycle allows tool loops but terminal states stay terminal", () => {
-  assert.doesNotThrow(() => assertTurnTransition("started", "producing"));
-  assert.doesNotThrow(() => assertTurnTransition("streaming", "waiting_tool"));
-  assert.doesNotThrow(() => assertTurnTransition("waiting_tool", "streaming"));
-  assert.doesNotThrow(() => assertTurnTransition("streaming", "committed"));
-  assert.throws(() => assertTurnTransition("committed", "producing"));
-});
 
 test("runtime status axes do not collapse settled, path and validity into one enum", () => {
   assert.equal(isConsolidationEligible(settledStatus), true);

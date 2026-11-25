@@ -76,7 +76,6 @@ const baseEnvSchema = z.object({
   LEILEI_TOY_BRIDGE_USER_ID: z.string().uuid().optional(),
   LEILEI_HEALTH_SYNC_KEY: z.string().min(32).optional(),
   LEILEI_HEALTH_SYNC_USER_ID: z.string().uuid().optional(),
-  NOTION_PAT: z.string().trim().min(16).optional(),
   ELEVENLABS_API_KEY: z.string().trim().min(1).optional(),
   ELEVENLABS_VOICE_ID: z.string().regex(/^[A-Za-z0-9]{10,80}$/u).optional(),
   MCP_SESSION_IDLE_TTL_SECONDS: z.coerce.number().int().positive().default(7_200),

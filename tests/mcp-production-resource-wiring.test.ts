@@ -60,7 +60,6 @@ test("production MCP server composition cannot create database pools", () => {
     /getDefaultMemoryService|getDefaultDiaryService|getDefaultTaskService|getDefaultTodoService|getDefaultUniverseService|getDefaultActiveUserRepository/,
   );
   assert.match(routerSource, /createSessionServer/);
-  assert.doesNotMatch(routerSource, /registerProductionNotionExplicitWriteTools/);
 });
 
 test("direct MCP server keeps operational connectivity outside its model surface", async () => {
@@ -120,9 +119,6 @@ test("production internal surface keeps current maintenance tools without retire
     "global_search",
     "search_diary",
     "read_todo_day",
-    "create_notion_page",
-    "write_notion_page",
-    "get_notion_connection",
   ]) {
     assert.equal(names.includes(required), true, `internal default must expose ${required}`);
   }

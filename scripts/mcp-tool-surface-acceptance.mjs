@@ -60,7 +60,6 @@ const steps = [
   ["Todo batch", ["test:mcp-todo-batch"]],
   ["pagination", ["test:mcp-pagination"]],
   ["bounded read", ["test:mcp-bounded-read"]],
-  ["typed Notion", ["test:mcp-typed-notion"]],
   ["mutation contract", ["test:mcp-mutation-contract"]],
   ["error recovery", ["test:mcp-error-recovery"]],
   ["revision / idempotency", ["test:mcp-revision-idempotency"]],

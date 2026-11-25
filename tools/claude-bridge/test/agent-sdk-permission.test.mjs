@@ -496,7 +496,7 @@ test("LeileiOS mutations, destructive and unknown tools always enter the permiss
   for (const name of [
     "create_diary", "write_diary", "update_diary", "append_todo_entries", "append_todo_entry", "write_todo_paper", "update_todo_entries", "delete_todo_entries",
     "create_universe_node", "update_universe_node", "delete_universe_node", "create_universe_relation", "delete_universe_relation",
-    "delete_universe_diary_source", "write_notion_page", "unknown_read_tool", "get_current_time_and_delete_everything",
+    "delete_universe_diary_source", "search_notion", "unknown_read_tool", "get_current_time_and_delete_everything",
   ]) {
     const toolName = `mcp__leileios__${name}`;
     assert.equal(trustedNativeLiveToolPolicy(toolName), null, toolName);
@@ -513,7 +513,7 @@ test("LeileiOS mutations, destructive and unknown tools always enter the permiss
 test("explicit LeileiOS read allowlist contains only registered pure reads", async () => {
   let calls = 0;
   const callback = createAgentSdkPermissionCallback({ permissionHandler: async () => { calls += 1; throw new Error("read should not ask"); } });
-  for (const name of ["get_current_time", "get_health", "global_search", "search_diary", "get_diary", "get_diary_comment", "list_diary_comments", "search_todo", "list_todo_dates", "read_todo_day", "list_universe_galaxies", "list_universe_nodes", "get_universe_node", "get_universe_relations", "get_universe_diary_sources", "search_notion", "read_notion_page", "get_notion_connection", "read_notion_database", "read_notion_data_source"]) {
+  for (const name of ["get_current_time", "get_health", "global_search", "search_diary", "get_diary", "get_diary_comment", "list_diary_comments", "search_todo", "list_todo_dates", "read_todo_day", "list_universe_galaxies", "list_universe_nodes", "get_universe_node", "get_universe_relations", "get_universe_diary_sources"]) {
     assert.equal(trustedNativeLiveToolPolicy(`mcp__leileios__${name}`), "leileios_read");
     assert.deepEqual(await callback(`mcp__leileios__${name}`, {}, {}), { behavior: "allow" });
   }
