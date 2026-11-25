@@ -9,13 +9,14 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "./users.js";
 
-export type NativeLiveSilenceWakeSlot =
+// long_idle reaches the ledger as idle_N; older receipts carry it directly.
+export type NativeLiveFixedWakeReceiptSlot =
   | "post_turn_idle"
-  | "mid_idle"
   | "long_idle";
 
-// Retired with the concern feature; only stored receipts still carry these.
-export type NativeLiveConcernWakeSlot =
+// Retired; only stored receipts still carry these.
+export type NativeLiveRetiredWakeReceiptSlot =
+  | "mid_idle"
   | "concern_1"
   | "concern_2"
   | "concern_3";
@@ -24,8 +25,8 @@ export type NativeLiveConcernWakeSlot =
 export type NativeLiveRecurringIdleSlot = `idle_${number}`;
 
 export type NativeLiveWakeReceiptSlot =
-  | NativeLiveSilenceWakeSlot
-  | NativeLiveConcernWakeSlot
+  | NativeLiveFixedWakeReceiptSlot
+  | NativeLiveRetiredWakeReceiptSlot
   | NativeLiveRecurringIdleSlot;
 
 export const nativeLiveSilenceWakeReceipts = pgTable(

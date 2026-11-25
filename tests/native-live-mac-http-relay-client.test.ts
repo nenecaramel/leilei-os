@@ -592,11 +592,8 @@ test("Mac HTTP relay client reads and fires silence wake without sending user id
     fakeFetch,
   );
 
-  // An older server omits the mid slot; the Mac reads that as no mid wake.
   assert.deepEqual(await client.readSilenceWakeSchedule(), {
     ...schedule,
-    midIdleDueAt: null,
-    midIdleConsumed: false,
   });
   assert.deepEqual(
     await client.fireSilenceWake({
@@ -608,8 +605,6 @@ test("Mac HTTP relay client reads and fires silence wake without sending user id
       schedule: {
         ...schedule,
         postTurnConsumed: true,
-        midIdleDueAt: null,
-        midIdleConsumed: false,
       },
     },
   );
@@ -647,7 +642,7 @@ test("Mac HTTP relay client drops the retired concern deadline an older server s
   );
   const client = new NativeLiveMacHttpRelayClient("https://relay.example", "secret-token", fakeFetch);
   assert.deepEqual(await client.readSilenceWakeSchedule(), {
-    ...schedule, midIdleDueAt: null, midIdleConsumed: false,
+    ...schedule,
   });
 });
 

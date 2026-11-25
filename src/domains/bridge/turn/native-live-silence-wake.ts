@@ -14,10 +14,13 @@ import type {
   DrizzleNativeLiveWorkWakePublisher,
 } from "../relay/native-live-work-wake.js";
 
-export type NativeLiveSilenceWakeSlot =
-  | "post_turn_idle"
-  | "mid_idle"
-  | "long_idle";
+// The only list of slots the Mac may ask to fire.
+export const NATIVE_LIVE_SILENCE_WAKE_SLOTS = ["post_turn_idle", "long_idle"] as const;
+export type NativeLiveSilenceWakeSlot = (typeof NATIVE_LIVE_SILENCE_WAKE_SLOTS)[number];
+
+export function isSilenceWakeSlot(value: unknown): value is NativeLiveSilenceWakeSlot {
+  return (NATIVE_LIVE_SILENCE_WAKE_SLOTS as readonly unknown[]).includes(value);
+}
 
 export type NativeLiveWakeReceipt = {
   slot: NativeLiveWakeReceiptSlot;
@@ -34,9 +37,6 @@ export type NativeLiveSilenceWakeSchedule = {
   longIdleDueAt: string;
   postTurnConsumed: boolean;
   longIdleConsumed: boolean;
-  // Retired; servers since the recurring wake send null.
-  midIdleDueAt?: string | null;
-  midIdleConsumed?: boolean;
 };
 
 export type NativeLiveSilenceWakeIgnoredReason =
@@ -130,16 +130,12 @@ export function chooseDueSilenceWakeSlot(
 ): NativeLiveSilenceWakeSlot | null {
   if (!schedule || schedule.longIdleConsumed) return null;
   const longDue = Date.parse(schedule.longIdleDueAt);
-  const midDue = schedule.midIdleDueAt ? Date.parse(schedule.midIdleDueAt) : Number.NaN;
   const postDue = Date.parse(schedule.postTurnDueAt);
 
   // A resumed Mac never catches up several opportunities. The latest due slot
   // owns the silence epoch and every shorter missed opportunity is stale.
   if (Number.isFinite(longDue) && nowMs >= longDue) {
     return "long_idle";
-  }
-  if (Number.isFinite(midDue) && nowMs >= midDue) {
-    return schedule.midIdleConsumed ? null : "mid_idle";
   }
   if (
     !schedule.postTurnConsumed
@@ -162,11 +158,7 @@ export function nextSilenceWakeDeadline(
   if (!schedule.longIdleConsumed) {
     const longDue = Date.parse(schedule.longIdleDueAt);
     if (Number.isFinite(longDue)) candidates.push(longDue);
-    if (!schedule.midIdleConsumed && schedule.midIdleDueAt) {
-      const midDue = Date.parse(schedule.midIdleDueAt);
-      if (Number.isFinite(midDue)) candidates.push(midDue);
-    }
-    if (!schedule.postTurnConsumed && !schedule.midIdleConsumed) {
+    if (!schedule.postTurnConsumed) {
       const postDue = Date.parse(schedule.postTurnDueAt);
       if (Number.isFinite(postDue)) candidates.push(postDue);
     }
@@ -509,8 +501,6 @@ export class NativeLiveSilenceWakeService {
         }),
       }).toISOString(),
       longIdleConsumed: nextIdle === null,
-      midIdleDueAt: null,
-      midIdleConsumed: false,
     };
   }
 
@@ -712,7 +702,7 @@ function readDatabaseTimestamp(
   return date;
 }
 
-// concern_1..3 are retired; stored receipts keep their codes resolvable.
+// mid_idle and concern_1..3 are retired; stored receipts keep their codes resolvable.
 const RECEIPT_SLOT_CODES: Record<Exclude<NativeLiveWakeReceiptSlot, NativeLiveRecurringIdleSlot>, number> = {
   post_turn_idle: 0x01,
   long_idle: 0x02,
@@ -784,8 +774,6 @@ function markConsumed(
     ...schedule,
     ...(slot === "post_turn_idle"
       ? { postTurnConsumed: true }
-      : slot === "mid_idle"
-        ? { midIdleConsumed: true }
-        : { longIdleConsumed: true }),
+      : { longIdleConsumed: true }),
   };
 }

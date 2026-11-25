@@ -23,7 +23,7 @@ class FakeClient implements NativeLiveMacSilenceWakeClient {
     return this.schedule;
   }
 
-  async fireSilenceWake(input: { epochId: string; slot: "post_turn_idle" | "mid_idle" | "long_idle" }) {
+  async fireSilenceWake(input: { epochId: string; slot: "post_turn_idle" | "long_idle" }) {
     this.fired.push(input);
     if (input.slot === "post_turn_idle") this.schedule.postTurnConsumed = true;
     else this.schedule.longIdleConsumed = true;

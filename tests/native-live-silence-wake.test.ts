@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import {
+  NATIVE_LIVE_SILENCE_WAKE_SLOTS,
+  isSilenceWakeSlot,
   chooseDueSilenceWakeSlot,
   formatSilenceWakeMarker,
   nextSilenceWakeDeadline,
@@ -109,26 +111,23 @@ test("wake finalization revalidates exact latest user identity without timestamp
   );
 });
 
-test("the Mac parses the mid slot and still accepts an older server's schedule", () => {
-  const midSchedule = {
+test("the Mac drops the retired mid slot an older server still sends", () => {
+  const schedule = {
     epochId: "44444444-4444-4444-8444-444444444444",
     conversationId: "33333333-3333-4333-8333-333333333333",
     postTurnDueAt: "2026-10-04T01:04:00.000Z",
-    midIdleDueAt: "2026-10-04T01:35:00.000Z",
     longIdleDueAt: "2026-10-04T02:40:00.000Z",
     postTurnConsumed: false,
-    midIdleConsumed: false,
     longIdleConsumed: false,
   };
-  const parsed = parseSilenceWakeSchedule(midSchedule);
-  assert.equal(parsed.midIdleDueAt, midSchedule.midIdleDueAt);
-  assert.equal(parsed.midIdleConsumed, false);
-  const { midIdleDueAt: _due, midIdleConsumed: _consumed, ...older } = midSchedule;
-  const legacy = parseSilenceWakeSchedule(older);
-  assert.equal(legacy.midIdleDueAt, null);
-  assert.equal(legacy.midIdleConsumed, false);
-  assert.throws(() => parseSilenceWakeSchedule({ ...midSchedule, midIdleDueAt: "not a date" }));
-  assert.throws(() => parseSilenceWakeSchedule({ ...midSchedule, midIdleConsumed: "no" }));
+  assert.deepEqual(parseSilenceWakeSchedule({ ...schedule, midIdleDueAt: null, midIdleConsumed: false }), schedule);
+  assert.deepEqual(parseSilenceWakeSchedule(schedule), schedule);
+});
+
+test("one list names the slots the Mac may fire", () => {
+  assert.deepEqual([...NATIVE_LIVE_SILENCE_WAKE_SLOTS], ["post_turn_idle", "long_idle"]);
+  assert.equal(isSilenceWakeSlot("post_turn_idle"), true);
+  for (const retired of ["mid_idle", "concern", "idle_1", "", null]) assert.equal(isSilenceWakeSlot(retired), false);
 });
 
 // Owner's choice (10/29): after the 2–5 minute wake, wake every 30–40 minutes
@@ -177,8 +176,6 @@ test("the Mac fires the recurring wake through the long slot it already knows", 
     longIdleDueAt: "2026-10-04T01:35:00.000Z",
     postTurnConsumed: true,
     longIdleConsumed: false,
-    midIdleDueAt: null,
-    midIdleConsumed: false,
   };
   assert.equal(chooseDueSilenceWakeSlot(schedule, Date.parse("2026-10-04T01:34:00.000Z")), null);
   assert.equal(chooseDueSilenceWakeSlot(schedule, Date.parse("2026-10-04T01:35:00.000Z")), "long_idle");
