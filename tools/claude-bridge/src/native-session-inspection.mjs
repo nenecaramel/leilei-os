@@ -8,7 +8,7 @@ import path from "node:path";
 import { readOnlyFileSnapshot } from "./read-only-file-snapshot.mjs";
 import { readNativeSession } from "./native-session-catalog.mjs";
 import { resolveDesktopSession, resolveLocalNativeSession } from "./desktop-session-index.mjs";
-import { projectNativeHistory, nativeContinuationCheckpoint, nativeDisplayChain, nativeDisplayAssetRevision } from "./native-session-history.mjs";
+import { projectNativeHistory, nativeDisplayChain } from "./native-session-history.mjs";
 import { readNativeSessionActivity } from "./native-session-activity.mjs";
 
 const fail = code => Object.assign(new Error(code), { code });
@@ -40,16 +40,12 @@ async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirec
     if (!['COMPACT_SOURCE_HISTORY_REQUIRED', 'NATIVE_HISTORY_GAP'].includes(error.code)) throw error;
     sourceSnapshots = await readNativeHistorySources(projectDirectory, snapshot.sessionId, snapshot);
   }
-  const options = { sourceSnapshots };
-  if (followNativeContinuation) identity.providerCheckpointId = historyMode === "continuation"
-    ? nativeExecutionContinuation(snapshot, identity.providerCheckpointId).checkpointId
-    : nativeContinuationCheckpoint(snapshot, identity.providerCheckpointId, options);
+  if (followNativeContinuation && historyMode === "continuation") identity.providerCheckpointId = nativeExecutionContinuation(snapshot, identity.providerCheckpointId).checkpointId;
   let history;
-  let projection = null;
   try {
     if (historyMode === "continuation") history = { state: "not_requested" };
     else {
-      projection = projectNativeHistory(snapshot, identity.providerCheckpointId, options);
+      const projection = projectNativeHistory(snapshot, identity.providerCheckpointId, { sourceSnapshots });
       history = { state: "complete", messageCount: projection.messages.length, blockCount: projection.messages.reduce((sum, message) => sum + message.blocks.length, 0) };
     }
   } catch (error) {
@@ -61,13 +57,6 @@ async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirec
   const historyRevision = sourceSnapshots.length ? createHash('sha256').update(JSON.stringify(
     sourceSnapshots.map(s => [s.sessionId, s.revision]),
   )).digest('hex') : null;
-  let displayAssets;
-  if (projection && sourceSnapshots.length) {
-    const chain = nativeDisplayChain(snapshot, identity.providerCheckpointId, options);
-    const entries = chain.filter(e => Array.isArray(e.message?.content) && e.message.content.some(b => ['image', 'document'].includes(b?.type)))
-      .map(e => ({ type: e.type, uuid: e.uuid, message: { content: e.message.content.map(b => ['image', 'document'].includes(b?.type) ? b : null) } }));
-    if (entries.length) displayAssets = { entries, revision: nativeDisplayAssetRevision(entries) };
-  }
   const activity = await readNativeSessionActivity(peerDirectory, snapshot.sessionId, { probeProcessStart });
   const [currentIndex, currentSource] = await Promise.all([
     index ? readOnlyFileSnapshot(indexFile, 4 * 1024 * 1024) : null,
@@ -78,26 +67,11 @@ async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirec
   const activityTime = new Date(metadata.lastActivityAt ?? snapshot.entries.findLast(entry => typeof entry.timestamp === "string")?.timestamp ?? NaN);
   return { inspection: { readOnly: true, ...identity, isArchived: metadata.isArchived === true, title: typeof metadata.title === 'string' ? metadata.title.slice(0, 160) : null,
     updatedAt: Number.isFinite(activityTime.getTime()) ? activityTime.toISOString() : null,
-    activity, history, historyRevision, ...(historyMode === "continuation" ? { continuationReady: true } : {}), handoffAllowed: false }, projection,
-    nativeSnapshot: { sessionId: snapshot.sessionId, revision: snapshot.revision, entries: snapshot.entries, ...(displayAssets ? { displayAssets } : {}) } };
+    activity, history, historyRevision, ...(historyMode === "continuation" ? { continuationReady: true } : {}), handoffAllowed: false }, entries: snapshot.entries };
 }
 
 export async function inspectDesktopNativeSession(input) {
   return (await loadDesktopNativeSession(input)).inspection;
-}
-
-// Internal history payload for a future authenticated restore writer; never log
-// or expose it through the diagnostic CLI. Selection is pinned before any write.
-export async function readDesktopNativeHistory(input) {
-  if (!sessionPattern.test(input.expectedSessionId ?? "") || !sessionPattern.test(input.expectedCheckpointId ?? "") ||
-      !/^[0-9a-f]{64}$/.test(input.expectedRevision ?? "")) throw fail("STALE_NATIVE_SELECTION");
-  const result = await loadDesktopNativeSession(input);
-  if (result.inspection.providerSessionId !== input.expectedSessionId ||
-      result.inspection.providerCheckpointId !== input.expectedCheckpointId ||
-      result.inspection.nativeRevision !== input.expectedRevision ||
-      (input.expectedHistoryRevision !== undefined && result.inspection.historyRevision !== input.expectedHistoryRevision)) throw fail("STALE_NATIVE_SELECTION");
-  if (!result.projection) throw fail(result.inspection.history.reason);
-  return result;
 }
 
 const sortedEntries = async directory => (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name));
@@ -166,7 +140,8 @@ export async function listDesktopNativeSessions(input) {
 
 // Resolve by verified identity, never by title/mtime or the first matching path.
 // Source paths stay internal to the fixed switch command, not catalog output.
-export async function resolveDesktopNativeSelection({ sessionId, ...input }) {
+export async function resolveDesktopNativeSelection({ sessionId, ...rest }) {
+  const input = { ...rest, historyMode: 'continuation' };
   if (!sessionPattern.test(sessionId ?? '') && !(/^local_/.test(sessionId ?? '') && sessionPattern.test(sessionId.slice(6)))) {
     throw fail('INVALID_SESSION_ID');
   }
@@ -181,13 +156,11 @@ export async function resolveDesktopNativeSelection({ sessionId, ...input }) {
     if (candidates.length !== 1) throw fail('AMBIGUOUS_NATIVE_SESSION_LOCATION');
     const local = { indexFile: null, projectDirectory: candidates[0] };
     const inspection = await inspectDesktopNativeSession({ ...input, ...local, expectedSessionId: sessionId, followNativeContinuation: true });
-    if (input.historyMode !== 'continuation' && inspection.history.state !== 'complete') throw fail(inspection.history.reason);
     return { ...local, inspection };
   }
   if (matches.length !== 1) throw fail('AMBIGUOUS_NATIVE_SELECTION');
   const selected = matches[0];
   if (selected.inspection.error) throw fail(selected.inspection.error);
-  if (input.historyMode !== 'continuation' && selected.inspection.history.state !== 'complete') throw fail(selected.inspection.history.reason);
   const source = { indexFile: selected.indexFile, projectDirectory: selected.projectDirectory };
   return { ...source, inspection: await inspectDesktopNativeSession({ ...input, ...source, followNativeContinuation: true }) };
 }
@@ -241,12 +214,12 @@ export async function readNativeContinuationEvidence(input, recovery = null) {
   if (!sessionPattern.test(input.expectedSessionId ?? "") || !sessionPattern.test(input.expectedCheckpointId ?? "") ||
     !/^[0-9a-f]{64}$/.test(input.expectedRevision ?? "")) throw fail("STALE_NATIVE_SELECTION");
   const result = await loadDesktopNativeSession({ ...input, historyMode: "continuation", followNativeContinuation: true });
-  const { inspection, nativeSnapshot } = result;
+  const { inspection, entries } = result;
   if (inspection.providerSessionId !== input.expectedSessionId || inspection.providerCheckpointId !== input.expectedCheckpointId ||
     inspection.nativeRevision !== input.expectedRevision) throw fail("STALE_NATIVE_SELECTION");
-  const recovered = recovery ? verifyCompletedNativeTurn({entries:nativeSnapshot.entries,sessionId:input.expectedSessionId,
+  const recovered = recovery ? verifyCompletedNativeTurn({entries,sessionId:input.expectedSessionId,
     inputId:recovery.userMessageId,parentCheckpointId:recovery.parentCheckpointId}) : null;
-  return { inspection, ...nativeExecutionContinuation(nativeSnapshot, input.expectedCheckpointId),
+  return { inspection, ...nativeExecutionContinuation({ entries }, input.expectedCheckpointId),
     ...(recovered?.providerCheckpointId === input.expectedCheckpointId ? {recoveredInputId:recovery.userMessageId} : {}) };
 
 }

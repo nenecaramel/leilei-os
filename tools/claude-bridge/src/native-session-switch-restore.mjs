@@ -2,7 +2,6 @@ import path from 'node:path';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { nativeRecoveryProtectedSessions } from './native-transcript-archive-recovery.mjs';
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = code => Object.assign(new Error(code), { code });
 // Continuation switching exchanges metadata only; every request is short.
 export const NATIVE_HISTORY_REQUEST_TIMEOUT_MS = 30_000;
@@ -10,9 +9,9 @@ export const NATIVE_HISTORY_REQUEST_TIMEOUT_MS = 30_000;
 // for ~40 s. Requests whose replay is idempotent wait that out; the rest fail.
 export const NATIVE_RELAY_RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
 const retryOnUnavailable = new Set(['choices', 'continuation-state', 'continuation-attach', 'continuation-release', 'continuation-release-begin', 'continuation-release-cancel']);
-// Only these short read/bind calls retry; attachment routes never do.
+// Only these short read/bind calls retry.
 const retryOnTimeout = retryOnUnavailable;
-const publicCodes = new Set(['NATIVE_SESSION_SWITCHING', 'NATIVE_CONVERSATION_BUSY', 'STALE_NATIVE_PROJECTION', 'NATIVE_RELEASE_BEGIN_REQUIRED', 'CANONICAL_HEAD_CHANGED', 'CANONICAL_HISTORY_CHANGED', 'CANONICAL_CHECKPOINT_CHANGED', 'NATIVE_SOURCE_BINDING_REQUIRED', 'EXPLICIT_BRANCH_SELECTION_REQUIRED', 'NATIVE_HISTORY_REWRITTEN', 'NATIVE_TRANSCRIPT_DIVERGED', 'NATIVE_SESSION_RECOVERY_REQUIRED', 'CLEANUP_IN_PROGRESS', 'NATIVE_CONVERSATION_NOT_FOUND', 'INVALID_NATIVE_PROJECTION', 'INVALID_NATIVE_SNAPSHOT', 'BATCH_TOO_LARGE', 'NATIVE_SESSION_ALREADY_ATTACHED', 'INVALID_NATIVE_ASSET', 'NATIVE_ASSET_UNAVAILABLE', 'NATIVE_ASSET_MISMATCH', 'NATIVE_SYNC_BASE_CHANGED']);
+const publicCodes = new Set(['NATIVE_SESSION_SWITCHING', 'NATIVE_CONVERSATION_BUSY', 'STALE_NATIVE_PROJECTION', 'NATIVE_RELEASE_BEGIN_REQUIRED', 'CANONICAL_CHECKPOINT_CHANGED', 'NATIVE_SOURCE_BINDING_REQUIRED', 'EXPLICIT_BRANCH_SELECTION_REQUIRED', 'NATIVE_SESSION_RECOVERY_REQUIRED', 'CLEANUP_IN_PROGRESS', 'NATIVE_CONVERSATION_NOT_FOUND', 'INVALID_NATIVE_PROJECTION', 'NATIVE_SESSION_ALREADY_ATTACHED']);
 
 // Authenticated switch metadata requests: no SDK query, native file writes,
 // Desktop launching or execution lease. The server binds ownership to internal auth.
@@ -34,11 +33,7 @@ export function nativeHistoryRequest({ relayUrl, relayToken, fetchImpl = fetch,
     let signal;
     try {
       signal = AbortSignal.timeout(NATIVE_HISTORY_REQUEST_TIMEOUT_MS);
-      const routePath = route === 'attachment-upload-slot' ? 'internal/native-live-relay/attachments/upload-slots'
-        : route.startsWith('attachment-complete/') && uuid.test(route.slice('attachment-complete/'.length))
-          ? 'internal/native-live-relay/attachments/' + route.slice('attachment-complete/'.length) + '/complete'
-          : 'internal/native-live-session-store/native-history/' + route;
-      const response = await fetchImpl(new URL(routePath, endpoint).href, {
+      const response = await fetchImpl(new URL('internal/native-live-session-store/native-history/' + route, endpoint).href, {
         method: 'POST', redirect: 'error', signal,
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + relayToken }, body,
       });
