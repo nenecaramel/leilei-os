@@ -22,7 +22,7 @@ This document covers recurring build, deployment, and MCP Apps problems in the c
 ### Symptoms
 
 - pnpm reports an ignored build/lifecycle script.
-- `tsx`, esbuild, or the Message Bridge bundle step cannot execute the platform-specific binary.
+- `tsx`, esbuild, or the Note Card bundle step cannot execute the platform-specific binary.
 
 ### Resolution
 
@@ -38,39 +38,16 @@ The Docker build must copy all dependency metadata before `pnpm install`:
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 ```
 
-The build stage must include `scripts/build-mcp-browser.mjs` before `pnpm build`; that unified step produces both Message Bridge and Thinking Block browser bundles.
+The build stage must include `scripts/build-mcp-browser.mjs` before `pnpm build`; it produces the Note Card browser bundle.
 
 If local build succeeds but Docker/Railway fails, compare the Docker dependency/build inputs with the root scripts before changing application code.
 
-## Message Bridge renders stale or unexpected UI
+## Note Card renders stale UI
 
-The current Message Bridge resource URI is:
-
-```text
-ui://leileios/message-bridge/v5
-```
-
-The Bridge browser runtime is bundled from `src/mcp/tools/bridge-listener/browser-runtime.ts` during `pnpm build`.
-
-When debugging a stale Bridge surface:
-
-1. Confirm the server build contains the expected `BRIDGE_RESOURCE_URI`.
-2. Confirm `pnpm build` regenerated the browser bundle.
-3. Confirm the deployed server is actually running the intended commit SHA.
-4. Refresh/reconnect the MCP client so it rediscovers resources.
-5. For a material UI/runtime change, use a new resource URI rather than relying on cache invalidation of an existing URI.
-
-Do not change queue/reservation/delivery behavior merely to solve a stale rendered resource.
-
-## Message Bridge stays Idle
-
-Idle is the expected initial listener state. The resource may initialize its MCP Apps host connection automatically, but listener activation is intentionally manual.
-
-- Click **Start** to activate the listener.
-- If Start reports an unsupported host, inspect the capability diagnostics rather than adding host-specific code first.
-- If another listener already owns the reservation/lease, the UI may report an occupied state.
-
-Do not convert manual Start to automatic Start as a troubleshooting shortcut.
+1. Confirm `pnpm build` regenerated the browser bundle.
+2. Confirm the deployed server runs the intended commit SHA.
+3. Reconnect the MCP client so it rediscovers resources.
+4. For a material UI change, use a new resource URI.
 
 ## MCP tool schema is unexpectedly empty
 
@@ -107,7 +84,7 @@ When root Docker/Railway or MCP Apps behavior fails:
 2. Confirm the pinned pnpm version and dependency metadata.
 3. Run `pnpm typecheck` and `pnpm build`.
 4. Run the focused failing test before the full suite.
-5. For Bridge issues, verify the resource URI and generated browser bundle.
+5. For Note Card issues, verify the resource URI and generated browser bundle.
 6. For schema issues, inspect the actual MCP `tools/list` surface.
 7. After deployment, verify `/health` and the authenticated MCP handshake.
 

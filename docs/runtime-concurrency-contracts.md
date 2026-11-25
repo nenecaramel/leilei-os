@@ -124,9 +124,9 @@ pnpm wake off
 pnpm wake status
 ```
 
-This persistent local switch controls only the post-reply 2–5 minute and
-post-reply 90–120 minute silence opportunities (both measured from the
-reply that ended the turn). It does not change
+This persistent local switch controls only silence wakes: one 2–5 minutes
+after the reply that ended the turn, then one every 30–40 minutes (at most 64)
+after the later of Claude's last message and the last wake. It does not change
 normal chat, Cron/Monitor/Bash jobs, Mind recall, or Railway configuration.
 The commands need no credentials. Default is ON; the private marker is
 `~/.leileios/wake/disabled`. Status reports the local switch; a backend

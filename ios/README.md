@@ -2,7 +2,7 @@
 
 This directory contains the native SwiftUI client.
 
-## Current clean-app scope
+## Scope
 
 The iOS app is a frontend for the existing LeileiOS backend. It does not connect directly to PostgreSQL or to the Mac Claude Code process.
 
@@ -10,7 +10,7 @@ Default production backend:
 
 `https://leilei-os-production.up.railway.app`
 
-The app currently includes a real backend health probe and an authenticated `/api/v1/session` probe. The Auth0 native client still needs its own client ID / redirect configuration before sign-in can be enabled.
+It contains Chat (Native Live), Diary, Mind, Day Space, Universe, Conversations, Global Search and Settings. Sign-in uses Auth0 with the native client configured in `AppConfig.swift`.
 
 ## Run on an iPhone
 
@@ -33,4 +33,4 @@ The app reads these optional Info.plist keys:
 
 Do not commit Auth0 secrets. A native client ID is public configuration, but the iOS app must not contain a client secret.
 
-Once native Auth0 login is wired, the resulting access token is stored in Keychain and the same `LeileiAPIClient` can call the existing `/api/v1` domain APIs.
+The access token is stored in Keychain and `LeileiAPIClient` uses it for the `/api/v1` domain APIs.

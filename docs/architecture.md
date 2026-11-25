@@ -4,21 +4,21 @@
 
 Leilei OS is an authenticated personal workspace composed of:
 
-- a React Web application protected by its own Auth0 audience and scope;
+- a native iOS app (`ios/`), the everyday client, and a React Web application, both using the authenticated Web API;
 - a PostgreSQL-backed Express API with domain services and repositories;
 - an OAuth-protected Streamable HTTP MCP server;
-- MCP Apps UI resources for interactive model-facing surfaces; and
+- one MCP Apps UI resource, the Note Card;
 - a PWA runtime for the Web application; and
 - a Native Live / Runtime backend where Railway owns durable authority and a Mac Companion process performs local Claude execution and bounded background work.
 
 Mind (memory) is described in [mind.md](mind.md).
 
-ChatGPT is one MCP client and conversation surface. Leilei OS does not call the OpenAI API. Conversation Archive persists only user-initiated ChatGPT or Claude exports; it does not automatically capture host conversations.
+ChatGPT is one MCP client. Leilei OS does not call the OpenAI API. Native Live conversations are canonical here; the older conversation-import tables remain in the schema, but no code outside it reads or writes them.
 
 ## Runtime boundaries
 
 ```text
-Web / MCP client / MCP Apps host
+iOS / Web / MCP client / MCP Apps host
           │ authenticated request
           ▼
 Express Web API / MCP router
@@ -38,10 +38,10 @@ The Web API and MCP tools share domain services and repositories. Tool handlers 
 
 - **Domain contracts define business semantics; PostgreSQL stores canonical durable state.** UI or MCP transport details must not become a second source of truth.
 - **MCP tools are the capability layer.** Reads, discovery, mutations, concurrency and lifecycle rules remain domain-owned; tool schemas make safe stable defaults explicit instead of repeatedly asking the model to choose meaningless state.
-- **Web is the primary visual product surface.** MCP Apps are optional host-specific enhancements, not a default product layer. Add one only when a concrete host-embedded interaction is materially better than ordinary MCP tools plus Web.
+- **iOS is the everyday product surface; Web shares the same API and domains.** MCP Apps are optional host-specific enhancements, not a default product layer. Add one only when a concrete host-embedded interaction is materially better than ordinary MCP tools plus the apps.
 - **Dedicated discovery and detail stay domain-specific.** When the domain is known, use that domain's browse/search tool and then its exact detail pointer. A domain may combine browse and search in one tool when that matches its semantics; tools are not split merely for naming symmetry.
 - **Global Search is cross-domain discovery.** Use it when the target domain is unknown or the query genuinely spans domains; it must return compact records and exact detail pointers rather than absorb domain-specific detail or mutation behavior.
-- **Modules keep their own semantics.** Diary, Todo, Universe, Conversation Archive, Native Live, and Runtime/Mind do not inherit another module's revision, lifecycle, concurrency, or UI model just to look architecturally uniform.
+- **Modules keep their own semantics.** Diary, Todo, Universe, Native Live, and Runtime/Mind do not inherit another module's revision, lifecycle, concurrency, or UI model just to look architecturally uniform.
 - **Operational probes do not consume model-visible inventory when an existing transport-level health/handshake check is sufficient.** Keep the public tool surface focused on capabilities that help accomplish user work.
 - Product order, abstractions and UI shape are chosen from current value and dependencies, not from a requirement to make every module structurally identical.
 
@@ -55,41 +55,21 @@ The adapter is configuration-dependent; repository support for it does not by it
 
 ## Web application
 
-The Web application contains authenticated Dashboard and Day Space views plus Diary, Todo, Conversation Archive, Universe, Global Search, and System routes. Durable data is read and written through `/api/v1`; the server remains authoritative.
+The Web application contains authenticated Dashboard and Day Space views plus Diary, Mind, Universe, Global Search, and Settings routes. Todo papers are edited from the Dashboard and Day Space. Chat exists only on iOS. Durable data is read and written through `/api/v1`; the server remains authoritative.
 
 The PWA build emits the manifest and service worker from `web/`. Vercel serves the built SPA from `web/dist` with history fallback. The production branch is `main`.
 
 ## MCP surface
 
-The authenticated production MCP router registers the current LeileiOS tool surface, including personal workspace reads/writes, Global Search and Universe operations, Notion reads/writes, Toy/bridge operations when configured, and MCP Apps resources.
+The authenticated production MCP router registers the current LeileiOS tool surface, including personal workspace reads/writes, Global Search and Universe operations, Toy operations when configured, the Note Card resource, and, only when a tool profile enables them, Notion reads/writes. Profiles live in `src/mcp/server/tool-profiles.ts`; a Native Live SDK session sees fewer tools still (`tools/claude-bridge/src/agent-sdk-disallowed-tools.mjs`), which does not change the server.
 
 Notion tools use server-side authorization. `read_notion_page` exposes a plain schema with optional `page_id` and `page_url` fields and enforces exactly one reference inside the handler, returning `INVALID_PAGE_REFERENCE` for missing or ambiguous references. Explicit Notion page/comment writes use fresh-read and readback verification. Destructive Notion delete/archive operations are not exposed.
 
 MCP schemas are Zod-validated. Safe error mappings distinguish invalid input, missing resources, authorization failures, conflicts, unavailable providers, and service failures without exposing credentials, connection strings, SQL, or stack traces.
 
-### Thinking Block
+### Note Card
 
-`render_thinking_block` renders model-supplied external working text in an MCP Apps card. It does not expose native hidden chain of thought. Thinking-block content is not persisted by default and does not become authoritative long-term state merely by being rendered.
-
-The standard MCP Apps resource is `ui://widget/leileios-thinking-block-v3.html`. ChatGPT's `openai/outputTemplate` compatibility path points to `ui://widget/leileios-thinking-block-chatgpt-v3.html`. Both identifiers resolve to the same current HTML and browser runtime; the older v2 and v1 identifiers remain only as legacy host-compatibility aliases.
-
-The browser client uses the official `@modelcontextprotocol/ext-apps` `App` and `PostMessageTransport` lifecycle for standard MCP Apps hosts while retaining the OpenAI host globals path as a compatibility fallback. The generated Thinking Block browser bundle is produced by the unified `scripts/build-mcp-browser.mjs` step during the root build.
-
-### Message Bridge MCP App
-
-The Message Bridge resource is currently registered as:
-
-```text
-ui://leileios/message-bridge/v5
-```
-
-The browser client uses the official `@modelcontextprotocol/ext-apps` `App` and `PostMessageTransport` runtime. `pnpm build` runs the unified `scripts/build-mcp-browser.mjs` step after TypeScript compilation to generate the browser bundle consumed by the resource.
-
-Host initialization can run when the resource iframe loads, but listener activation is deliberately manual. The Bridge UI calls `bridge_listener_start` only after the user activates **Start**; it does not automatically begin listener polling/delivery.
-
-The resource URI is also a cache/version boundary. Material UI/runtime changes should advance the URI rather than assuming all MCP Apps hosts will invalidate cached resource contents.
-
-Bridge queue, reservation, dispatch, and delivery semantics remain server/domain responsibilities; the MCP Apps client does not redefine them.
+`render_note_card` displays supplied user-visible text as an MCP Apps card and persists nothing. Resource URIs and the rename history are in the [README](../README.md#mcp-apps).
 
 ## MCP session lifecycle
 
@@ -97,7 +77,7 @@ Streamable HTTP sessions are process-local and namespaced: `/mcp` uses the publi
 
 ## Database and migrations
 
-PostgreSQL holds durable user, Diary, Todo, Universe, Conversation Archive, Native Live/Runtime, audit, integration, and related application state. Historical migrations for retired product surfaces remain in the migration chain because migration history is append-only.
+PostgreSQL holds durable user, Diary, Todo, Universe, historical conversation imports, Native Live/Runtime, audit, integration, and related application state. Historical migrations for retired product surfaces remain in the migration chain because migration history is append-only.
 
 The canonical checked-in migration source is `drizzle/meta/_journal.json`; read its final entry when the current migration head is needed instead of copying a head value into this document.
 
@@ -108,7 +88,7 @@ Normal application startup does not run migrations. Manual local or disposable-d
 ## Deployment topology
 
 - GitHub default branch and release trunk: `main`.
-- Railway Production source: `main`; the root `Dockerfile` builds the API/MCP service and the unified MCP Apps browser bundle step produces both Message Bridge and Thinking Block runtimes.
+- Railway Production source: `main`; the root `Dockerfile` builds the API/MCP service and `scripts/build-mcp-browser.mjs` produces the Note Card runtime.
 - `.railway/railway.ts` (Railway Infrastructure as Code) configures the Dockerfile builds, the compiled migration runner as pre-deploy work and the readiness healthcheck.
 - Vercel Production Branch: `main`; Vercel builds `web/` and serves the SPA.
 - Production credentials and database URLs stay in platform secret stores.

@@ -13,7 +13,7 @@ A repository merge and a successful production deployment are separate facts. Al
 
 ## Railway API/MCP deployment
 
-Railway builds the repository root `Dockerfile`. The build stage installs the pinned pnpm version, compiles TypeScript, and runs both MCP Apps browser bundle steps (Message Bridge and Thinking Block) through `pnpm build`. The runtime container starts:
+Railway builds the repository root `Dockerfile`. The build stage installs the pinned pnpm version, compiles TypeScript, and builds the Note Card browser bundle through `pnpm build`. The runtime container starts:
 
 ```text
 node dist/app/index.js
@@ -31,39 +31,11 @@ The authoritative checked-in migration record is `drizzle/meta/_journal.json`. R
 
 A successful deployment must report a healthy service before production smoke checks continue.
 
-## Message Bridge release behavior
+## Note Card release behavior
 
-The current Message Bridge MCP Apps resource URI is:
+The resource URIs are in the [README](../README.md#mcp-apps). Both serve the same HTML and the bundle built from `src/mcp/tools/render-thinking-block/browser-runtime.ts`. For a material UI change, advance the URI rather than relying on hosts to drop a cached resource, and verify the ChatGPT pointer separately.
 
-```text
-ui://leileios/message-bridge/v5
-```
-
-The resource uses a committed/generated browser bundle built from `src/mcp/tools/bridge-listener/browser-runtime.ts` by the unified `scripts/build-mcp-browser.mjs` step.
-
-The Bridge listener remains manually started from its UI. Deploying a new server build must not be interpreted as automatically activating the listener in a host session.
-
-For material Message Bridge UI/runtime changes, advance the resource URI so hosts can fetch a new resource identity instead of relying on cache invalidation of an existing URI.
-
-After an MCP surface or resource change reaches production, refresh/reconnect the relevant MCP client only as a discovery/cache step; that action is not evidence that the server deployment itself succeeded.
-
-## Thinking Block release behavior
-
-The current canonical standard MCP Apps resource URI is:
-
-```text
-ui://widget/leileios-thinking-block-v3.html
-```
-
-ChatGPT's `openai/outputTemplate` compatibility pointer uses:
-
-```text
-ui://widget/leileios-thinking-block-chatgpt-v3.html
-```
-
-Both identifiers serve the same current HTML and generated browser runtime. The older v2 and v1 identifiers remain legacy aliases only; they do not restore a previous browser client. The committed/generated bundle is built from `src/mcp/tools/render-thinking-block/browser-runtime.ts` by the unified `scripts/build-mcp-browser.mjs` step.
-
-Material standard MCP Apps UI/runtime changes should advance the canonical resource URI rather than relying on hosts to invalidate an existing resource. Any ChatGPT compatibility pointer change must be treated separately and verified on ChatGPT Web/Mobile without regressing other MCP Apps hosts.
+After an MCP surface or resource change reaches production, refresh/reconnect the MCP client as a discovery step; that is not evidence that the deployment succeeded.
 
 ## Vercel Web deployment
 
