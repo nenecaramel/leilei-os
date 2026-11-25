@@ -50,7 +50,7 @@ for (const withSnapshot of [false, true]) test(`closed SDK complete native reply
  };
  const executor=new NativeLiveMacPersistentExecutor({attachmentMaterializer:null,outputAttachmentSender:null,hasCapacity:()=>registry.size<4,createRouter(){return router=new NativeLiveMacPersistentTurnRouter({registry,listenerInstanceId:listener,relay:client,async onBackgroundResult(){throw Error('no autonomous work');}});}});
  t.after(async()=>{await executor.closeAll();await registry.closeAll();try{await database.db.delete(nativeLiveRuntimeListenerLeases).where(eq(nativeLiveRuntimeListenerLeases.userId,user!.id));await database.db.delete(conversations).where(eq(conversations.userId,user!.id));await database.db.delete(users).where(eq(users.id,user!.id));}finally{await database.close();await rm(root,{recursive:true,force:true});}});
- const loop=new NativeLiveMacDaemonLoop(listener,client,{async execute(){throw Error('no one-shot/model replay');}},null,null,null,null,null,null,outbox,executor);
+ const loop=new NativeLiveMacDaemonLoop(listener,client,{async execute(){throw Error('no one-shot/model replay');}},null,null,null,null,null,outbox,executor);
  const pending=loop.runOnce(),input=(await inputs.next()).value!;
  const native:Array<Record<string,unknown>>=[{type:'user',uuid:input.uuid,parentUuid:null,sessionId:sid,message:{role:'user',content:'synthetic input'}},{type:'assistant',uuid:checkpoint,parentUuid:input.uuid,sessionId:sid,message:{role:'assistant',content:[{type:'text',text:'synthetic complete reply'}],stop_reason:'end_turn'}}];
  const snapshot=randomUUID();

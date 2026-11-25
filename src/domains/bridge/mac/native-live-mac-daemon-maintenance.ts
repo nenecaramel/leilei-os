@@ -4,7 +4,6 @@ import type {
   NativeLiveExternalSessionExecutor,
   NativeLiveManualCompactExecutor,
   NativeLiveProviderSessionCleanupExecutor,
-  NativeLiveBackgroundModelExecutor,
 } from "./native-live-mac-daemon-contract.js";
 import type { NativeLiveMacPersistentExecutor } from "./native-live-mac-persistent-executor.js";
 
@@ -15,7 +14,6 @@ export async function runDaemonMaintenance(dependencies: {
   externalSessionExecutor: NativeLiveExternalSessionExecutor | null;
   manualCompactExecutor: NativeLiveManualCompactExecutor | null;
   providerSessionCleanupExecutor: NativeLiveProviderSessionCleanupExecutor | null;
-  backgroundModelExecutor: NativeLiveBackgroundModelExecutor | null;
   persistentExecutor: Partial<Pick<NativeLiveMacPersistentExecutor, "retireSession">> | null;
 }): Promise<NativeLiveDaemonRunOutcome | null> {
         if (
@@ -220,42 +218,6 @@ export async function runDaemonMaintenance(dependencies: {
             return {
               outcome: "provider_session_cleanup_completed",
               reservationId: cleanup.reservationId,
-            };
-          }
-        }
-
-        if (
-          dependencies.backgroundModelExecutor
-          && dependencies.relay.reserveBackgroundModel
-          && dependencies.relay.submitBackgroundModelResult
-        ) {
-          const background =
-            await dependencies.relay.reserveBackgroundModel({
-              listenerInstanceId: dependencies.listenerInstanceId,
-              dispatchTarget: "claude_code",
-            });
-          if (background) {
-            const result =
-              await dependencies.backgroundModelExecutor.execute(
-                background.command,
-              );
-            try {
-              await dependencies.relay.submitBackgroundModelResult({
-                listenerInstanceId: dependencies.listenerInstanceId,
-                reservationId: background.reservationId,
-                result,
-              });
-            } catch {
-              return {
-                outcome: "background_delivery_unknown",
-                reservationId: background.reservationId,
-                result,
-              };
-            }
-            return {
-              outcome: "background_completed",
-              reservationId: background.reservationId,
-              result,
             };
           }
         }

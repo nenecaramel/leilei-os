@@ -324,29 +324,6 @@ export class FakeRuntimeEventService {
   }
 }
 
-export class FakeBackgroundModelService {
-  calls: Array<{ name: string; input: unknown }> = [];
-
-  async reserveNext(input: unknown) {
-    this.calls.push({ name: "reserveNext", input });
-    return {
-      reservationId: prepareId,
-      command: {
-        protocol_version: 1 as const,
-        task_id: prepareId,
-        task_kind: "proactivity_deliberate" as const,
-        prompt_contract_version: "proactivity-wake-deliberation-v1",
-        prompt: "evaluate",
-      },
-    };
-  }
-
-  async submitResult(input: unknown) {
-    this.calls.push({ name: "submitResult", input });
-    return { status: "completed" as const };
-  }
-}
-
 export class FakeBackgroundOpportunity {
   calls: unknown[] = [];
   result: unknown = {

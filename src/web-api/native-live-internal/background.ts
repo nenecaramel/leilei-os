@@ -1,18 +1,8 @@
-import type {
-  RequestHandler,
-  Response,
-} from "express";
-import { NativeLiveBackgroundModelQueueError } from "../../domains/bridge/background/native-live-background-model-queue.js";
-import {
-  parseNativeLiveBackgroundModelExecutionResult,
-  type NativeLiveBackgroundModelExecutionResult,
-} from "../../domains/bridge/background/native-live-background-model-protocol.js";
+import type { RequestHandler } from "express";
 import type { NativeLiveRelayInternalDependencies } from "./dependencies.js";
 import {
   requireInternalUser,
   sendInvalid,
-  parseListenerBody,
-  parseReservationId,
   exactRecord,
   isUuid,
 } from "./http.js";
@@ -87,65 +77,6 @@ function bestEffortObserveCompanionBackgroundOpportunity(
   }
 }
 
-export function reserveBackgroundModelHandler(
-  dependencies: NativeLiveRelayInternalDependencies,
-): RequestHandler {
-  return async (request, response) => {
-    const userId = requireInternalUser(response, request.mcpUserId);
-    if (!userId || !dependencies.backgroundModelService) return;
-    const body = parseListenerBody(request.body);
-    if (!body) {
-      sendInvalid(response);
-      return;
-    }
-
-    try {
-      const reservation =
-        await dependencies.backgroundModelService.reserveNext({
-          userId,
-          listenerInstanceId: body.listener_instance_id,
-        });
-      response.json({
-        success: true,
-        data: reservation,
-      });
-    } catch (error) {
-      sendBackgroundModelError(response, error);
-    }
-  };
-}
-
-export function submitBackgroundModelResultHandler(
-  dependencies: NativeLiveRelayInternalDependencies,
-): RequestHandler {
-  return async (request, response) => {
-    const userId = requireInternalUser(response, request.mcpUserId);
-    if (!userId || !dependencies.backgroundModelService) return;
-    const reservationId =
-      parseReservationId(request.params.reservationId);
-    const body = parseBackgroundModelResultBody(request.body);
-    if (!reservationId || !body) {
-      sendInvalid(response);
-      return;
-    }
-
-    try {
-      await dependencies.backgroundModelService.submitResult({
-        userId,
-        listenerInstanceId: body.listener_instance_id,
-        taskId: reservationId,
-        result: body.result,
-      });
-      response.json({
-        success: true,
-        data: { accepted: true },
-      });
-    } catch (error) {
-      sendBackgroundModelError(response, error);
-    }
-  };
-}
-
 function parseCompanionBackgroundOpportunityBody(
   value: unknown,
 ): {
@@ -175,61 +106,4 @@ function parseCompanionBackgroundOpportunityBody(
     dispatch_target: "claude_code",
     reason: record.reason,
   };
-}
-
-function parseBackgroundModelResultBody(
-  value: unknown,
-): {
-  listener_instance_id: string;
-  result: NativeLiveBackgroundModelExecutionResult;
-} | null {
-  const record = exactRecord(value, [
-    "listener_instance_id",
-    "result",
-  ]);
-  if (
-    !record
-    || !isUuid(record.listener_instance_id)
-  ) {
-    return null;
-  }
-
-  try {
-    return {
-      listener_instance_id: record.listener_instance_id,
-      result: parseNativeLiveBackgroundModelExecutionResult(
-        record.result,
-      ),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function sendBackgroundModelError(
-  response: Response,
-  error: unknown,
-): void {
-  if (error instanceof NativeLiveBackgroundModelQueueError) {
-    response.status(409).json({
-      success: false,
-      error: {
-        code: error.code,
-        message:
-          error.code === "LISTENER_NOT_ACTIVE"
-            ? "Native live background listener lease is not active."
-            : "Native live background model reservation is no longer valid.",
-      },
-    });
-    return;
-  }
-
-  response.status(503).json({
-    success: false,
-    error: {
-      code: "NATIVE_LIVE_BACKGROUND_MODEL_UNAVAILABLE",
-      message:
-        "Native live background model queue is temporarily unavailable.",
-    },
-  });
 }

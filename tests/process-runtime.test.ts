@@ -177,19 +177,17 @@ test("successful listen emits service_started before starting retention work", (
 });
 
 
-test("retired Proactivity v1 and effect delivery are gone; the model relay hands out no work", () => {
-  assert.doesNotMatch(processRuntimeSource, /proactivity|RuntimeEffect|WorkflowCoordinator/iu);
-  for (const path of ["src/domains/runtime/proactivity", "src/domains/runtime/effects"]) {
+test("retired proactivity, effect delivery and the background model queue are gone", () => {
+  assert.doesNotMatch(processRuntimeSource, /proactivity|RuntimeEffect|WorkflowCoordinator|BackgroundModel(Queue|Relay|Service)/iu);
+  for (const path of [
+    "src/domains/runtime/proactivity",
+    "src/domains/runtime/effects",
+    "src/domains/bridge/background",
+  ]) {
     assert.equal(existsSync(path), false, path);
   }
-  assert.match(
-    processRuntimeSource,
-    /const nativeLiveBackgroundModelRelayService =[\s\S]*?async reserveNext\([\s\S]*?return null;/,
-  );
-  assert.match(
-    processRuntimeSource,
-    /backgroundModelService:\s*nativeLiveBackgroundModelRelayService/,
-  );
+  // Stored jobs still expire.
+  assert.match(processRuntimeSource, /policy: "native_live_background_model_jobs"/);
 });
 
 

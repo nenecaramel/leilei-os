@@ -20,9 +20,6 @@ import {
   type NativeLiveMacRuntimeFailureDiagnostics,
 } from "../src/domains/bridge/mac/native-live-mac-runtime-executor.js";
 import {
-  NativeLiveMacBackgroundModelExecutor,
-} from "../src/domains/bridge/mac/native-live-mac-background-model-executor.js";
-import {
   LocalE5BreathSemanticScorer,
 } from "../src/domains/runtime/breath/local-e5-embedding.js";
 import {
@@ -126,10 +123,10 @@ const workingDirectoryRuntimePool =
       },
     },
   );
-const { runtime } =
-  await workingDirectoryRuntimePool.resolveWorkingDirectoryRuntime({
-    expectedWorkingDirectory: null,
-  });
+// Fail at startup, not on the first turn, if the default runtime cannot load.
+await workingDirectoryRuntimePool.resolveWorkingDirectoryRuntime({
+  expectedWorkingDirectory: null,
+});
 
 process.stdout.write(
   JSON.stringify({
@@ -192,8 +189,6 @@ const closeHandoffServer = await createNativeSessionDrainServer({
   drain: (conversationId: string, providerSessionId: string) => persistentRuntime.drain(conversationId, providerSessionId),
   resume: (conversationId: string, providerSessionId: string) => persistentRuntime.resume(conversationId, providerSessionId),
 });
-const backgroundModelExecutor =
-  new NativeLiveMacBackgroundModelExecutor(runtime);
 // Both Native Live and the optional Hook use the existing E5 scorer on demand.
 // No startup Memory download, snapshot timer or hybrid model worker.
 // The cache also has room for the comparison's whole library, so it cannot evict /score.
@@ -211,7 +206,6 @@ const loop = new NativeLiveMacDaemonLoop(
   executor,
   semanticScorer,
   companionScheduler,
-  backgroundModelExecutor,
   workingDirectoryRuntimePool,
   workingDirectoryRuntimePool,
   workingDirectoryRuntimePool,
@@ -520,7 +514,6 @@ while (!stopping) {
     if (
       outcome.outcome === "completed"
       || outcome.outcome === "semantic_completed"
-      || outcome.outcome === "background_completed"
       || outcome.outcome === "provider_session_cleanup_completed"
       || outcome.outcome === "manual_compact_completed"
     ) {

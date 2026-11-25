@@ -79,7 +79,7 @@ test("optional remote append component and terminal outbox each replay idempoten
       return { canonicalOutcome: "committed" };
     },
   };
-  const makeLoop = () => new NativeLiveMacDaemonLoop(owner, client, { async execute() { providerCalls += 1; throw new Error("provider must not execute"); } }, null, null, null, null, null, null, makeOutbox());
+  const makeLoop = () => new NativeLiveMacDaemonLoop(owner, client, { async execute() { providerCalls += 1; throw new Error("provider must not execute"); } }, null, null, null, null, null, makeOutbox());
   // This optional remote component retains a failed append until its caller retries.
   // Foreground daemon local-SDK ownership is exercised separately below.
   await assert.rejects(makeStore().recoverPendingAppends(), /response lost/u);
@@ -201,13 +201,13 @@ test("local SDK checkpoint and terminal outbox survive daemon restart after a lo
     markResultDeliveryUnknown: input => relay.markResultDeliveryUnknown({ userId: user.id, ...input }),
     rejectReservation: input => relay.rejectReservation({ userId: user.id, ...input }),
   };
-  const firstLoop = new NativeLiveMacDaemonLoop(owner, client, new NativeLiveMacRuntimeExecutor(pool), null, null, null, null, null, null, makeOutbox());
+  const firstLoop = new NativeLiveMacDaemonLoop(owner, client, new NativeLiveMacRuntimeExecutor(pool), null, null, null, null, null, makeOutbox());
   const first = await firstLoop.runOnce();
   assert.equal(first.outcome, "delivery_unknown", JSON.stringify(first));
   assert.equal(providerCalls, 1);
   const before = await readNativeSession(projectDirectory, sessionId);
   const restartedOwner = crypto.randomUUID();
-  const restart = () => new NativeLiveMacDaemonLoop(restartedOwner, client, { async execute() { throw Error("pending replay must not rerun the SDK"); } }, null, null, null, null, null, null, makeOutbox());
+  const restart = () => new NativeLiveMacDaemonLoop(restartedOwner, client, { async execute() { throw Error("pending replay must not rerun the SDK"); } }, null, null, null, null, null, makeOutbox());
   assert.equal((await restart().runOnce()).outcome, "busy", "a live original listener prevents takeover");
   assert.equal(receipts.length, 1, "busy restart must not replay output");
   assert.equal((await makeOutbox().list()).length, 1, "busy restart retains evidence");

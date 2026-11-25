@@ -123,7 +123,6 @@ function createExportRepository(user: { status: "active" | "disabled" } | null, 
     async hasIncompleteMindFollowUps() { return false; },
     async hasIncompleteTurnPreparations() { return false; },
     async hasIncompleteMindSemanticGrouping() { return false; },
-    async hasIncompleteBackgroundModelJobs() { return false; },
     async listConversations() {
       calls.push("conversations");
       return {

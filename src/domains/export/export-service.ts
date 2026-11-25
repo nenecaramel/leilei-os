@@ -28,7 +28,6 @@ export interface ExportRepository {
   hasIncompleteMindFollowUps(userId: string): Promise<boolean>;
   hasIncompleteTurnPreparations(userId: string): Promise<boolean>;
   hasIncompleteMindSemanticGrouping(userId: string): Promise<boolean>;
-  hasIncompleteBackgroundModelJobs(userId: string): Promise<boolean>;
   listConversations(userId: string): Promise<ExportConversationsBundle>;
   listUniverse(userId: string): Promise<ExportUniverseBundle | null>;
 }

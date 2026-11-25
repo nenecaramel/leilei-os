@@ -20,11 +20,7 @@ import {
   submitSemanticScoresHandler,
   submitSemanticFallbackHandler,
 } from "./semantic.js";
-import {
-  companionBackgroundOpportunityHandler,
-  reserveBackgroundModelHandler,
-  submitBackgroundModelResultHandler,
-} from "./background.js";
+import { companionBackgroundOpportunityHandler } from "./background.js";
 import {
   reserveManualCompactHandler,
   submitManualCompactResultHandler,
@@ -93,16 +89,6 @@ export function createNativeLiveRelayInternalRouter(
     router.post(
       "/silence-wake/fire",
       fireSilenceWakeHandler(dependencies),
-    );
-  }
-  if (dependencies.backgroundModelService) {
-    router.post(
-      "/background-model/reserve",
-      reserveBackgroundModelHandler(dependencies),
-    );
-    router.post(
-      "/background-model/reservations/:reservationId/result",
-      submitBackgroundModelResultHandler(dependencies),
     );
   }
   if (dependencies.manualCompactService) {

@@ -6,7 +6,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   NativeLiveMacDaemonLoop,
-  type NativeLiveBackgroundModelExecutor,
   type NativeLiveMacDaemonRelayClient,
   type NativeLivePreparedCommandExecutor,
 } from "../src/domains/bridge/mac/native-live-mac-daemon-loop.js";
@@ -95,35 +94,6 @@ class FakeRelay implements NativeLiveMacDaemonRelayClient {
   }
 }
 
-class FakeBackgroundRelay extends FakeRelay {
-  backgroundReservation = {
-    reservationId: prepareId,
-    command: {
-      protocol_version: 1 as const,
-      task_id: prepareId,
-      task_kind: "proactivity_deliberate" as const,
-      prompt_contract_version: "proactivity-wake-deliberation-v1",
-      prompt: "evaluate",
-    },
-  };
-  backgroundSubmitError: Error | null = null;
-
-  async reserveBackgroundModel(input: unknown) {
-    this.calls.push({ name: "reserveBackgroundModel", input });
-    return this.backgroundReservation;
-  }
-
-  async submitBackgroundModelResult(input: unknown) {
-    this.calls.push({
-      name: "submitBackgroundModelResult",
-      input,
-    });
-    if (this.backgroundSubmitError) {
-      throw this.backgroundSubmitError;
-    }
-  }
-}
-
 class FakeSemanticRelay extends FakeRelay {
   semanticReservation = {
     reservationId: prepareId,
@@ -183,22 +153,6 @@ class FakeExecutor implements NativeLivePreparedCommandExecutor {
     this.calls.push(input);
     if (this.error) throw this.error;
     return this.value;
-  }
-}
-
-class FakeBackgroundExecutor
-implements NativeLiveBackgroundModelExecutor {
-  calls: unknown[] = [];
-
-  async execute(input: unknown) {
-    this.calls.push(input);
-    return {
-      protocol_version: 1 as const,
-      task_id: prepareId,
-      task_kind: "proactivity_deliberate" as const,
-      status: "success" as const,
-      final_text: '{"decision":"quiet"}',
-    };
   }
 }
 
@@ -308,74 +262,15 @@ test("foreground or semantic work suppresses idle background opportunity", async
   assert.equal(offers, 0);
 });
 
-test("background model runs only after foreground and semantic queues are empty", async () => {
-  const relay = new FakeBackgroundRelay();
+test("an idle loop never polls the retired background model queue", async () => {
+  const { relay, loop } = setup();
   relay.reservation = null;
-  const foreground = new FakeExecutor();
-  const background = new FakeBackgroundExecutor();
-  const loop = new NativeLiveMacDaemonLoop(
-    listenerInstanceId,
-    relay,
-    foreground,
-    null,
-    null,
-    background,
-  );
-
-  const outcome = await loop.runOnce();
-  assert.equal(outcome.outcome, "background_completed");
-  assert.equal(foreground.calls.length, 0);
-  assert.equal(background.calls.length, 1);
-  assert.deepEqual(
-    relay.calls.map((entry) => entry.name),
-    [
-      "renewLease",
-      "reserveNext",
-      "reserveBackgroundModel",
-      "submitBackgroundModelResult",
-    ],
-  );
-});
-
-test("foreground reservation suppresses background model reservation", async () => {
-  const relay = new FakeBackgroundRelay();
-  const background = new FakeBackgroundExecutor();
-  const loop = new NativeLiveMacDaemonLoop(
-    listenerInstanceId,
-    relay,
-    new FakeExecutor(),
-    null,
-    null,
-    background,
-  );
-
-  assert.equal((await loop.runOnce()).outcome, "completed");
-  assert.equal(
-    relay.calls.some(
-      (entry) => entry.name === "reserveBackgroundModel",
-    ),
-    false,
-  );
-  assert.equal(background.calls.length, 0);
-});
-
-test("background result callback ambiguity is surfaced without re-executing in the same cycle", async () => {
-  const relay = new FakeBackgroundRelay();
-  relay.reservation = null;
-  relay.backgroundSubmitError = new Error("timeout after write");
-  const background = new FakeBackgroundExecutor();
-  const loop = new NativeLiveMacDaemonLoop(
-    listenerInstanceId,
-    relay,
-    new FakeExecutor(),
-    null,
-    null,
-    background,
-  );
-
-  const outcome = await loop.runOnce();
-  assert.equal(outcome.outcome, "background_delivery_unknown");
-  assert.equal(background.calls.length, 1);
+  Object.assign(relay, {
+    async reserveBackgroundModel() { throw new Error("the background model queue is retired"); },
+    async submitBackgroundModelResult() { throw new Error("the background model queue is retired"); },
+  });
+  assert.equal((await loop.runOnce()).outcome, "idle");
+  assert.deepEqual(relay.calls.map((entry) => entry.name), ["renewLease", "reserveNext"]);
 });
 
 test("reserved command is marked started, executed once, then submitted once", async () => {
@@ -1144,7 +1039,6 @@ test("idle daemon hard-deletes a reserved purged provider session and receipts s
     new FakeExecutor(),
     null,
     null,
-    null,
     cleanupExecutor,
   );
 
@@ -1200,7 +1094,6 @@ test("provider session deletion failure is receipted for bounded retry", async (
     new FakeExecutor(),
     null,
     null,
-    null,
     cleanupExecutor,
   );
 
@@ -1252,13 +1145,13 @@ test("production loop persists before submit and restarted daemon replays withou
     relay.calls.push({ name: "submitResult", input });
     throw new Error("server unavailable");
   };
-  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, outbox);
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, outbox);
   assert.equal((await loop.runOnce()).outcome, "delivery_unknown");
   relay.submitResult = async (input: unknown) => {
     assert.deepEqual(input, { listenerInstanceId, reservationId: prepareId, result: success() });
     return undefined;
   };
-  const restarted = new NativeLiveMacDaemonLoop(crypto.randomUUID(), relay, executor, null, null, null, null, null, null, new NativeLiveMacResultOutbox(directory));
+  const restarted = new NativeLiveMacDaemonLoop(crypto.randomUUID(), relay, executor, null, null, null, null, null, new NativeLiveMacResultOutbox(directory));
   assert.equal((await restarted.runOnce()).outcome, "completed");
   assert.equal(executor.calls.length, 1);
   assert.deepEqual(await outbox.list(), []);
@@ -1277,7 +1170,7 @@ test("persistent daemon commits inside the turn exactly once, after saving the o
   }};
   const submit = relay.submitResult.bind(relay);
   relay.submitResult = async input => { assert.equal((await outbox.list()).length,1); return submit(input); };
-  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){legacy++;return success();}},null,null,null,null,null,null,outbox,persistent as never);
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){legacy++;return success();}},null,null,null,null,null,outbox,persistent as never);
   assert.equal((await loop.runOnce()).outcome,"completed");
   assert.equal(legacy,0); assert.equal(commits,1); assert.equal(relay.calls.filter(c=>c.name==="submitResult").length,1);
 });
@@ -1287,7 +1180,7 @@ test("persistent unknown result is retained for delivery replay without re-execu
   const root = mkdtempSync(join(tmpdir(), "persistent-daemon-")); t.after(() => rmSync(root,{recursive:true,force:true}));
   const outbox = new NativeLiveMacResultOutbox(root); let executions = 0;
   const persistent = {canRoute:()=>true,async retire(){},async execute(_c:unknown,o:any){executions++;try{await o.commit({ ...success(), prepare_id: reservationId });}catch{}return {result:success(),delivery:"unknown"};}};
-  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){throw new Error("legacy forbidden");}},null,null,null,null,null,null,outbox,persistent as never);
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){throw new Error("legacy forbidden");}},null,null,null,null,null,outbox,persistent as never);
   assert.equal((await loop.runOnce()).outcome,"delivery_unknown"); assert.equal((await outbox.list()).length,1);
   relay.submitError=null; assert.equal((await loop.runOnce()).outcome,"completed"); assert.equal(executions,1);
 });
@@ -1300,7 +1193,7 @@ test("temporarily busy Wake stays pending without starting or retiring any provi
   let legacy=0,retired=0,executed=0;
   const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{
     async execute(){legacy++;return success();}
-  },null,null,null,null,null,null,null,{
+  },null,null,null,null,null,null,{
     canRoute(){return false;},
     shouldDeferWake(){return true;},
     async retire(){retired++;},
@@ -1325,7 +1218,7 @@ test("a reserved Wake cannot fall back to a fork, retire Cron, or launch a model
     let legacyCalls=0,retireCalls=0,persistentCalls=0;
     const loop = new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{
       async execute(){legacyCalls++;return success();}
-    },null,null,null,null,null,null,null,{
+    },null,null,null,null,null,null,{
       canRoute(){return false;},
       async retire(){retireCalls++;},
       async execute(){persistentCalls++;throw Error("Wake must not start another writer");},
@@ -1351,7 +1244,7 @@ test("a routable Wake submits to the live SDK writer without entering legacy", a
   let calls=0;
   const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{
     async execute(){throw Error("legacy Wake forbidden");}
-  },null,null,null,null,null,null,null,{
+  },null,null,null,null,null,null,{
     canRoute(){return true;},
     async retire(){throw Error("healthy Wake cannot retire its writer");},
     async execute(_command: NativeLiveRuntimeCommand,opts:any){
@@ -1384,7 +1277,7 @@ for (const operation of ["edit", "retry"] as const) for (const runtime_mode of [
     };
     const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, {
       async execute() { assert.fail("supported replacement must not fall back to one-shot"); },
-    }, null, null, null, null, null, null, null, persistent as never);
+    }, null, null, null, null, null, null, persistent as never);
     const outcome = await loop.runOnce();
     assert.equal(outcome.outcome, "completed");
     assert.deepEqual(steps, ["accepting", "retire-old", "persistent-child"]);
@@ -1398,7 +1291,7 @@ test("exact replacement cannot fall back to one-shot when persistent capacity is
     parent_provider_session_id:"original-session",parent_provider_checkpoint_id:"original-checkpoint"}};
   let legacy=0;
   const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){legacy++;return success();}},
-    null,null,null,null,null,null,null,{async retire(){},canRoute(){return false;},async execute(){assert.fail("capacity denied");}} as never);
+    null,null,null,null,null,null,{async retire(){},canRoute(){return false;},async execute(){assert.fail("capacity denied");}} as never);
   const outcome=await loop.runOnce();
   assert.equal(legacy,0,"an exact replacement must keep its promised persistent execution contract");
   assert.equal(outcome.outcome,"completed");
@@ -1407,7 +1300,7 @@ test("exact replacement cannot fall back to one-shot when persistent capacity is
 
 test("legacy fallback never starts if retiring the persistent writer failed",async()=>{
   const relay=new FakeRelay();let legacy=0;
-  const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){legacy++;return success();}},null,null,null,null,null,null,null,
+  const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){legacy++;return success();}},null,null,null,null,null,null,
     {canRoute:()=>false,async retire(){throw new Error("close unknown");}} as never);
   assert.equal((await loop.runOnce()).outcome,"rejected");assert.equal(legacy,0);
 });
@@ -1421,7 +1314,7 @@ for (const operation of ["edit", "retry"] as const) {
     const retiring=new Promise<void>(resolve=>{entered=resolve;});
     const close=new Promise<void>((_resolve,reject)=>{rejectClose=reject;});
     const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{async execute(){legacy++;return success();}},
-      null,null,null,null,null,null,null,{
+      null,null,null,null,null,null,{
         async retire(){entered();await close;},
         canRoute(){assert.fail("cannot route a replacement before retirement");},
         async execute(){assert.fail("cannot use unsupported persistent branch execution");},
@@ -1439,7 +1332,7 @@ test("pending background recovery fence blocks both persistent execution and leg
   const relay=new FakeRelay();let legacy=0,retired=0,persistentRuns=0;
   const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,{
     async execute(){legacy++;return success();}
-  },null,null,null,null,null,null,null,{
+  },null,null,null,null,null,null,{
     assertAccepting(){throw new Error("background recovery pending");},
     canRoute(){return false;},
     async retire(){retired++;},
@@ -1470,7 +1363,7 @@ for (const persistentCommit of [false, true]) {
       } };
     const logs: string[] = [];
     t.mock.method(process.stderr, "write", (data: string) => { logs.push(String(data)); return true; });
-    const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, outbox, persistentCommit ? persistent as never : null);
+    const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, outbox, persistentCommit ? persistent as never : null);
     assert.equal((await loop.runOnce()).outcome, "result_recovery_required");
     assert.deepEqual(await outbox.list(), []);
     assert.equal((await outbox.listQuarantined()).length, 1);
@@ -1492,7 +1385,7 @@ for (const state of ["no-outbox", "empty", "quarantined"] as const) test(`reserv
     await outbox!.save(entry); await outbox!.quarantine(entry);
   }
   const relay = new FakeRelay(); relay.reservation = null;
-  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, new FakeExecutor(), null, null, null, null, null, null, outbox);
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, new FakeExecutor(), null, null, null, null, null, outbox);
   await loop.runOnce();
   const reserve = relay.calls.find(c => c.name === "reserveNext");
   assert.ok(reserve);
@@ -1502,7 +1395,7 @@ for (const state of ["no-outbox", "empty", "quarantined"] as const) test(`reserv
 test("one fresh listener lease covers background replay before ordinary dispatch", async () => {
   const relay = new FakeRelay(), executor = new FakeExecutor();
   const replay = { async flush() { relay.calls.push({ name: "backgroundReplay", input: null }); return 0; } };
-  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, null, null, replay);
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, null, replay);
   assert.equal((await loop.runOnce()).outcome, "completed");
   const names = relay.calls.map(c => c.name);
   assert.deepEqual(names.slice(0, 3), ["renewLease", "backgroundReplay", "reserveNext"]);
@@ -1517,7 +1410,7 @@ test("background replay settles before reservation and no extra lease is acquire
   let started!: () => void, release!: () => void;
   const entered = new Promise<void>(resolve => { started = resolve; });
   const pending = new Promise<void>(resolve => { release = resolve; });
-  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, null, null,
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, null,
     { async flush() { started(); await pending; return 1; } });
   const run = loop.runOnce();
   // Fail quickly on the old implementation instead of waiting indefinitely.
@@ -1533,7 +1426,7 @@ for (const mode of ["busy", "outage", "replay-failure"] as const) test(`${mode} 
   const relay = new FakeRelay(), executor = new FakeExecutor(); let replays = 0;
   if (mode === "busy") relay.lease = "busy";
   if (mode === "outage") relay.renewLease = async () => { throw new Error("synthetic offline"); };
-  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, null, null,
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, null,
     { async flush() { replays++; throw new Error("synthetic replay unavailable"); } });
   if (mode === "busy") assert.equal((await loop.runOnce()).outcome, "busy");
   else await assert.rejects(loop.runOnce(), /synthetic/);
@@ -1549,7 +1442,7 @@ for (const takeover of [false, true]) test(`slow replay reacquires the listener 
   const renew = relay.renewLease.bind(relay);
   let renewals = 0;
   relay.renewLease = async value => { if (++renewals === 2 && takeover) relay.lease = "busy"; return renew(value); };
-  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, null, null,
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, null,
     { async flush() { now = 30_000; return 1; } });
   assert.equal((await loop.runOnce()).outcome, takeover ? "busy" : "completed");
   assert.equal(renewals, 2);
@@ -1564,7 +1457,7 @@ test("busy listener retains terminal recovery evidence instead of replaying anot
   await outbox.save({ listenerInstanceId, reservationId: prepareId, result: success() });
   const relay = new FakeRelay(); relay.lease = "busy";
   const executor = new FakeExecutor();
-  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, outbox);
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, outbox);
   assert.equal((await loop.runOnce()).outcome, "busy");
   assert.equal((await outbox.list()).length, 1);
   assert.deepEqual(relay.calls.map(c => c.name), ["renewLease"]);
@@ -1607,7 +1500,7 @@ for (const reason of ["model changed", "effort changed", "capacity exhausted"] a
   assert.equal(persistent.canRoute(relay.reservation.command), false);
   let legacy = 0;
   const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, { async execute() { legacy++; return success(); } },
-    null, null, null, null, null, null, null, persistent);
+    null, null, null, null, null, null, persistent);
   const outcome = await loop.runOnce();
   assert.equal(legacy, 0, "exact send must not run a one-shot replacement");
   assert.equal(closes, 0, "refusal preserves the existing Cron writer");
@@ -1624,7 +1517,7 @@ test('terminal replay releases only its own fence after acknowledged delivery an
  const events:string[]=[];let releasable=false;
  const relay=new FakeRelay();relay.submitResult=async()=>{events.push('ack');return {canonicalOutcome:'completed'};};
  const persistent={canRoute:()=>false,async execute(){throw Error('no model work');},async retire(){},suspend(_id:string,reason:string){events.push(reason);},async recoverTerminal(id:string){assert.equal(id,conversationId);assert.ok(events.includes('ack'));events.push('retired');releasable=true;}};
- const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,new FakeExecutor(),null,null,null,null,null,null,outbox,persistent as never);
+ const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,new FakeExecutor(),null,null,null,null,null,outbox,persistent as never);
  assert.equal((await loop.runOnce()).outcome,'completed');assert.equal(releasable,true);assert.ok(events.includes('terminal_recovery'));assert.deepEqual(await outbox.list(),[]);
 });
 
@@ -1633,7 +1526,7 @@ test('failed writer retirement keeps successful terminal evidence for another id
  const outbox=new NativeLiveMacResultOutbox(root);await outbox.save({listenerInstanceId,reservationId:prepareId,result:success()});let replayed=0,model=0;
  const relay=new FakeRelay();relay.submitResult=async()=>{replayed++;return {canonicalOutcome:'idempotent'};};
  const persistent={canRoute:()=>false,async execute(){model++;throw Error('forbidden');},async retire(){},suspend(){},async recoverTerminal(){throw Error('process close unverified');}};
- const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,new FakeExecutor(),null,null,null,null,null,null,outbox,persistent as never);
+ const loop=new NativeLiveMacDaemonLoop(listenerInstanceId,relay,new FakeExecutor(),null,null,null,null,null,outbox,persistent as never);
  await assert.rejects(loop.runOnce(),/close unverified/);assert.equal((await outbox.list()).length,1);
  persistent.recoverTerminal=async()=>{};assert.equal((await loop.runOnce()).outcome,'completed');assert.equal(replayed,2);assert.equal(model,0);assert.equal((await outbox.list()).length,0);
 });
@@ -1678,7 +1571,7 @@ test("exact send with only earlier failed inputs and no live writer falls back t
   relay.reservation = { reservationId, command: failedSend };
   let legacy = 0;
   const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, { async execute() { legacy++; return success(); } },
-    null, null, null, null, null, null, null, persistent);
+    null, null, null, null, null, null, persistent);
   const outcome = await loop.runOnce();
   assert.equal(legacy, 1, "the one-shot executor tolerates the failed inputs");
   assert.equal(counts.launches, 0);
@@ -1697,7 +1590,7 @@ test("exact send with earlier failed inputs continues the live writer instead of
   relay.reservation = { reservationId, command: failedSend };
   let legacy = 0;
   const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, { async execute() { legacy++; return success(); } },
-    null, null, null, null, null, null, null, persistent);
+    null, null, null, null, null, null, persistent);
   const submitsBefore = counts.submits;
   const outcome = await loop.runOnce();
   assert.equal(legacy, 0, "a live writer is never replaced by one-shot");

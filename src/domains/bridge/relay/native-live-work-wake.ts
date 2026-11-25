@@ -10,7 +10,6 @@ const TRANSIENT_WAKE_VERSION_TTL_MS = 120_000;
 export type NativeLiveWorkKind =
   | "semantic"
   | "foreground"
-  | "background_model"
   | "silence_wake"
   | "runtime_control"
   | "runtime_interaction"
@@ -22,7 +21,6 @@ type NativeLiveWorkWakeInput =
       kind:
         | "semantic"
         | "foreground"
-        | "background_model"
         | "silence_wake";
     }
   | {
@@ -178,7 +176,6 @@ export class DrizzleNativeLiveWorkWakePublisher {
       && (
         input.kind === "semantic"
         || input.kind === "foreground"
-        || input.kind === "background_model"
         || input.kind === "silence_wake"
       )
     ) {
@@ -287,23 +284,6 @@ export class DrizzleNativeLiveWorkAvailability {
             OR (
               cleanup.status = 'reserved'
               AND cleanup.reservation_expires_at <= now()
-            )
-          )
-
-        UNION ALL
-
-        SELECT 1
-        FROM native_live_background_model_jobs AS job
-        WHERE job.user_id = ${input.userId}::uuid
-          AND (
-            job.status = 'pending'
-            OR (
-              job.status = 'reserved'
-              AND job.reservation_expires_at <= now()
-            )
-            OR (
-              job.status IN ('completed', 'failed')
-              AND job.consumed_at IS NULL
             )
           )
       ) AS ready
@@ -788,7 +768,6 @@ export class NativeLiveWorkWakeBroker {
     if (
       kind === "semantic"
       || kind === "foreground"
-      || kind === "background_model"
       || kind === "silence_wake"
     ) {
       this.signalKey(userWakeKey(userId));

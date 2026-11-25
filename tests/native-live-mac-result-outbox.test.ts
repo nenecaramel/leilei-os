@@ -36,12 +36,12 @@ for (const status of ["success", "failure"] as const) {
       },
     } as unknown as NativeLiveMacDaemonRelayClient;
     const executor = { async execute() { throw new Error("must not execute provider again"); } };
-    const loop = new NativeLiveMacDaemonLoop("new-owner", relay, executor, null, null, null, null, null, null, outbox);
+    const loop = new NativeLiveMacDaemonLoop("new-owner", relay, executor, null, null, null, null, null, outbox);
     assert.equal((await loop.runOnce()).outcome, "delivery_unknown");
     assert.equal(leasedOwner, "new-owner");
     assert.equal((await new NativeLiveMacResultOutbox(directory).list()).length, 1);
     loseResponse = false;
-    const restarted = new NativeLiveMacDaemonLoop("third-owner", relay, executor, null, null, null, null, null, null, new NativeLiveMacResultOutbox(directory));
+    const restarted = new NativeLiveMacDaemonLoop("third-owner", relay, executor, null, null, null, null, null, new NativeLiveMacResultOutbox(directory));
     assert.equal((await restarted.runOnce()).outcome, "completed");
     assert.equal(leasedOwner, "third-owner");
     assert.equal(commits.size, 1);
@@ -68,7 +68,7 @@ test("permanent result conflict quarantines exact evidence and allows another co
   } as unknown as NativeLiveMacDaemonRelayClient;
   const executor = { async execute() { executions++; return { ...result, prepare_id: "new", conversation_id: conversation }; } };
   const persistent = { canRoute: () => false, async retire() {}, async recoverTerminal() { throw new Error("quarantine cannot release its recovery fence"); }, suspend(id: string, reason: string) { suspended.push([id, reason]); } };
-  const makeLoop = (withPersistent = true) => new NativeLiveMacDaemonLoop("owner", relay, executor, null, null, null, null, null, null, new NativeLiveMacResultOutbox(directory), withPersistent ? persistent as never : null);
+  const makeLoop = (withPersistent = true) => new NativeLiveMacDaemonLoop("owner", relay, executor, null, null, null, null, null, new NativeLiveMacResultOutbox(directory), withPersistent ? persistent as never : null);
   const stale = await makeLoop().runOnce();
   assert.equal(stale.outcome, "result_recovery_required");
   assert.equal(JSON.stringify(stale).includes("provider"), false);
@@ -95,7 +95,7 @@ for (const error of [new Error("network"), { httpStatus: 503, relayCode: "RESERV
       async renewLease() { renewals++; return "acquired"; },
       async submitResult() { assert.equal(renewals, 1); throw error; },
     } as unknown as NativeLiveMacDaemonRelayClient;
-    const loop = new NativeLiveMacDaemonLoop("owner", relay, { async execute() { throw new Error("forbidden"); } }, null, null, null, null, null, null, outbox);
+    const loop = new NativeLiveMacDaemonLoop("owner", relay, { async execute() { throw new Error("forbidden"); } }, null, null, null, null, null, outbox);
     assert.equal((await loop.runOnce()).outcome, "delivery_unknown");
     assert.equal(renewals, 1);
     assert.deepEqual(await outbox.list(), [entry]);

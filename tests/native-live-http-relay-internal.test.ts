@@ -12,7 +12,6 @@ import {
   FakeRelayService,
   FakeRuntimeInteractionService,
   FakeRuntimeEventService,
-  FakeBackgroundModelService,
   FakeSemanticService,
   withServer,
 } from "./helpers/native-live-http-relay-fixtures.js";
@@ -322,87 +321,27 @@ test("internal relay rejects malformed listener identity before calling the serv
   );
 });
 
-test("internal relay background model endpoints preserve authenticated user scope without exposing it to Mac command", async () => {
-  const relayService = new FakeRelayService();
-  const backgroundModelService = new FakeBackgroundModelService();
-
+test("the retired background model endpoints are gone", async () => {
   await withServer(
     (app) => {
       app.use((request, _response, next) => {
         request.mcpUserId = userId;
         next();
       });
-      app.use(
-        "/internal/native-live-relay",
-        createNativeLiveRelayInternalRouter({
-          relayService,
-          backgroundModelService,
-        }),
-      );
+      app.use("/internal/native-live-relay", createNativeLiveRelayInternalRouter({
+        relayService: new FakeRelayService(),
+        backgroundModelService: { async reserveNext() { return null; }, async submitResult() { return {}; } },
+      } as never));
     },
     async (baseUrl) => {
-      const reserve = await fetch(
-        `${baseUrl}/internal/native-live-relay/background-model/reserve`,
-        {
+      for (const path of ["background-model/reserve", `background-model/reservations/${prepareId}/result`]) {
+        const response = await fetch(`${baseUrl}/internal/native-live-relay/${path}`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            listener_instance_id: listenerId,
-            dispatch_target: "claude_code",
-          }),
-        },
-      );
-      assert.equal(reserve.status, 200);
-      const payload = await reserve.json() as {
-        data: {
-          reservationId: string;
-          command: Record<string, unknown>;
-        };
-      };
-      assert.equal(payload.data.reservationId, prepareId);
-      assert.equal("userId" in payload.data.command, false);
-      assert.equal("user_id" in payload.data.command, false);
-      assert.deepEqual(backgroundModelService.calls[0], {
-        name: "reserveNext",
-        input: {
-          userId,
-          listenerInstanceId: listenerId,
-        },
-      });
-
-      const result = await fetch(
-        `${baseUrl}/internal/native-live-relay/background-model/reservations/${prepareId}/result`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            listener_instance_id: listenerId,
-            result: {
-              protocol_version: 1,
-              task_id: prepareId,
-              task_kind: "proactivity_deliberate",
-              status: "success",
-              final_text: '{"decision":"quiet"}',
-            },
-          }),
-        },
-      );
-      assert.equal(result.status, 200);
-      assert.deepEqual(backgroundModelService.calls[1], {
-        name: "submitResult",
-        input: {
-          userId,
-          listenerInstanceId: listenerId,
-          taskId: prepareId,
-          result: {
-            protocol_version: 1,
-            task_id: prepareId,
-            task_kind: "proactivity_deliberate",
-            status: "success",
-            final_text: '{"decision":"quiet"}',
-          },
-        },
-      });
+          body: JSON.stringify({ listener_instance_id: listenerId, dispatch_target: "claude_code" }),
+        });
+        assert.equal(response.status, 404, path);
+      }
     },
   );
 });
