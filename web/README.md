@@ -2,16 +2,16 @@
 
 Leilei OS 的 Auth0 保护 React Web 应用。它通过已认证的 `/api/v1` API
 读取和修改用户数据，不是只展示页面壳的静态原型。正式集成与发布统一跟随
-仓库 `main` 分支。
+仓库 `main` 分支。聊天只在 iOS 上，Web 没有聊天页。
 
 ## 当前功能
 
 - Dashboard 与 Day Space：真实 Todo/Diary 数据和日期导航；
-- Memory、Diary、Task：列表、筛选、编辑、详情和生命周期操作；
-- Todo：每日纸张、版本、条目编辑与状态操作；
-- Shared Paper：单一 canonical 正文、revision-aware 编辑、历史和生命周期操作；
+- Diary：列表、筛选、编辑、详情、评论和归档；
+- Mind：Memory 列表、搜索、详情、新建和编辑；
+- Todo：每日纸张、版本、条目编辑与状态操作，在 Dashboard 和 Day Space 里打开；
 - Universe：空间画布、节点/关系、加权星系、导入导出与搜索深链；
-- Global Search：Memory、Diary、Task、Todo、Universe、Shared Paper 六个 domain 的统一发现与精确详情深链；
+- Global Search：Diary、Todo、Universe、Memory 的统一发现与精确详情深链；
 - Settings：Account、Status、Data（Summary / Export / Restore）和 About；
 - PWA：安装清单、service worker 更新提示以及在线/离线状态提示。
 
@@ -22,7 +22,7 @@ Leilei OS 的 Auth0 保护 React Web 应用。它通过已认证的 `/api/v1` AP
 
 ```bash
 cd web
-npm install
+npm ci
 cp .env.example .env
 npm run dev
 ```
@@ -63,7 +63,7 @@ Origins 白名单。
 ## 部署
 
 - Web 使用独立的 Vercel 项目，Root Directory 指向 `web/`。
-- Vercel Production 已部署当前 `main`，并使用 `web/vercel.json` 的 SPA
+- Vercel Production 跟随 `main`，并使用 `web/vercel.json` 的 SPA
   history fallback。
 - Railway 继续使用仓库根目录的 `Dockerfile` 运行 API/MCP 服务；Web 不改变
   Railway 的后端启动或迁移配置。
