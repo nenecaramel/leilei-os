@@ -819,6 +819,7 @@
       "id": "test-maintainability",
       "name": "Runtime contracts / test execution",
       "paths": [
+        "tests/integration-test-coverage.test.ts",
         "scripts/run-tests.mjs",
         "scripts/run-suite.mjs",
         "tests/suites.json",

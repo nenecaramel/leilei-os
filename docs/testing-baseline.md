@@ -126,6 +126,12 @@ separately from executable gates. Mind repository/API edits recommend the Mind
 PostgreSQL suites; schema/test-runner edits recommend the isolated suite.
 `agent:verify --run` never executes those recommendations or migrations.
 
+`pnpm test:isolated-postgres-coverage` runs the opt-in database tests that the
+regression list does not. It uses the same acknowledgement and target checks but
+requires a database named exactly `leileios_native_session_test`, as several of
+those tests refuse any other name. `integration-test-coverage.test.ts` fails when
+an opt-in database test is in no CI runner and not excluded with a reason.
+
 Before running `RUN_ISOLATED_POSTGRES_REGRESSIONS=1 pnpm test:isolated-postgres-regressions`,
 explicitly provision a disposable localhost PostgreSQL database with a test/CI/
 regression-scoped name. The entrypoint rejects remote hosts, URL connection-option
