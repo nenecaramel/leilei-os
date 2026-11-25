@@ -10,13 +10,13 @@ import { universeExpectedVersionSchema } from "../idempotency-contract.js";
 
 const inputSchema = z.object({
   node_id: z.string().trim().min(1).max(256),
-  diary_id: z.string().uuid(),
+  diary_id: z.guid(),
   expected_version: universeExpectedVersionSchema,
 }).strict();
 
 const outputSchema = z.object({
   success: z.boolean(),
-  data: z.object({ node_id: z.string().min(1).max(256), diary_id: z.string().uuid(), universe_version: z.number().int().nonnegative(), ...mcpMutationReceiptFields }).strict().optional(),
+  data: z.object({ node_id: z.string().min(1).max(256), diary_id: z.guid(), universe_version: z.number().int().nonnegative(), ...mcpMutationReceiptFields }).strict().optional(),
   error: universeWriteErrorDetailsSchema.optional(),
 }).strict();
 

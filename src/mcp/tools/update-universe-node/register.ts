@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { isoDateTime } from "../../../shared/zod-formats.js";
 import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import { UniverseServiceError, type UniverseService } from "../../../domains/universe/universe-service.js";
 import { invokeMcpWrite } from "../write-context.js";
@@ -8,7 +9,7 @@ import { updateUniverseNodeInputSchema } from "./schema.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
 
-const successDataSchema = z.object({ node: z.object({ id: z.string().min(1).max(256), title: z.string(), type: z.string(), created_at: z.string().datetime(), updated_at: z.string().datetime() }).strict(), universe_version: z.number().int().nonnegative(), ...mcpMutationReceiptFields }).strict();
+const successDataSchema = z.object({ node: z.object({ id: z.string().min(1).max(256), title: z.string(), type: z.string(), created_at: isoDateTime(), updated_at: isoDateTime() }).strict(), universe_version: z.number().int().nonnegative(), ...mcpMutationReceiptFields }).strict();
 const outputSchema = z.object({
   success: z.boolean(),
   data: successDataSchema.optional(),

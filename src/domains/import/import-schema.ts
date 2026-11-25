@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { isoDateTime } from "../../shared/zod-formats.js";
 import { CONTENT_AUTHORS } from "../content-author.js";
 import {
   UniverseValidationError,
@@ -45,7 +46,7 @@ export class ImportValidationError extends Error {
   }
 }
 
-const isoDateTime = z.string().datetime({ offset: true });
+const importedDateTime = isoDateTime({ offset: true });
 const businessDate = z.string().refine((value) => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
   if (!match) return false;
@@ -59,7 +60,7 @@ const businessDate = z.string().refine((value) => {
     && date.getUTCDate() === day
   );
 });
-const uuid = z.string().uuid();
+const uuid = z.guid();
 const nonBlankString = (max?: number) => {
   const schema = z.string().refine(
     (value) => value.trim().length > 0,
@@ -87,8 +88,8 @@ const diaryRecord = z.object({
   source: z.literal("chatgpt_mcp"),
   author,
   status: z.enum(["active", "archived"]),
-  created_at: isoDateTime,
-  updated_at: isoDateTime,
+  created_at: importedDateTime,
+  updated_at: importedDateTime,
 }).strict();
 
 const diaryCommentRecord = z.object({
@@ -97,8 +98,8 @@ const diaryCommentRecord = z.object({
   author: z.enum(CONTENT_AUTHORS),
   content: z.string().min(1).max(10_000),
   revision: z.number().int().min(1),
-  created_at: isoDateTime,
-  updated_at: isoDateTime,
+  created_at: importedDateTime,
+  updated_at: importedDateTime,
 }).strict();
 
 const todoEntry = z.object({
@@ -111,8 +112,8 @@ const todoPaper = z.object({
   date: businessDate,
   author: z.enum(CONTENT_AUTHORS),
   revision: z.number().int().nonnegative(),
-  created_at: isoDateTime,
-  updated_at: isoDateTime,
+  created_at: importedDateTime,
+  updated_at: importedDateTime,
   entries: z.array(todoEntry).max(MAX_TODO_ENTRIES),
 }).strict();
 
@@ -121,8 +122,8 @@ const projectWorkspaceRecord = z.object({
   name: z.string().min(1).max(200),
   description: nullableBounded(4000),
   version: z.number().int().min(1),
-  created_at: isoDateTime,
-  updated_at: isoDateTime,
+  created_at: importedDateTime,
+  updated_at: importedDateTime,
 }).strict();
 
 const projectRecord = z.object({
@@ -131,8 +132,8 @@ const projectRecord = z.object({
   name: z.string().min(1).max(200),
   description: nullableBounded(4000),
   version: z.number().int().min(1),
-  created_at: isoDateTime,
-  updated_at: isoDateTime,
+  created_at: importedDateTime,
+  updated_at: importedDateTime,
 }).strict();
 
 const projectResourceRecord = z.object({
@@ -144,14 +145,14 @@ const projectResourceRecord = z.object({
   content: nullableBounded(1_000_000),
   metadata: z.record(z.string(), z.unknown()),
   version: z.number().int().min(1),
-  created_at: isoDateTime,
-  updated_at: isoDateTime,
+  created_at: importedDateTime,
+  updated_at: importedDateTime,
 }).strict();
 
 const projectConversationRecord = z.object({
   project_id: uuid,
   conversation_id: uuid,
-  added_at: isoDateTime,
+  added_at: importedDateTime,
 }).strict();
 
 const projectsBundle = z.object({
@@ -170,14 +171,14 @@ const workspaceResourceRecord = z.object({
   content: nullableBounded(1_000_000),
   metadata: z.record(z.string(), z.unknown()),
   version: z.number().int().min(1),
-  created_at: isoDateTime,
-  updated_at: isoDateTime,
+  created_at: importedDateTime,
+  updated_at: importedDateTime,
 }).strict();
 
 const workspaceConversationRecord = z.object({
   workspace_id: uuid,
   conversation_id: uuid,
-  added_at: isoDateTime,
+  added_at: importedDateTime,
 }).strict();
 
 const workspacesBundle = z.object({
@@ -193,9 +194,9 @@ const conversationRecord = z.object({
   current_head_message_id: uuid.nullable(),
   default_model: z.string().nullable(),
   provider_metadata: z.record(z.string(), z.unknown()),
-  created_at: isoDateTime,
-  updated_at: isoDateTime,
-  archived_at: isoDateTime.nullable(),
+  created_at: importedDateTime,
+  updated_at: importedDateTime,
+  archived_at: importedDateTime.nullable(),
 }).strict();
 
 const conversationMessageRecord = z.object({
@@ -218,9 +219,9 @@ const conversationMessageRecord = z.object({
   turn_index: z.number().int().nonnegative().nullable(),
   is_primary: z.boolean(),
   display_text: z.string(),
-  created_at: isoDateTime,
-  completed_at: isoDateTime.nullable(),
-  updated_at: isoDateTime,
+  created_at: importedDateTime,
+  completed_at: importedDateTime.nullable(),
+  updated_at: importedDateTime,
 }).strict();
 
 const conversationContentBlockRecord = z.object({
@@ -243,7 +244,7 @@ const conversationContentBlockRecord = z.object({
   raw_type: z.string().min(1),
   text: z.string().nullable(),
   payload: z.record(z.string(), z.unknown()).nullable(),
-  created_at: isoDateTime,
+  created_at: importedDateTime,
 }).strict();
 
 const conversationAttachmentRecord = z.object({
@@ -274,7 +275,7 @@ const conversationProviderCheckpointRecord = z.preprocess((value) => {
     nonBlankString().nullable().optional().default(null),
   runtime_metadata: z.record(z.string(), z.unknown()).nullable(),
   provider_checkpoint_id: nonBlankString().nullable(),
-  created_at: isoDateTime,
+  created_at: importedDateTime,
 }).strict());
 
 const conversationsBundle = z.object({
@@ -305,7 +306,7 @@ const mindDriveSatisfactionEventRecord = z.object({
   ]),
   amount: z.number().gt(0).max(1),
   idempotency_key: runtimeIdempotencyKey,
-  created_at: isoDateTime,
+  created_at: importedDateTime,
 }).strict();
 
 const mindCuriosityResolutionEventRecord = z.object({
@@ -315,9 +316,9 @@ const mindCuriosityResolutionEventRecord = z.object({
   conversation_id: uuid,
   requested_resolution_source_id: uuid,
   result_resolution_source_id: nonBlankString(),
-  resolved_at: isoDateTime,
+  resolved_at: importedDateTime,
   idempotency_key: runtimeIdempotencyKey,
-  created_at: isoDateTime,
+  created_at: importedDateTime,
 }).strict();
 
 const mindDistillationWatermarkRecord = z.object({
@@ -325,7 +326,7 @@ const mindDistillationWatermarkRecord = z.object({
   conversation_id: uuid,
   last_source_message_id: uuid,
   process_version: nonBlankString(64),
-  updated_at: isoDateTime,
+  updated_at: importedDateTime,
 }).strict();
 
 const mindSemanticGroupingCandidate = z.object({
@@ -344,12 +345,12 @@ const mindSemanticGroupingResultRecord = z.object({
     .min(1)
     .max(64),
   scores: z.record(
-    z.string().uuid(),
+    z.guid(),
     z.number().min(0).max(1),
   ),
-  created_at: isoDateTime,
-  updated_at: isoDateTime,
-  completed_at: isoDateTime,
+  created_at: importedDateTime,
+  updated_at: importedDateTime,
+  completed_at: importedDateTime,
 }).strict();
 
 const mindContinuityBundle = z.object({
@@ -389,13 +390,13 @@ const historicalMindStateRecord = z.object({
   path_status: z.enum(["current", "superseded"]),
   validity_status: z.enum(["valid", "invalidated", "tombstoned"]),
   envelope: z.record(z.string(), z.unknown()),
-  created_at: isoDateTime,
-  updated_at: isoDateTime,
+  created_at: importedDateTime,
+  updated_at: importedDateTime,
 }).strict();
 
 const universeBundle = z.object({
   version: z.number().int().nonnegative(),
-  snapshot: z.unknown(),
+  snapshot: z.unknown().optional(),
   diary_sources: z.array(
     z.object({
       node_id: z.string().min(1).max(256),
@@ -411,7 +412,7 @@ const lifecycleEvent = z.object({
   action: z.string().min(1).max(32),
   actor_type: z.string().min(1).max(32),
   channel: z.string().min(1).max(32),
-  created_at: isoDateTime,
+  created_at: importedDateTime,
 }).strict();
 
 const toolActivity = z.object({
@@ -422,7 +423,7 @@ const toolActivity = z.object({
   resource_id: uuid.nullable(),
   status: z.enum(["success", "rejected", "error"]),
   error_code: z.string().max(100).nullable(),
-  created_at: isoDateTime,
+  created_at: importedDateTime,
 }).strict();
 
 const auditSchema = z.object({
@@ -468,7 +469,7 @@ const dataV4Schema = z.object({
 const documentV2Schema = z.object({
   schema_version: z.literal(2),
   owner_fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
-  exported_at: isoDateTime,
+  exported_at: importedDateTime,
   data: dataV2Schema,
   audit: auditSchema.optional(),
 }).strict();
@@ -476,7 +477,7 @@ const documentV2Schema = z.object({
 const documentV3Schema = z.object({
   schema_version: z.literal(3),
   owner_fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
-  exported_at: isoDateTime,
+  exported_at: importedDateTime,
   data: dataV3Schema,
   audit: auditSchema.optional(),
 }).strict();
@@ -484,7 +485,7 @@ const documentV3Schema = z.object({
 const documentV4Schema = z.object({
   schema_version: z.literal(4),
   owner_fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
-  exported_at: isoDateTime,
+  exported_at: importedDateTime,
   data: dataV4Schema,
   audit: auditSchema.optional(),
 }).strict();

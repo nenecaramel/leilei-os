@@ -5,7 +5,7 @@ import { z } from "zod";
 import { breathLexicalScore } from "../../runtime/breath/breath-recall.js";
 import type { BreathSemanticScorer } from "../../runtime/breath/breath-semantic-recall.js";
 
-const uuid = z.string().uuid();
+const uuid = z.guid();
 export const mindComparisonOfferSchema = z.object({
   session: z.string().regex(/^[a-f0-9]{64}$/),
   query: z.string().min(1).max(16_000),

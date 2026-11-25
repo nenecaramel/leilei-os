@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { optionalWithDefault } from "../../../shared/zod-formats.js";
 import { TODO_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   toSafeTodoReadError,
@@ -10,7 +11,7 @@ import { joinMcpContentLines } from "../content-contract.js";
 import { decodeMcpPaginationCursor, McpPaginationCursorError, paginateMcpRows } from "../pagination.js";
 
 const listTodoDatesInputSchema = z.object({
-  limit: z.number().int().min(1).max(100).default(50).optional(),
+  limit: optionalWithDefault(z.number().int().min(1).max(100), 50),
   cursor: z.string().min(1).max(2_048).optional(),
 }).strict();
 const listTodoDatesOutputSchema = z.object({

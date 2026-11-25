@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { isoDateTime } from "../../../shared/zod-formats.js";
 import {
   ToyDomainError,
 } from "../../../domains/toy/toy-command-service.js";
@@ -52,13 +53,13 @@ const toyStopInputSchema = z
 
 const toySetDataSchema = z.object({
   command: z.object({
-    id: z.string().uuid(),
+    id: z.guid(),
     action: z.literal("set"),
     percent: z.number().int().min(1).max(50),
     duration_seconds: z.number().int().min(1).max(TOY_MAX_DURATION_SECONDS),
     status: toyCommandStatusSchema,
-    created_at: z.string().datetime(),
-    expires_at: z.string().datetime(),
+    created_at: isoDateTime(),
+    expires_at: isoDateTime(),
   }),
 });
 
@@ -70,12 +71,12 @@ const toySetOutputSchema = z.object({
 
 const toyStopDataSchema = z.object({
   command: z.object({
-    id: z.string().uuid(),
+    id: z.guid(),
     action: z.literal("stop"),
     percent: z.null(),
     status: toyCommandStatusSchema,
-    created_at: z.string().datetime(),
-    expires_at: z.string().datetime(),
+    created_at: isoDateTime(),
+    expires_at: isoDateTime(),
   }),
 });
 

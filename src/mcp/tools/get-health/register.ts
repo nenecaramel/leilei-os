@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Temporal } from "@js-temporal/polyfill";
 import { z } from "zod";
+import { isoDateTime } from "../../../shared/zod-formats.js";
 import {
   HealthServiceError,
   type HealthService,
@@ -33,7 +34,7 @@ const healthRecordSchema = z.object({
   menstruating: z.boolean(),
   period_start_date: z.string().nullable(),
   cycle_day: z.number().int().positive().nullable(),
-  updated_at: z.string().datetime(),
+  updated_at: isoDateTime(),
 }).strict();
 
 const getHealthOutputSchema = z.object({

@@ -11,7 +11,7 @@ export function defaultMindRecallSocket() {
 }
 const schema = z.object({
   query: z.string().min(1).max(16000),
-  candidates: z.array(z.object({stateId: z.string().uuid(), kind: z.literal("memory"), text: z.string().max(2000)}).strict()).min(1).max(256),
+  candidates: z.array(z.object({stateId: z.guid(), kind: z.literal("memory"), text: z.string().max(2000)}).strict()).min(1).max(256),
 }).strict();
 
 async function readJson(request: IncomingMessage, maxBytes: number): Promise<unknown> {

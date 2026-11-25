@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { isoDateTime } from "../../../shared/zod-formats.js";
 import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { mcpToolErrorDetailsSchema } from "../error-contract.js";
@@ -12,12 +13,12 @@ const membershipSchema = z.object({ id: z.string().min(1).max(256), weight: z.nu
 const nodeSchema = z.object({
   id: z.string().min(1).max(256), title: z.string(), summary: z.string(), content: z.string(), type: z.string(), tags: z.array(z.string()),
   galaxies: z.array(membershipSchema), position: z.object({ x: z.number().finite(), y: z.number().finite() }).strict(),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
+  created_at: isoDateTime(),
+  updated_at: isoDateTime(),
   importance: z.string().optional().describe("Readable but not writable through the MCP surface."),
   migration: z.object({
     source: z.enum(["mind-universe-static", "mind-universe"]),
-    migrated_at: z.string().datetime(),
+    migrated_at: isoDateTime(),
   }).strict().optional().describe("Migration metadata; readable but not writable through the MCP surface."),
 }).strict();
 const outputSchema = z.object({

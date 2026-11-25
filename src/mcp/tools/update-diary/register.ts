@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { isoDateTime } from "../../../shared/zod-formats.js";
 import { DIARY_DOMAIN_BOUNDARY, MCP_CONTENT_AUTHOR_DESCRIPTION } from "../model-language.js";
 import { DiaryDomainError, type AuthenticatedDiaryContext, type DiaryEntryResult, type UpdateMcpDiaryInput } from "../../../domains/diary/diary-service.js";
 import { DIARY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
@@ -29,8 +30,8 @@ const updateDiaryDataSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   tags: z.array(z.string()),
   mood: z.string().nullable(),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
+  created_at: isoDateTime(),
+  updated_at: isoDateTime(),
   lifecycle_status: z.literal("active"),
   author: contentAuthorSchema.nullable(),
   ...mcpMutationReceiptFields,

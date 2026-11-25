@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { isoDateTime, optionalWithDefault } from "../../../shared/zod-formats.js";
 import { DIARY_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   DiaryDomainError,
@@ -29,9 +30,9 @@ const getDiaryInputSchema = z
     id: z
       .string()
       .trim()
-      .uuid()
+      .guid()
       .describe("The exact Diary id returned by search_diary or global_search."),
-    scope: z.enum(["active", "archived"]).default("active").optional().describe("Defaults to active. active reads only active records; archived reads only archived records."),
+    scope: optionalWithDefault(z.enum(["active", "archived"]), "active").describe("Defaults to active. active reads only active records; archived reads only archived records."),
     ...boundedReadInputSchemaFields,
   })
   .strict();
@@ -43,14 +44,14 @@ const getDiaryDataSchema = z.object({
   date: dateSchema,
   tags: z.array(z.string()),
   mood: z.string().nullable(),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
+  created_at: isoDateTime(),
+  updated_at: isoDateTime(),
   lifecycle_status: z.enum(["active", "archived"]),
   author: contentAuthorSchema.nullable(),
   content_metadata: boundedReadMetadataSchema,
   comments_tool: z.literal("list_diary_comments"),
   comments_arguments: z.object({
-    diary_id: z.string().uuid(),
+    diary_id: z.guid(),
     scope: z.enum(["active", "archived"]),
   }).strict(),
 });

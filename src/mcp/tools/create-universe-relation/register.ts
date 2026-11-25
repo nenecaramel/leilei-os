@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { isoDateTime } from "../../../shared/zod-formats.js";
 import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import { UniverseServiceError, type UniverseService } from "../../../domains/universe/universe-service.js";
 import { invokeMcpWrite } from "../write-context.js";
@@ -11,7 +12,7 @@ import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromRep
 const relationOutputSchema = z.object({
   id: z.string().min(1).max(256), source: z.string().min(1).max(256), target: z.string().min(1).max(256),
   relationType: z.enum(["related_to", "supports", "contradicts", "extends", "part_of", "raises"]),
-  strength: z.number().finite(), created_at: z.string().datetime(),
+  strength: z.number().finite(), created_at: isoDateTime(),
 }).strict();
 const successDataSchema = z.object({ relation: relationOutputSchema, universe_version: z.number().int().nonnegative(), ...mcpMutationReceiptFields }).strict();
 const outputSchema = z.object({

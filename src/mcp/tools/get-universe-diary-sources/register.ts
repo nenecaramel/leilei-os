@@ -8,7 +8,7 @@ import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const inputSchema = z.object({ node_id: z.string().trim().min(1).max(256) }).strict();
 const sourceSchema = z.object({
-  diary_id: z.string().uuid(),
+  diary_id: z.guid(),
   title: z.string(),
   date: z.string(),
   status: z.enum(["active", "archived"]),

@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { isoDateTime, optionalWithDefault } from "../../../shared/zod-formats.js";
 import { DIARY_DOMAIN_BOUNDARY, MCP_CONTENT_AUTHOR_DESCRIPTION } from "../model-language.js";
 import {
   DIARY_COMMENT_CONTENT_MAX_CODE_POINTS,
@@ -26,7 +27,7 @@ import {
 } from "../mutation-contract.js";
 import { mcpExpectedRevisionSchema, mcpIdempotencyKeySchema } from "../idempotency-contract.js";
 
-const idSchema = z.string().trim().uuid();
+const idSchema = z.string().trim().guid();
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
 const scopeSchema = z.enum(["active", "archived"]);
 const commentContentSchema = z
@@ -47,8 +48,8 @@ const commentSchema = z.object({
   author: contentAuthorSchema,
   content: z.string(),
   revision: z.number().int().min(1),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
+  created_at: isoDateTime(),
+  updated_at: isoDateTime(),
 }).strict();
 
 const addInputSchema = z.object({
@@ -69,7 +70,7 @@ const addOutputSchema = z.object({
 
 const getInputSchema = z.object({
   id: idSchema.describe("Exact Diary comment id."),
-  scope: scopeSchema.default("active").optional().describe("Parent Diary lifecycle scope. Defaults to active."),
+  scope: optionalWithDefault(scopeSchema, "active").describe("Parent Diary lifecycle scope. Defaults to active."),
 }).strict();
 
 const getOutputSchema = z.object({
@@ -80,8 +81,8 @@ const getOutputSchema = z.object({
 
 const listInputSchema = z.object({
   diary_id: idSchema.describe("Exact parent Diary id."),
-  scope: scopeSchema.default("active").optional().describe("Parent Diary lifecycle scope. Defaults to active."),
-  limit: z.number().int().min(1).max(100).default(50).optional(),
+  scope: optionalWithDefault(scopeSchema, "active").describe("Parent Diary lifecycle scope. Defaults to active."),
+  limit: optionalWithDefault(z.number().int().min(1).max(100), 50),
   before: z.string().min(1).max(1024).optional().describe("Opaque cursor returned as metadata.next_before by a previous list_diary_comments call."),
 }).strict();
 

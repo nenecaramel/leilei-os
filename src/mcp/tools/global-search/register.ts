@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { isoDateTime, optionalWithDefault } from "../../../shared/zod-formats.js";
 import { GlobalSearchError, type GlobalSearchInput, type GlobalSearchResult } from "../../../domains/global-search/global-search-service.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { compactMcpText, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
@@ -16,21 +17,19 @@ const inputSchema = z.object({
     (value) => [...value].length <= MAX_QUERY_CODE_POINTS,
     { message: `query must be at most ${MAX_QUERY_CODE_POINTS} Unicode code points` },
   ).describe("Search phrase across the selected LeileiOS modules."),
-  modules: z.array(globalSearchModuleSchema).min(1).max(4)
-    .default([...DEFAULT_GLOBAL_SEARCH_MODULES])
-    .optional()
+  modules: optionalWithDefault(z.array(globalSearchModuleSchema).min(1).max(4), [...DEFAULT_GLOBAL_SEARCH_MODULES])
     .describe("Domains to search. Defaults to Diary, Todo, Universe, and Mind Memory."),
-  scope: z.enum(["active", "archived", "all"]).default("active").optional(),
-  mode: z.enum(["normal", "phrase"]).default("normal").optional().describe("normal collapses runs of whitespace before matching; phrase preserves internal whitespace and matches the literal contiguous phrase."),
+  scope: optionalWithDefault(z.enum(["active", "archived", "all"]), "active"),
+  mode: optionalWithDefault(z.enum(["normal", "phrase"]), "normal").describe("normal collapses runs of whitespace before matching; phrase preserves internal whitespace and matches the literal contiguous phrase."),
   author: z.enum(["L", "G", "C"]).optional().describe("Filter Diary and Todo records by author. Universe and Mind Memory have no L/G/C author and are excluded when this filter is set."),
   date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  limit: z.number().int().min(1).max(25).default(10).optional(),
+  limit: optionalWithDefault(z.number().int().min(1).max(25), 10),
   cursor: z.string().min(1).max(MAX_CURSOR_ENCODED_LENGTH).optional(),
 }).strict();
 
 const globalSearchDetailArgumentsSchema = z.union([
-  z.object({ id: z.string().uuid(), scope: z.enum(["active", "archived"]) }).strict(),
+  z.object({ id: z.guid(), scope: z.enum(["active", "archived"]) }).strict(),
   z.object({ id: z.string().min(1).max(256) }).strict(),
   z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict(),
 ]);
@@ -43,60 +42,60 @@ const globalSearchResultSchema = z.object({
   matched_field: z.enum(["title", "content", "tags", "mood", "text"]),
   match_reason: z.enum(["exact_stable_name", "exact_phrase", "stable_name_prefix", "field_match"]),
   lifecycle_status: z.enum(["active", "archived"]),
-  business_time: z.string().datetime().nullable().describe("Actual business time; null for undated Memory. Memory date filters use occurredAt in Asia/Shanghai."),
+  business_time: isoDateTime().nullable().describe("Actual business time; null for undated Memory. Memory date filters use occurredAt in Asia/Shanghai."),
   time_basis: z.enum(["updated_at", "diary_date", "todo_date", "message_time", "memory_date", "undated"]),
-  updated_at: z.string().datetime(),
+  updated_at: isoDateTime(),
   author: z.enum(["L", "G", "C"]).nullable(),
   detail_tool: z.enum(["get_diary", "read_todo_day", "get_universe_node", "get_memory"]).nullable(),
   detail_arguments: globalSearchDetailArgumentsSchema.nullable(),
 }).strict().superRefine((result, context) => {
   if (result.detail_tool === null || result.detail_arguments === null) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Search results require an MCP detail pointer." });
+    context.addIssue({ code: "custom", path: ["detail_tool"], message: "Search results require an MCP detail pointer." });
     return;
   }
 
   if (result.entity_type === "mind") {
     if (result.detail_tool !== "get_memory" || !("id" in result.detail_arguments)
-      || "scope" in result.detail_arguments || !z.string().uuid().safeParse(result.detail_arguments.id).success
+      || "scope" in result.detail_arguments || !z.guid().safeParse(result.detail_arguments.id).success
       || result.detail_arguments.id !== result.entity_id) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Mind results require get_memory with the matching UUID id only." });
+      context.addIssue({ code: "custom", path: ["detail_arguments"], message: "Mind results require get_memory with the matching UUID id only." });
     }
     if (result.author !== null || result.lifecycle_status !== "active"
       || result.stable_name !== "" || result.matched_field !== "text"
       || !["memory_date", "undated"].includes(result.time_basis)
       || (result.time_basis === "undated") !== (result.business_time === null)) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid Memory date, visibility or body-only result semantics." });
+      context.addIssue({ code: "custom", message: "Invalid Memory date, visibility or body-only result semantics." });
     }
     return;
   }
   if (result.business_time === null || ["memory_date", "undated"].includes(result.time_basis)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["business_time"], message: "Only Memory supports an undated business time." });
+    context.addIssue({ code: "custom", path: ["business_time"], message: "Only Memory supports an undated business time." });
   }
   if (result.entity_type === "todo") {
     if (result.detail_tool !== "read_todo_day") {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Todo results must use read_todo_day." });
+      context.addIssue({ code: "custom", path: ["detail_tool"], message: "Todo results must use read_todo_day." });
     }
     if ("date" in result.detail_arguments) return;
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Todo detail_arguments must contain a date." });
+    context.addIssue({ code: "custom", path: ["detail_arguments"], message: "Todo detail_arguments must contain a date." });
     return;
   }
 
   if (result.entity_type === "universe") {
     if (result.detail_tool !== "get_universe_node") {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Universe results must use get_universe_node." });
+      context.addIssue({ code: "custom", path: ["detail_tool"], message: "Universe results must use get_universe_node." });
     }
     if ("id" in result.detail_arguments && !("scope" in result.detail_arguments)
       && result.detail_arguments.id.trim().length > 0
       && result.detail_arguments.id.length <= 256) return;
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Universe detail_arguments must contain only an id." });
+    context.addIssue({ code: "custom", path: ["detail_arguments"], message: "Universe detail_arguments must contain only an id." });
     return;
   }
 
   if (result.detail_tool !== "get_diary") {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Diary results must use get_diary." });
+    context.addIssue({ code: "custom", path: ["detail_tool"], message: "Diary results must use get_diary." });
   }
-  if ("scope" in result.detail_arguments && "id" in result.detail_arguments && z.string().uuid().safeParse(result.detail_arguments.id).success) return;
-  context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Diary detail_arguments require a UUID id and scope." });
+  if ("scope" in result.detail_arguments && "id" in result.detail_arguments && z.guid().safeParse(result.detail_arguments.id).success) return;
+  context.addIssue({ code: "custom", path: ["detail_arguments"], message: "Diary detail_arguments require a UUID id and scope." });
 });
 
 const globalSearchDataSchema = z.object({
