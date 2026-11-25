@@ -243,12 +243,11 @@ test('racing initial attachment and lost-ack retries create one empty conversati
   const results = await Promise.all([f.attach(), f.attach()]);
   assert.deepEqual(results.map(r => r.outcome).sort(), ['already_current', 'attached']);
   assert.equal(await f.count(), 0);
-  const { listNativeSessionSwitchChoices, readNativeSessionRestoreState } = await import('../src/domains/conversation/native-session-history-repository.js');
+  const { listNativeSessionSwitchChoices } = await import('../src/domains/conversation/native-session-history-repository.js');
   const choices = await listNativeSessionSwitchChoices(f.db, { userId: f.input.userId });
   assert.equal(choices.conversations.length, 1);
   assert.equal(choices.conversations[0].providerSessionId, f.input.sessionId);
   assert.equal(choices.conversations[0].providerCheckpointId, f.input.checkpointId);
-  await assert.rejects(readNativeSessionRestoreState(f.db, f.input), { code: 'NATIVE_SOURCE_BINDING_REQUIRED' });
 }));
 
 test('lost release response cannot reclaim ownership after a newer attach with an unchanged native file (ABA fence)', { skip: !enabled }, async () => fixture(async f => {

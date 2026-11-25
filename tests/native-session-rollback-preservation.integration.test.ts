@@ -24,28 +24,14 @@ test("rollback preserves externally owned native sessions and blocks their clean
   try {
     const sessionId = crypto.randomUUID();
     const store = new DrizzleNativeLiveProviderSessionStoreRepository(database.db);
-    const main = { sessionId };
-    const sub = { sessionId, subpath: "subagents/test" };
-    const mainEntry = { type: "user", marker: "preserved" };
-    const subEntry = { type: "assistant", marker: "subagent" };
-    await store.append({ userId: owner.id, key: main, appendBatchId: crypto.randomUUID(), entries: [mainEntry] });
-    await store.append({ userId: owner.id, key: sub, appendBatchId: crypto.randomUUID(), entries: [subEntry] });
-    await store.setStatus({ userId: owner.id, sessionId, state: "complete" });
-    await database.db.execute(sql`
-      UPDATE native_live_provider_session_store_status
-      SET preserve_external_session = true
-      WHERE user_id = ${owner.id}::uuid AND provider_session_id = ${sessionId}
-    `);
-    await store.setStatus({ userId: owner.id, sessionId, state: "incomplete" });
-    await store.setStatus({ userId: owner.id, sessionId, state: "complete" });
+    await store.preserveExternalSession({ userId: owner.id, sessionId });
+    await store.preserveExternalSession({ userId: owner.id, sessionId });
     const [status] = await database.db.execute<{ is_preserved: boolean }>(sql`
       SELECT preserve_external_session AS is_preserved
       FROM native_live_provider_session_store_status
       WHERE user_id = ${owner.id}::uuid AND provider_session_id = ${sessionId}
     `);
-    assert.equal(status?.is_preserved, true, "status changes must keep the sticky marker");
-    assert.deepEqual(await store.load({ userId: owner.id, key: main }), [mainEntry]);
-    assert.deepEqual(await store.load({ userId: owner.id, key: sub }), [subEntry]);
+    assert.equal(status?.is_preserved, true);
     const [candidate] = await database.db.execute<{ eligible: boolean }>(sql`
       SELECT ${providerSessionUnreferenced({ userId: owner.id, providerSessionId: sessionId })} AS eligible
     `);

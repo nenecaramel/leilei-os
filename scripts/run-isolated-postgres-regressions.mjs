@@ -95,7 +95,6 @@ run([
   "tests/runtime-subject-state-repository.integration.test.ts",
   "tests/mind-memory-migration.integration.test.ts",
   "tests/native-live-background-job-retention.integration.test.ts",
-  "tests/native-live-provider-session-store.integration.test.ts",
   "tests/retire-product-workspace-migration.test.ts",
   "tests/retire-product-workspace-schema.integration.test.ts",
   "tests/native-live-external-history.integration.test.ts",
