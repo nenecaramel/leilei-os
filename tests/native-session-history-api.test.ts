@@ -15,7 +15,6 @@ test("legacy full-history endpoints no longer exist and cannot reach old writers
   await withServer(app => {
     app.use((request, _response, next) => { request.mcpUserId = userId; next(); });
     app.use("/store", createNativeLiveProviderSessionStoreInternalRouter({
-      providerSessionStoreService: {} as any,
       restoreNativeHistory: forbidden,
       readNativeHistoryState: forbidden,
       releaseNativeHistory: forbidden,
@@ -35,34 +34,33 @@ test("legacy full-history endpoints no longer exist and cannot reach old writers
   });
 });
 
-test("native-history-assets transport rejects copies but leaves regular SessionStore append working", async () => {
+test("the retired remote SessionStore endpoints are gone, and the session switch ones are not", async () => {
   let calls = 0;
+  const forbidden = async () => { calls++; return null; };
   await withServer(app => {
     app.use((request, _response, next) => { request.mcpUserId = userId; next(); });
     app.use("/store", createNativeLiveProviderSessionStoreInternalRouter({
-      providerSessionStoreService: {
-        append: async () => { calls++; },
-      } as any,
-    }));
+      providerSessionStoreService: Object.fromEntries(["append", "load", "listSessions", "delete",
+        "listSubkeys", "getStatus", "markIncomplete", "markComplete"].map(name => [name, forbidden])),
+      listNativeHistoryChoices: async () => [],
+    } as any));
   }, async url => {
-    const send = async (subpath: string) => fetch(url + "/store/append", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ key: { session_id: sid, subpath },
-        append_batch_id: cp, entries: [{ type: "assistant" }] }),
-    });
-    const blocked = await send("native-history-assets/" + revision);
-    assert.equal(blocked.status, 409);
-    assert.equal((await blocked.json()).error.code, "LEGACY_ASSET_WRITE_DISABLED");
-    assert.equal(calls, 0, "old JSONB image copy must never reach the writer");
-    assert.equal((await send("")).status, 200);
-    assert.equal(calls, 1, "ordinary provider transcript append remains available");
+    const post = (path: string, body: unknown) => fetch(url + "/store/" + path, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const key = { session_id: sid };
+    for (const [path, body] of [["append", { key, append_batch_id: cp, entries }], ["load", { key }], ["list-sessions", {}],
+      ["delete", { key }], ["list-subkeys", key], ["status", key], ["mark-incomplete", key], ["mark-complete", key]] as const) {
+      assert.equal((await post(path, body)).status, 404, path);
+    }
+    assert.equal(calls, 0);
+    assert.equal((await post("native-history/choices", {})).status, 200);
   });
 });
 
 test("referenced-sessions endpoint binds the authenticated owner and takes no input", async () => {
   await withServer(app => {
     app.use((request, _response, next) => { request.mcpUserId = userId; next(); });
-    app.use("/store", createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any,
+    app.use("/store", createNativeLiveProviderSessionStoreInternalRouter({
       listReferencedNativeSessions: async (input: any) => { assert.deepEqual(input, { userId }); return { sessionIds: [sid] }; } } as any));
   }, async url => {
     const send = (body: any) => fetch(url + "/store/native-history/referenced-sessions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -79,7 +77,7 @@ test('continuation endpoints accept only authenticated metadata, never a history
   let calls = 0;
   await withServer(app => {
     app.use((request, _response, next) => { request.mcpUserId = userId; next(); });
-    app.use('/store', createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any,
+    app.use('/store', createNativeLiveProviderSessionStoreInternalRouter({
       attachNativeContinuation: async input => { calls++; assert.equal(input.userId, userId); return { outcome: 'attached', owner: 'leileios', conversationId, providerSessionId: sid, providerCheckpointId: cp, headMessageId: null, inserted: 0 }; },
     }));
   }, async url => {
@@ -89,7 +87,7 @@ test('continuation endpoints accept only authenticated metadata, never a history
       { ...value, expectedHeadMessageId: undefined }, { ...value, checkpointIds: [] }, { ...value, completedTurnCheckpointIds: [sid] }]) assert.equal((await send(invalid)).status, 400);
     assert.equal(calls, 1);
   });
-  await withServer(app => app.use('/store', createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any })), async url => {
+  await withServer(app => app.use('/store', createNativeLiveProviderSessionStoreInternalRouter({})), async url => {
     assert.equal((await fetch(url + '/store/native-history/continuation-state', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ conversationId, sessionId: sid }) })).status, 401);
   });
 });
@@ -105,7 +103,7 @@ test("retired full-history HTTP handlers carry no production dependency wiring",
 
 test('failed native continuation recovery accepts only authenticated UUID metadata on attach',async()=>{
  const value={conversationId,sessionId:sid,checkpointId:cp,revision,effectiveWorkingDirectory:'/synthetic',expectedHeadMessageId:null,expectedRevision:null,checkpointIds:[cp],completedTurnCheckpointIds:[cp],recoveredFailedTurnId:conversationId};let calls=0;
- await withServer(app=>{app.use((request,_response,next)=>{request.mcpUserId=userId;next();});app.use('/store',createNativeLiveProviderSessionStoreInternalRouter({providerSessionStoreService:{} as any,attachNativeContinuation:async input=>{calls++;assert.equal(input.recoveredFailedTurnId,conversationId);assert.equal(input.userId,userId);return {outcome:'attached',owner:'leileios',conversationId,providerSessionId:sid,providerCheckpointId:cp,headMessageId:null,inserted:0};}}));},async url=>{
+ await withServer(app=>{app.use((request,_response,next)=>{request.mcpUserId=userId;next();});app.use('/store',createNativeLiveProviderSessionStoreInternalRouter({attachNativeContinuation:async input=>{calls++;assert.equal(input.recoveredFailedTurnId,conversationId);assert.equal(input.userId,userId);return {outcome:'attached',owner:'leileios',conversationId,providerSessionId:sid,providerCheckpointId:cp,headMessageId:null,inserted:0};}}));},async url=>{
   const send=(route:string,body:unknown)=>fetch(url+'/store/native-history/'+route,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
   assert.equal((await send('continuation-attach',value)).status,200);
   assert.equal((await send('continuation-attach',{...value,recoveredFailedTurnId:'invalid'})).status,400);

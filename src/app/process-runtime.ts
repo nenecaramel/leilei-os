@@ -97,10 +97,6 @@ import {
   PostgresInlineAttachmentObjectStore,
 } from "../domains/bridge/attachment/native-live-attachment-postgres-storage.js";
 import {
-  DrizzleNativeLiveProviderSessionStoreRepository,
-  NativeLiveProviderSessionStoreService,
-} from "../domains/bridge/provider-session/native-live-provider-session-store.js";
-import {
   DrizzleNativeLiveWorkAvailability,
   DrizzleNativeLiveWorkWakePublisher,
   NativeLiveHttpWakeSignal,
@@ -413,10 +409,6 @@ export function createProcessRuntime(
       nativeLiveWorkWakePublisher,
       nativeLiveExternalWakeSignal ?? undefined,
     );
-  const nativeLiveProviderSessionStoreService =
-    new NativeLiveProviderSessionStoreService(
-      new DrizzleNativeLiveProviderSessionStoreRepository(db),
-    );
   const nativeLiveRuntimeEventService =
     new NativeLiveRuntimeEventService(
       new DrizzleNativeLiveRuntimeEventRepository(db),
@@ -613,8 +605,6 @@ export function createProcessRuntime(
             nativeLiveManualCompactService,
           externalSessionBridgeService:
             nativeLiveExternalSessionBridgeService,
-          providerSessionStoreService:
-            nativeLiveProviderSessionStoreService,
           beginNativeContinuationRelease: input => beginNativeContinuationRelease(database.db, input),
           cancelNativeContinuationRelease: input => cancelNativeContinuationRelease(database.db, input),
           attachNativeContinuation: input => attachNativeContinuation(database.db, input),

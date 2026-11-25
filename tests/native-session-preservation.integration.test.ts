@@ -56,7 +56,7 @@ test("external native ownership survives deletion of the last projection/checkpo
   assert.equal(await canClean(db), false);
 }));
 
-test("preservation is sticky through status updates and prevents destructive SessionStore deletion", { skip: !enabled }, async () => fixture(async db => {
+test("preservation is sticky through status updates and cancels a pending cleanup", { skip: !enabled }, async () => fixture(async db => {
   const repository = new DrizzleNativeLiveProviderSessionStoreRepository(db);
   await repository.setStatus({ userId: user, sessionId: session, state: "complete" });
   await db.execute(sql`INSERT INTO native_live_provider_session_entries VALUES (${user}::uuid,${session},'')`);
@@ -68,8 +68,6 @@ test("preservation is sticky through status updates and prevents destructive Ses
   const jobs = await db.execute<{ status: string; last_error_code: string }>(sql`SELECT status,last_error_code FROM native_live_provider_session_cleanups`);
   assert.equal(jobs[0]!.status, "failed");
   assert.equal(jobs[0]!.last_error_code, "EXTERNAL_SESSION_PRESERVED");
-  await assert.rejects(() => repository.delete({ userId: user, key: { sessionId: session } }), (error: any) => error.code === "EXTERNAL_SESSION_PRESERVED");
-  await assert.rejects(() => repository.delete({ userId: user, key: { sessionId: session, subpath: "subagents/example" } }), (error: any) => error.code === "EXTERNAL_SESSION_PRESERVED");
   const entries = await db.execute<{ count: number }>(sql`SELECT count(*)::integer AS count FROM native_live_provider_session_entries`);
   assert.equal(entries[0]!.count, 1);
 }));
@@ -109,8 +107,7 @@ test("a shared native UUID is protected across aliases while cached tenant data 
   await db.execute(sql`INSERT INTO native_live_provider_session_store_status (user_id,provider_session_id,state,preserve_external_session) VALUES (${otherUser}::uuid,${session},'complete',true)`);
   await repository.setStatus({ userId: user, sessionId: session, state: "complete" });
   assert.equal(await canClean(db), false);
-  await repository.delete({ userId: user, key: { sessionId: session } });
-  assert.equal(await repository.getStatus({ userId: user, sessionId: session }), null);
+  assert.equal(await repository.getStatus({ userId: user, sessionId: session }), "complete");
   assert.equal(await repository.getStatus({ userId: otherUser, sessionId: session }), "complete");
 }));
 
