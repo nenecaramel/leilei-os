@@ -42,7 +42,6 @@ import {
   createDefaultSubjectStateBackgroundMaintenance,
   DEFAULT_NATIVE_LIVE_SUBJECT_ID,
 } from "../domains/runtime/mind/default-backend-mind-runtime.js";
-import { deleteExpiredNativeLiveBackgroundModelJobsBatch } from "../domains/retention/native-live-background-job-retention.js";
 import {
   BackgroundLoopOrchestrator,
 } from "../domains/runtime/background/background-loop-orchestrator.js";
@@ -149,7 +148,6 @@ import {
 } from "../domains/retention/runtime-operational-retention.js";
 import {
   DATA_IMPORT_RETENTION_DAYS,
-  NATIVE_LIVE_BACKGROUND_MODEL_RETENTION_DAYS,
 } from "../domains/retention/retention-policy.js";
 import { DrizzleHealthRepository } from "../domains/health-v2/health-repository.js";
 import { HealthService } from "../domains/health-v2/health-service.js";
@@ -469,18 +467,6 @@ export function createProcessRuntime(
         policy: "data_import_runs",
         retentionMs: DATA_IMPORT_RETENTION_DAYS * 24 * 60 * 60 * 1_000,
         deleteBatch: (cutoff, limit) => deleteExpiredDataImportRunsBatch(db, cutoff, limit),
-      },
-      {
-        policy: "native_live_background_model_jobs",
-        retentionMs:
-          NATIVE_LIVE_BACKGROUND_MODEL_RETENTION_DAYS
-          * 24 * 60 * 60 * 1_000,
-        deleteBatch: (cutoff, limit) =>
-          deleteExpiredNativeLiveBackgroundModelJobsBatch(
-            db,
-            cutoff,
-            limit,
-          ),
       },
       ...(nativeLiveAttachmentObjectStore
         ? [{

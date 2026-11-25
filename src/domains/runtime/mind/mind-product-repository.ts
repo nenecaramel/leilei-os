@@ -13,10 +13,7 @@ import {
 import type { createDatabase } from "../../../database/client.js";
 import {
   conversationMessages,
-  nativeLiveBackgroundModelJobs,
-  runtimeEffects,
   runtimeMindSemanticGroupingRequests,
-  runtimeProactivityWakes,
   runtimeSubjectStates,
 } from "../../../database/schema.js";
 import { lockAndReadMcpIdempotency, recordMcpIdempotency } from "../../mcp-write/mcp-write-idempotency.js";
@@ -496,63 +493,6 @@ async function deleteOperationalReferences(
   subjectId: string,
   deleteIds: ReadonlySet<string>,
 ): Promise<void> {
-  const wakes = await transaction
-    .select({
-      id: runtimeProactivityWakes.id,
-      gate: runtimeProactivityWakes.gate,
-      contextSnapshot: runtimeProactivityWakes.contextSnapshot,
-      decision: runtimeProactivityWakes.decision,
-    })
-    .from(runtimeProactivityWakes)
-    .where(and(
-      eq(runtimeProactivityWakes.userId, userId),
-      eq(runtimeProactivityWakes.subjectId, subjectId),
-    ));
-  const wakeIds = wakes
-    .filter((wake) =>
-      structuredValueReferencesAnyId(wake.gate, deleteIds)
-      || structuredValueReferencesAnyId(
-        wake.contextSnapshot,
-        deleteIds,
-      )
-      || structuredValueReferencesAnyId(wake.decision, deleteIds)
-    )
-    .map((wake) => wake.id);
-
-  const effects = await transaction
-    .select({
-      id: runtimeEffects.id,
-      sourceWakeId: runtimeEffects.sourceWakeId,
-      payload: runtimeEffects.payload,
-    })
-    .from(runtimeEffects)
-    .where(and(
-      eq(runtimeEffects.userId, userId),
-      eq(runtimeEffects.subjectId, subjectId),
-    ));
-  const effectIds = effects
-    .filter((effect) =>
-      wakeIds.includes(effect.sourceWakeId)
-      || structuredValueReferencesAnyId(effect.payload, deleteIds)
-    )
-    .map((effect) => effect.id);
-  if (effectIds.length > 0) {
-    await transaction
-      .delete(runtimeEffects)
-      .where(and(
-        eq(runtimeEffects.userId, userId),
-        inArray(runtimeEffects.id, effectIds),
-      ));
-  }
-  if (wakeIds.length > 0) {
-    await transaction
-      .delete(runtimeProactivityWakes)
-      .where(and(
-        eq(runtimeProactivityWakes.userId, userId),
-        inArray(runtimeProactivityWakes.id, wakeIds),
-      ));
-  }
-
   const groupingRows = await transaction
     .select({
       id: runtimeMindSemanticGroupingRequests.id,
@@ -579,32 +519,6 @@ async function deleteOperationalReferences(
       .where(and(
         eq(runtimeMindSemanticGroupingRequests.userId, userId),
         inArray(runtimeMindSemanticGroupingRequests.id, groupingIds),
-      ));
-  }
-
-  const jobs = await transaction
-    .select({
-      id: nativeLiveBackgroundModelJobs.id,
-      workflowRunId: nativeLiveBackgroundModelJobs.workflowRunId,
-      payload: nativeLiveBackgroundModelJobs.workflowPayload,
-    })
-    .from(nativeLiveBackgroundModelJobs)
-    .where(eq(nativeLiveBackgroundModelJobs.userId, userId));
-  const jobIds = jobs
-    .filter((job) =>
-      (
-        job.workflowRunId !== null
-        && wakeIds.includes(job.workflowRunId)
-      )
-      || structuredValueReferencesAnyId(job.payload, deleteIds)
-    )
-    .map((job) => job.id);
-  if (jobIds.length > 0) {
-    await transaction
-      .delete(nativeLiveBackgroundModelJobs)
-      .where(and(
-        eq(nativeLiveBackgroundModelJobs.userId, userId),
-        inArray(nativeLiveBackgroundModelJobs.id, jobIds),
       ));
   }
 }

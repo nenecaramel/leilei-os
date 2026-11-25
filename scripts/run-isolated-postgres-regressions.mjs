@@ -95,7 +95,6 @@ run([
   "tests/native-live-persistent-wake.integration.test.ts",
   "tests/runtime-subject-state-repository.integration.test.ts",
   "tests/mind-memory-migration.integration.test.ts",
-  "tests/native-live-background-job-retention.integration.test.ts",
   "tests/retire-product-workspace-migration.test.ts",
   "tests/drop-empty-unused-tables-migration.test.ts",
   "tests/retire-product-workspace-schema.integration.test.ts",

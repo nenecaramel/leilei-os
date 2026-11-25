@@ -8,7 +8,6 @@ import {
 import {
   conversationMessages,
   conversationProviderSessionCheckpoints,
-  nativeLiveBackgroundModelJobs,
   nativeLiveProviderSessionCleanups,
   nativeLiveTurnPreparations,
   runtimeSubjectStates,
@@ -17,7 +16,6 @@ import {
   planCausalSubjectStatePurge,
   planExclusiveProviderSessionCleanup,
   planSubjectStateRepairs,
-  workflowReferencesAnyId,
   type ReplacementPurgePlan,
 } from "../native-live-replacement-purge.js";
 import type { TurnRepositoryContext } from "./types.js";
@@ -167,43 +165,6 @@ export async function purgeReplacementArtifacts(
       memoryLifecyclePolicy: this.memoryLifecyclePolicy,
       repairedAt: new Date().toISOString(),
     });
-    const causalIds = new Set<string>([
-      ...purgeMessageIds,
-      ...purgeStateIds,
-    ]);
-
-    const backgroundJobs = await transaction
-      .select({
-        id: nativeLiveBackgroundModelJobs.id,
-        workflowKind: nativeLiveBackgroundModelJobs.workflowKind,
-        workflowPayload: nativeLiveBackgroundModelJobs.workflowPayload,
-      })
-      .from(nativeLiveBackgroundModelJobs)
-      .where(eq(nativeLiveBackgroundModelJobs.userId, row.userId));
-
-    const purgeBackgroundJobIds = backgroundJobs
-      .filter((job) =>
-        workflowReferencesAnyId(
-          job.workflowPayload,
-          causalIds,
-        )
-      )
-      .map((job) => job.id);
-
-    if (purgeBackgroundJobIds.length > 0) {
-      await transaction
-        .delete(nativeLiveBackgroundModelJobs)
-        .where(
-          and(
-            eq(nativeLiveBackgroundModelJobs.userId, row.userId),
-            inArray(
-              nativeLiveBackgroundModelJobs.id,
-              purgeBackgroundJobIds,
-            ),
-          ),
-        );
-    }
-
     if (purgeStateIds.length > 0) {
       await transaction
         .delete(runtimeSubjectStates)

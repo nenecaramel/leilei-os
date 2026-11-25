@@ -6,7 +6,6 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   conversations,
-  nativeLiveBackgroundModelJobs,
   productCreateIdempotency,
   runtimeSubjectStates,
   runtimeContextManifests,
@@ -46,9 +45,6 @@ test(
     t.after(async () => {
       try {
         if (userId) {
-          await database.db
-            .delete(nativeLiveBackgroundModelJobs)
-            .where(eq(nativeLiveBackgroundModelJobs.userId, userId));
           await database.db
             .delete(runtimeSubjectStates)
             .where(eq(runtimeSubjectStates.userId, userId));

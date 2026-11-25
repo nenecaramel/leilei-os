@@ -108,9 +108,9 @@ test("process runtime owns retention scheduling and drains it before the databas
   await draining;
   await runtime.closeDatabase();
   // Current scheduling includes attachment retention and all operational tables.
-  assert.equal(transactionCalls, 10);
+  assert.equal(transactionCalls, 7);
   assert.deepEqual(events, [
-    ...Array.from({ length: 10 }, (_, index) => `retention_batch:${index + 1}`),
+    ...Array.from({ length: 7 }, (_, index) => `retention_batch:${index + 1}`),
     "database_closed",
   ]);
 });
@@ -178,16 +178,16 @@ test("successful listen emits service_started before starting retention work", (
 
 
 test("retired proactivity, effect delivery and the background model queue are gone", () => {
-  assert.doesNotMatch(processRuntimeSource, /proactivity|RuntimeEffect|WorkflowCoordinator|BackgroundModel(Queue|Relay|Service)/iu);
+  assert.doesNotMatch(processRuntimeSource, /proactivity|RuntimeEffect|WorkflowCoordinator|BackgroundModel/iu);
   for (const path of [
     "src/domains/runtime/proactivity",
     "src/domains/runtime/effects",
     "src/domains/bridge/background",
+    "src/domains/retention/native-live-background-job-retention.ts",
   ]) {
     assert.equal(existsSync(path), false, path);
   }
-  // Stored jobs still expire.
-  assert.match(processRuntimeSource, /policy: "native_live_background_model_jobs"/);
+  assert.doesNotMatch(processRuntimeSource, /native_live_background_model_jobs/);
 });
 
 

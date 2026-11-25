@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { PgDialect } from "drizzle-orm/pg-core";
 import {
+  deleteExpiredRuntimeOperationalRecordsBatch,
   RUNTIME_OPERATIONAL_RETENTION_DAYS,
   RUNTIME_OPERATIONAL_RETENTION_SPEC,
 } from "../src/domains/retention/runtime-operational-retention.js";
@@ -34,16 +36,33 @@ test("runtime operational retention declares a bounded TTL", () => {
   });
 });
 
-test("runtime retention deletes only reconciled terminal effect rows", () => {
-  assert.match(source, /status = 'observed'/);
-  assert.match(
-    source,
-    /status = 'failed' AND retryable = false/,
+test("runtime retention touches only live operational tables", async () => {
+  const statements: string[] = [];
+  const dialect = new PgDialect();
+  const transaction = {
+    execute: async (query: Parameters<PgDialect["sqlToQuery"]>[0]) => {
+      statements.push(dialect.sqlToQuery(query).sql);
+      return [];
+    },
+  };
+  const db = { transaction: (run: (tx: typeof transaction) => unknown) => run(transaction) };
+  assert.equal(
+    await deleteExpiredRuntimeOperationalRecordsBatch(db as never, new Date("2026-10-01T00:00:00.000Z"), 10),
+    0,
   );
-  assert.doesNotMatch(
-    source,
-    /status = 'unknown'[\s\S]*DELETE FROM runtime_effects/,
+  assert.deepEqual(
+    statements.map((statement) => statement.match(/DELETE FROM (\w+)/u)?.[1]),
+    [
+      "native_live_turn_preparations",
+      "runtime_context_manifests",
+      "runtime_mind_semantic_grouping_requests",
+      "native_live_provider_session_cleanups",
+      "native_live_runtime_listener_leases",
+    ],
   );
+  for (const retired of ["runtime_effects", "runtime_proactivity_wakes", "native_live_background_model_jobs"]) {
+    assert.equal(statements.some((statement) => statement.includes(retired)), false, retired);
+  }
 });
 
 test("turn preparation retention preserves unresolved follow-up and semantic work", () => {

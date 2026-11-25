@@ -267,7 +267,7 @@ test("a throwing observer cannot stop later policy retention", async () => {
 });
 
 
-test("background model operational retention emits its dedicated completion event", async () => {
+test("runtime operational retention emits its dedicated completion event", async () => {
   const events: unknown[] = [];
   const cutoffs: number[] = [];
   const coordinator = createRetentionCoordinator({
@@ -275,7 +275,7 @@ test("background model operational retention emits its dedicated completion even
     now: () => 10_000,
     observe: (event) => { events.push(event); },
     policies: [{
-      policy: "native_live_background_model_jobs",
+      policy: "runtime_operational_records",
       retentionMs: 7_000,
       deleteBatch: async (cutoff) => {
         cutoffs.push(cutoff.getTime());
@@ -288,8 +288,8 @@ test("background model operational retention emits its dedicated completion even
 
   assert.deepEqual(cutoffs, [3_000]);
   assert.deepEqual(events, [{
-    name: "native_live_background_model_jobs_cleanup_completed",
-    policy: "native_live_background_model_jobs",
+    name: "runtime_operational_records_cleanup_completed",
+    policy: "runtime_operational_records",
     deletedRows: 2,
     batches: 1,
     capped: false,
