@@ -608,11 +608,8 @@ test("internal relay silence wake endpoints use authenticated user scope and rej
           body: JSON.stringify({ epoch_id: epochId, slot: "mid_idle" }),
         },
       );
-      assert.equal(mid.status, 200);
-      assert.deepEqual(calls[2], {
-        name: "fire",
-        input: { userId, epochId, slot: "mid_idle" },
-      });
+      assert.equal(mid.status, 400);
+      assert.equal(calls.length, 2);
     },
   );
 });

@@ -237,7 +237,7 @@ test(
     assert.ok(afterQuietSchedule);
     assert.equal(afterQuietSchedule.postTurnConsumed, true);
     assert.equal(afterQuietSchedule.longIdleConsumed, false);
-    assert.equal(afterQuietSchedule.midIdleDueAt ?? null, null, "the mid slot is retired");
+    assert.equal("midIdleDueAt" in afterQuietSchedule, false, "the retired mid slot is off the wire");
 
     // The recurring wake rides the long slot on the wire: 30–40 minutes after
     // the later of the last assistant message and the last wake (the quiet post).

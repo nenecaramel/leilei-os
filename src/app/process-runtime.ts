@@ -102,7 +102,10 @@ import {
 } from "../domains/conversation/native-live-conversation-runtime-metadata.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/turn/native-live-backend-turn-repository.js";
 import { NativeLiveBackendTurnCoordinator } from "../domains/bridge/turn/native-live-backend-turn-coordinator.js";
-import { NativeLiveSilenceWakeService } from "../domains/bridge/turn/native-live-silence-wake.js";
+import {
+  NativeLiveSilenceWakeService,
+  type NativeLiveSilenceWakeSlot,
+} from "../domains/bridge/turn/native-live-silence-wake.js";
 import { NativeLiveBackendRelayPrepareCoordinator } from "../domains/bridge/relay/native-live-backend-relay-prepare.js";
 import {
   DrizzleNativeLiveBackendRelayRepository,
@@ -466,7 +469,7 @@ export function createProcessRuntime(
           async fire(_input: {
             userId: string;
             epochId: string;
-            slot: "post_turn_idle" | "mid_idle" | "long_idle";
+            slot: NativeLiveSilenceWakeSlot;
           }) {
             return {
               outcome: "ignored" as const,

@@ -2,6 +2,10 @@ import type {
   RequestHandler,
   Response,
 } from "express";
+import {
+  isSilenceWakeSlot,
+  type NativeLiveSilenceWakeSlot,
+} from "../../domains/bridge/turn/native-live-silence-wake.js";
 import type {
   NativeLiveRelayInternalDependencies,
 } from "./dependencies.js";
@@ -164,7 +168,7 @@ function errorRecord(
 
 function parseFireBody(value: unknown): {
   epoch_id: string;
-  slot: "post_turn_idle" | "mid_idle" | "long_idle";
+  slot: NativeLiveSilenceWakeSlot;
 } | null {
   if (
     !value
@@ -182,11 +186,7 @@ function parseFireBody(value: unknown): {
     || typeof record.epoch_id !== "string"
     || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
       .test(record.epoch_id)
-    || (
-      record.slot !== "post_turn_idle"
-      && record.slot !== "mid_idle"
-      && record.slot !== "long_idle"
-    )
+    || !isSilenceWakeSlot(record.slot)
   ) {
     return null;
   }
