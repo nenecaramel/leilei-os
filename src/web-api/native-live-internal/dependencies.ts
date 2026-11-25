@@ -1,6 +1,5 @@
 import type { NativeLiveBackendRelayService } from "../../domains/bridge/relay/native-live-backend-relay.js";
 import type { NativeLiveSemanticHandshakeService } from "../../domains/bridge/mind/native-live-semantic-handshake.js";
-import type { NativeLiveBackgroundModelQueueService } from "../../domains/bridge/background/native-live-background-model-queue.js";
 import type { NativeLiveRuntimeEventService } from "../../domains/bridge/runtime-interaction/native-live-runtime-event-stream.js";
 import type { NativeLiveRuntimeInteractionService } from "../../domains/bridge/runtime-interaction/native-live-runtime-interaction.js";
 import type { NativeLiveRuntimeControlService } from "../../domains/bridge/runtime-interaction/native-live-runtime-control.js";
@@ -25,10 +24,6 @@ export type NativeLiveRelayInternalDependencies = {
   semanticService?: Pick<
     NativeLiveSemanticHandshakeService,
     "reserveNext" | "submitScores" | "submitFallback"
-  >;
-  backgroundModelService?: Pick<
-    NativeLiveBackgroundModelQueueService,
-    "reserveNext" | "submitResult"
   >;
   runtimeEventService?: Pick<
     NativeLiveRuntimeEventService,

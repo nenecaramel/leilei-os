@@ -142,10 +142,6 @@ function createRepository(calls: string[] = []): ExportRepository {
       calls.push(`semantic_grouping_quiescence:${userId}`);
       return false;
     },
-    async hasIncompleteBackgroundModelJobs(userId) {
-      calls.push(`background_model_quiescence:${userId}`);
-      return false;
-    },
     async listConversations(userId) {
       calls.push(`conversations:${userId}`);
       return conversations;
@@ -237,17 +233,6 @@ test("ExportService does not block a portable snapshot on semantic grouping work
   const repository = createRepository();
   repository.hasIncompleteMindSemanticGrouping = async () => {
     throw new Error("semantic grouping quiescence must not be consulted");
-  };
-
-  const document = await new ExportService(repository).createExport(
-      USER_ID);
-  assert.equal(document.schema_version, 4);
-});
-
-test("ExportService does not block a portable snapshot on background model work", async () => {
-  const repository = createRepository();
-  repository.hasIncompleteBackgroundModelJobs = async () => {
-    throw new Error("background model quiescence must not be consulted");
   };
 
   const document = await new ExportService(repository).createExport(

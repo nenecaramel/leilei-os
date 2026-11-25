@@ -20,10 +20,6 @@ import {
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
 import { DrizzleNativeLiveCurrentPathReader } from "../src/domains/conversation/native-live-current-path-read-repository.js";
 import { NativeLiveConversationService } from "../src/domains/conversation/native-live-conversation-service.js";
-import {
-  DrizzleNativeLiveBackgroundModelQueueRepository,
-  NativeLiveBackgroundModelQueueService,
-} from "../src/domains/bridge/background/native-live-background-model-queue.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_CONVERSATION_DATABASE_TEST === "1";
@@ -780,28 +776,18 @@ test(
       },
     });
 
-    const backgroundQueue = new NativeLiveBackgroundModelQueueService(
-      new DrizzleNativeLiveBackgroundModelQueueRepository(database.db),
-    );
     const proactivityJobId = crypto.randomUUID();
-    await backgroundQueue.stage({
+    await database.db.insert(nativeLiveBackgroundModelJobs).values({
+      id: proactivityJobId,
       userId,
       subjectId: "G",
-      command: {
-        protocol_version: 1,
-        task_id: proactivityJobId,
-        task_kind: "proactivity_deliberate",
-        prompt_contract_version: "delete-test-v1",
-        prompt: "proactivity snapshot that must disappear",
-      },
-      workflow: {
-        kind: "proactivity_wake",
-        runId: wakeId,
-        payload: {
-          version: 1,
-          wake_id: wakeId,
-        },
-      },
+      workflowKind: "proactivity_wake",
+      workflowRunId: wakeId,
+      workflowPayload: { version: 1, wake_id: wakeId },
+      taskKind: "proactivity_deliberate",
+      promptContractVersion: "delete-test-v1",
+      prompt: "proactivity snapshot that must disappear",
+      status: "pending",
     });
 
     const effectId = crypto.randomUUID();
@@ -843,29 +829,6 @@ test(
       conversationId: deletedConversation.id,
     });
     assert.equal(archived.outcome, "archived");
-
-    await assert.rejects(
-      backgroundQueue.stage({
-        userId,
-        subjectId: "G",
-        command: {
-          protocol_version: 1,
-          task_id: crypto.randomUUID(),
-          task_kind: "proactivity_deliberate",
-          prompt_contract_version: "delete-test-v1",
-          prompt: "must not stage while source conversation is archived",
-        },
-        workflow: {
-          kind: "proactivity_wake",
-          runId: wakeId,
-          payload: {
-            version: 1,
-            wake_id: wakeId,
-          },
-        },
-      }),
-      /BackgroundWorkflowSourceInactive/,
-    );
 
     const activePage = await service.listConversationPage({
       userId,

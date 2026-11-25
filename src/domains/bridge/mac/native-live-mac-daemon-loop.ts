@@ -10,9 +10,8 @@ import type {
   NativeLiveExternalSessionExecutor,
   NativeLiveManualCompactExecutor,
   NativeLiveProviderSessionCleanupExecutor,
-  NativeLiveBackgroundModelExecutor,
 } from "./native-live-mac-daemon-contract.js";
-export type { NativeLiveDaemonLeaseState, NativeLiveDaemonReservation, NativeLiveProviderSessionCleanupReservation, NativeLiveBackgroundModelReservation, NativeLiveRuntimeControlReservation, NativeLiveDaemonRejectCode, NativeLiveResultSubmissionReceipt, NativeLiveDaemonRunOutcome, NativeLiveMacDaemonRelayClient, NativeLivePreparedCommandExecutor, NativeLiveDaemonIdleOpportunity, NativeLiveExternalSessionExecutor, NativeLiveManualCompactExecutor, NativeLiveProviderSessionCleanupExecutor, NativeLiveBackgroundModelExecutor } from "./native-live-mac-daemon-contract.js";
+export type { NativeLiveDaemonLeaseState, NativeLiveDaemonReservation, NativeLiveProviderSessionCleanupReservation, NativeLiveRuntimeControlReservation, NativeLiveDaemonRejectCode, NativeLiveResultSubmissionReceipt, NativeLiveDaemonRunOutcome, NativeLiveMacDaemonRelayClient, NativeLivePreparedCommandExecutor, NativeLiveDaemonIdleOpportunity, NativeLiveExternalSessionExecutor, NativeLiveManualCompactExecutor, NativeLiveProviderSessionCleanupExecutor } from "./native-live-mac-daemon-contract.js";
 import type {
   NativeLiveMacPersistentExecutor,
   NativeLiveMacPersistentExecution,
@@ -50,8 +49,6 @@ export class NativeLiveMacDaemonLoop {
     private readonly semanticScorer: BreathSemanticScorer | null = null,
     private readonly idleOpportunity:
       NativeLiveDaemonIdleOpportunity | null = null,
-    private readonly backgroundModelExecutor:
-      NativeLiveBackgroundModelExecutor | null = null,
     private readonly providerSessionCleanupExecutor:
       NativeLiveProviderSessionCleanupExecutor | null = null,
     private readonly manualCompactExecutor:
@@ -192,7 +189,7 @@ export class NativeLiveMacDaemonLoop {
         const maintenance = await runDaemonMaintenance({
           listenerInstanceId: this.listenerInstanceId, relay: this.relay,
           externalSessionExecutor: this.externalSessionExecutor, manualCompactExecutor: this.manualCompactExecutor,
-          providerSessionCleanupExecutor: this.providerSessionCleanupExecutor, backgroundModelExecutor: this.backgroundModelExecutor,
+          providerSessionCleanupExecutor: this.providerSessionCleanupExecutor,
           persistentExecutor: this.persistentExecutor,
         });
         if (maintenance) return maintenance;

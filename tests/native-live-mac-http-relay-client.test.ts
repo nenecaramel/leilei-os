@@ -434,69 +434,6 @@ test("Mac HTTP relay client treats non-success responses as transport failures w
   );
 });
 
-test("Mac HTTP relay client transports background model reservations without user identity", async () => {
-  const calls: Array<{ url: string; body: unknown }> = [];
-  const responses = [
-    {
-      success: true,
-      data: {
-        reservationId: prepareId,
-        command: {
-          protocol_version: 1,
-          task_id: prepareId,
-          task_kind: "proactivity_deliberate",
-          prompt_contract_version: "proactivity-wake-deliberation-v1",
-          prompt: "retain?",
-        },
-      },
-    },
-    { success: true, data: { accepted: true } },
-  ];
-  const fakeFetch: typeof fetch = async (input, init) => {
-    calls.push({
-      url: String(input),
-      body: init?.body ? JSON.parse(String(init.body)) : null,
-    });
-    return new Response(JSON.stringify(responses.shift()), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  };
-
-  const client = new NativeLiveMacHttpRelayClient(
-    "https://relay.example",
-    "secret-token",
-    fakeFetch,
-  );
-  const reservation = await client.reserveBackgroundModel({
-    listenerInstanceId: listenerId,
-    dispatchTarget: "claude_code",
-  });
-  assert.equal(reservation?.reservationId, prepareId);
-  assert.equal("userId" in reservation!.command, false);
-
-  await client.submitBackgroundModelResult({
-    listenerInstanceId: listenerId,
-    reservationId: prepareId,
-    result: {
-      protocol_version: 1,
-      task_id: prepareId,
-      task_kind: "proactivity_deliberate",
-      status: "success",
-      final_text: '{"decision":"discard"}',
-    },
-  });
-
-  assert.deepEqual(calls.map((call) => call.url), [
-    "https://relay.example/internal/native-live-relay/background-model/reserve",
-    `https://relay.example/internal/native-live-relay/background-model/reservations/${prepareId}/result`,
-  ]);
-  assert.deepEqual(calls[0]?.body, {
-    listener_instance_id: listenerId,
-    dispatch_target: "claude_code",
-  });
-});
-
 test("Mac HTTP relay client offers one scoped companion background opportunity", async () => {
   const calls: Array<{ url: string; body: unknown }> = [];
   const fakeFetch: typeof fetch = async (input, init) => {
@@ -1695,7 +1632,6 @@ test("main-loop reserve calls release the daemon when a response never arrives",
     external: () => client.reserveExternalSessions(input),
     compact: () => client.reserveManualCompact(input),
     cleanup: () => client.reserveProviderSessionCleanup(input),
-    background: () => client.reserveBackgroundModel(input),
   };
   for (const [name, call] of Object.entries(calls)) {
     let guard!: ReturnType<typeof setTimeout>;
@@ -1712,6 +1648,5 @@ test("main-loop reserve calls release the daemon when a response never arrives",
     "/internal/native-live-relay/external-sessions/reserve",
     "/internal/native-live-relay/manual-compact/reserve",
     "/internal/native-live-relay/provider-session-cleanup/reserve",
-    "/internal/native-live-relay/background-model/reserve",
   ]);
 });

@@ -42,11 +42,7 @@ import {
   createDefaultSubjectStateBackgroundMaintenance,
   DEFAULT_NATIVE_LIVE_SUBJECT_ID,
 } from "../domains/runtime/mind/default-backend-mind-runtime.js";
-import {
-  deleteExpiredNativeLiveBackgroundModelJobsBatch,
-  DrizzleNativeLiveBackgroundModelQueueRepository,
-  NativeLiveBackgroundModelQueueService,
-} from "../domains/bridge/background/native-live-background-model-queue.js";
+import { deleteExpiredNativeLiveBackgroundModelJobsBatch } from "../domains/retention/native-live-background-job-retention.js";
 import {
   BackgroundLoopOrchestrator,
 } from "../domains/runtime/background/background-loop-orchestrator.js";
@@ -332,30 +328,6 @@ export function createProcessRuntime(
   const backgroundOpportunityPolicy = new BackgroundOpportunityPolicy({
     decayEnabled: Boolean(memoryDecayConfig),
   });
-  const nativeLiveBackgroundModelService =
-    new NativeLiveBackgroundModelQueueService(
-      new DrizzleNativeLiveBackgroundModelQueueRepository(db),
-      nativeLiveWorkWakePublisher,
-    );
-  // The queue's only producer is retired. The Mac may still poll and
-  // deliver a stored result, but no new work is handed out.
-  const nativeLiveBackgroundModelRelayService = {
-    async reserveNext(
-      _input: Parameters<
-        NativeLiveBackgroundModelQueueService["reserveNext"]
-      >[0],
-    ) {
-      return null;
-    },
-    submitResult(
-      input: Parameters<
-        NativeLiveBackgroundModelQueueService["submitResult"]
-      >[0],
-    ) {
-      return nativeLiveBackgroundModelService.submitResult(input);
-    },
-  };
-
   const subjectStateBackgroundMaintenance =
     createDefaultSubjectStateBackgroundMaintenance(
       db,
@@ -657,8 +629,6 @@ export function createProcessRuntime(
               }
             : {}),
           semanticService: nativeLiveSemanticService,
-          backgroundModelService:
-            nativeLiveBackgroundModelRelayService,
           runtimeEventService:
             nativeLiveRuntimeEventService,
           runtimeInteractionService:

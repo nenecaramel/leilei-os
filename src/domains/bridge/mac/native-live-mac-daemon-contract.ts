@@ -15,11 +15,6 @@ import type {
 } from "../mind/native-live-semantic-handshake.js";
 
 import type {
-  NativeLiveBackgroundModelCommand,
-  NativeLiveBackgroundModelExecutionResult,
-} from "../background/native-live-background-model-protocol.js";
-
-import type {
   NativeLiveNormalizedEvent,
 } from "../../conversation/native-live-conversation-orchestrator.js";
 
@@ -43,11 +38,6 @@ export type NativeLiveProviderSessionCleanupReservation = {
   reservationId: string;
   providerSessionId: string;
   effectiveWorkingDirectory: string | null;
-};
-
-export type NativeLiveBackgroundModelReservation = {
-  reservationId: string;
-  command: NativeLiveBackgroundModelCommand;
 };
 
 export type NativeLiveRuntimeControlReservation = {
@@ -132,16 +122,6 @@ export type NativeLiveDaemonRunOutcome =
   | {
       outcome: "provider_session_cleanup_delivery_unknown";
       reservationId: string;
-    }
-  | {
-      outcome: "background_completed";
-      reservationId: string;
-      result: NativeLiveBackgroundModelExecutionResult;
-    }
-  | {
-      outcome: "background_delivery_unknown";
-      reservationId: string;
-      result: NativeLiveBackgroundModelExecutionResult;
     };
 
 export interface NativeLiveMacDaemonRelayClient {
@@ -219,17 +199,6 @@ export interface NativeLiveMacDaemonRelayClient {
     outcome:
       | { status: "success" }
       | { status: "failure"; failureCode: string };
-  }): Promise<void>;
-
-  reserveBackgroundModel?(input: {
-    listenerInstanceId: string;
-    dispatchTarget: "claude_code";
-  }): Promise<NativeLiveBackgroundModelReservation | null>;
-
-  submitBackgroundModelResult?(input: {
-    listenerInstanceId: string;
-    reservationId: string;
-    result: NativeLiveBackgroundModelExecutionResult;
   }): Promise<void>;
 
   reserveSemanticScoring?(input: {
@@ -394,10 +363,4 @@ export interface NativeLiveProviderSessionCleanupExecutor {
     sessionId: string,
     expectedWorkingDirectory: string | null,
   ): Promise<void>;
-}
-
-export interface NativeLiveBackgroundModelExecutor {
-  execute(
-    command: unknown,
-  ): Promise<NativeLiveBackgroundModelExecutionResult>;
 }
