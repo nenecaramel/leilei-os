@@ -1,0 +1,244 @@
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, writeSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { z } from "zod";
+import { breathLexicalScore } from "../../runtime/breath/breath-recall.js";
+import type { BreathSemanticScorer } from "../../runtime/breath/breath-semantic-recall.js";
+
+const uuid = z.string().uuid();
+export const mindComparisonOfferSchema = z.object({
+  session: z.string().regex(/^[a-f0-9]{64}$/),
+  query: z.string().min(1).max(16_000),
+  outcome: z.enum(["delivered", "empty", "failed"]),
+  current_ids: z.array(uuid).max(256),
+  exclude_ids: z.array(uuid).max(20_000),
+  current_ms: z.number().int().min(0).max(60_000),
+}).strict();
+export type MindComparisonOffer = z.infer<typeof mindComparisonOfferSchema>;
+
+const pageSchema = z.object({
+  success: z.literal(true),
+  data: z.object({
+    version: z.string().regex(/^[a-f0-9]{64}$/),
+    total: z.number().int().min(0).max(30_000),
+    memories: z.array(z.object({stateId: uuid, text: z.string().min(1).max(2000)})).max(128),
+    next_offset: z.number().int().min(1).max(30_000).nullable(),
+  }),
+});
+
+type Memory = {stateId: string; text: string};
+type Library = {version: string; memories: Memory[]; loadedAt: number};
+type Row = {id: string; sem: number; lex: number};
+
+/** Trial policy. The log keeps the top rows so other policies can be replayed offline. */
+export const MIND_COMPARISON_POLICY = {semanticFloor: 0.8, medianMargin: 0.04, semanticWeight: 0.65, secondWithin: 0.02, limit: 2} as const;
+
+function combined(row: Row): number {
+  return MIND_COMPARISON_POLICY.semanticWeight * row.sem + (1 - MIND_COMPARISON_POLICY.semanticWeight) * row.lex;
+}
+
+function semanticMedian(rows: readonly Row[]): number {
+  const ordered = rows.map(row => row.sem).sort((a, b) => a - b);
+  const middle = Math.floor(ordered.length / 2);
+  if (ordered.length === 0) return 0;
+  return ordered.length % 2 === 1 ? ordered[middle]! : (ordered[middle - 1]! + ordered[middle]!) / 2;
+}
+
+export function chooseMindComparison(rows: readonly Row[]): string[] {
+  // E5 scores sit close together, so a match must also stand out from this prompt's own middle.
+  const floor = rows.length < 8 ? MIND_COMPARISON_POLICY.semanticFloor
+    : Math.max(MIND_COMPARISON_POLICY.semanticFloor, semanticMedian(rows) + MIND_COMPARISON_POLICY.medianMargin);
+  const ranked = rows.filter(row => row.sem >= floor)
+    .sort((a, b) => combined(b) - combined(a));
+  const first = ranked[0];
+  if (!first) return [];
+  return ranked.slice(0, MIND_COMPARISON_POLICY.limit)
+    .filter(row => combined(first) - combined(row) <= MIND_COMPARISON_POLICY.secondWithin)
+    .map(row => row.id);
+}
+
+export function defaultMindComparisonDirectory(): string {
+  return join(homedir(), ".leileios", "mind-comparison");
+}
+
+/**
+ * Trial of a Mac-side recall. Output goes only to a private local log and is never
+ * delivered to Claude. Work happens on offers alone: no timers, polling or startup load.
+ * Memory text stays in RAM; the log holds the prompt, record ids and scores.
+ */
+export class NativeLiveMacMindComparison {
+  private library: Library | null = null;
+  private running: Promise<void> | null = null;
+  private dropped = 0;
+  private stopped = false;
+  private readonly abort = new AbortController();
+  private readonly now: () => number;
+
+  constructor(private readonly options: {
+    baseUrl: string;
+    token: string;
+    scorer: BreathSemanticScorer;
+    directory?: string;
+    /** Lets the real recall of this turn finish with the shared scorer first. */
+    delayMs?: number;
+    libraryMaxAgeMs?: number;
+    maxLogBytes?: number;
+    fetch?: typeof fetch;
+    now?: () => number;
+  }) {
+    this.now = options.now ?? Date.now;
+  }
+
+  offer(input: MindComparisonOffer): boolean {
+    if (this.stopped) return false;
+    if (this.running) { this.dropped += 1; return false; }
+    const dropped = this.dropped;
+    this.dropped = 0;
+    this.running = this.run(input, dropped).catch(() => undefined).finally(() => { this.running = null; });
+    return true;
+  }
+
+  async idle(): Promise<void> { await this.running; }
+
+  async close(): Promise<void> {
+    this.stopped = true;
+    this.abort.abort();
+    await this.running;
+  }
+
+  private async run(input: MindComparisonOffer, dropped: number): Promise<void> {
+    await this.pause(this.options.delayMs ?? 4_000);
+    let result: Record<string, unknown>;
+    try {
+      result = {status: "compared", ...await this.compare(input)};
+    } catch {
+      result = {status: "failed"};
+    }
+    if (this.abort.signal.aborted) return;
+    this.append({
+      at: new Date(this.now()).toISOString(), session: input.session, query: input.query,
+      outcome: input.outcome, current_ids: input.current_ids, current_ms: input.current_ms,
+      dropped_before: dropped, ...result,
+    });
+    if (this.library && !this.stopped
+      && this.now() - this.library.loadedAt > (this.options.libraryMaxAgeMs ?? 600_000)) {
+      // Keep the older library when a refresh fails; the next comparison retries.
+      await this.loadLibrary().catch(() => undefined);
+    }
+  }
+
+  private async compare(input: MindComparisonOffer) {
+    const library = this.library ?? await this.loadLibrary();
+    const excluded = new Set(input.exclude_ids);
+    const eligible = library.memories.filter(memory => !excluded.has(memory.stateId));
+    const started = performance.now();
+    const scores = await this.options.scorer.score({
+      query: input.query,
+      candidates: eligible.map(memory => ({...memory, kind: "memory" as const})),
+    });
+    const rows = eligible.map(memory => ({
+      id: memory.stateId,
+      sem: scores.get(memory.stateId) ?? 0,
+      lex: breathLexicalScore(input.query, memory.text),
+    }));
+    const shadow = chooseMindComparison(rows);
+    const round = (value: number) => Math.round(value * 10_000) / 10_000;
+    return {
+      shadow_ids: shadow,
+      shadow_ms: Math.round(performance.now() - started),
+      library_size: library.memories.length,
+      library_version: library.version,
+      library_age_ms: this.now() - library.loadedAt,
+      sem_median: round(semanticMedian(rows)),
+      policy: MIND_COMPARISON_POLICY,
+      top: [...rows].sort((a, b) => combined(b) - combined(a)).slice(0, 10)
+        .map(row => ({id: row.id, sem: round(row.sem), lex: round(row.lex)})),
+    };
+  }
+
+  private async loadLibrary(): Promise<Library> {
+    let library: Library;
+    try { library = await this.fetchLibrary(); }
+    catch (error) {
+      if (this.abort.signal.aborted) throw error;
+      library = await this.fetchLibrary(); // Version changed between pages, or a transient failure.
+    }
+    // Small batches keep the shared scorer available to a real /score.
+    for (let index = 0; index < library.memories.length; index += 8) {
+      if (this.abort.signal.aborted) throw new Error("Stopped.");
+      await this.options.scorer.score({
+        query: "library",
+        candidates: library.memories.slice(index, index + 8).map(memory => ({...memory, kind: "memory" as const})),
+      });
+    }
+    this.library = library;
+    return library;
+  }
+
+  private async fetchLibrary(): Promise<Library> {
+    const signal = AbortSignal.any([this.abort.signal, AbortSignal.timeout(20_000)]);
+    const memories: Memory[] = [];
+    const seen = new Set<string>();
+    let version: string | null = null;
+    let offset = 0;
+    for (;;) {
+      const response = await this.untilAborted(signal, (this.options.fetch ?? fetch)(
+        `${this.options.baseUrl}/internal/mind/snapshot?offset=${offset}`,
+        {redirect: "error", signal, headers: {authorization: `Bearer ${this.options.token}`}},
+      ));
+      if (!response.ok) { await response.body?.cancel(); throw new Error("Snapshot unavailable."); }
+      const {data} = pageSchema.parse(await this.untilAborted(signal, response.json() as Promise<unknown>));
+      if (version !== null && version !== data.version) throw new Error("Snapshot changed.");
+      version = data.version;
+      for (const memory of data.memories) {
+        if (seen.has(memory.stateId)) throw new Error("Snapshot repeated a record.");
+        seen.add(memory.stateId);
+        memories.push(memory);
+      }
+      if (data.next_offset === null) {
+        if (memories.length !== data.total) throw new Error("Snapshot incomplete.");
+        return {version, memories, loadedAt: this.now()};
+      }
+      if (data.next_offset <= offset) throw new Error("Snapshot did not advance.");
+      offset = data.next_offset;
+    }
+  }
+
+  private untilAborted<T>(signal: AbortSignal, work: Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const stop = () => reject(new Error("Stopped."));
+      if (signal.aborted) { stop(); return; }
+      signal.addEventListener("abort", stop, {once: true});
+      work.then(resolve, reject).finally(() => signal.removeEventListener("abort", stop));
+    });
+  }
+
+  private pause(ms: number): Promise<void> {
+    return new Promise(resolve => {
+      const finish = () => { clearTimeout(timer); this.abort.signal.removeEventListener("abort", finish); resolve(); };
+      const timer = setTimeout(finish, ms);
+      this.abort.signal.addEventListener("abort", finish, {once: true});
+    });
+  }
+
+  private append(record: Record<string, unknown>): void {
+    const line = JSON.stringify(record) + "\n";
+    const directory = this.options.directory ?? defaultMindComparisonDirectory();
+    let descriptor: number | undefined;
+    try {
+      mkdirSync(directory, {recursive: true, mode: 0o700});
+      const folder = lstatSync(directory);
+      if (!folder.isDirectory() || (folder.mode & 0o077) !== 0) throw new Error("Unsafe directory.");
+      descriptor = openSync(join(directory, "log.jsonl"),
+        constants.O_APPEND | constants.O_CREAT | constants.O_WRONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600);
+      const file = fstatSync(descriptor);
+      if (!file.isFile() || file.nlink !== 1 || (file.mode & 0o077) !== 0) throw new Error("Unsafe file.");
+      if (file.size + Buffer.byteLength(line) > (this.options.maxLogBytes ?? 8 * 1024 * 1024)) {
+        this.stopped = true; // A full trial stays as evidence; it is never rotated away.
+        return;
+      }
+      writeSync(descriptor, line);
+    } catch { /* The trial must never affect the daemon. */ }
+    finally { if (descriptor !== undefined) closeSync(descriptor); }
+  }
+}
