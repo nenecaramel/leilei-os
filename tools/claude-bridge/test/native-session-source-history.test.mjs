@@ -47,14 +47,6 @@ test('source checkpoint remains display-only: reconstructed chain is not a provi
   assert.ok(durableCheckpointPrefix(current.entries,'a2'));
 });
 
-test('asset revision is invariant to JSONB object key ordering but sensitive to bytes and order', async () => {
-  const { nativeDisplayAssetRevision } = await import('../src/native-session-history.mjs');
-  assert.equal(nativeDisplayAssetRevision([{uuid:'a',type:'user',message:{content:[{type:'image',source:{data:'AA==',type:'base64'}}]}}]),
-    nativeDisplayAssetRevision([{message:{content:[{source:{type:'base64',data:'AA=='},type:'image'}]},type:'user',uuid:'a'}]));
-  assert.notEqual(nativeDisplayAssetRevision([{data:'AA=='}]),nativeDisplayAssetRevision([{data:'AQ=='}]));
-  assert.notEqual(nativeDisplayAssetRevision(['a','b']),nativeDisplayAssetRevision(['b','a']));
-});
-
 test('retained final response joins preceding tool activity in the same original assistant turn', () => {
   const source = snap('source', [row('u',null,'user','question'),row('tool','u','assistant',[{type:'tool_use',id:'t',name:'read',input:{}}]),
     row('result','tool','user',[{type:'tool_result',tool_use_id:'t',content:'done'}]),row('a','result','assistant','reply')]);

@@ -6,13 +6,6 @@ const carrierTypes = new Set(["user", "assistant", "system", "attachment"]);
 const fail = code => Object.assign(new Error(code), { code });
 const fingerprint = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const assetFingerprint = source => fingerprint(Object.fromEntries(Object.entries(source).sort(([a], [b]) => a.localeCompare(b))));
-// PostgreSQL JSONB preserves values but not object key order.
-export function nativeDisplayAssetRevision(entries) {
-  const canonical = value => Array.isArray(value) ? value.map(canonical)
-    : value !== null && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
-  return fingerprint(canonical(entries));
-}
-
 // Display ancestry may cross a compaction boundary. This is deliberately NOT
 // the provider resume/fork prefix: never substitute it for execution validation.
 function displayChain(snapshot, checkpointId) {
@@ -136,23 +129,6 @@ export function nativeDisplayChain(snapshot, checkpointId, { sourceSnapshots = [
     return result;
   }
   return walk(snapshot, checkpointId);
-}
-
-// Desktop does not update its index while another client appends to the native
-// session. Follow only a completed descendant, never infer a different branch.
-export function nativeContinuationCheckpoint(snapshot, desktopCheckpointId, options) {
-  const tail = snapshot.entries.findLast(entry => entry && !entry.isSidechain
-    && carrierTypes.has(entry.type) && typeof entry.uuid === 'string' && Object.hasOwn(entry, 'parentUuid'));
-  if (!tail) throw fail('NATIVE_HISTORY_GAP');
-  const chain = nativeDisplayChain(snapshot, tail.uuid, options);
-  if (!chain.some(entry => entry.uuid === desktopCheckpointId)) throw fail('EXPLICIT_BRANCH_SELECTION_REQUIRED');
-  const last = chain.findLast(entry => !entry.isMeta && !entry.isCompactSummary
-    && ['user', 'assistant'].includes(entry.type));
-  if (last?.type !== 'assistant' || last.message?.stop_reason === 'tool_use'
-    || (Array.isArray(last.message?.content) && last.message.content.at(-1)?.type === 'tool_use')) {
-    throw fail('NATIVE_TURN_UNFINISHED');
-  }
-  return last.uuid;
 }
 
 function contentBlocks(entry) {

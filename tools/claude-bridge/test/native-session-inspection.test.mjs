@@ -84,7 +84,7 @@ test("inspection connects verified identity, history and activity without granti
 });
 
 test("switch continuation follows completed native additions without changing the Desktop index", async () => {
-  const { inspectDesktopNativeSession, readDesktopNativeHistory } = await import(moduleUrl);
+  const { inspectDesktopNativeSession, readNativeContinuationEvidence } = await import(moduleUrl);
   await fixture(async ({ root, indexFile, transcriptFile }) => {
     const newUser = '00000000-0000-4000-8000-000000000006';
     const newAssistant = '00000000-0000-4000-8000-000000000007';
@@ -94,14 +94,13 @@ test("switch continuation follows completed native additions without changing th
     ];
     await writeFile(transcriptFile, next.map(JSON.stringify).join('\n'));
     const beforeIndex = await readFile(indexFile);
-    const input = { indexFile, projectDirectory: root, peerDirectory: root, followNativeContinuation: true };
+    const input = { indexFile, projectDirectory: root, peerDirectory: root, historyMode: 'continuation', followNativeContinuation: true };
     const selection = await inspectDesktopNativeSession(input);
     assert.equal(selection.providerCheckpointId, newAssistant);
-    assert.equal(selection.history.messageCount, 4);
-    const history = await readDesktopNativeHistory({ ...input, expectedSessionId: A,
+    const evidence = await readNativeContinuationEvidence({ ...input, expectedSessionId: A,
       expectedCheckpointId: newAssistant, expectedRevision: selection.nativeRevision });
-    assert.equal(history.projection.messages.at(-1).sourceMessageId, newAssistant);
-    assert.equal(history.nativeSnapshot.entries.length, 4);
+    assert.deepEqual([...evidence.checkpointIds].sort(), [U, CP, newUser, newAssistant].sort());
+    assert.doesNotMatch(JSON.stringify(evidence), /PRIVATE_/);
     assert.deepEqual(await readFile(indexFile), beforeIndex);
     assert.doesNotMatch(JSON.stringify(selection), /PRIVATE_/);
     await writeFile(transcriptFile, next.slice(0, -1).map(JSON.stringify).join('\n'));
@@ -231,49 +230,38 @@ test("existing transport exposes inspection without loading SDK execution or cha
   });
 });
 
-test("history read requires the exact selected session and snapshot revision", async () => {
-  const { inspectDesktopNativeSession, readDesktopNativeHistory } = await import(moduleUrl);
+test("continuation evidence requires the exact selected session and snapshot revision", async () => {
+  const { inspectDesktopNativeSession, readNativeContinuationEvidence } = await import(moduleUrl);
   await fixture(async ({ root, indexFile, transcriptFile }) => {
     const input = { indexFile, projectDirectory: root, peerDirectory: root, probeProcessStart: async () => started };
     const selected = await inspectDesktopNativeSession(input);
-    const result = await readDesktopNativeHistory({ ...input, expectedSessionId: A, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision });
-    assert.equal(result.projection.messages[0].blocks[0].text, "PRIVATE_PROMPT");
-    assert.equal(result.projection.messages[1].blocks[0].text, "PRIVATE_REPLY");
-    assert.equal(result.projection.checkpointId, CP);
-    assert.equal(result.inspection.handoffAllowed, false);
-    await assert.rejects(() => readDesktopNativeHistory(input), e => e.code === "STALE_NATIVE_SELECTION");
-    await assert.rejects(() => readDesktopNativeHistory({ ...input, expectedSessionId: D, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision }), e => e.code === "STALE_NATIVE_SELECTION");
+    const pinned = { ...input, expectedSessionId: A, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision };
+    const result = await readNativeContinuationEvidence(pinned);
+    assert.deepEqual([result.checkpointId, result.inspection.handoffAllowed], [CP, false]);
+    await assert.rejects(() => readNativeContinuationEvidence(input), e => e.code === "STALE_NATIVE_SELECTION");
+    await assert.rejects(() => readNativeContinuationEvidence({ ...pinned, expectedSessionId: D }), e => e.code === "STALE_NATIVE_SELECTION");
     await writeFile(transcriptFile, [...entries, { type: "attachment", uuid: C, parentUuid: CP }].map(JSON.stringify).join("\n"));
-    await assert.rejects(() => readDesktopNativeHistory({ ...input, expectedSessionId: A, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision }), e => e.code === "STALE_NATIVE_SELECTION");
+    await assert.rejects(() => readNativeContinuationEvidence(pinned), e => ["STALE_NATIVE_SELECTION", "NATIVE_TURN_UNFINISHED"].includes(e.code));
   });
 });
 
-test("missing original compact history cannot be downloaded as a complete history payload", async () => {
-  const { inspectDesktopNativeSession, readDesktopNativeHistory } = await import(moduleUrl);
+test("a Desktop-selected head on another branch is refused even when native file bytes have not changed", async () => {
+  const { inspectDesktopNativeSession, readNativeContinuationEvidence } = await import(moduleUrl);
   await fixture(async ({ root, indexFile, transcriptFile }) => {
-    await writeFile(transcriptFile, [
-      { type: "system", subtype: "compact_boundary", uuid: C, parentUuid: null, logicalParentUuid: CP },
-      { ...entries[0], parentUuid: C, isCompactSummary: true }, entries[1],
-    ].map(JSON.stringify).join("\n"));
-    const input = { indexFile, projectDirectory: root, peerDirectory: root, probeProcessStart: async () => started };
-    const selected = await inspectDesktopNativeSession(input);
-    await assert.rejects(() => readDesktopNativeHistory({ ...input, expectedSessionId: A, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision }), e => e.code === "COMPACT_SOURCE_HISTORY_REQUIRED");
-  });
-});
-
-test("a Desktop-selected head change is stale even when native file bytes have not changed", async () => {
-  const { inspectDesktopNativeSession, readDesktopNativeHistory } = await import(moduleUrl);
-  await fixture(async ({ root, indexFile, transcriptFile }) => {
+    // Two replies to one prompt: the last one is the branch execution continues.
     await writeFile(transcriptFile, [...entries, { ...entries[1], uuid: C }].map(JSON.stringify).join("\n"));
     const input = { indexFile, projectDirectory: root, peerDirectory: root, probeProcessStart: async () => started };
-    const selected = await inspectDesktopNativeSession(input);
     await writeFile(indexFile, JSON.stringify({ ...metadata, lastAssistantUuid: C }));
-    await assert.rejects(() => readDesktopNativeHistory({ ...input, expectedSessionId: A, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision }), e => e.code === "STALE_NATIVE_SELECTION");
+    const selected = await inspectDesktopNativeSession(input);
+    const pinned = { ...input, expectedSessionId: A, expectedCheckpointId: C, expectedRevision: selected.nativeRevision };
+    assert.equal((await readNativeContinuationEvidence(pinned)).checkpointId, C);
+    await writeFile(indexFile, JSON.stringify({ ...metadata, lastAssistantUuid: CP }));
+    await assert.rejects(() => readNativeContinuationEvidence(pinned), e => e.code === "EXPLICIT_BRANCH_SELECTION_REQUIRED");
   });
 });
 
-test("internal selected history retains complete native records without leaking them into diagnostics", async () => {
-  const { inspectDesktopNativeSession, readDesktopNativeHistory } = await import(moduleUrl);
+test("diagnostics and continuation evidence never carry native record bodies", async () => {
+  const { inspectDesktopNativeSession, readNativeContinuationEvidence } = await import(moduleUrl);
   await fixture(async ({ root, indexFile, transcriptFile }) => {
     const nativeEntries = [
       { ...entries[0], message: { content: [
@@ -291,10 +279,9 @@ test("internal selected history retains complete native records without leaking 
     const bytes = await readFile(transcriptFile);
     const input = { indexFile, projectDirectory: root, peerDirectory: root, probeProcessStart: async () => started };
     const selected = await inspectDesktopNativeSession(input);
-    const result = await readDesktopNativeHistory({ ...input, expectedSessionId: A, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision });
-    assert.deepEqual(result.nativeSnapshot, { sessionId: A, revision: selected.nativeRevision, entries: nativeEntries });
-    assert.equal(result.projection.messages.length, 2);
-    assert.doesNotMatch(JSON.stringify(result.projection), /PRIVATE_THINKING|PRIVATE_SIDECHAIN|synthetic-signature|c3ludGhldGlj/);
+    const result = await readNativeContinuationEvidence({ ...input, expectedSessionId: A, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision });
+    assert.deepEqual(Object.keys(result).sort(), ["checkpointId", "checkpointIds", "completedTurnCheckpointIds", "inspection"]);
+    assert.doesNotMatch(JSON.stringify(result), /PRIVATE|synthetic-signature|c3ludGhldGlj|file-history-snapshot/);
     assert.doesNotMatch(JSON.stringify(selected), /PRIVATE|synthetic-signature|c3ludGhldGlj|file-history-snapshot/);
     const stdout = execFileSync(process.execPath, [new URL("../scripts/native-session-inspect.mjs", import.meta.url).pathname,
       "--desktop-index", indexFile, "--project-dir", root, "--peer-dir", root], { encoding: "utf8" });
@@ -303,8 +290,8 @@ test("internal selected history retains complete native records without leaking 
   });
 });
 
-test('inspection resolves compact fork sources, pins their revisions, and ships only original asset bytes as display evidence', async () => {
-  const { inspectDesktopNativeSession, readDesktopNativeHistory } = await import(moduleUrl);
+test('inspection resolves compact fork sources and reflects their revisions without exposing any content', async () => {
+  const { inspectDesktopNativeSession } = await import(moduleUrl);
   await fixture(async ({root,indexFile,transcriptFile}) => {
     const B = '00000000-0000-4000-8000-000000000008';
     const summary = '00000000-0000-4000-8000-000000000009';
@@ -322,14 +309,11 @@ test('inspection resolves compact fork sources, pins their revisions, and ships 
     const input = {indexFile,projectDirectory:root,peerDirectory:root};
     const selection = await inspectDesktopNativeSession(input);
     assert.equal(selection.history.state,'complete'); assert.equal(selection.history.messageCount,2);
-    const pinned = {...input,expectedSessionId:A,expectedCheckpointId:CP,expectedRevision:selection.nativeRevision,expectedHistoryRevision:selection.historyRevision};
-    const history = await readDesktopNativeHistory(pinned);
-    assert.deepEqual(history.nativeSnapshot.entries,compact);
-    assert.deepEqual(history.nativeSnapshot.displayAssets.entries,[{type:'user',uuid:U,message:{content:[image]}}]);
-    assert.doesNotMatch(JSON.stringify(history.projection),/SOURCE LATER TAIL|SUMMARY/);
     assert.doesNotMatch(JSON.stringify(selection),/PRIVATE_|SOURCE LATER TAIL|AA==/);
     await writeFile(sourceFile,[...original,{type:'progress',data:'changed source'}].map(JSON.stringify).join('\n'));
-    await assert.rejects(readDesktopNativeHistory(pinned), e=>e.code==='STALE_NATIVE_SELECTION');
+    const changed = await inspectDesktopNativeSession(input);
+    assert.equal(changed.nativeRevision,selection.nativeRevision);
+    assert.notEqual(changed.historyRevision,selection.historyRevision);
   });
 });
 
@@ -431,8 +415,31 @@ test('unavailable catalog entries retain safe identity and title but stay unsele
     assert.equal(entry.handoffAllowed, false);
     assert.equal(entry.isArchived, true);
     assert.doesNotMatch(JSON.stringify(entry), /PRIVATE_|\/fixture|lastAssistantUuid/);
-    const choices = buildSwitchChoices('leileios', [], [{ ...entry, isArchived: false }], { historyMode: 'continuation' });
+    const choices = buildSwitchChoices('leileios', [], [{ ...entry, isArchived: false }]);
     assert.equal(choices[0].sessionId, A);
     assert.throws(() => pickSwitchChoice(choices, '1'), { code: 'NATIVE_TURN_UNFINISHED' });
+  });
+});
+
+test('switch selection needs only the execution root of a compacted session, with or without a Desktop window', async () => {
+  const { resolveDesktopNativeSelection } = await import(moduleUrl);
+  await fixture(async ({ root, indexFile }) => {
+    const desktopSessionsDirectory = path.join(root, 'indices');
+    const projectsDirectory = path.join(root, 'projects');
+    const org = path.join(desktopSessionsDirectory, 'account', 'org');
+    const project = path.join(projectsDirectory, '-fixture');
+    await mkdir(org, { recursive: true });
+    await mkdir(project, { recursive: true });
+    const boundary = '00000000-0000-4000-8000-000000000009';
+    await writeFile(path.join(project, `${A}.jsonl`), [
+      { type: 'system', subtype: 'compact_boundary', uuid: boundary, parentUuid: null, logicalParentUuid: C },
+      { ...entries[0], parentUuid: boundary, isCompactSummary: true, cwd: '/fixture' }, entries[1],
+    ].map(JSON.stringify).join('\n'));
+    const input = { desktopSessionsDirectory, projectsDirectory, peerDirectory: root, probeProcessStart: async () => started, sessionId: A };
+    const local = await resolveDesktopNativeSelection(input);
+    assert.deepEqual([local.indexFile, local.inspection.providerCheckpointId, local.inspection.continuationReady], [null, CP, true]);
+    await copyFile(indexFile, path.join(org, `local_${D}.json`));
+    const window = await resolveDesktopNativeSelection(input);
+    assert.deepEqual([window.inspection.desktopSessionId, window.inspection.providerCheckpointId, window.inspection.continuationReady], [`local_${D}`, CP, true]);
   });
 });

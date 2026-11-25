@@ -32,11 +32,11 @@ workflow. The picker and fixed wrapper now pass `--history-mode continuation`.
 Wait for generation to finish; quit Desktop (⌘Q) before switching to LeileiOS.
 The other client must remain closed while this Session is in use.
 
-The low-level switch CLI still defaults to `complete` for backwards-compatible
-explicit historical import. It is not an automatic fallback. The local wrapper's
-programmatic `historyMode: 'complete'` retains its previous archive option;
-**daily continuation mode never runs after-switch archival**, even if an old
-`AUTO_APPLY` flag exists. This change does not disable independently scheduled
+The low-level switch CLI, the picker and the preflight accept only this mode;
+`--history-mode` stays as an optional flag. Only the read-only diagnostics
+(`native-session-inspect.mjs`, `native-session-catalog.mjs --desktop`) still report
+whether display history is complete. **Switching never runs after-switch
+archival**, even if an old `AUTO_APPLY` flag exists. This change does not disable independently scheduled
 archive jobs, restore missing files, modify archive retention or move backups.
 
 ## Durable and concurrency boundaries

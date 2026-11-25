@@ -43,9 +43,24 @@ test('switch preflight pins complete source and environment without granting exe
     assert.equal(result.release.state, 'not_open_observed');
     assert.equal(result.executionAuthorized, false);
     assert.equal(result.readOnly, true);
-    assert.equal(result.messageCount, 2);
+    assert.deepEqual(Object.keys(result).sort(), ['executionAuthorized', 'nativeRevision', 'providerCheckpointId', 'providerSessionId', 'readOnly', 'release', 'workingDirectory']);
     assert.doesNotMatch(JSON.stringify(result), /PRIVATE_PROMPT|PRIVATE_REPLY|PRIVATE_KEY/);
     assert.deepEqual(await readFile(transcriptFile), before);
+  });
+});
+
+test('switch preflight needs only the execution root of a compacted session', async () => {
+  const { preflightNativeSessionSwitch } = await import(moduleUrl);
+  await fixture(async ({ input, transcriptFile }) => {
+    const text = [
+      { type: 'system', subtype: 'compact_boundary', uuid: D, parentUuid: null, logicalParentUuid: '00000000-0000-4000-8000-000000000009' },
+      { type: 'user', uuid: U, parentUuid: D, isCompactSummary: true, message: { content: 'PRIVATE_SUMMARY' } },
+      { type: 'assistant', uuid: CP, parentUuid: U, message: { content: 'PRIVATE_REPLY' } },
+    ].map(JSON.stringify).join('\n');
+    await writeFile(transcriptFile, text);
+    const result = await preflightNativeSessionSwitch({ ...input, expectedRevision: createHash('sha256').update(text).digest('hex') });
+    assert.equal(result.providerCheckpointId, CP);
+    assert.doesNotMatch(JSON.stringify(result), /PRIVATE_/);
   });
 });
 
@@ -157,7 +172,7 @@ test('switch requests separate timeout from opaque server rejection without leak
         queueMicrotask(() => controller.abort(new DOMException('PRIVATE_BODY_AND_TOKEN', 'TimeoutError')));
       }),
     });
-    await assert.rejects(timedOut('attachment-upload-slot', { small: true }),
+    await assert.rejects(timedOut('single-attempt', { small: true }),
       error => error.code === 'NATIVE_RESTORE_TIMEOUT' && error.message === 'NATIVE_RESTORE_TIMEOUT');
     assert.equal(requests, 1);
   } finally {
@@ -170,7 +185,7 @@ test('switch requests separate timeout from opaque server rejection without leak
       return new Response('PRIVATE_SERVER_DETAIL', { status: 413 });
     },
   });
-  await assert.rejects(refused('attachment-upload-slot', { hello: 'world' }),
+  await assert.rejects(refused('single-attempt', { hello: 'world' }),
     error => error.code === 'NATIVE_RESTORE_SERVER_REJECTED' && error.message === 'NATIVE_RESTORE_SERVER_REJECTED');
   assert.equal(requests, 2, 'neither a timeout nor an HTTP refusal triggers an automatic retry');
 });
