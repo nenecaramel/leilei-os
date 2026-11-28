@@ -362,8 +362,8 @@ test("Desktop local commands: /compact proves an empty epoch, /model keeps the c
   assert.deepEqual(f.calls.at(-1).exclude_ids, [ID]);
   const log = await diagnosticLog(f);
   assert.deepEqual(log.filter(r => r.event === "UserPromptSubmit").map(r => r.reason),
-    ["chain_nothing_proven", "semantic_no_candidates", "chain_excluded", "semantic_no_candidates",
-      "chain_nothing_proven", "semantic_no_candidates", "chain_excluded", "semantic_no_candidates"]);
+    ["chain_nothing_proven", "local_unavailable", "semantic_no_candidates", "chain_excluded", "local_unavailable", "semantic_no_candidates",
+      "chain_nothing_proven", "local_unavailable", "semantic_no_candidates", "chain_excluded", "local_unavailable", "semantic_no_candidates"]);
   assert.deepEqual(log.filter(r => r.event !== "UserPromptSubmit").map(r => [r.event, r.reason]),
     [["Stop", "confirm_http"], ["Stop", "chain_anchor_verified"]]);
 });
@@ -412,9 +412,9 @@ test("opt-in diagnostics record only allowed chain and semantic reason codes wit
   await runHook({...submit(f), transcript_path: join(f.home, "missing.jsonl")}, async () => undefined);
   const log = await diagnosticLog(f);
   assert.deepEqual(log.map(r => [r.event, r.reason]), [
-    ["UserPromptSubmit", "chain_nothing_proven"], ["UserPromptSubmit", "semantic_no_candidates"],
-    ["UserPromptSubmit", "chain_excluded"], ["UserPromptSubmit", "semantic_no_candidates"],
-    ["UserPromptSubmit", "chain_prompt_mismatch"], ["UserPromptSubmit", "semantic_no_candidates"],
-    ["UserPromptSubmit", "chain_read_rejected"], ["UserPromptSubmit", "semantic_no_candidates"],
+    ["UserPromptSubmit", "chain_nothing_proven"], ["UserPromptSubmit", "local_unavailable"], ["UserPromptSubmit", "semantic_no_candidates"],
+    ["UserPromptSubmit", "chain_excluded"], ["UserPromptSubmit", "local_unavailable"], ["UserPromptSubmit", "semantic_no_candidates"],
+    ["UserPromptSubmit", "chain_prompt_mismatch"], ["UserPromptSubmit", "local_unavailable"], ["UserPromptSubmit", "semantic_no_candidates"],
+    ["UserPromptSubmit", "chain_read_rejected"], ["UserPromptSubmit", "local_unavailable"], ["UserPromptSubmit", "semantic_no_candidates"],
   ]);
 });
