@@ -26,7 +26,37 @@ The installer preserves unrelated Claude settings/hooks and installs **both** `h
 
 Server deployment must support the current signed-receipt endpoints and existing migration 0104 before enabling a newly installed Hook. Verify actual deployed SHA/readiness independently; merging a PR does not prove production is live. Existing Claude MCP OAuth registration is separate from the Hook's internal recall credential. A new/updated installed Claude setting may require a fresh Claude session to load; the **local pause switch below does not**.
 
-## On-demand keyword recall
+## Local recall (on by default)
+
+Chosen on 2026-11-28 after a blind review of 222 real prompts: the rule the trial
+logged (E5 score at least 0.8 and 0.04 above the prompt's own median, at most two,
+the second only within 0.02 of the first) gave 27 useful / 14 irrelevant picks
+against the server's 30 / 63, in about 16 ms instead of about 1.6 s.
+
+For each prompt the Hook first asks the Mac daemon over the private socket
+(`POST /recall`, at most 1.2 s). The daemon scores its copy of the library, picks
+with that rule and forwards the Hook's own request to `/internal/mind/recall` over
+its already-open connection, adding `semantic_snapshot_version` and the chosen
+`snapshot_scores`. The server checks that version against its current records,
+renders the context and signs the receipt exactly as before. A deleted, edited or
+hidden memory changes the version, so a stale copy is refused (the server answers
+in `legacy` mode); the daemon then discards that answer and reloads the library.
+The Hook applies the same response checks, dedupe and Stop confirmation to the
+relayed answer.
+
+Whenever the daemon is not running, has no library yet, is stale, slow or fails,
+the Hook takes the path below unchanged. The library is downloaded on the first
+request after the daemon starts (that request uses the old path) and again after a
+stale answer; there is no timer, polling or startup download.
+
+```sh
+node ~/.claude/leileios-mind/toggle.mjs status
+```
+
+`local-off` / `local-on` switch it; off sends every recall straight to the server.
+With diagnostics on, each prompt records `local_recall` or `local_unavailable`.
+
+## Server recall (fallback)
 
 Claude Code recall uses the original keyword scorer, ranking, two-Memory limit,
 and existing optional E5 model. PostgreSQL first filters a superset of keyword
@@ -52,7 +82,7 @@ source does not terminate an already-running old worker. The retired ritrieve
 model runtime, offline comparison/install scripts, local snapshot synchronizer
 and indexed/hybrid socket routes have been removed. `LEILEI_MIND_RECALL_MODE`
 no longer selects a different Hook retrieval path; an old value uses the current
-keyword/E5 path. The local semantic socket serves `/score` and,
+keyword/E5 path. The local semantic socket serves `/recall` (above), `/score` and,
 for the optional trial below, `/compare`.
 
 The server-side signed snapshot API and its freshness/visibility validation stay
@@ -96,7 +126,7 @@ This switch only pauses the **installed automatic Mind Hook**. LeileiOS MCP tool
 ## Recall and confirmation guarantees
 
 - `UserPromptSubmit` retrieves independent relevant context. Only memory presence **proven on the current transcript branch** and successful write receipts on that chain are excluded. Rewind may retrieve memories again; compact/clear/fork create a fresh epoch. Missing or ambiguous transcript evidence fails open instead of suppressing recall.
-- Hook host timeout is 5 s. The process limits itself to 3.8 s; the first recall has up to 2.5 s. Optional semantic scoring falls back to the lexical result if late/unavailable. A failed Hook exits without blocking the prompt or invoking backend recall.
+- Hook host timeout is 5 s. The process limits itself to 3.8 s; local recall has up to 1.2 s, then the server recall has up to 2.5 s of what remains. Optional semantic scoring falls back to the lexical result if late/unavailable. A failed Hook exits without blocking the prompt or invoking backend recall.
 - Nonempty current recall results use signed receipts and do not create a receipt database row on read. After successful stdout delivery, a pending local receipt may be **weakly acknowledged** on `Stop`; repeated confirmation is idempotent. `StopFailure` clears pending. This is **not** proof of completed generation or actual memory use. Interruption or a missing Stop may lose accounting, and some interrupted responses may be counted.
 - The local state is private under `~/.claude/leileios-mind/state/`; it holds IDs/epochs/receipt metadata, not prompts or memory plaintext. `PostToolUse` recognizes successful matching `mcp__<namespace>__write_memory` receipts.
 

@@ -8,7 +8,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { createHash } from "node:crypto";
 import { runHook, writtenMemoryId } from "../tools/claude-code-mind/hook.mjs";
 import { configureHooks, install } from "../tools/claude-code-mind/install.mjs";
-import { isMindComparisonOn, isMindHookPaused, setMindComparison, setMindHookPaused } from "../tools/claude-code-mind/toggle.mjs";
+import { isMindComparisonOn, isMindHookPaused, isMindLocalRecallOn, setMindComparison, setMindHookPaused, setMindLocalRecall } from "../tools/claude-code-mind/toggle.mjs";
 import { startMindRecallSemanticServer } from "../src/domains/bridge/mac/native-live-mac-mind-recall-server.js";
 
 const ID = "11111111-1111-4111-8111-111111111111";
@@ -501,4 +501,75 @@ test("a hung or missing comparison listener neither changes nor noticeably delay
   await writeFile(join(f.home, "mind.env"), envContent(f.config), {mode: 0o600});
   const missing = await childHook(f.home, {...prompt(), session_id: "s2"});
   assert.equal(missing.status, 0); assert.equal(missing.stdout, `${CONTEXT}\n`);
+});
+
+async function localSocket(t, f, answer: (body) => {status: number; data?: unknown} | "hang") {
+  const socket = join(f.home, "local.sock");
+  const asked = [];
+  const server = createServer(async (req, res) => {
+    const chunks = []; for await (const chunk of req) chunks.push(chunk);
+    if (req.url !== "/recall") { res.writeHead(202).end(); return; }
+    const body = JSON.parse(Buffer.concat(chunks).toString()); asked.push(body);
+    const reply = answer(body);
+    if (reply === "hang") return;
+    res.writeHead(reply.status, {"content-type": "application/json"}).end(JSON.stringify(reply.data === undefined ? {} : {data: reply.data}));
+  });
+  await new Promise<void>(done => server.listen(socket, () => done()));
+  t.after(() => new Promise<void>(done => { server.closeAllConnections(); server.close(() => done()); }));
+  f.config.semantic_socket = socket;
+  await writeFile(join(f.home, "mind.env"), envContent(f.config), {mode: 0o600});
+  return asked;
+}
+
+test("local recall answers first: its context is delivered and the server is not asked directly", async t => {
+  const f = await fixture(t);
+  const asked = await localSocket(t, f, () => ({status: 200, data: signedData()}));
+  let output = "";
+  await runHook({hook_event_name: "SessionStart", session_id: "s", source: "startup"});
+  await runHook(prompt(), async s => {output += s;});
+  assert.equal(output, `${CONTEXT}\n`);
+  assert.equal(f.calls.length, 0);
+  assert.equal(asked.length, 1);
+  assert.deepEqual(Object.keys(asked[0]).sort(), ["caller", "context_epoch", "exclude_ids", "query", "receipt_mode", "session_id"]);
+  assert.equal(asked[0].query, "tea"); assert.equal(asked[0].receipt_mode, "signed_v1");
+  const state = (await f.state())[0];
+  assert.equal(state.pending_recalls[0].recall_id, RECALL_ID, "the local answer's receipt is confirmed at Stop like before");
+});
+
+test("when the local recall declines, fails validation or is switched off, the old path runs unchanged", async t => {
+  for (const reply of [{status: 503}, {status: 200, data: {...signedData(), context_sha256: "0".repeat(64)}}, {status: 200, data: {context: 1}}]) {
+    const f = await fixture(t);
+    const asked = await localSocket(t, f, () => reply);
+    let output = "";
+    await runHook(prompt(), async s => {output += s;});
+    assert.equal(output, `${CONTEXT}\n`);
+    assert.equal(asked.length, 1); assert.equal(f.calls.length, 1);
+  }
+  const f = await fixture(t);
+  const asked = await localSocket(t, f, () => ({status: 200, data: signedData()}));
+  assert.equal(await isMindLocalRecallOn(f.home), true, "on by default");
+  assert.equal(await setMindLocalRecall(false, f.home), false);
+  let output = "";
+  await runHook(prompt(), async s => {output += s;});
+  assert.equal(output, `${CONTEXT}\n`);
+  assert.equal(asked.length, 0); assert.equal(f.calls.length, 1);
+  assert.equal(await setMindLocalRecall(true, f.home), true);
+});
+
+test("a local answer naming an excluded memory is not delivered", async t => {
+  const f = await fixture(t, (body, res) => res.end(JSON.stringify({success: true, data: {context: "", memory_ids: [], semantic_candidates: []}})));
+  await localSocket(t, f, () => ({status: 200, data: signedData()}));
+  await runHook({hook_event_name: "SessionStart", session_id: "s", source: "startup"});
+  await runHook({hook_event_name: "PostToolUse", session_id: "s", tool_name: TOOL, tool_response: {structuredContent: receipt(ID)}});
+  await runHook(prompt(), async () => assert.fail("an excluded memory must not be delivered"));
+});
+
+test("a hung local recall is bounded and the old path still delivers within the hook deadline", async t => {
+  const f = await fixture(t);
+  await localSocket(t, f, () => "hang");
+  const started = Date.now();
+  const result = await childHook(f.home, prompt());
+  assert.equal(result.status, 0); assert.equal(result.stdout, `${CONTEXT}\n`); assert.equal(result.stderr, "");
+  assert.equal(f.calls.length, 1);
+  assert.ok(Date.now() - started < 3800);
 });

@@ -4,6 +4,8 @@ import { NativeLiveMacPersistentRuntime } from "../src/domains/bridge/mac/native
 import { createNativeSessionDrainServer } from "../tools/claude-bridge/src/native-session-daemon-drain.mjs";
 import { startMindRecallSemanticServer } from "../src/domains/bridge/mac/native-live-mac-mind-recall-server.js";
 import { NativeLiveMacMindComparison } from "../src/domains/bridge/mac/native-live-mac-mind-comparison.js";
+import { NativeLiveMacMindLibrary } from "../src/domains/bridge/mac/native-live-mac-mind-library.js";
+import { NativeLiveMacMindLocalRecall } from "../src/domains/bridge/mac/native-live-mac-mind-local-recall.js";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -194,11 +196,18 @@ const closeHandoffServer = await createNativeSessionDrainServer({
 // The cache also has room for the comparison's whole library, so it cannot evict /score.
 const semanticScorer = new LocalE5BreathSemanticScorer({ passageCacheLimit: 4096 });
 // Trial only: idle until the Hook's local comparison switch offers a finished recall.
-const mindComparison = new NativeLiveMacMindComparison({
+// One on-demand copy of the Memory library serves the local recall and the trial.
+const mindLibrary = new NativeLiveMacMindLibrary({
   baseUrl: relayBaseUrl, token: relayToken, scorer: semanticScorer,
 });
+const mindComparison = new NativeLiveMacMindComparison({
+  baseUrl: relayBaseUrl, token: relayToken, scorer: semanticScorer, library: mindLibrary,
+});
+const mindLocalRecall = new NativeLiveMacMindLocalRecall({
+  library: mindLibrary, scorer: semanticScorer, baseUrl: relayBaseUrl, token: relayToken,
+});
 const closeMindRecallServer = await startMindRecallSemanticServer(
-  semanticScorer, undefined, mindComparison,
+  semanticScorer, undefined, mindComparison, mindLocalRecall,
 ).catch(() => null);
 const loop = new NativeLiveMacDaemonLoop(
   listenerInstanceId,
@@ -666,4 +675,5 @@ await closeHandoffServer();
 await persistentRuntime.closeAll();
 await closeMindRecallServer?.();
 await mindComparison.close();
+await mindLibrary.close();
 daemonLock.release();

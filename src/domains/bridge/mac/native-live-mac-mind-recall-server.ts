@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { z } from "zod";
 import { mindComparisonOfferSchema, type MindComparisonOffer } from "./native-live-mac-mind-comparison.js";
+import { mindLocalRecallInputSchema, type MindLocalRecallInput } from "./native-live-mac-mind-local-recall.js";
 import type { BreathSemanticScorer } from "../../runtime/breath/breath-semantic-recall.js";
 
 export function defaultMindRecallSocket() {
@@ -30,6 +31,7 @@ export async function startMindRecallSemanticServer(
   scorer: BreathSemanticScorer,
   socketPath = defaultMindRecallSocket(),
   comparison?: {offer(input: MindComparisonOffer): boolean},
+  localRecall?: {recall(input: MindLocalRecallInput): Promise<Record<string, unknown> | null>},
 ) {
   await mkdir(dirname(socketPath), {recursive: true, mode: 0o700});
   await chmod(dirname(socketPath), 0o700);
@@ -50,6 +52,18 @@ export async function startMindRecallSemanticServer(
         comparison.offer(input);
         response.writeHead(202).end();
       } catch { if (!response.destroyed) response.writeHead(400).end(); }
+      return;
+    }
+    if (localRecall && request.method === "POST" && request.url === "/recall") {
+      // Its own path: the scorer's busy flag only guards the legacy /score route.
+      let input: MindLocalRecallInput;
+      try { input = mindLocalRecallInputSchema.parse(await readJson(request, 1024 * 1024)); }
+      catch { if (!response.destroyed) response.writeHead(400).end(); return; }
+      const data = await localRecall.recall(input).catch(() => null);
+      if (response.destroyed) return;
+      if (!data) { response.writeHead(503).end(); return; }
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({data}));
       return;
     }
     if (request.method !== "POST" || request.url !== "/score") { response.writeHead(404).end(); return; }
